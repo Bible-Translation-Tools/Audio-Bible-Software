@@ -1,0 +1,41 @@
+/**
+ * Copyright (C) 2020-2024 Wycliffe Associates
+ *
+ * This file is part of Orature.
+ *
+ * Orature is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * Orature is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Orature.  If not, see <https://www.gnu.org/licenses/>.
+ */
+package org.bibletranslationtools.otter.common.domain.project.importer
+
+import io.reactivex.Single
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
+import java.io.File
+
+/**
+ * A generic project importer. All project importers must implement/inherit this interface.
+ */
+interface IProjectImporter {
+    /**
+     * Imports the given project.
+     *
+     * @param file the project file to import.
+     * @param callback the callback to communicate with the user.
+     * @param options custom data for importer.
+     */
+    fun import(
+        file: File,
+        callback: ProjectImporterCallback? = null,
+        options: ImportOptions? = null
+    ): Single<ImportResult>
+}
