@@ -8,8 +8,9 @@ import org.bibletranslationtools.otter.common.api.io.zip.IFileWriter
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import java.io.File
+import javax.inject.Inject
 
-class DirectoryProvider(val context: Context): IDirectoryProvider {
+class AndroidDirectoryProvider @Inject constructor (val context: Context): IDirectoryProvider {
     override fun getUserDataDirectory(appendedPath: String): File {
         return File(context.filesDir, appendedPath)
     }

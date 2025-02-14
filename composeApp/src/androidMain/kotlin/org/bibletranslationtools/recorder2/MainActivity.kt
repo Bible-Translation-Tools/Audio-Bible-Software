@@ -17,17 +17,22 @@ import org.bibletranslationtools.bttrecorder2.ui.components.ProjectCard
 import org.bibletranslationtools.bttrecorder2.ui.screens.MainMenuScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.Project
 import org.bibletranslationtools.bttrecorder2.ui.screens.ProjectManagementScreen
-import org.bibletranslationtools.otter.common.persistence.DirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.database.AndroidAppDatabase
 import java.io.File
+import javax.inject.Inject
 
 class MainActivity : ComponentActivity() {
+    @Inject
+    lateinit var directoryProvider: IDirectoryProvider
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        (application as Application).appComponent.inject(this)
+
         lifecycleScope.launch {
             try {
-                val directoryProvider = DirectoryProvider(applicationContext)
                 val db = AndroidAppDatabase(
                     applicationContext,
                     File(directoryProvider.databaseDirectory, "tr.sqlite"),

@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
+    alias(libs.plugins.ksp)
     kotlin("plugin.serialization") version "2.1.10"
 }
 
@@ -17,7 +18,7 @@ kotlin {
             jvmTarget.set(JvmTarget.JVM_11)
         }
     }
-    
+
     jvm("desktop")
 
     var rxkotlinVer = "2.4.0"
@@ -32,7 +33,7 @@ kotlin {
     var retrofitJacksonVer = "2.9.0"
     var retrofitRxJava2Ver = "2.9.0"
     var jacksonVer = "2.15.1"
-    var daggerVer = "2.47"
+    var daggerVer = "2.51.1"
     var junitVer = "4.12"
     var mockkVer = "1.13.5"
     var mockitoVer = "5.11.0"
@@ -63,13 +64,18 @@ kotlin {
 
     sourceSets {
         val desktopMain by getting
-        
-        androidMain.dependencies {
-            implementation(compose.preview)
-            implementation(libs.androidx.activity.compose)
-            implementation(libs.sqldroid)
-            implementation("com.readystatesoftware.sqliteasset:sqliteassethelper:2.0.1")
+
+
+        val androidMain by getting{
+            dependencies {
+                implementation(compose.preview)
+                implementation(libs.androidx.activity.compose)
+                implementation(libs.sqldroid)
+                implementation("com.readystatesoftware.sqliteasset:sqliteassethelper:2.0.1")
+            }
         }
+
+        //androidMain.
         commonMain.dependencies {
 
             implementation(compose.runtime)
@@ -109,7 +115,7 @@ kotlin {
             implementation("org.wycliffeassociates:usfmtools:$usfmToolsVer")
 
             implementation("com.google.dagger:dagger:$daggerVer")
-           // kapt("com.google.dagger:dagger-compiler:$daggerVer")
+            // kapt("com.google.dagger:dagger-compiler:$daggerVer")
 
             // Explicitly mention reflection lib so Gradle and kotlin-resource-container's Jackson
             // dependencies coexist w/o warnings. This can be removed once the krc lib is updated
@@ -139,10 +145,17 @@ kotlin {
 
             implementation("org.jetbrains.androidx.navigation:navigation-compose:2.8.0-alpha10")
             implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
+
+            //Dagger2
+            implementation("com.google.dagger:dagger:$daggerVer")
         }
         desktopMain.dependencies {
             implementation(compose.desktop.currentOs)
             implementation(libs.kotlinx.coroutines.swing)
+        }
+
+        dependencies {
+            ksp("com.google.dagger:dagger-compiler:$daggerVer")
         }
     }
 }
