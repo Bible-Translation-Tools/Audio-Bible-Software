@@ -6,9 +6,10 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.compose.rememberNavController
 import org.bibletranslationtools.bttrecorder2.ui.navigation.Navigation
 import org.bibletranslationtools.bttrecorder2.ui.theme.TranslationRecorderTheme
+import org.bibletranslationtools.otter.common.di.DependencyProvider
 
 @Composable
-fun App() {
+fun App(dependencyProvider: DependencyProvider) {
     val navController = rememberNavController()
     MaterialTheme(
         colorScheme = if (isSystemInDarkTheme()) {
@@ -17,6 +18,6 @@ fun App() {
             TranslationRecorderTheme.LightTranslationRecorderColorScheme
         }
     ) {
-        Navigation(navController)
+        Navigation(navController, dependencyProvider)
     }
 }

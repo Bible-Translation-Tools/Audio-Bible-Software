@@ -17,6 +17,7 @@ import org.bibletranslationtools.bttrecorder2.ui.components.ProjectCard
 import org.bibletranslationtools.bttrecorder2.ui.screens.MainMenuScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.Project
 import org.bibletranslationtools.bttrecorder2.ui.screens.ProjectManagementScreen
+import org.bibletranslationtools.bttrecorder2.ui.screens.SplashScreen
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.database.AndroidAppDatabase
 import java.io.File
@@ -28,9 +29,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        (application as Application).appComponent.inject(this)
-
+        
         lifecycleScope.launch {
             try {
                 val db = AndroidAppDatabase(
@@ -44,7 +43,7 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            App()
+            App((application as Application).appComponent)
         }
     }
 }
@@ -98,4 +97,10 @@ fun ProjectManagementScreenPreview() {
         Project("French", "Leviticus", 90)
     )
     ProjectManagementScreen(onNewProjectClick = {}, onProjectClick = {}, projects = sampleProjects)
+}
+
+@Preview(showBackground = true)
+@Composable
+fun SplashScreenPreview() {
+    SplashScreen()
 }
