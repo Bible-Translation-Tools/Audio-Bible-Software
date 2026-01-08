@@ -18,8 +18,10 @@
  */
 package org.bibletranslationtools.otter.common.initialization
 
+import btt_recorder2.composeapp.generated.resources.Res
 import io.reactivex.Completable
 import io.reactivex.ObservableEmitter
+import kotlinx.coroutines.runBlocking
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.api.persistence.config.Installable
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IInstalledEntityRepository
@@ -28,11 +30,12 @@ import org.bibletranslationtools.otter.common.data.ProgressStatus
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportException
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
+import org.jetbrains.compose.resources.ExperimentalResourceApi
 import java.io.File
 import javax.inject.Inject
 
 const val EN_ULB_FILENAME = "en_ulb"
-private const val EN_ULB_PATH = "content/$EN_ULB_FILENAME.zip"
+private const val EN_ULB_PATH = "files/content/$EN_ULB_FILENAME.zip"
 
 class InitializeUlb @Inject constructor(
     private val directoryProvider: IDirectoryProvider,
@@ -50,7 +53,7 @@ class InitializeUlb @Inject constructor(
             .fromCallable {
                 val installedVersion = installedEntityRepo.getInstalledVersion(this)
                 if (installedVersion != version) {
-                    val enUlbFile = prepareImportFile()
+                    val enUlbFile = runBlocking { prepareImportFile() }
                     if (importer.isAlreadyImported(enUlbFile)) {
                         log.info("$EN_ULB_FILENAME already exists, skipped.")
                         return@fromCallable Completable.complete()
@@ -76,6 +79,7 @@ class InitializeUlb @Inject constructor(
                                 installedEntityRepo.install(this)
                                 log.info("$name version: $version installed!")
                             } else {
+                                log.error(result.toString())
                                 throw ImportException(result)
                             }
                         }
@@ -88,14 +92,15 @@ class InitializeUlb @Inject constructor(
             }
     }
 
-    private fun prepareImportFile(): File {
-        val enUlbResource = javaClass.classLoader.getResource(EN_ULB_PATH)!!
+    @OptIn(ExperimentalResourceApi::class)
+    private suspend fun prepareImportFile(): File {
+        val enUlbResource = Res.readBytes(EN_ULB_PATH).inputStream()
         val tempFile = directoryProvider.createTempFile("en_ulb-default", ".zip")
             .also(File::deleteOnExit)
 
-        enUlbResource.openStream().use { input ->
+        enUlbResource.use { input ->
             tempFile.outputStream().use { output ->
-                input.transferTo(output)
+                input.copyTo(output)
             }
         }
         return tempFile

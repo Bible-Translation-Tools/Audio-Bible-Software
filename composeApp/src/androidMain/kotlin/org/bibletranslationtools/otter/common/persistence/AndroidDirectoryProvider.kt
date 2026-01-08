@@ -148,6 +148,7 @@ class AndroidDirectoryProvider @Inject constructor (val context: Context): IDire
     }
 
     override fun createTempFile(prefix: String, suffix: String?): File {
+        tempDirectory.mkdirs()
         return File.createTempFile(prefix, suffix, tempDirectory)
     }
 
@@ -187,7 +188,7 @@ class AndroidDirectoryProvider @Inject constructor (val context: Context): IDire
         get() = context.cacheDir // Use context.cacheDir directly
 
     override val tempDirectory: File
-        get() = context.cacheDir.resolve("temp") // Create temp directory inside cache
+        get() = getAppDataDirectory("temp")
 
     private fun deleteRecursively(dir: File) {
         dir.listFiles()?.forEach {

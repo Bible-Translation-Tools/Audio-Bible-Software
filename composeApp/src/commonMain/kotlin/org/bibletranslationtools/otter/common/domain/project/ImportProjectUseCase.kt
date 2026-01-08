@@ -45,8 +45,8 @@ import java.lang.IllegalArgumentException
 import javax.inject.Inject
 import javax.inject.Provider
 
-const val SOURCES_JSON_FILE = "gl_sources.json"
-const val SOURCE_PATH_TEMPLATE = "content/%s.zip"
+const val SOURCES_JSON_FILE = "composeResources/files/gl_sources.json"
+const val SOURCE_PATH_TEMPLATE = "composeResources/files/content/%s.zip"
 
 class ImportProjectUseCase @Inject constructor() {
 
@@ -127,7 +127,7 @@ class ImportProjectUseCase @Inject constructor() {
                     directoryProvider.tempDirectory
                 )
                 tempFile.outputStream().use { output ->
-                    input.transferTo(output)
+                    input.copyTo(output)
                 }
                 tempFile
             }

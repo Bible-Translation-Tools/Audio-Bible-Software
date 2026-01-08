@@ -18,8 +18,10 @@
  */
 package org.bibletranslationtools.otter.common.initialization
 
+import btt_recorder2.composeapp.generated.resources.Res
 import io.reactivex.Completable
 import io.reactivex.ObservableEmitter
+import kotlinx.coroutines.runBlocking
 import org.bibletranslationtools.otter.common.api.persistence.ILanguageDataSource
 import org.bibletranslationtools.otter.common.api.persistence.config.Installable
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IInstalledEntityRepository
@@ -27,9 +29,10 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.ILang
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.ProgressStatus
 import org.bibletranslationtools.otter.common.domain.languages.ImportLanguages
+import org.jetbrains.compose.resources.ExperimentalResourceApi
 import javax.inject.Inject
 
-const val LANGNAMES_PATH = "content/langnames.json"
+const val LANGNAMES_PATH = "files/content/langnames.json"
 
 class InitializeLanguages @Inject constructor(
     val installedEntityRepo: IInstalledEntityRepository,
@@ -76,6 +79,7 @@ class InitializeLanguages @Inject constructor(
                 log.error("Error importing languages.", e)
             }
             .blockingAwait()
+
     }
 
     private fun migrate1to2() {
@@ -86,13 +90,22 @@ class InitializeLanguages @Inject constructor(
             .blockingAwait()
     }
 
+    @OptIn(ExperimentalResourceApi::class)
     private fun importLanguages(): Completable {
+        val stream = runBlocking {
+            Res.readBytes(LANGNAMES_PATH).inputStream()
+        }
         return ImportLanguages(languageRepo, languageDataSource)
-            .import(ClassLoader.getSystemResourceAsStream(LANGNAMES_PATH))
+            .import(stream)
+
     }
 
+    @OptIn(ExperimentalResourceApi::class)
     private fun updateRegions(): Completable {
+        val stream = runBlocking {
+            Res.readBytes(LANGNAMES_PATH).inputStream()
+        }
         return ImportLanguages(languageRepo, languageDataSource)
-            .updateRegions(ClassLoader.getSystemResourceAsStream(LANGNAMES_PATH))
+            .updateRegions(stream)
     }
 }

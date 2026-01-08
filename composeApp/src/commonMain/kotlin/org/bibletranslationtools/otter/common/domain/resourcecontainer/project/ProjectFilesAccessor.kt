@@ -201,7 +201,7 @@ class ProjectFilesAccessor(
                     val stream = fileReader.stream(path)
                     stream.use { ifs ->
                         outFile.outputStream().use { ofs ->
-                            ifs.transferTo(ofs)
+                            ifs.copyTo(ofs)
                         }
                     }
                 }
@@ -311,7 +311,7 @@ class ProjectFilesAccessor(
         if (!outFile.exists()) {
             fileReader.stream(RcConstants.SELECTED_TAKES_FILE).use { ifs ->
                 outFile.outputStream().use { ofs ->
-                    ifs.transferTo(ofs)
+                    ifs.copyTo(ofs)
                 }
             }
         }
@@ -374,7 +374,7 @@ class ProjectFilesAccessor(
         } else if (inFile.exists()) {
             fileWriter.bufferedWriter(RcConstants.CHUNKS_FILE).use { _fileWriter ->
                 inFile.reader().use { _fileReader ->
-                    _fileReader.transferTo(_fileWriter)
+                    _fileReader.copyTo(_fileWriter)
                 }
             }
         }
@@ -830,7 +830,7 @@ class ProjectFilesAccessor(
         if (!outFile.exists() && fileReader.exists(RcConstants.CHUNKS_FILE)) {
             fileReader.stream(RcConstants.CHUNKS_FILE).use { ifs ->
                 outFile.outputStream().use { ofs ->
-                    ifs.transferTo(ofs)
+                    ifs.copyTo(ofs)
                 }
             }
         }
@@ -858,7 +858,7 @@ class ProjectFilesAccessor(
         val file = projectDir.resolve(RcConstants.PROJECT_MODE_FILE)
         fileWriter.bufferedWriter(RcConstants.PROJECT_MODE_FILE).use { writer ->
             file.bufferedReader().use { reader ->
-                reader.transferTo(writer)
+                reader.copyTo(writer)
             }
         }
     }
@@ -868,7 +868,7 @@ class ProjectFilesAccessor(
         if (fileReader.exists(RcConstants.PROJECT_MODE_FILE)) {
             fileReader.stream(RcConstants.PROJECT_MODE_FILE).use { ifs ->
                 modeFile.outputStream().use { ofs ->
-                    ifs.transferTo(ofs)
+                    ifs.copyTo(ofs)
                 }
             }
         }

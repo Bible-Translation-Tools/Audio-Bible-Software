@@ -46,14 +46,14 @@ class AndroidAppDatabase(
 
         connection = DriverManager.getConnection("jdbc:sqlite:" + SQLiteAssetHelper(context, "tr.sqlite", null, 14).writableDatabase.path)
         dsl = DSL.using(connection, SQLDialect.SQLITE)
-//
-//        try {
-//            context.assets.open("databases/CreateAppDb.sql").use {
-//                setup(it)
-//            }
-//        } catch (e: Exception) {
-//            e.printStackTrace()
-//        }
+
+        try {
+            context.assets.open("databases/CreateAppDb.sql").use {
+                setup(it)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
 
         DatabaseMigrator(directoryProvider).migrate(dsl)
     }

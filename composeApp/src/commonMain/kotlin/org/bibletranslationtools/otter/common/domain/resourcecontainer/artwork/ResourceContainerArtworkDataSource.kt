@@ -115,7 +115,7 @@ class ResourceContainerArtworkDataSource(
                 // copy image to cache dir
                 image.outputStream().use { fos ->
                     rc.accessor.getInputStream(path).use {
-                        it.transferTo(fos)
+                        it.copyTo(fos)
                     }
                 }
 

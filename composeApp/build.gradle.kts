@@ -1,3 +1,4 @@
+import org.gradle.api.internal.artifacts.configurations.Configurations
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -9,6 +10,7 @@ plugins {
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.ksp)
     kotlin("plugin.serialization") version "2.1.10"
+    id("de.undercouch.download") version "5.6.0"
 }
 
 kotlin {
@@ -62,11 +64,16 @@ kotlin {
     var kotlinVttVer = "1.0.0"
     var kotlinScriptureAlignmentVer = "1.0.0"
 
+
+//    val content by configurations.creating
+//    val runtime by configurations
+//    content.extendsFrom(runtime)
+
     sourceSets {
         val desktopMain by getting
 
 
-        val androidMain by getting{
+        val androidMain by getting {
             dependencies {
                 implementation(compose.preview)
                 implementation(libs.androidx.activity.compose)
@@ -75,79 +82,82 @@ kotlin {
             }
         }
 
-        //androidMain.
-        commonMain.dependencies {
+        val commonMain by getting {
+            apply("fetchAssets.gradle")
 
-            implementation(compose.runtime)
-            implementation(compose.foundation)
-            implementation(compose.material)
-            implementation(compose.ui)
-            implementation(compose.components.resources)
-            implementation(compose.components.uiToolingPreview)
-            implementation(libs.androidx.lifecycle.viewmodel)
-            implementation(libs.androidx.lifecycle.runtime.compose)
-            implementation(libs.material3)
-            implementation(compose.materialIconsExtended)
-            implementation(compose.ui)
-            implementation(compose.components.resources)
-            implementation(compose.components.uiToolingPreview)
-            implementation(libs.androidx.lifecycle.viewmodel)
-            implementation(libs.androidx.lifecycle.runtime.compose)
-            implementation(libs.kotlinx.coroutines.core)
+            dependencies {
 
-            implementation("io.reactivex.rxjava2:rxkotlin:$rxkotlinVer")
-            implementation("com.github.thomasnield:rxkotlinfx:$rxkotlinfxVer")
-            implementation("com.jakewharton.rxrelay2:rxrelay:$rxrelayVer")
-            implementation("org.jooq:jooq:$jooqVer")
+                implementation(compose.runtime)
+                implementation(compose.foundation)
+                implementation(compose.material)
+                implementation(compose.ui)
+                implementation(compose.components.resources)
+                implementation(compose.components.uiToolingPreview)
+                implementation(libs.androidx.lifecycle.viewmodel)
+                implementation(libs.androidx.lifecycle.runtime.compose)
+                implementation(libs.material3)
+                implementation(compose.materialIconsExtended)
+                implementation(compose.ui)
+                implementation(compose.components.resources)
+                implementation(compose.components.uiToolingPreview)
+                implementation(libs.androidx.lifecycle.viewmodel)
+                implementation(libs.androidx.lifecycle.runtime.compose)
+                implementation(libs.kotlinx.coroutines.core)
 
-            implementation("io.reactivex.rxjava2:rxkotlin:$rxkotlinVer")
-            implementation("com.jakewharton.rxrelay2:rxrelay:$rxrelayVer")
-            implementation("org.slf4j:slf4j-api:$slf4jApiVer")
-            implementation("de.sciss:jump3r:$jump3rVer")
-            implementation("org.wycliffeassociates:kotlin-tstudio2rc:$tstudio2rcVer")
+                implementation("io.reactivex.rxjava2:rxkotlin:$rxkotlinVer")
+                implementation("com.github.thomasnield:rxkotlinfx:$rxkotlinfxVer")
+                implementation("com.jakewharton.rxrelay2:rxrelay:$rxrelayVer")
+                implementation("org.jooq:jooq:$jooqVer")
 
-            implementation("org.bibletranslationtools:otter-db:1.0")
+                implementation("io.reactivex.rxjava2:rxkotlin:$rxkotlinVer")
+                implementation("com.jakewharton.rxrelay2:rxrelay:$rxrelayVer")
+                implementation("org.slf4j:slf4j-api:$slf4jApiVer")
+                implementation("de.sciss:jump3r:$jump3rVer")
+                implementation("org.wycliffeassociates:kotlin-tstudio2rc:$tstudio2rcVer")
 
-            // Resource Container
-            implementation("org.wycliffeassociates:kotlin-resource-container:$kotlinresourcecontainerVer")
+                implementation("org.bibletranslationtools:otter-db:1.0")
 
-            // USFM Tools
-            implementation("org.wycliffeassociates:usfmtools:$usfmToolsVer")
+                // Resource Container
+                implementation("org.wycliffeassociates:kotlin-resource-container:$kotlinresourcecontainerVer")
 
-            implementation("com.google.dagger:dagger:$daggerVer")
-            // kapt("com.google.dagger:dagger-compiler:$daggerVer")
+                // USFM Tools
+                implementation("org.wycliffeassociates:usfmtools:$usfmToolsVer")
 
-            // Explicitly mention reflection lib so Gradle and kotlin-resource-container's Jackson
-            // dependencies coexist w/o warnings. This can be removed once the krc lib is updated
-            // to Jackson 2.9.8+.
-            implementation("org.jetbrains.kotlin:kotlin-reflect:$kotlinVer")
-            implementation("com.fasterxml.jackson.module:jackson-module-kotlin:$jacksonVer")
-            implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:$jacksonVer")
-            implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-csv:$jacksonVer")
+                implementation("com.google.dagger:dagger:$daggerVer")
+                // kapt("com.google.dagger:dagger-compiler:$daggerVer")
 
-            // Retrofit
-            implementation("com.squareup.retrofit2:retrofit:$retrofitVer")
-            implementation("com.squareup.retrofit2:converter-jackson:$retrofitJacksonVer")
-            implementation("com.squareup.retrofit2:adapter-rxjava2:$retrofitRxJava2Ver")
+                // Explicitly mention reflection lib so Gradle and kotlin-resource-container's Jackson
+                // dependencies coexist w/o warnings. This can be removed once the krc lib is updated
+                // to Jackson 2.9.8+.
+                implementation("org.jetbrains.kotlin:kotlin-reflect:$kotlinVer")
+                implementation("com.fasterxml.jackson.module:jackson-module-kotlin:$jacksonVer")
+                implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:$jacksonVer")
+                implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-csv:$jacksonVer")
 
-            implementation("org.apache.tika:tika-core:$tikaVer")
+                // Retrofit
+                implementation("com.squareup.retrofit2:retrofit:$retrofitVer")
+                implementation("com.squareup.retrofit2:converter-jackson:$retrofitJacksonVer")
+                implementation("com.squareup.retrofit2:adapter-rxjava2:$retrofitRxJava2Ver")
 
-            implementation("org.bibletranslationtools:kotlin-scripture-burrito:$kotlinscriptureburritoVer")
-            implementation("org.bibletranslationtools:kotlin-vtt:$kotlinVttVer")
-            implementation("org.bibletranslationtools:kotlin-scripture-alignment:$kotlinScriptureAlignmentVer")
+                implementation("org.apache.tika:tika-core:$tikaVer")
 
-            implementation("org.slf4j:slf4j-api:$slf4jApiVer")
-            implementation("javazoom.jl:SeekableJlayer:$jlayerVer")
-            implementation("org.digitalmediaserver:cuelib-core:$cuelibVer")
-            implementation("org.bibletranslationtools:kotlin-vtt:$kotlinVttVer")
-            implementation("com.mpatric:mp3agic:$mp3TagVer")
-            implementation("be.tarsos:tarsosdsp:$tarsosDspVer")
+                implementation("org.bibletranslationtools:kotlin-scripture-burrito:$kotlinscriptureburritoVer")
+                implementation("org.bibletranslationtools:kotlin-vtt:$kotlinVttVer")
+                implementation("org.bibletranslationtools:kotlin-scripture-alignment:$kotlinScriptureAlignmentVer")
 
-            implementation("org.jetbrains.androidx.navigation:navigation-compose:2.8.0-alpha10")
-            implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
+                implementation("org.slf4j:slf4j-api:$slf4jApiVer")
+                implementation("javazoom.jl:SeekableJlayer:$jlayerVer")
+                implementation("org.digitalmediaserver:cuelib-core:$cuelibVer")
+                implementation("org.bibletranslationtools:kotlin-vtt:$kotlinVttVer")
+                implementation("com.mpatric:mp3agic:$mp3TagVer")
+                implementation("be.tarsos:tarsosdsp:$tarsosDspVer")
 
-            //Dagger2
-            implementation("com.google.dagger:dagger:$daggerVer")
+                implementation("org.jetbrains.androidx.navigation:navigation-compose:2.8.0-alpha10")
+                implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
+
+                //Dagger2
+                implementation("com.google.dagger:dagger:$daggerVer")
+            }
         }
         desktopMain.dependencies {
             implementation(compose.desktop.currentOs)
@@ -156,6 +166,7 @@ kotlin {
 
         dependencies {
             ksp("com.google.dagger:dagger-compiler:$daggerVer")
+            implementation("bibleineverylanguage:langnames@json")
         }
     }
 }

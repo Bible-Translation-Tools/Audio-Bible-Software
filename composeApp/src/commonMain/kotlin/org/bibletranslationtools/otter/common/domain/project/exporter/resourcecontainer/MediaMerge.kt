@@ -149,7 +149,7 @@ object MediaMerge {
                 fromRC.accessor.getInputStream(filename).use { ifs ->
                     val temp = createTempFile()
                     temp.outputStream().use { ofs ->
-                        ifs.transferTo(ofs)
+                        ifs.copyTo(ofs)
                     }
                     filesToMerge.put(filename, temp)
                 }

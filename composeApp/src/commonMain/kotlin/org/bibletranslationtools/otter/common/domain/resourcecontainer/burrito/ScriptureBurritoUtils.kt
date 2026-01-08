@@ -163,7 +163,7 @@ class ScriptureBurritoUtils @Inject constructor(
                     .getInputStream(project.path.removePrefix("./"))
                     .use { ifs ->
                         outFile.outputStream().use { ofs ->
-                            ifs.transferTo(ofs)
+                            ifs.copyTo(ofs)
                         }
                     }
 
@@ -257,7 +257,7 @@ class ScriptureBurritoUtils @Inject constructor(
         val pathInRC = "${RcConstants.SOURCE_MEDIA_DIR}/${timingFile.name}"
         rc.accessor.write(pathInRC) { ofs ->
             timingFile.inputStream().use { ifs ->
-                ifs.transferTo(ofs)
+                ifs.copyTo(ofs)
             }
         }
         return Pair(ingredient, pathInRC)

@@ -88,7 +88,7 @@ class BibleArtworkDataSource(
                 image.deleteOnExit()
                 image.outputStream().use { fos ->
                     rc.accessor.getInputStream(imagePath).use {
-                        it.transferTo(fos)
+                        it.copyTo(fos)
                     }
                 }
 

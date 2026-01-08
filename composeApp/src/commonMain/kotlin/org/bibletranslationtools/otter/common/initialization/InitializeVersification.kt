@@ -67,7 +67,7 @@ class InitializeVersification @Inject constructor(
                         directoryProvider.versificationDirectory.absolutePath,
                         ULB_VERSIFICATION_FILE
                     ).outputStream().use { ofs ->
-                        ifs.transferTo(ofs)
+                        ifs.copyTo(ofs)
                     }
                 }
             ClassLoader
@@ -76,7 +76,7 @@ class InitializeVersification @Inject constructor(
                         directoryProvider.versificationDirectory.absolutePath,
                         UFW_VERSIFICATION_FILE
                     ).outputStream().use { ofs ->
-                        ifs.transferTo(ofs)
+                        ifs.copyTo(ofs)
                     }
                 }
         }
