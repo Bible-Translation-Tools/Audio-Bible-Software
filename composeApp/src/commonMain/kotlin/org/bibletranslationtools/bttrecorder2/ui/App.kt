@@ -9,7 +9,7 @@ import org.bibletranslationtools.bttrecorder2.ui.theme.TranslationRecorderTheme
 import org.bibletranslationtools.otter.common.di.DependencyProvider
 
 @Composable
-fun App(dependencyProvider: DependencyProvider) {
+fun App() {
     val navController = rememberNavController()
     MaterialTheme(
         colorScheme = if (isSystemInDarkTheme()) {
@@ -18,6 +18,6 @@ fun App(dependencyProvider: DependencyProvider) {
             TranslationRecorderTheme.LightTranslationRecorderColorScheme
         }
     ) {
-        Navigation(navController, dependencyProvider)
+        Navigation(navController)
     }
 }

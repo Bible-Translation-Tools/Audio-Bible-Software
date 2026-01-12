@@ -9,22 +9,18 @@ import androidx.lifecycle.ViewModel
 import io.reactivex.Completable
 import org.bibletranslationtools.otter.common.di.DependencyProvider
 import org.bibletranslationtools.otter.common.initialization.InitializeApp
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
 import javax.inject.Inject
 
-class SplashScreenViewModel(
-    dependencyProvider: DependencyProvider
-): ViewModel() {
+class SplashScreenViewModel(): ViewModel(), KoinComponent {
 
-    @Inject
-    lateinit var initApp: InitializeApp
+    //@Inject
+    private val initApp: InitializeApp by inject()
 
     var progressTitle by mutableStateOf("")
     var progressBody by mutableStateOf("")
     var progress by mutableStateOf(0.0)
-
-    init {
-        dependencyProvider.inject(this)
-    }
 
     fun initApp(): Completable {
         return initApp.initApp()

@@ -12,6 +12,7 @@ import org.bibletranslationtools.otter.common.persistence.database.daos.Checking
 import org.bibletranslationtools.otter.common.persistence.database.daos.CollectionDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.ContentDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.ContentTypeDao
+import org.bibletranslationtools.otter.common.persistence.database.daos.InstalledEntityDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.LanguageDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.MarkerDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.ResourceLinkDao
@@ -69,8 +70,7 @@ class AndroidAppDatabase(
     override val takeDao = TakeDao(dsl)
     override val markerDao = MarkerDao(dsl)
 
-    override val installedEntityDao =
-        org.bibletranslationtools.otter.common.persistence.database.daos.InstalledEntityDao(dsl)
+    override val installedEntityDao = InstalledEntityDao(dsl)
     override val translationDao = TranslationDao(dsl)
     override val versificationDao = VersificationDao(dsl)
     override val workbookTypeDao = WorkbookTypeDao(dsl)

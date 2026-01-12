@@ -20,12 +20,15 @@ import org.bibletranslationtools.bttrecorder2.ui.screens.ProjectManagementScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.SplashScreen
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.database.AndroidAppDatabase
+import org.koin.android.ext.android.inject
 import java.io.File
 import javax.inject.Inject
 
 class MainActivity : ComponentActivity() {
     @Inject
     lateinit var directoryProvider: IDirectoryProvider
+
+    val koinDirectoryProvider: IDirectoryProvider by inject()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -34,8 +37,8 @@ class MainActivity : ComponentActivity() {
             try {
                 val db = AndroidAppDatabase(
                     applicationContext,
-                    File(directoryProvider.databaseDirectory, "tr.sqlite"),
-                    directoryProvider
+                    File(koinDirectoryProvider.databaseDirectory, "tr.sqlite"),
+                    koinDirectoryProvider
                 )
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -43,7 +46,7 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            App((application as Application).appComponent)
+            App()
         }
     }
 }

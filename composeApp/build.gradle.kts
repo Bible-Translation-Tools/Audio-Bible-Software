@@ -64,6 +64,9 @@ kotlin {
     var kotlinVttVer = "1.0.0"
     var kotlinScriptureAlignmentVer = "1.0.0"
 
+    var koinVer = "3.5.6"
+    var kotlinInjectVer = "0.6.3"
+    //var kspVer = "1.9.23-1.0.20"
 
 //    val content by configurations.creating
 //    val runtime by configurations
@@ -72,13 +75,23 @@ kotlin {
     sourceSets {
         val desktopMain by getting
 
-
         val androidMain by getting {
             dependencies {
                 implementation(compose.preview)
                 implementation(libs.androidx.activity.compose)
                 implementation(libs.sqldroid)
                 implementation("com.readystatesoftware.sqliteasset:sqliteassethelper:2.0.1")
+                // Koin for Android
+                implementation(libs.koin.android)
+                // For Compose on Android
+                implementation(libs.koin.compose)            }
+        }
+
+        val commonTest by getting {
+            dependencies {
+                implementation(libs.kotlin.test)
+                implementation(libs.kotlin.test.junit)
+                implementation(libs.koin.test)
             }
         }
 
@@ -157,6 +170,14 @@ kotlin {
 
                 //Dagger2
                 implementation("com.google.dagger:dagger:$daggerVer")
+
+                // Koin
+                implementation("io.insert-koin:koin-core:$koinVer")
+
+                // Kotlin-Inject
+                implementation("me.tatarka.inject:kotlin-inject-runtime:$kotlinInjectVer")
+
+                implementation(libs.koin.core)
             }
         }
         desktopMain.dependencies {
@@ -165,6 +186,7 @@ kotlin {
         }
 
         dependencies {
+            ksp("me.tatarka.inject:kotlin-inject-compiler-ksp:$kotlinInjectVer")
             ksp("com.google.dagger:dagger-compiler:$daggerVer")
             implementation("bibleineverylanguage:langnames@json")
         }

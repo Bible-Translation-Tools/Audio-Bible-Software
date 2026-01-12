@@ -60,4 +60,8 @@ ext {
     tstudio2rcVer = '1.0.2'
     kotlinVttVer = '1.0.0'
     kotlinScriptureAlignmentVer = '1.0.0'
+
+    koinVer = '3.5.6'
+    kotlinInjectVer = '0.6.3'
+    kspVer = '1.9.23-1.0.20'
 }

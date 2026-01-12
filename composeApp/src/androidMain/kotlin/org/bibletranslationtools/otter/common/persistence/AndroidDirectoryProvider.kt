@@ -5,10 +5,16 @@ import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.api.io.zip.IFileReader
 import org.bibletranslationtools.otter.common.api.io.zip.IFileWriter
+import org.bibletranslationtools.otter.common.api.io.zip.NioDirectoryFileReader
+import org.bibletranslationtools.otter.common.api.io.zip.NioZipFileReader
+import org.bibletranslationtools.otter.common.api.io.zip.NioZipFileWriter
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.data.OratureFileFormat
 import org.bibletranslationtools.otter.common.data.primitives.ContainerType
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import java.io.File
+import java.io.FileNotFoundException
+import java.io.IOException
 import java.nio.file.FileSystems
 import javax.inject.Inject
 
@@ -139,12 +145,49 @@ class AndroidDirectoryProvider @Inject constructor (val context: Context): IDire
         path.mkdirs()
         return path
     }
-    override fun newFileWriter(file: File): IFileWriter {
-        TODO("Not yet implemented")
-    }
+
+    override fun newFileWriter(file: File) = NioZipFileWriter(file)
 
     override fun newFileReader(file: File): IFileReader {
-        TODO("Not yet implemented")
+        if (!file.exists()) throw FileNotFoundException("File ${file.absolutePath} does not exist.")
+
+        return when {
+            file.isDirectory -> NioDirectoryFileReader(file)
+            file.isFile && file.extension in OratureFileFormat.extensionList
+                -> NioZipFileReader(file)
+            else -> {
+                if (magicNumberIsZip(file)) {
+                    NioZipFileReader(file)
+                } else {
+                    throw IllegalArgumentException("File type not supported, file name ${file.name}, extension ${file.extension}")
+                }
+            }
+        }
+    }
+
+    /**
+     * Examines the beginning of a file to see if its magic number matches the magic number
+     * for zip files. This will help attempt to use zip files that are stripped of file
+     * extensions.
+     */
+    private fun magicNumberIsZip(file: File): Boolean {
+        if (file.isFile) {
+            try {
+                val bytes = ByteArray(4)
+                file.inputStream().read(bytes)
+                val numberMatches = booleanArrayOf(
+                    bytes[0] == 'P'.code.toByte(),
+                    bytes[1] == 'K'.code.toByte(),
+                    bytes[2].toInt() == 0b0011,
+                    bytes[3].toInt() == 0b0100
+                ).all { it }
+                return numberMatches
+            } catch (e: IOException) {
+                return false
+            }
+        } else {
+            return false
+        }
     }
 
     override fun createTempFile(prefix: String, suffix: String?): File {

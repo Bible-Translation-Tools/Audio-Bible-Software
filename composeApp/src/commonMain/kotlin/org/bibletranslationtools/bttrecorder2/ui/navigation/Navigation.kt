@@ -13,11 +13,11 @@ import org.bibletranslationtools.bttrecorder2.ui.screens.Project
 import org.bibletranslationtools.bttrecorder2.ui.screens.ProjectManagementScreen
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SplashScreenViewModel
 import org.bibletranslationtools.otter.common.di.DependencyProvider
+import org.koin.core.component.KoinComponent
 
 @Composable
 fun Navigation(
-    navController: NavHostController,
-    dependencyProvider: DependencyProvider
+    navController: NavHostController
 ) {
     val scope = rememberCoroutineScope()
 
@@ -26,7 +26,7 @@ fun Navigation(
         startDestination = SplashScreenRoute
     ) {
         composable<SplashScreenRoute>() {
-            val vm = viewModel { SplashScreenViewModel(dependencyProvider) }
+            val vm = viewModel { SplashScreenViewModel() }
             vm
                 .initApp()
                 .subscribe {
