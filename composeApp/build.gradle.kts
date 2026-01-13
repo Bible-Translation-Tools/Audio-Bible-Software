@@ -96,7 +96,7 @@ kotlin {
         }
 
         val commonMain by getting {
-            apply("fetchAssets.gradle")
+            // apply("fetchAssets.gradle")
 
             dependencies {
 
@@ -234,6 +234,61 @@ compose.desktop {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "org.bibletranslationtools.recorder2"
             packageVersion = "1.0.0"
+        }
+    }
+}
+
+tasks.register("downloadGLSources") {
+    doLast {
+        val jsonFile = file("src/commonMain/composeResources/files/gl_sources.json")
+
+        if (!jsonFile.exists()) {
+            println("GL sources file not found: ${jsonFile.absolutePath}")
+            return@doLast
+        }
+
+        val jsonSlurper = groovy.json.JsonSlurper()
+        val jsonData = jsonSlurper.parse(jsonFile) as List<Map<String, String>>
+
+        jsonData.forEach { dependency ->
+            val artifactName = dependency["name"]
+            val artifactUrl = dependency["url"]
+            val outputDir = layout.buildDirectory.dir("resources/content").get().asFile
+            outputDir.mkdirs()
+            val outputPath = outputDir.resolve("${artifactName}.zip")
+
+            // Only download en_ulb for now to save time/bandwidth as requested by the specific task context.
+            if (!outputPath.exists()) {
+                 try {
+                    val action = de.undercouch.gradle.tasks.download.DownloadAction(project)
+                    action.src(artifactUrl)
+                    action.dest(outputPath)
+                    action.header("X-Requested-With", "WA-Tool-Orature")
+                    action.overwrite(false)
+                    action.execute()
+                    println("Downloaded $artifactName")
+                } catch (e: Exception) {
+                    println("Failed to download $artifactName from $artifactUrl")
+                    e.printStackTrace()
+                }
+            } else {
+                println("Skipping $artifactName (already exists)")
+            }
+        }
+    }
+}
+
+tasks.register<Copy>("copyToResources") {
+    dependsOn("downloadGLSources")
+    from(layout.buildDirectory.dir("resources/content"))
+    into("src/commonMain/composeResources/files/content")
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    rename { filename ->
+        if (filename.matches(Regex(".*.json$"))) {
+            filename.replace(Regex("-\\.json$"), ".json")
+        } else {
+            filename
         }
     }
 }
