@@ -1,6 +1,7 @@
 package org.bibletranslationtools.otter.common.persistence
 
 import android.content.Context
+import org.bibletranslationtools.otter.common.api.io.zip.AndroidZipFileReader
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.api.io.zip.IFileReader
@@ -154,10 +155,10 @@ class AndroidDirectoryProvider @Inject constructor (val context: Context): IDire
         return when {
             file.isDirectory -> NioDirectoryFileReader(file)
             file.isFile && file.extension in OratureFileFormat.extensionList
-                -> NioZipFileReader(file)
+                -> AndroidZipFileReader(file)
             else -> {
                 if (magicNumberIsZip(file)) {
-                    NioZipFileReader(file)
+                    AndroidZipFileReader(file)
                 } else {
                     throw IllegalArgumentException("File type not supported, file name ${file.name}, extension ${file.extension}")
                 }
