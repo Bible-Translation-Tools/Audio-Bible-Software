@@ -28,6 +28,7 @@ import org.bibletranslationtools.otter.common.domain.project.exporter.resourceco
 import org.bibletranslationtools.otter.common.domain.project.importer.BurritoImporter
 import org.bibletranslationtools.otter.common.domain.project.importer.BurritoImporterFactory
 import org.bibletranslationtools.otter.common.domain.project.importer.ExistingSourceImporter
+import org.bibletranslationtools.otter.common.domain.project.importer.IProjectImporterFactory
 import org.bibletranslationtools.otter.common.domain.project.importer.NewSourceImporter
 import org.bibletranslationtools.otter.common.domain.project.importer.OngoingProjectImporter
 import org.bibletranslationtools.otter.common.domain.project.importer.RCImporterFactory
@@ -46,6 +47,8 @@ import org.bibletranslationtools.otter.common.initialization.InitializeTranslati
 import org.bibletranslationtools.otter.common.initialization.InitializeUlb
 import org.bibletranslationtools.otter.common.initialization.InitializeVersification
 import org.koin.core.module.dsl.factoryOf
+import org.koin.core.module.dsl.singleOf
+import org.koin.dsl.bind
 import org.koin.dsl.module
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.AudioPluginDataMapper
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.CollectionMapper
@@ -78,7 +81,6 @@ val implicitCommonModule = module {
     factoryOf(::SourceProjectExporter)
 
     // Importers
-    factoryOf(::InitializeApp)
     factoryOf(::NewSourceImporter)
     factoryOf(::ExistingSourceImporter)
     factoryOf(::TsImporterFactory)
@@ -87,6 +89,7 @@ val implicitCommonModule = module {
     factoryOf(::BurritoImporter)
     factoryOf(::TstudioImporter)
     factoryOf(::RCImporterFactory)
+    factoryOf(::InitializeApp)
 
     // Content
     factoryOf(::ChapterTranslationBuilder)
@@ -163,3 +166,5 @@ val implicitModules = listOf(
     implicitCommonModule,
     implicitViewModelModule
 )
+
+

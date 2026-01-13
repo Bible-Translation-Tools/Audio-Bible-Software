@@ -17,6 +17,7 @@ import org.bibletranslationtools.otter.common.persistence.database.daos.Versific
 import org.bibletranslationtools.otter.common.persistence.database.daos.WorkbookDescriptorDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.WorkbookTypeDao
 import org.jooq.DSLContext
+import org.jooq.impl.DSL
 import org.slf4j.LoggerFactory
 import java.io.File
 import java.sql.Connection
@@ -40,25 +41,42 @@ class JvmAppDatabase(
     init {
         TODO()
 //        System.setProperty("org.jooq.no-logo", "true")
-//
-//        // Load the SQLite JDBC drivers
-//        Class
-//            .forName("org.sqlite.JDBC")
-//            .getDeclaredConstructor()
-//            .newInstance()
-//
-//        val sqLiteDataSource = createSQLiteDataSource(databaseFile)
-//        connection = sqLiteDataSource.connection
-//
-//        // Create the jooq dsl
-//        dsl = DSL.using(connection, SQLDialect.SQLITE)
-//
-//        val dbDoesNotExist = !databaseFile.exists() || databaseFile.length() == 0L
-//        if (dbDoesNotExist) {
-//            setup()
+        // passed as jvm arg through i4j launcher specifically for app store builds. DMG is fine to let jdbc
+        // sqlite load however it typically does.
+//        val isPkgMac = System.getProperty("orature.isPkgMac")
+//        if (isPkgMac != null) {
+//            setSqlitePathsForMac()
+//        } else {
+//            println("Skipping SQLite path configuration since not a PKG Mac app")
 //        }
-//        DatabaseMigrator(directoryProvider).migrate(dsl)
+//    }
+//
+//    private fun setSqlitePathsForMac() {
+//        val osName = System.getProperty("os.name").lowercase()
+//        // This should only run on a mac regardless, but defensive programming here
+//        if (!osName.contains("mac")) return
+//        //from i4j. is .app/Contents/Resources/app for single bundle archives.
+//        val contentDir = System.getProperty("mac.appDir")
+//        if (contentDir == null) return
+//        val osArch = System.getProperty("os.arch")
+//        val archFolder = when {
+//            osArch.contains("aarch64") || osArch.contains("arm64") -> "aarch64"
+//            else -> "x86_64"
+//        }
+//        // Orature.app/Contents/Resources/app/mac/$arch
+//        val sqliteLibPath = "$contentDir/mac/$archFolder"
+//        println("Setting SQLite library path to: $sqliteLibPath")
+//        System.setProperty("org.sqlite.lib.path", sqliteLibPath)
+//        //should already be set in i4j for pkg files, but for extra redundancy
+//        System.setProperty("org.sqlite.lib.name", "libsqlitejdbc.dylib")
+
+//        val isMacOS = System.getProperty("orature.isPkgMac")
+//        if (isMacOS != null) {
+//            migratePathsForSandboxedMac()
+//        }
     }
+
+
 
     // Create the DAOs
     override val languageDao = LanguageDao(dsl)
@@ -79,8 +97,67 @@ class JvmAppDatabase(
     override val workbookDescriptorDao = WorkbookDescriptorDao(dsl)
     override val checkingStatusDao = CheckingStatusDao(dsl)
 
+    // Transaction support
+    fun transaction(block: (DSLContext) -> Unit) {
+        dsl.transaction { config ->
+            // Create local transaction DSL and pass to block
+            block(DSL.using(config))
+        }
+    }
+
+    fun <T> transactionResult(block: (DSLContext) -> T): T {
+        return dsl.transactionResult { config ->
+            // Create local transaction DSL and pass to block
+            block(DSL.using(config))
+        }
+    }
+
     fun close() {
         connection.close()
+    }
+
+    /**
+     * Updates the absolute paths in the database tables to the sand-boxed paths (if needed).
+     * This fixes an error when installing the new version from the App Store
+     * over the existing dmg-installed build.
+     */
+    private fun migratePathsForSandboxedMac() {
+        // dublin_core_entity
+        dsl.execute(
+            """
+                UPDATE dublin_core_entity 
+                SET path = REPLACE(path, 
+                   '/Library/Application Support/Orature/', 
+                   '/Library/Containers/org.wycliffeassociates.otter/Data/Library/Application Support/Orature/'
+                   )
+                WHERE path LIKE '%/Library/Application Support/Orature/%' 
+                AND path NOT LIKE '%/Library/Containers/%';
+            """.trimIndent()
+        )
+        // take_entity
+        dsl.execute(
+            """
+                UPDATE take_entity 
+                SET path = REPLACE(path, 
+                   '/Library/Application Support/Orature/', 
+                   '/Library/Containers/org.wycliffeassociates.otter/Data/Library/Application Support/Orature/'
+                   )
+                WHERE path LIKE '%/Library/Application Support/Orature/%' 
+                AND path NOT LIKE '%/Library/Containers/%';
+            """.trimIndent()
+        )
+        // versification_entity
+        dsl.execute(
+            """
+                UPDATE versification_entity 
+                SET path = REPLACE(path, 
+                   '/Library/Application Support/Orature/', 
+                   '/Library/Containers/org.wycliffeassociates.otter/Data/Library/Application Support/Orature/'
+                   )
+                WHERE path LIKE '%/Library/Application Support/Orature/%' 
+                AND path NOT LIKE '%/Library/Containers/%';
+            """.trimIndent()
+        )
     }
 
     companion object {

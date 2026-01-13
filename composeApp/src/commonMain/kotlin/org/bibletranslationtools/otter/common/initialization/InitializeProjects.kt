@@ -35,8 +35,6 @@ import org.bibletranslationtools.otter.common.domain.project.importer.RCImporter
 import org.bibletranslationtools.otter.common.data.ProgressStatus
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesAccessor
 import java.io.File
-import java.nio.file.Files
-import java.nio.file.Path
 import javax.inject.Inject
 
 class InitializeProjects @Inject constructor(
@@ -184,8 +182,7 @@ class InitializeProjects @Inject constructor(
 
         dir.listFiles()?.forEach {
             // Find resource containers to import
-            val manifest = Path.of("manifest.yaml")
-            if (it.isFile && it.toPath().contains(manifest)) {
+            if (it.isFile && it.name == "manifest.yaml") {
                 importProject(it.parentFile)
             }
             importProjects(it)
@@ -212,9 +209,7 @@ class InitializeProjects @Inject constructor(
     }
 
     private fun createTempFile(name: String, extension: String): File {
-        val tempDir = Files.createTempDirectory("orature_temp")
-        val tempPath = tempDir.resolve("$name.$extension")
-        val tempFile = tempPath.toFile()
+        val tempFile = File.createTempFile(name, ".$extension")
         tempFile.deleteOnExit()
         return tempFile
     }

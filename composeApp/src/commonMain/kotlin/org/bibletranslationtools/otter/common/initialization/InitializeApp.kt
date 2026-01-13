@@ -58,7 +58,12 @@ class InitializeApp @Inject constructor(
                     progressStatusEmitter.onNext(
                         ProgressStatus(percent = total)
                     )
-                    it.exec(progressStatusEmitter).blockingAwait()
+                    it
+                        .exec(progressStatusEmitter)
+                        .doOnError { e ->
+                            logger.error("Error in Initialization", e)
+                        }
+                        .blockingAwait()
                 }
                 progressStatusEmitter.onComplete()
             }

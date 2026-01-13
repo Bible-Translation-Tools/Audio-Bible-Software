@@ -95,14 +95,14 @@ class NewSourceImporter @Inject constructor(
             }
 
             val preallocationTree = OtterTree<CollectionOrContent>(container.toCollection())
-            val versificationTree = VersificationTreeBuilder(versificationRepository)
-                .build(container)
-                ?.apply {
-                    for (node in this) {
-                        preallocationTree.addChild(node)
-                    }
-                }
-
+//            val versificationTree = VersificationTreeBuilder(versificationRepository)
+//                .build(container)
+//                ?.apply {
+//                    for (node in this) {
+//                        preallocationTree.addChild(node)
+//                    }
+//                }
+            val versificationTree = null
             callback?.onNotifyProgress(
                 localizeKey = "importingSource", percent = 50.0
             )
@@ -245,7 +245,7 @@ class NewSourceImporter @Inject constructor(
         directoryProvider
             .newFileReader(source)
             .use { fileReader ->
-                fileReader.copyDirectory("/", targetDir)
+                fileReader.copyDirectory("/", targetDir).blockingSubscribe()
             }
 
         targetDir.walk().forEach {

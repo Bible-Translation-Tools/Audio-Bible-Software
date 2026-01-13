@@ -1,6 +1,7 @@
 package org.bibletranslationtools.bttrecorder2.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -27,11 +28,20 @@ fun Navigation(
     ) {
         composable<SplashScreenRoute>() {
             val vm = viewModel { SplashScreenViewModel() }
-            vm
-                .initApp()
-                .subscribe {
-                    navController.navigate(MainMenuRoute)
+            LaunchedEffect(Unit) {
+                val disposable = vm
+                    .initApp()
+                    .subscribe {
+                        launch {
+                            navController.navigate(MainMenuRoute)
+                        }
+                    }
+                try {
+                    kotlinx.coroutines.awaitCancellation()
+                } finally {
+                    disposable.dispose()
                 }
+            }
             SplashScreen()
         }
         composable<MainMenuRoute> {

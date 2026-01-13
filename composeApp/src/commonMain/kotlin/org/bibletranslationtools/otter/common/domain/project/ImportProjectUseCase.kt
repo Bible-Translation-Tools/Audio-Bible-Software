@@ -48,22 +48,13 @@ import javax.inject.Provider
 const val SOURCES_JSON_FILE = "composeResources/files/gl_sources.json"
 const val SOURCE_PATH_TEMPLATE = "composeResources/files/content/%s.zip"
 
-class ImportProjectUseCase @Inject constructor() {
-
-    @Inject
-    lateinit var burritoFactoryProvider: BurritoImporterFactory
-
-    @Inject
-    lateinit var rcFactoryProvider: RCImporterFactory
-
-    @Inject
-    lateinit var tsFactoryProvider: TsImporterFactory
-
-    @Inject
-    lateinit var rcImporterProvider: Provider<OngoingProjectImporter>
-
-    @Inject
-    lateinit var directoryProvider: IDirectoryProvider
+class ImportProjectUseCase @Inject constructor(
+    val burritoFactoryProvider: BurritoImporterFactory,
+    val rcFactoryProvider: RCImporterFactory,
+    val tsFactoryProvider: TsImporterFactory,
+    val rcImporter: OngoingProjectImporter,
+    val directoryProvider: IDirectoryProvider,
+) {
 
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -150,7 +141,7 @@ class ImportProjectUseCase @Inject constructor() {
     fun getSourceMetadata(file: File): Maybe<ResourceMetadata> {
         return when (ProjectFormatIdentifier.getProjectFormat(file)) {
             ProjectFormat.RESOURCE_CONTAINER -> {
-                rcImporterProvider.get().getSourceMetadata(file)
+                rcImporter.getSourceMetadata(file)
             }
 
             else -> Maybe.empty()

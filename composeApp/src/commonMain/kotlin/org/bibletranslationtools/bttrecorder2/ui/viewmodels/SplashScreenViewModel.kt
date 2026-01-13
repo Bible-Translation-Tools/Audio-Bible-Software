@@ -23,6 +23,7 @@ class SplashScreenViewModel(): ViewModel(), KoinComponent {
     var progress by mutableStateOf(0.0)
 
     fun initApp(): Completable {
+        initApp.toString()
         return initApp.initApp()
             //.doOnError { logger.error("Error initializing app: ", it) }
             .doOnNext { status ->

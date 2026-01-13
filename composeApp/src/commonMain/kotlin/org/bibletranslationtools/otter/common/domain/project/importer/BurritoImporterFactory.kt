@@ -1,18 +1,15 @@
 package org.bibletranslationtools.otter.common.domain.project.importer
 
-import javax.inject.Inject
-import javax.inject.Provider
-
-class BurritoImporterFactory @Inject constructor() : IProjectImporterFactory {
-
-    @Inject lateinit var burritoImporter: Provider<BurritoImporter>
-    @Inject lateinit var existingProjectImporter: Provider<ExistingSourceImporter>
-    @Inject lateinit var newSourceImporter: Provider<NewSourceImporter>
+class BurritoImporterFactory(
+    private val burritoImporter: BurritoImporter,
+    private val existingProjectImporter: ExistingSourceImporter,
+    private val newSourceImporter: NewSourceImporter
+) : IProjectImporterFactory {
 
     private val importer: BurritoImporter by lazy {
-        val importer1 = burritoImporter.get()
-        val importer2 = existingProjectImporter.get()
-        val importer3 = newSourceImporter.get()
+        val importer1 = burritoImporter
+        val importer2 = existingProjectImporter
+        val importer3 = newSourceImporter
 
         importer1.setNext(importer2)
         importer2.setNext(importer3)

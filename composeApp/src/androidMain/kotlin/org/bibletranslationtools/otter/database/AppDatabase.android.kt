@@ -28,6 +28,8 @@ import org.jetbrains.compose.resources.InternalResourceApi
 import org.jetbrains.compose.resources.Resource
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
+import org.jooq.conf.Settings
+import org.jooq.conf.StatementType
 import org.jooq.impl.DSL
 import java.io.File
 import java.sql.Connection
@@ -46,7 +48,12 @@ class AndroidAppDatabase(
         Class.forName("org.sqldroid.SQLDroidDriver").newInstance()
 
         connection = DriverManager.getConnection("jdbc:sqlite:" + SQLiteAssetHelper(context, "tr.sqlite", null, 14).writableDatabase.path)
-        dsl = DSL.using(connection, SQLDialect.SQLITE)
+
+        val settings = Settings()
+            .withFetchWarnings(false) // This is the key fix
+            .withStatementType(StatementType.STATIC_STATEMENT) // Forces inlined SQL
+
+        dsl = DSL.using(connection, SQLDialect.SQLITE, settings)
 
         try {
             context.assets.open("databases/CreateAppDb.sql").use {

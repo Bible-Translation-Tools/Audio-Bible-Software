@@ -32,7 +32,7 @@ import javax.inject.Inject
 
 private const val ULB_VERSIFICATION_FILE = "ulb.json"
 private const val UFW_VERSIFICATION_FILE = "ufw.json"
-private const val ULB_VERSIFICATION_RESOURCE_PATH = "versification/ulb_versification.json"
+private const val ULB_VERSIFICATION_RESOURCE_PATH = "files/versification/ulb_versification.json"
 
 class InitializeVersification @Inject constructor(
     val directoryProvider: IDirectoryProvider,
@@ -58,7 +58,7 @@ class InitializeVersification @Inject constructor(
     }
 
     private fun copyUlbVersification() {
-        if (!File(directoryProvider.versificationDirectory, ULB_VERSIFICATION_FILE).exists()) {
+       // if (!File(directoryProvider.versificationDirectory, ULB_VERSIFICATION_FILE).exists()) {
             directoryProvider.versificationDirectory.mkdirs()
             logger.info("Copying ulb versification")
             ClassLoader
@@ -79,6 +79,6 @@ class InitializeVersification @Inject constructor(
                         ifs.copyTo(ofs)
                     }
                 }
-        }
+       // }
     }
 }
