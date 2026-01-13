@@ -23,6 +23,9 @@ import io.reactivex.Observable
 import io.reactivex.Single
 import io.reactivex.rxkotlin.toObservable
 import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.rx2.asFlow
+import kotlinx.coroutines.rx2.await
 import org.bibletranslationtools.otter_db.jooq.Tables.*
 import org.jooq.SelectConditionStep
 import org.jooq.Record
@@ -211,6 +214,22 @@ class ResourceRepository @Inject constructor(private val database: AppDatabase) 
             }
             .subscribeOn(Schedulers.io())
     }
+
+    override suspend fun getAllSuspend(): List<Content> = getAll().await()
+    override suspend fun updateSuspend(obj: Content) = update(obj).await()
+    override suspend fun deleteSuspend(obj: Content) = delete(obj).await()
+
+    override fun getResourcesFlow(collection: Collection, resourceMetadata: ResourceMetadata): Flow<Content> =
+        getResources(collection, resourceMetadata).asFlow()
+
+    override fun getResourcesFlow(content: Content, resourceMetadata: ResourceMetadata): Flow<Content> =
+        getResources(content, resourceMetadata).asFlow()
+
+    override suspend fun linkToContentSuspend(resource: Content, content: Content, dublinCoreFk: Int) =
+        linkToContent(resource, content, dublinCoreFk).await()
+
+    override suspend fun linkToCollectionSuspend(resource: Content, collection: Collection, dublinCoreFk: Int) =
+        linkToCollection(resource, collection, dublinCoreFk).await()
 
     override fun calculateAndSetSubtreeHasResources(collectionId: Int) {
         database.transaction { dsl ->

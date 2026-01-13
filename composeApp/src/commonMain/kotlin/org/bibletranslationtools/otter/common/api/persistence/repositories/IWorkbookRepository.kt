@@ -34,4 +34,9 @@ interface IWorkbookRepository {
     fun getProjects(translation: Translation): Single<List<Workbook>>
     fun getWorkbook(project: Collection): Maybe<Workbook>
     fun closeWorkbook(workbook: Workbook)
+
+    suspend fun getSoftDeletedTakesSuspend(book: Book): List<Take>
+    suspend fun getProjectsSuspend(): List<Workbook>
+    suspend fun getProjectsSuspend(translation: Translation): List<Workbook>
+    suspend fun getWorkbookSuspend(project: Collection): Workbook?
 }

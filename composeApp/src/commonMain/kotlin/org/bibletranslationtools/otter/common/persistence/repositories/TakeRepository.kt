@@ -21,6 +21,7 @@ package org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories
 import io.reactivex.Completable
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.rx2.await
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.Content
@@ -238,6 +239,37 @@ class TakeRepository @Inject constructor(
                 contentTypeDao.fetchForId(content.type_fk)
             }
     }
+
+    override suspend fun getAllSuspend(): List<Take> = getAll().await()
+    override suspend fun updateSuspend(obj: Take) = update(obj).await()
+    override suspend fun deleteSuspend(obj: Take) = delete(obj).await()
+
+    override suspend fun insertForContentSuspend(take: Take, content: Content): Int =
+        insertForContent(take, content).await()
+
+    override suspend fun getByContentSuspend(content: Content, includeDeleted: Boolean): List<Take> =
+        getByContent(content, includeDeleted).await()
+
+    override suspend fun deleteForContentSuspend(content: Content) =
+        deleteForContent(content).await()
+
+    override suspend fun removeNonExistentTakesSuspend() =
+        removeNonExistentTakes().await()
+
+    override suspend fun markDeletedSuspend(take: Take) =
+        markDeleted(take).await()
+
+    override suspend fun getSoftDeletedTakesSuspend(project: Collection): List<Take> =
+        getSoftDeletedTakes(project).await()
+
+    override suspend fun deleteExpiredTakesSuspend(expiry: Int) =
+        deleteExpiredTakes(expiry).await()
+
+    override suspend fun getByCollectionSuspend(chapterCollection: Collection, includeDeleted: Boolean): List<Take> =
+        getByCollection(chapterCollection, includeDeleted).await()
+
+    override suspend fun getContentTypeSuspend(take: Take): ContentType =
+        getContentType(take).await()
 
     private fun buildTake(entity: TakeEntity): Take {
         val markers = markerDao

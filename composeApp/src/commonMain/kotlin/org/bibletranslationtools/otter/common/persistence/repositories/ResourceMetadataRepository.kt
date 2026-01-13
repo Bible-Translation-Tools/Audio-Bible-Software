@@ -22,6 +22,8 @@ import io.reactivex.Completable
 import io.reactivex.Maybe
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.rx2.await
+import kotlinx.coroutines.rx2.awaitSingleOrNull
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.domain.mapper.mapToMetadata
@@ -234,6 +236,23 @@ class ResourceMetadataRepository @Inject constructor(
             }
             .subscribeOn(Schedulers.io())
     }
+
+    override suspend fun getAllSuspend(): List<ResourceMetadata> = getAll().await()
+    override suspend fun updateSuspend(obj: ResourceMetadata) = update(obj).await()
+    override suspend fun deleteSuspend(obj: ResourceMetadata) = delete(obj).await()
+
+    override suspend fun existsSuspend(metadata: ResourceMetadata): Boolean = exists(metadata).await()
+    override suspend fun existsSuspend(predicate: (ResourceMetadata) -> Boolean): Boolean = exists(predicate).await()
+    override suspend fun getSuspend(metadata: ResourceMetadata): ResourceMetadata = get(metadata).await()
+    override suspend fun insertSuspend(metadata: ResourceMetadata): Int = insert(metadata).await()
+    override suspend fun updateSuspend(metadata: ResourceMetadata, rc: ResourceContainer) = update(metadata, rc).await()
+    override suspend fun updateSourceSuspend(metadata: ResourceMetadata, source: ResourceMetadata?) = updateSource(metadata, source).await()
+    override suspend fun getSourceSuspend(metadata: ResourceMetadata): ResourceMetadata? = getSource(metadata).awaitSingleOrNull()
+    override suspend fun getAllSourcesSuspend(): List<ResourceMetadata> = getAllSources().await()
+    override suspend fun getAllDerivativesSuspend(metadata: ResourceMetadata): List<ResourceMetadata> = getAllDerivatives(metadata).await()
+    override suspend fun addLinkSuspend(firstMetadata: ResourceMetadata, secondMetadata: ResourceMetadata) = addLink(firstMetadata, secondMetadata).await()
+    override suspend fun removeLinkSuspend(firstMetadata: ResourceMetadata, secondMetadata: ResourceMetadata) = removeLink(firstMetadata, secondMetadata).await()
+    override suspend fun getLinkedSuspend(metadata: ResourceMetadata): List<ResourceMetadata> = getLinked(metadata).await()
 
     private fun buildMetadata(entity: ResourceMetadataEntity): ResourceMetadata {
         val languageEntity = languageDao.fetchById(entity.languageFk)

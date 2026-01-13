@@ -24,6 +24,9 @@ import io.reactivex.Observable
 import io.reactivex.Single
 import io.reactivex.rxkotlin.cast
 import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.rx2.asFlow
+import kotlinx.coroutines.rx2.await
 import java.util.*
 import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
@@ -47,11 +50,17 @@ class Chapter(
 
     override val contentType: ContentType = ContentType.META
     override val children: Observable<BookElement> by lazy { getDraft().cast() }
+    override val childrenFlow: Flow<BookElement> by lazy { getDraft().cast<BookElement>().asFlow() }
 
     val observableChunks: Observable<List<Chunk>> by lazychunks
+    val observableFlowChunks: Flow<List<Chunk>> by lazy { lazychunks.value.asFlow() }
     val chunks: Single<List<Chunk>> get() { return lazychunks.value.firstOrError() }
+    val chunksSuspend: suspend () -> List<Chunk> = { chunks.await() }
 
     var text: String = ""
+
+    suspend fun addChunkSuspend(chunks: List<Content>) = addChunk(chunks).await()
+    suspend fun resetSuspend() = reset().await()
 
     override val textItem
         get() = textItem()

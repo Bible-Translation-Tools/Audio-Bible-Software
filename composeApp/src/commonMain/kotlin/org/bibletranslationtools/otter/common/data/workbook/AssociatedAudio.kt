@@ -21,6 +21,9 @@ package org.bibletranslationtools.otter.common.data.workbook
 import com.jakewharton.rxrelay2.BehaviorRelay
 import com.jakewharton.rxrelay2.ReplayRelay
 import io.reactivex.Single
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.rx2.asFlow
+import kotlinx.coroutines.rx2.await
 
 class AssociatedAudio(
     /**
@@ -35,6 +38,9 @@ class AssociatedAudio(
      */
     val selected: BehaviorRelay<TakeHolder> = BehaviorRelay.createDefault(TakeHolder.empty)
 ) {
+    val takesFlow: Flow<Take> get() = takes.asFlow()
+    val selectedFlow: Flow<TakeHolder> get() = selected.asFlow()
+
     fun insertTake(take: Take) = takes.accept(take)
 
     fun selectTake(take: Take?) = selected.accept(TakeHolder(take))
@@ -49,6 +55,8 @@ class AssociatedAudio(
                 ?.plus(1)
                 ?: 1
         )
+
+    suspend fun getNewTakeNumberSuspend(): Int = getNewTakeNumber().await()
 
     fun getSelectedTake() = selected.value?.value
 }

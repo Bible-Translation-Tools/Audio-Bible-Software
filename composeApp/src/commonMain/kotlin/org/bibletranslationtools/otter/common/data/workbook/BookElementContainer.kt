@@ -19,10 +19,12 @@
 package org.bibletranslationtools.otter.common.data.workbook
 
 import io.reactivex.Observable
+import kotlinx.coroutines.flow.Flow
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 
 interface BookElementContainer {
     val children: Observable<BookElement>
+    val childrenFlow: Flow<BookElement>
     val subtreeResources: List<ResourceMetadata>
     // val progress: Observable<Int>
 }

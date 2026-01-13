@@ -98,14 +98,14 @@ class JvmAppDatabase(
     override val checkingStatusDao = CheckingStatusDao(dsl)
 
     // Transaction support
-    fun transaction(block: (DSLContext) -> Unit) {
+    override fun transaction(block: (DSLContext) -> Unit) {
         dsl.transaction { config ->
             // Create local transaction DSL and pass to block
             block(DSL.using(config))
         }
     }
 
-    fun <T> transactionResult(block: (DSLContext) -> T): T {
+    override fun <T> transactionResult(block: (DSLContext) -> T): T {
         return dsl.transactionResult { config ->
             // Create local transaction DSL and pass to block
             block(DSL.using(config))

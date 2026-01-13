@@ -38,4 +38,17 @@ interface IResourceMetadataRepository : IRepository<ResourceMetadata> {
     fun addLink(firstMetadata: ResourceMetadata, secondMetadata: ResourceMetadata): Completable
     fun removeLink(firstMetadata: ResourceMetadata, secondMetadata: ResourceMetadata): Completable
     fun getLinked(metadata: ResourceMetadata): Single<List<ResourceMetadata>>
+
+    suspend fun existsSuspend(metadata: ResourceMetadata): Boolean
+    suspend fun existsSuspend(predicate: (ResourceMetadata) -> Boolean): Boolean
+    suspend fun getSuspend(metadata: ResourceMetadata): ResourceMetadata
+    suspend fun insertSuspend(metadata: ResourceMetadata): Int
+    suspend fun updateSuspend(metadata: ResourceMetadata, rc: ResourceContainer)
+    suspend fun updateSourceSuspend(metadata: ResourceMetadata, source: ResourceMetadata?)
+    suspend fun getSourceSuspend(metadata: ResourceMetadata): ResourceMetadata?
+    suspend fun getAllSourcesSuspend(): List<ResourceMetadata>
+    suspend fun getAllDerivativesSuspend(metadata: ResourceMetadata): List<ResourceMetadata>
+    suspend fun addLinkSuspend(firstMetadata: ResourceMetadata, secondMetadata: ResourceMetadata)
+    suspend fun removeLinkSuspend(firstMetadata: ResourceMetadata, secondMetadata: ResourceMetadata)
+    suspend fun getLinkedSuspend(metadata: ResourceMetadata): List<ResourceMetadata>
 }

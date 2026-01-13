@@ -92,6 +92,10 @@ kotlin {
                 implementation(libs.kotlin.test)
                 implementation(libs.kotlin.test.junit)
                 implementation(libs.koin.test)
+                implementation(libs.kotlinx.coroutines.test)
+                implementation(libs.mockk)
+                implementation(libs.mockito)
+                implementation(libs.mockito.kotlin)
             }
         }
 
@@ -116,6 +120,7 @@ kotlin {
                 implementation(libs.androidx.lifecycle.viewmodel)
                 implementation(libs.androidx.lifecycle.runtime.compose)
                 implementation(libs.kotlinx.coroutines.core)
+                implementation(libs.kotlinx.coroutines.rx2)
 
                 implementation("io.reactivex.rxjava2:rxkotlin:$rxkotlinVer")
                 implementation("com.github.thomasnield:rxkotlinfx:$rxkotlinfxVer")

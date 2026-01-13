@@ -28,4 +28,8 @@ interface IWorkbookDescriptorRepository {
     fun getById(id: Int): Maybe<WorkbookDescriptor>
     fun getAll(): Single<List<WorkbookDescriptor>>
     fun delete(list: List<WorkbookDescriptor>): Completable
+
+    suspend fun getByIdSuspend(id: Int): WorkbookDescriptor?
+    suspend fun getAllSuspend(): List<WorkbookDescriptor>
+    suspend fun deleteSuspend(list: List<WorkbookDescriptor>)
 }

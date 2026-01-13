@@ -21,6 +21,7 @@ package org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories
 import io.reactivex.Completable
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.rx2.await
 import javax.inject.Inject
 import org.jooq.DSLContext
 import org.jooq.Record3
@@ -439,6 +440,26 @@ class ResourceContainerRepository @Inject constructor(
             .doFinally { resourceContainer.close() }
             .subscribeOn(Schedulers.io())
     }
+
+    override suspend fun importResourceContainerSuspend(
+        rc: ResourceContainer,
+        rcTree: OtterTree<CollectionOrContent>,
+        languageSlug: String
+    ): ImportResult = importResourceContainer(rc, rcTree, languageSlug).await()
+
+    override suspend fun updateContentSuspend(
+        rc: ResourceContainer,
+        rcTree: OtterTree<CollectionOrContent>
+    ): ImportResult = updateContent(rc, rcTree).await()
+
+    override suspend fun updateCollectionTitlesSuspend(
+        rc: ResourceContainer,
+        rcTree: OtterTree<CollectionOrContent>
+    ): ImportResult = updateCollectionTitles(rc, rcTree).await()
+
+    override suspend fun removeResourceContainerSuspend(
+        resourceContainer: ResourceContainer
+    ): DeleteResult = removeResourceContainer(resourceContainer).await()
 
     private fun findRootCollectionsForRc(dublinCoreId: Int): List<Collection> {
         return collectionRepository

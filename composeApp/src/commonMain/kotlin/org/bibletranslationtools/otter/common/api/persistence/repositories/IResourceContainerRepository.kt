@@ -65,4 +65,24 @@ interface IResourceContainerRepository {
     fun removeResourceContainer(
         resourceContainer: ResourceContainer
     ): Single<DeleteResult>
+
+    suspend fun importResourceContainerSuspend(
+        rc: ResourceContainer,
+        rcTree: OtterTree<CollectionOrContent>,
+        languageSlug: String
+    ): ImportResult
+
+    suspend fun updateContentSuspend(
+        rc: ResourceContainer,
+        rcTree: OtterTree<CollectionOrContent>
+    ): ImportResult
+
+    suspend fun updateCollectionTitlesSuspend(
+        rc: ResourceContainer,
+        rcTree: OtterTree<CollectionOrContent>
+    ): ImportResult
+
+    suspend fun removeResourceContainerSuspend(
+        resourceContainer: ResourceContainer
+    ): DeleteResult
 }
