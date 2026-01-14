@@ -1,0 +1,505 @@
+CREATE TABLE language_entity (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  slug          TEXT  NOT NULL UNIQUE,
+  name          TEXT NOT NULL,
+  gateway       INTEGER DEFAULT 0 NOT NULL,
+  anglicized    TEXT NOT NULL,
+  direction     TEXT NOT NULL,
+  region        TEXT
+);
+
+fetchGateway:
+SELECT * FROM language_entity WHERE gateway = 1;
+
+fetchTargets:
+SELECT * FROM language_entity WHERE gateway = 0;
+
+fetchBySlug:
+SELECT * FROM language_entity WHERE slug = ?;
+
+fetchLanguageById:
+SELECT * FROM language_entity WHERE id = ?;
+
+fetchAllLanguages:
+SELECT * FROM language_entity;
+
+insertLanguage:
+INSERT INTO language_entity(slug, name, anglicized, direction, gateway, region)
+VALUES (?, ?, ?, ?, ?, ?);
+
+updateRegion:
+UPDATE language_entity SET region = ? WHERE slug = ?;
+
+updateLanguage:
+UPDATE language_entity
+SET slug = ?, name = ?, anglicized = ?, direction = ?, gateway = ?, region = ?
+WHERE id = ?;
+
+deleteLanguageById:
+DELETE FROM language_entity WHERE id = ?;
+
+CREATE TABLE dublin_core_entity (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    conformsTo  TEXT NOT NULL,
+    creator     TEXT NOT NULL,
+    description TEXT NOT NULL,
+    format      TEXT NOT NULL,
+    identifier  TEXT NOT NULL,
+    issued      TEXT NOT NULL,
+    language_fk INTEGER NOT NULL REFERENCES language_entity(id),
+    modified    TEXT NOT NULL,
+    publisher   TEXT NOT NULL,
+    subject     TEXT NOT NULL,
+    type        TEXT NOT NULL,
+    title       TEXT NOT NULL,
+    version     TEXT NOT NULL,
+    license     TEXT NOT NULL DEFAULT "",
+    path        TEXT NOT NULL,
+    derivedFrom_fk INTEGER REFERENCES dublin_core_entity(id),
+    UNIQUE (language_fk, identifier, version, creator, derivedFrom_fk)
+);
+
+CREATE TABLE rc_link_entity (
+    rc1_fk      INTEGER NOT NULL REFERENCES dublin_core_entity(id) ON DELETE CASCADE,
+    rc2_fk      INTEGER NOT NULL REFERENCES dublin_core_entity(id) ON DELETE CASCADE,
+    PRIMARY KEY (rc1_fk, rc2_fk),
+    CONSTRAINT directionless CHECK (rc1_fk < rc2_fk)
+);
+
+CREATE TABLE collection_entity (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    parent_fk       INTEGER REFERENCES collection_entity(id) ON DELETE CASCADE,
+    source_fk       INTEGER REFERENCES collection_entity(id),
+    label           TEXT NOT NULL,
+    title           TEXT NOT NULL,
+    slug            TEXT NOT NULL,
+    sort            INTEGER NOT NULL,
+    dublin_core_fk  INTEGER NOT NULL REFERENCES dublin_core_entity(id),
+    modified_ts     TEXT DEFAULT NULL,
+    UNIQUE (slug, dublin_core_fk, label)
+);
+
+CREATE TABLE content_type (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    name             TEXT NOT NULL,
+    UNIQUE (name COLLATE NOCASE) ON CONFLICT IGNORE
+);
+
+CREATE TABLE checking_status (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL,
+    UNIQUE (name COLLATE NOCASE) ON CONFLICT IGNORE
+);
+
+CREATE TABLE take_entity (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    content_fk       INTEGER NOT NULL REFERENCES content_entity(id) ON DELETE CASCADE,
+    filename         TEXT NOT NULL,
+    path             TEXT NOT NULL,
+    number           INTEGER NOT NULL,
+    created_ts       TEXT NOT NULL,
+    deleted_ts       TEXT DEFAULT NULL,
+    played           INTEGER DEFAULT 0 NOT NULL,
+    checking_fk      INTEGER NOT NULL REFERENCES checking_status(id) ON DELETE RESTRICT,
+    checksum         TEXT
+);
+
+CREATE TABLE content_entity (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    collection_fk    INTEGER NOT NULL REFERENCES collection_entity(id) ON DELETE CASCADE,
+    type_fk          INTEGER NOT NULL REFERENCES content_type(id) ON DELETE RESTRICT,
+    label            TEXT NOT NULL,
+    selected_take_fk INTEGER REFERENCES take_entity(id) ON DELETE SET NULL,
+    start            INTEGER NOT NULL,
+    v_end            INTEGER DEFAULT 0 NOT NULL,
+    sort             INTEGER NOT NULL,
+    text             TEXT,
+    format           TEXT,
+    draft_number     INTEGER DEFAULT 1 NOT NULL,
+    bridged          INTEGER DEFAULT 0 NOT NULL
+);
+
+CREATE TABLE content_derivative (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    content_fk       INTEGER NOT NULL REFERENCES content_entity(id) ON DELETE CASCADE,
+    source_fk        INTEGER NOT NULL REFERENCES content_entity(id) ON DELETE CASCADE
+);
+
+CREATE TABLE translation_entity (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_fk        INTEGER NOT NULL REFERENCES language_entity(id) ON DELETE CASCADE,
+    target_fk        INTEGER NOT NULL REFERENCES language_entity(id) ON DELETE CASCADE,
+    modified_ts      TEXT DEFAULT NULL,
+    source_rate      REAL DEFAULT 1.0,
+    target_rate      REAL DEFAULT 1.0,
+    UNIQUE (source_fk, target_fk)
+);
+
+CREATE TABLE versification_entity (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug            TEXT NOT NULL UNIQUE,
+    path            TEXT NOT NULL
+);
+
+CREATE TABLE workbook_type (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    name             TEXT NOT NULL,
+    UNIQUE (name COLLATE NOCASE) ON CONFLICT IGNORE
+);
+
+CREATE TABLE workbook_descriptor_entity (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_FK         INTEGER NOT NULL REFERENCES collection_entity(id) ON DELETE CASCADE,
+    target_FK         INTEGER NOT NULL REFERENCES collection_entity(id) ON DELETE CASCADE,
+    type_fk           INTEGER NOT NULL REFERENCES workbook_type(id) ON DELETE RESTRICT,
+    UNIQUE (source_FK, target_FK, type_fk)
+);
+
+CREATE TABLE installed_entity (
+    name                TEXT PRIMARY KEY NOT NULL,
+    version             INTEGER NOT NULL
+);
+
+CREATE TABLE marker_entity (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    take_fk          INTEGER NOT NULL REFERENCES take_entity(id) ON DELETE CASCADE,
+    number           INTEGER NOT NULL,
+    position         INTEGER NOT NULL,
+    label            TEXT
+);
+
+CREATE TABLE resource_link (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    resource_content_fk INTEGER NOT NULL REFERENCES content_entity(id) ON DELETE CASCADE,
+    content_fk       INTEGER REFERENCES content_entity(id) ON DELETE CASCADE,
+    collection_fk    INTEGER REFERENCES collection_entity(id) ON DELETE CASCADE,
+    dublin_core_fk   INTEGER NOT NULL REFERENCES dublin_core_entity(id) ON DELETE CASCADE,
+    CHECK (content_fk IS NOT NULL OR collection_fk IS NOT NULL)
+);
+
+CREATE TABLE subtree_has_resource (
+    collection_fk    INTEGER NOT NULL REFERENCES collection_entity(id) ON DELETE CASCADE,
+    dublin_core_fk   INTEGER NOT NULL REFERENCES dublin_core_entity(id) ON DELETE CASCADE,
+    PRIMARY KEY (collection_fk, dublin_core_fk)
+);
+
+-- Queries for Dublin Core
+insertDublinCore:
+INSERT INTO dublin_core_entity(conformsTo, creator, description, format, identifier, issued, language_fk, modified, publisher, subject, type, title, version, license, path, derivedFrom_fk)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+fetchDublinCoreById:
+SELECT * FROM dublin_core_entity WHERE id = ?;
+
+deleteDublinCore:
+DELETE FROM dublin_core_entity WHERE id = ?;
+
+updateDublinCore:
+UPDATE dublin_core_entity
+SET conformsTo = ?, creator = ?, description = ?, format = ?, identifier = ?, issued = ?, language_fk = ?, modified = ?, publisher = ?, subject = ?, type = ?, title = ?, version = ?, license = ?, path = ?, derivedFrom_fk = ?
+WHERE id = ?;
+
+fetchAllDublinCore:
+SELECT * FROM dublin_core_entity;
+
+fetchLatestVersion:
+SELECT dc.* FROM dublin_core_entity dc
+JOIN language_entity l ON dc.language_fk = l.id
+WHERE l.slug = :languageSlug
+AND dc.identifier = :identifier
+AND (:creator IS NULL OR dc.creator = :creator)
+AND (:derivedFromFk IS NULL OR dc.derivedFrom_fk = :derivedFromFk)
+ORDER BY dc.version DESC
+LIMIT 1;
+
+fetchLatestVersionNoDerived:
+SELECT dc.* FROM dublin_core_entity dc
+JOIN language_entity l ON dc.language_fk = l.id
+WHERE l.slug = :languageSlug
+AND dc.identifier = :identifier
+AND (:creator IS NULL OR dc.creator = :creator)
+AND dc.derivedFrom_fk IS NULL
+ORDER BY dc.version DESC
+LIMIT 1;
+
+fetchLinks:
+SELECT * FROM rc_link_entity WHERE rc1_fk = ? OR rc2_fk = ?;
+
+addLink:
+INSERT OR IGNORE INTO rc_link_entity(rc1_fk, rc2_fk) VALUES (?, ?);
+
+removeLink:
+DELETE FROM rc_link_entity WHERE rc1_fk = ? AND rc2_fk = ?;
+
+-- Queries for Collection
+insertCollection:
+INSERT INTO collection_entity(parent_fk, source_fk, label, title, slug, sort, dublin_core_fk, modified_ts)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+fetchChildren:
+SELECT * FROM collection_entity WHERE parent_fk = ? ORDER BY sort;
+
+fetchSource:
+SELECT * FROM collection_entity WHERE id = ?;
+
+fetchBySlugAndDC:
+SELECT * FROM collection_entity WHERE slug = ? AND dublin_core_fk = ? AND label = ?;
+
+fetchCollectionById:
+SELECT * FROM collection_entity WHERE id = ?;
+
+fetchAllCollections:
+SELECT * FROM collection_entity;
+
+fetchByLabel:
+SELECT * FROM collection_entity WHERE label = ?;
+
+updateCollection:
+UPDATE collection_entity
+SET parent_fk = ?, source_fk = ?, slug = ?, title = ?, label = ?, sort = ?, dublin_core_fk = ?, modified_ts = ?
+WHERE id = ?;
+
+deleteCollectionById:
+DELETE FROM collection_entity WHERE id = ?;
+
+collectionsWithoutTakes:
+SELECT * FROM collection_entity
+WHERE parent_fk = :parentId
+AND id NOT IN (
+    SELECT DISTINCT ce.collection_fk
+    FROM content_entity ce
+    JOIN take_entity t ON t.content_fk = ce.id
+    WHERE ce.collection_fk IN (SELECT id FROM collection_entity WHERE parent_fk = :parentId)
+    AND ce.type_fk = 1
+);
+
+-- Queries for Content
+insertContent:
+INSERT INTO content_entity(collection_fk, type_fk, label, selected_take_fk, start, v_end, sort, text, format, draft_number, bridged)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+fetchContentById:
+SELECT * FROM content_entity WHERE id = ?;
+
+fetchAllContent:
+SELECT * FROM content_entity;
+
+fetchByCollection:
+SELECT * FROM content_entity WHERE collection_fk = ?;
+
+fetchByCollectionAndType:
+SELECT * FROM content_entity WHERE collection_fk = ? AND type_fk = ?;
+
+updateContent:
+UPDATE content_entity
+SET collection_fk = ?, type_fk = ?, label = ?, selected_take_fk = ?, start = ?, v_end = ?, sort = ?, text = ?, format = ?, draft_number = ?, bridged = ?
+WHERE id = ?;
+
+deleteContentById:
+DELETE FROM content_entity WHERE id = ?;
+
+deleteContentForCollection:
+DELETE FROM content_entity WHERE collection_fk = ? AND type_fk = ?;
+
+fetchContentSources:
+SELECT s.* FROM content_entity s
+JOIN content_derivative d ON d.source_fk = s.id
+WHERE d.content_fk = ?;
+
+fetchContentByProjectSlug:
+SELECT * FROM content_entity
+WHERE collection_fk IN (
+    SELECT id FROM collection_entity
+    WHERE parent_fk IN (
+        SELECT id FROM collection_entity
+        WHERE slug = ?
+    )
+);
+
+-- Queries for Content Derivative
+insertDerivative:
+INSERT INTO content_derivative(content_fk, source_fk) VALUES (?, ?);
+
+deleteDerivativesForContent:
+DELETE FROM content_derivative WHERE content_fk = ?;
+
+-- Queries for Take
+insertTake:
+INSERT INTO take_entity(content_fk, filename, path, number, created_ts, deleted_ts, played, checking_fk, checksum)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+fetchTakesByContent:
+SELECT * FROM take_entity WHERE content_fk = :contentId AND (:includeDeleted OR deleted_ts IS NULL);
+
+fetchTakeById:
+SELECT * FROM take_entity WHERE id = ?;
+
+fetchAllTakes:
+SELECT * FROM take_entity;
+
+updateTake:
+UPDATE take_entity
+SET content_fk = ?, filename = ?, path = ?, number = ?, created_ts = ?, deleted_ts = ?, played = ?, checking_fk = ?, checksum = ?
+WHERE id = ?;
+
+deleteTakeById:
+DELETE FROM take_entity WHERE id = ?;
+
+fetchSoftDeletedTakes:
+SELECT * FROM take_entity WHERE deleted_ts IS NOT NULL;
+
+fetchSoftDeletedTakesByProject:
+SELECT * FROM take_entity
+WHERE deleted_ts IS NOT NULL
+AND content_fk IN (
+    SELECT id FROM content_entity
+    WHERE collection_fk IN (
+        SELECT id FROM collection_entity
+        WHERE parent_fk = :parentId
+    )
+);
+
+fetchTakesByCollection:
+SELECT * FROM take_entity
+WHERE content_fk IN (
+    SELECT id FROM content_entity
+    WHERE collection_fk = :collectionId
+)
+AND (:includeDeleted OR deleted_ts IS NULL);
+
+-- Queries for Versification
+fetchVersificationPath:
+SELECT path FROM versification_entity WHERE slug = ?;
+
+insertVersification:
+INSERT INTO versification_entity(slug, path) VALUES (?, ?);
+
+updateVersification:
+UPDATE versification_entity SET path = ? WHERE slug = ?;
+
+-- Queries for Translation
+insertTranslation:
+INSERT INTO translation_entity(source_fk, target_fk, modified_ts) VALUES (?, ?, ?);
+
+fetchTranslation:
+SELECT * FROM translation_entity WHERE source_fk = ? AND target_fk = ?;
+
+fetchTranslationById:
+SELECT * FROM translation_entity WHERE id = ?;
+
+fetchAllTranslations:
+SELECT * FROM translation_entity;
+
+updateTranslation:
+UPDATE translation_entity
+SET source_fk = ?, target_fk = ?, modified_ts = ?, source_rate = ?, target_rate = ?
+WHERE id = ?;
+
+deleteTranslation:
+DELETE FROM translation_entity WHERE source_fk = ? AND target_fk = ?;
+
+-- Queries for Installed Entity
+fetchInstalledVersion:
+SELECT version FROM installed_entity WHERE name = ?;
+
+insertInstalledEntity:
+INSERT INTO installed_entity(name, version) VALUES (?, ?);
+
+updateInstalledVersion:
+UPDATE installed_entity SET version = ? WHERE name = ?;
+
+-- Queries for Checking Status
+fetchAllCheckingStatus:
+SELECT * FROM checking_status;
+
+insertCheckingStatus:
+INSERT INTO checking_status(name) VALUES (?);
+
+-- Queries for Content Type
+fetchAllContentType:
+SELECT * FROM content_type;
+
+insertContentType:
+INSERT INTO content_type(name) VALUES (?);
+
+-- Queries for Workbook Type
+fetchAllWorkbookType:
+SELECT * FROM workbook_type;
+
+insertWorkbookType:
+INSERT INTO workbook_type(name) VALUES (?);
+
+-- Queries for Workbook Descriptor
+insertWorkbookDescriptor:
+INSERT INTO workbook_descriptor_entity(source_FK, target_FK, type_fk) VALUES (?, ?, ?);
+
+fetchWorkbookDescriptorById:
+SELECT * FROM workbook_descriptor_entity WHERE id = ?;
+
+fetchWorkbookDescriptor:
+SELECT * FROM workbook_descriptor_entity WHERE source_FK = ? AND target_FK = ? AND type_fk = ?;
+
+fetchAllWorkbookDescriptors:
+SELECT * FROM workbook_descriptor_entity;
+
+updateWorkbookDescriptor:
+UPDATE workbook_descriptor_entity
+SET source_FK = ?, target_FK = ?, type_fk = ?
+WHERE id = ?;
+
+deleteWorkbookDescriptorById:
+DELETE FROM workbook_descriptor_entity WHERE id = ?;
+
+lastInsertId:
+SELECT last_insert_rowid();
+
+-- Queries for Marker
+fetchMarkersByTake:
+SELECT * FROM marker_entity WHERE take_fk = ?;
+
+fetchMarkerById:
+SELECT * FROM marker_entity WHERE id = ?;
+
+fetchAllMarkers:
+SELECT * FROM marker_entity;
+
+insertMarker:
+INSERT INTO marker_entity(take_fk, number, position, label) VALUES (?, ?, ?, ?);
+
+updateMarker:
+UPDATE marker_entity SET take_fk = ?, number = ?, position = ?, label = ? WHERE id = ?;
+
+deleteMarkerById:
+DELETE FROM marker_entity WHERE id = ?;
+
+-- Queries for Resource Link
+fetchResourceLinksByContent:
+SELECT * FROM resource_link WHERE content_fk = ?;
+
+fetchResourceLinksByCollection:
+SELECT * FROM resource_link WHERE collection_fk = ?;
+
+insertResourceLink:
+INSERT INTO resource_link(resource_content_fk, content_fk, collection_fk, dublin_core_fk)
+VALUES (?, ?, ?, ?);
+
+fetchResourceLinkById:
+SELECT * FROM resource_link WHERE id = ?;
+
+fetchAllResourceLinks:
+SELECT * FROM resource_link;
+
+updateResourceLink:
+UPDATE resource_link
+SET resource_content_fk = ?, content_fk = ?, collection_fk = ?, dublin_core_fk = ?
+WHERE id = ?;
+
+deleteResourceLinkById:
+DELETE FROM resource_link WHERE id = ?;
+
+-- Queries for Subtree Has Resource
+insertSubtreeHasResource:
+INSERT INTO subtree_has_resource(collection_fk, dublin_core_fk) VALUES (?, ?);
+
+fetchDublinCoreIdsByCollectionId:
+SELECT dublin_core_fk FROM subtree_has_resource WHERE collection_fk = ?;

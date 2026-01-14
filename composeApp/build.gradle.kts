@@ -9,6 +9,7 @@ plugins {
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.sqldelight)
     kotlin("plugin.serialization") version "2.1.10"
     id("de.undercouch.download") version "5.6.0"
 }
@@ -183,17 +184,31 @@ kotlin {
                 implementation("me.tatarka.inject:kotlin-inject-runtime:$kotlinInjectVer")
 
                 implementation(libs.koin.core)
+                implementation(libs.sqldelight.runtime)
+                implementation(libs.sqldelight.coroutines.extensions)
             }
+        }
+        androidMain.dependencies {
+            implementation(libs.sqldelight.android.driver)
         }
         desktopMain.dependencies {
             implementation(compose.desktop.currentOs)
             implementation(libs.kotlinx.coroutines.swing)
+            implementation(libs.sqldelight.sqlite.driver)
         }
 
         dependencies {
             ksp("me.tatarka.inject:kotlin-inject-compiler-ksp:$kotlinInjectVer")
             ksp("com.google.dagger:dagger-compiler:$daggerVer")
             implementation("bibleineverylanguage:langnames@json")
+        }
+    }
+}
+
+sqldelight {
+    databases {
+        create("AppDatabase") {
+            packageName.set("org.bibletranslationtools.otter.common.persistence.database")
         }
     }
 }
