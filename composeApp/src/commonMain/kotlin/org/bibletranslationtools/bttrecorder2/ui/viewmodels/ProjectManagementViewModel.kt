@@ -6,7 +6,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import org.bibletranslationtools.bttrecorder2.ui.navigation.ProjectWizardRoute
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
+import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -14,6 +17,7 @@ import org.koin.core.component.inject
 class ProjectManagementViewModel(
 ) : ViewModel(), KoinComponent {
 
+    private val workbookRepository: IWorkbookRepository by inject()
     private val workbookDescriptorRepository: IWorkbookDescriptorRepository by inject()
 
     private val _uiState = MutableStateFlow<ProjectManagementUiState>(ProjectManagementUiState.Loading)
@@ -35,8 +39,8 @@ class ProjectManagementViewModel(
         }
     }
 
-    fun onProjectClick(workbook: WorkbookDescriptor) {
-        // TODO: Handle project click (navigation to Recording/Chapter list)
+    fun onProjectClick() {
+
     }
 
     fun onNewProjectClick() {

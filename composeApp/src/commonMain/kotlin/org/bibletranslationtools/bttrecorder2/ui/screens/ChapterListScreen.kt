@@ -8,24 +8,38 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import org.bibletranslationtools.bttrecorder2.ui.MockData
+import androidx.compose.foundation.clickable
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterListViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChapterListScreen(
-    workbook: WorkbookDescriptor,
+    workbookSourceId: Int,
+    workbookTargetId: Int,
+    viewModel: ChapterListViewModel = viewModel { ChapterListViewModel() },
     onBackClick: () -> Unit,
     onChapterClick: (Int) -> Unit
 ) {
+
+    LaunchedEffect(workbookSourceId, workbookTargetId) {
+        viewModel.loadChapters(workbookSourceId, workbookTargetId)
+    }
+
+    val uiState by viewModel.uiState.collectAsState()
+    val workbook = uiState.workbook
+
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text(workbook.title) },
+                title = { Text(workbook?.target?.title ?: "Loading...") },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back")
@@ -43,21 +57,27 @@ fun ChapterListScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(MaterialTheme.colorScheme.background),
-            contentAlignment = Alignment.Center
+                .background(MaterialTheme.colorScheme.background)
         ) {
-            Text("Chapter List Stub for ${workbook.title}", style = MaterialTheme.typography.headlineMedium)
-            // TODO: Implement actual chapter list using real data
+            if (uiState.isLoading) {
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            } else if (uiState.error != null) {
+                Text(
+                    text = "Error: ${uiState.error}",
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(uiState.chapters) { chapter ->
+                        ListItem(
+                            headlineContent = { Text(chapter.title) }, // Using titleKey as label
+                            modifier = Modifier.clickable { onChapterClick(chapter.sort) }
+                        )
+                        HorizontalDivider()
+                    }
+                }
+            }
         }
     }
-}
-
-@Preview
-@Composable
-fun ChapterListPreview() {
-    ChapterListScreen(
-        workbook = MockData.mockWorkbooks[0],
-        onBackClick = {},
-        onChapterClick = {}
-    )
 }

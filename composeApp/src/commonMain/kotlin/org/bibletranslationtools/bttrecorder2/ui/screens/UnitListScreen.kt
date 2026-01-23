@@ -10,21 +10,38 @@ import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
-import org.bibletranslationtools.bttrecorder2.ui.MockData
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.UnitListViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UnitListScreen(
-    workbook: WorkbookDescriptor,
+    workbookSourceId: Int,
+    workbookTargetId: Int,
     chapterNumber: Int,
+    viewModel: UnitListViewModel = viewModel { UnitListViewModel() },
     onBackClick: () -> Unit,
     onUnitClick: (Int) -> Unit
 ) {
+
+    LaunchedEffect(workbookSourceId, workbookTargetId, chapterNumber) {
+        viewModel.loadUnits(workbookSourceId, workbookTargetId, chapterNumber)
+    }
+
+    val uiState by viewModel.uiState.collectAsState()
+    val workbook = uiState.workbook
+    val chapter = uiState.chapter
+
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("${workbook.title} - Chapter $chapterNumber") },
+                title = { Text("${workbook?.target?.title ?: ""} - Chapter ${chapter?.sort ?: ""}") },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back")
@@ -42,22 +59,27 @@ fun UnitListScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(MaterialTheme.colorScheme.background),
-            contentAlignment = Alignment.Center
+                .background(MaterialTheme.colorScheme.background)
         ) {
-            Text("Unit List Stub for Chapter $chapterNumber", style = MaterialTheme.typography.headlineMedium)
-            // TODO: Implement actual unit list using real data
+            if (uiState.isLoading) {
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            } else if (uiState.error != null) {
+                Text(
+                    text = "Error: ${uiState.error}",
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(uiState.units) { unit ->
+                        ListItem(
+                            headlineContent = { Text("Verse ${unit.sort}") }, // Assuming verses
+                            modifier = Modifier.clickable { onUnitClick(unit.sort) }
+                        )
+                        HorizontalDivider()
+                    }
+                }
+            }
         }
     }
-}
-
-@Preview
-@Composable
-fun UnitListPreview() {
-    UnitListScreen(
-        workbook = MockData.mockWorkbooks[0],
-        chapterNumber = 1,
-        onBackClick = {},
-        onUnitClick = {}
-    )
 }
