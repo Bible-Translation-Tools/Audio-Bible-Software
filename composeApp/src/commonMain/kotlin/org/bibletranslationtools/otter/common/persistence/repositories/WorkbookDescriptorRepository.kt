@@ -32,12 +32,12 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IColl
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IContentRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
-import org.bibletranslationtools.otter.common.api.persistence.AppDatabase
+import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.WorkbookDescriptorEntity
 import javax.inject.Inject
 
 class WorkbookDescriptorRepository @Inject constructor(
-    database: AppDatabase,
+    database: IAppDatabase,
     private val collectionRepository: ICollectionRepository,
     private val contentRepository: IContentRepository,
     private val workbookRepository: IWorkbookRepository

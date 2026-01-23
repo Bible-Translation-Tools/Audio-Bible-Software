@@ -3,7 +3,7 @@ package org.bibletranslationtools.otter.common.di.modules
 import android.content.Context
 import dagger.Module
 import dagger.Provides
-import org.bibletranslationtools.otter.common.api.persistence.AppDatabase
+import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.database.AndroidAppDatabase
 import java.io.File
@@ -18,7 +18,7 @@ class AppDatabaseModule {
     fun providesAppDatabase(
         context: Context,
         directoryProvider: IDirectoryProvider
-    ): AppDatabase {
+    ): IAppDatabase {
         return AndroidAppDatabase(
             context,
             directoryProvider

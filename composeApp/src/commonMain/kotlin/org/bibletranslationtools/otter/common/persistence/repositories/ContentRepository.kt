@@ -28,7 +28,7 @@ import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IContentRepository
-import org.bibletranslationtools.otter.common.api.persistence.AppDatabase
+import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.ContentEntity
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.ContentMapper
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.MarkerMapper
@@ -38,7 +38,7 @@ import javax.inject.Inject
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.CollectionMapper
 
 class ContentRepository @Inject constructor(
-    database: AppDatabase
+    database: IAppDatabase
 ) : IContentRepository {
     private val logger = LoggerFactory.getLogger(ContentRepository::class.java)
 

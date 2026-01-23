@@ -1,5 +1,6 @@
 package org.bibletranslationtools.bttrecorder2.di.koin
 
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SplashScreenViewModel
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.domain.audio.AudioBouncer
@@ -137,6 +138,7 @@ val implicitCommonModule = module {
 val implicitViewModelModule = module {
 //    factoryOf(::RootViewModel)
     //single<SplashScreenViewModel> { SplashScreenViewModel(get()) }
+    singleOf(::ProjectManagementViewModel)
 //    factoryOf(::HomePageViewModel2)
 //    factoryOf(::AddPluginViewModel)
 //

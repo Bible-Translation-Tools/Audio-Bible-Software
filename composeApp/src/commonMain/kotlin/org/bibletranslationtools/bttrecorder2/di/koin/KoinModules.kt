@@ -24,7 +24,6 @@ import org.bibletranslationtools.otter.common.domain.plugins.IAudioPluginRegistr
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito.auth.AuthProvider
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.IZipEntryTreeBuilder
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ZipEntryTreeBuilder
-import org.bibletranslationtools.otter.common.persistence.DirectoryProvider
 import org.koin.core.module.dsl.bind
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.module
@@ -64,10 +63,6 @@ val audioModule = module {
 
 val appPreferencesModule = module {
 //    singleOf(::AppPreferences) { bind<IAppPreferences>() }
-}
-
-val directoryProviderModule = module {
-    single<IDirectoryProvider> { DirectoryProvider("orature") }
 }
 
 val appRepositoriesModule = module {

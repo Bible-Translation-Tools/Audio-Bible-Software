@@ -27,7 +27,7 @@ import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.primitives.Take
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ITakeRepository
-import org.bibletranslationtools.otter.common.api.persistence.AppDatabase
+import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.TakeEntity
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.CollectionMapper
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.MarkerMapper
@@ -37,7 +37,7 @@ import java.time.LocalDate
 import javax.inject.Inject
 
 class TakeRepository @Inject constructor(
-    private val database: AppDatabase,
+    private val database: IAppDatabase,
     private val markerMapper: MarkerMapper,
     private val collectionMapper: CollectionMapper
 ) : ITakeRepository {

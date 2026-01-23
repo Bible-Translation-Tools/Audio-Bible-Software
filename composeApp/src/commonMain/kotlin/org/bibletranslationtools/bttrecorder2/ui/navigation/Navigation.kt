@@ -8,13 +8,16 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import kotlinx.coroutines.launch
-import org.bibletranslationtools.bttrecorder2.ui.screens.SplashScreen
+import org.bibletranslationtools.bttrecorder2.ui.screens.ChapterListScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.MainMenuScreen
-import org.bibletranslationtools.bttrecorder2.ui.screens.Project
 import org.bibletranslationtools.bttrecorder2.ui.screens.ProjectManagementScreen
+import org.bibletranslationtools.bttrecorder2.ui.screens.SplashScreen
+import org.bibletranslationtools.bttrecorder2.ui.screens.UnitListScreen
+import org.bibletranslationtools.bttrecorder2.ui.MockData
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SplashScreenViewModel
-import org.bibletranslationtools.otter.common.di.DependencyProvider
-import org.koin.core.component.KoinComponent
+import androidx.navigation.toRoute
+
 
 @Composable
 fun Navigation(
@@ -33,7 +36,11 @@ fun Navigation(
                     .initApp()
                     .subscribe {
                         launch {
-                            navController.navigate(MainMenuRoute)
+                            navController.navigate(MainMenuRoute) {
+                                popUpTo(SplashScreenRoute) {
+                                    inclusive = true
+                                }
+                            }
                         }
                     }
                 try {
@@ -57,12 +64,37 @@ fun Navigation(
             )
         }
         composable<ProjectManagementRoute> {
-            val sampleProjects = listOf(
-                Project("English", "Genesis", 65),
-                Project("Spanish", "Exodus", 20),
-                Project("French", "Leviticus", 90)
+            val vm = viewModel { ProjectManagementViewModel() }
+            ProjectManagementScreen(
+                viewModel = vm,
+                onNewProjectClick = { vm.onNewProjectClick() },
+                onProjectClick = { workbook ->
+                    navController.navigate(ChapterListRoute(workbook.id))
+                }
             )
-            ProjectManagementScreen(onNewProjectClick = {}, onProjectClick = {}, projects = sampleProjects)
+        }
+        composable<ChapterListRoute> { backStackEntry ->
+            val route: ChapterListRoute = backStackEntry.toRoute()
+            val workbook = MockData.mockWorkbooks.find { it.id == route.workbookId } ?: MockData.mockWorkbooks[0]
+            ChapterListScreen(
+                workbook = workbook,
+                onBackClick = { navController.popBackStack() },
+                onChapterClick = { chapter ->
+                    navController.navigate(UnitListRoute(workbook.slug, chapter))
+                }
+            )
+        }
+        composable<UnitListRoute> { backStackEntry ->
+            val route: UnitListRoute = backStackEntry.toRoute()
+            val workbook = MockData.mockWorkbooks.find { it.slug == route.projectName } ?: MockData.mockWorkbooks[0]
+            UnitListScreen(
+                workbook = workbook,
+                chapterNumber = route.chapterNumber,
+                onBackClick = { navController.popBackStack() },
+                onUnitClick = { unit ->
+                    // TODO: Navigate to Recording screen
+                }
+            )
         }
     }
 }

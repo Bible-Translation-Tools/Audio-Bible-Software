@@ -26,7 +26,7 @@ import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.domain.mapper.mapToMetadata
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
-import org.bibletranslationtools.otter.common.api.persistence.AppDatabase
+import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.ResourceMetadataEntity
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.LanguageMapper
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.ResourceMetadataMapper
@@ -34,7 +34,7 @@ import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import javax.inject.Inject
 
 class ResourceMetadataRepository @Inject constructor(
-    database: AppDatabase,
+    database: IAppDatabase,
     private val metadataMapper: ResourceMetadataMapper = ResourceMetadataMapper(),
     private val languageMapper: LanguageMapper = LanguageMapper()
 ) : IResourceMetadataRepository {
