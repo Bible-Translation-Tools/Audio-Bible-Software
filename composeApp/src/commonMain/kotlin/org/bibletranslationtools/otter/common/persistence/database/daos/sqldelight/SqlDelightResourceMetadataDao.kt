@@ -18,7 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.persistence.database.daos.sqldelight
 
-import org.bibletranslationtools.otter.common.persistence.database.AppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.SqlDelightAppDatabase
 import org.bibletranslationtools.otter.common.persistence.database.Dublin_core_entity
 import org.bibletranslationtools.otter.common.persistence.database.InsertionException
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.ResourceMetadataEntity
@@ -26,7 +26,7 @@ import kotlin.math.min
 import kotlin.math.max
 
 class SqlDelightResourceMetadataDao(
-    private val db: AppDatabase
+    private val db: SqlDelightAppDatabase
 ) {
     private val queries = db.appDatabaseQueries
 

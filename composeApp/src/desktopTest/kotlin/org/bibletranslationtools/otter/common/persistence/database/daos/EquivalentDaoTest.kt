@@ -26,7 +26,6 @@ import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.Resourc
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import org.jooq.impl.DSL
 import org.jooq.SQLDialect
-import java.sql.DriverManager
 
 class EquivalentDaoTest {
 
@@ -41,14 +40,14 @@ class EquivalentDaoTest {
         // JOOQ Setup
         val jooqUrl = "jdbc:sqlite::memory:?jooq"
         val jooqDriver = JdbcSqliteDriver(jooqUrl)
-        org.bibletranslationtools.otter.common.persistence.database.AppDatabase.Schema.create(jooqDriver)
+        org.bibletranslationtools.otter.common.persistence.database.SqlDelightAppDatabase.Schema.create(jooqDriver)
         val jooqDao = LanguageDao(DSL.using(jooqDriver.getConnection(), SQLDialect.SQLITE))
 
         // SqlDelight Setup
         val sdUrl = "jdbc:sqlite::memory:?sd"
         val sdDriver = JdbcSqliteDriver(sdUrl)
-        org.bibletranslationtools.otter.common.persistence.database.AppDatabase.Schema.create(sdDriver)
-        val sdDatabase = org.bibletranslationtools.otter.common.persistence.database.AppDatabase(sdDriver)
+        org.bibletranslationtools.otter.common.persistence.database.SqlDelightAppDatabase.Schema.create(sdDriver)
+        val sdDatabase = org.bibletranslationtools.otter.common.persistence.database.SqlDelightAppDatabase(sdDriver)
         val sqlDelightDao = SqlDelightLanguageDao(sdDatabase)
 
         // Test Insert & ID generation
@@ -89,14 +88,14 @@ class EquivalentDaoTest {
     fun testResourceMetadataDaoEquivalence() {
         val jooqUrl = "jdbc:sqlite::memory:?jooqRM"
         val jooqDriver = JdbcSqliteDriver(jooqUrl)
-        org.bibletranslationtools.otter.common.persistence.database.AppDatabase.Schema.create(jooqDriver)
+        org.bibletranslationtools.otter.common.persistence.database.SqlDelightAppDatabase.Schema.create(jooqDriver)
         val jooqDao = ResourceMetadataDao(DSL.using(jooqDriver.getConnection(), SQLDialect.SQLITE))
         val jooqLangDao = LanguageDao(DSL.using(jooqDriver.getConnection(), SQLDialect.SQLITE))
 
         val sdUrl = "jdbc:sqlite::memory:?sdRM"
         val sdDriver = JdbcSqliteDriver(sdUrl)
-        org.bibletranslationtools.otter.common.persistence.database.AppDatabase.Schema.create(sdDriver)
-        val sdDatabase = org.bibletranslationtools.otter.common.persistence.database.AppDatabase(sdDriver)
+        org.bibletranslationtools.otter.common.persistence.database.SqlDelightAppDatabase.Schema.create(sdDriver)
+        val sdDatabase = org.bibletranslationtools.otter.common.persistence.database.SqlDelightAppDatabase(sdDriver)
         val sqlDelightDao = org.bibletranslationtools.otter.common.persistence.database.daos.sqldelight.SqlDelightResourceMetadataDao(sdDatabase)
         val sdLangDao = org.bibletranslationtools.otter.common.persistence.database.daos.sqldelight.SqlDelightLanguageDao(sdDatabase)
 
@@ -144,13 +143,13 @@ class EquivalentDaoTest {
     fun testCollectionDaoEquivalence() {
         val sdUrl = "jdbc:sqlite::memory:?sdColl"
         val sdDriver = JdbcSqliteDriver(sdUrl)
-        org.bibletranslationtools.otter.common.persistence.database.AppDatabase.Schema.create(sdDriver)
-        val sdDatabase = org.bibletranslationtools.otter.common.persistence.database.AppDatabase(sdDriver)
+        org.bibletranslationtools.otter.common.persistence.database.SqlDelightAppDatabase.Schema.create(sdDriver)
+        val sdDatabase = org.bibletranslationtools.otter.common.persistence.database.SqlDelightAppDatabase(sdDriver)
         val sqlDelightDao = org.bibletranslationtools.otter.common.persistence.database.daos.sqldelight.SqlDelightCollectionDao(sdDatabase)
         
         val jooqUrl = "jdbc:sqlite::memory:?jooqColl"
         val jooqDriver = JdbcSqliteDriver(jooqUrl)
-        org.bibletranslationtools.otter.common.persistence.database.AppDatabase.Schema.create(jooqDriver)
+        org.bibletranslationtools.otter.common.persistence.database.SqlDelightAppDatabase.Schema.create(jooqDriver)
         val jooqDao = CollectionDao(DSL.using(jooqDriver.getConnection(), SQLDialect.SQLITE))
 
         // Dependencies
@@ -188,13 +187,13 @@ class EquivalentDaoTest {
     fun testContentTypeDaoPrepopulation() {
         val sdUrl = "jdbc:sqlite::memory:?sdCT"
         val sdDriver = JdbcSqliteDriver(sdUrl)
-        org.bibletranslationtools.otter.common.persistence.database.AppDatabase.Schema.create(sdDriver)
-        val sdDatabase = org.bibletranslationtools.otter.common.persistence.database.AppDatabase(sdDriver)
+        org.bibletranslationtools.otter.common.persistence.database.SqlDelightAppDatabase.Schema.create(sdDriver)
+        val sdDatabase = org.bibletranslationtools.otter.common.persistence.database.SqlDelightAppDatabase(sdDriver)
         val sqlDelightDao = org.bibletranslationtools.otter.common.persistence.database.daos.sqldelight.SqlDelightContentTypeDao(sdDatabase)
 
         val jooqUrl = "jdbc:sqlite::memory:?jooqCT"
         val jooqDriver = JdbcSqliteDriver(jooqUrl)
-        org.bibletranslationtools.otter.common.persistence.database.AppDatabase.Schema.create(jooqDriver)
+        org.bibletranslationtools.otter.common.persistence.database.SqlDelightAppDatabase.Schema.create(jooqDriver)
         val jooqDao = ContentTypeDao(DSL.using(jooqDriver.getConnection(), SQLDialect.SQLITE))
 
         // JOOQ lazy loads and populates on first use

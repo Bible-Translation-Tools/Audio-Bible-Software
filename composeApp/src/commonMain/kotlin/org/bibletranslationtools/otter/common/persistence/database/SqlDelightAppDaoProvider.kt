@@ -21,8 +21,8 @@ package org.bibletranslationtools.otter.common.persistence.database
 import app.cash.sqldelight.db.SqlDriver
 import org.bibletranslationtools.otter.common.persistence.database.daos.sqldelight.*
 
-class SqlDelightAppDatabase(driver: SqlDriver) {
-    val database = AppDatabase(driver)
+class SqlDelightAppDaoProvider(driver: SqlDriver) {
+    val database = SqlDelightAppDatabase(driver)
     
     val languageDao = SqlDelightLanguageDao(database)
     val resourceMetadataDao = SqlDelightResourceMetadataDao(database)

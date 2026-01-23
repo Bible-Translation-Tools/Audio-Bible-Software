@@ -18,12 +18,12 @@
  */
 package org.bibletranslationtools.otter.common.persistence.database.daos.sqldelight
 
-import org.bibletranslationtools.otter.common.persistence.database.AppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.SqlDelightAppDatabase
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import java.util.EnumMap
 
 class SqlDelightWorkbookTypeDao(
-    private val db: AppDatabase
+    private val db: SqlDelightAppDatabase
 ) {
     private val queries = db.appDatabaseQueries
     private val mapToId: Map<ProjectMode, Int> by lazy { loadDatabaseMap() }

@@ -18,11 +18,11 @@
  */
 package org.bibletranslationtools.otter.common.persistence.database.daos.sqldelight
 
-import org.bibletranslationtools.otter.common.persistence.database.AppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.SqlDelightAppDatabase
 import org.bibletranslationtools.otter.common.api.persistence.config.Installable
 
 class SqlDelightInstalledEntityDao(
-    private val db: AppDatabase
+    private val db: SqlDelightAppDatabase
 ) {
     private val queries = db.appDatabaseQueries
 
