@@ -1,5 +1,7 @@
 package org.bibletranslationtools.bttrecorder2.ui.screens
-
+ 
+import org.bibletranslationtools.bttrecorder2.ui.MockData
+import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -28,19 +30,36 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import org.bibletranslationtools.bttrecorder2.ui.components.ProjectCard
-
-// Sample data class (replace with your actual data)
-data class Project(val language: String, val book: String, val progress: Int)
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementUiState
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementViewModel
+import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProjectManagementScreen(
+    viewModel: ProjectManagementViewModel,
     onNewProjectClick: () -> Unit,
-    onProjectClick: (Project) -> Unit,
-    projects: List<Project> // Pass the project data here
+    onProjectClick: (WorkbookDescriptor) -> Unit
 ) {
+    val uiState by viewModel.uiState.collectAsState()
 
+    ProjectManagementContent(
+        uiState = uiState,
+        onNewProjectClick = onNewProjectClick,
+        onProjectClick = onProjectClick
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ProjectManagementContent(
+    uiState: ProjectManagementUiState,
+    onNewProjectClick: () -> Unit,
+    onProjectClick: (WorkbookDescriptor) -> Unit
+) {
     //val context = LocalContext.current
     val toolbarColor = MaterialTheme.colorScheme.primary // Example color
     val backgroundColor = MaterialTheme.colorScheme.background // Example color
@@ -129,11 +148,49 @@ fun ProjectManagementScreen(
             }
 
             // Project List (using LazyColumn for better performance)
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(projects) { project ->
-                    ProjectCard(project, onProjectClick, {}, {})
+            when (val state = uiState) {
+                is ProjectManagementUiState.Loading -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                }
+                is ProjectManagementUiState.Success -> {
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        items(state.projects) { workbook ->
+                            ProjectCard(
+                                workbook = workbook,
+                                onWorkbookClick = { onProjectClick(workbook) },
+                                onInfoClick = { /* TODO */ },
+                                onRecordClick = { /* TODO */ }
+                            )
+                        }
+                    }
+                }
+                is ProjectManagementUiState.Error -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(text = "Error: ${state.message}", color = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
         }
     }
+}
+@Preview
+@Composable
+fun ProjectManagementPreview() {
+    ProjectManagementContent(
+        uiState = ProjectManagementUiState.Success(MockData.mockWorkbooks),
+        onNewProjectClick = {},
+        onProjectClick = {}
+    )
+}
+
+@Preview
+@Composable
+fun ProjectManagementLoadingPreview() {
+    ProjectManagementContent(
+        uiState = ProjectManagementUiState.Loading,
+        onNewProjectClick = {},
+        onProjectClick = {}
+    )
 }

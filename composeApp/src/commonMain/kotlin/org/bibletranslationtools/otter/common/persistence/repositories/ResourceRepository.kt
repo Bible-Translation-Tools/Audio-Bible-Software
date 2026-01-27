@@ -36,7 +36,7 @@ import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceRepository
-import org.bibletranslationtools.otter.common.api.persistence.AppDatabase
+import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
 import org.bibletranslationtools.otter.common.persistence.database.daos.ContentEntityTable
 import org.bibletranslationtools.otter.common.persistence.database.daos.RecordMappers
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.CollectionEntity
@@ -46,7 +46,7 @@ import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.Resourc
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.*
 import javax.inject.Inject
 
-class ResourceRepository @Inject constructor(private val database: AppDatabase) : IResourceRepository {
+class ResourceRepository @Inject constructor(private val database: IAppDatabase) : IResourceRepository {
     private val logger = LoggerFactory.getLogger(ResourceRepository::class.java)
 
     private val contentDao = database.contentDao

@@ -4,8 +4,7 @@ package org.bibletranslationtools.otter.database
 
 import android.content.Context
 import com.readystatesoftware.sqliteasset.SQLiteAssetHelper
-import org.bibletranslationtools.otter.common.api.persistence.AppDatabase
-import org.bibletranslationtools.otter.common.api.persistence.CREATION_SCRIPT
+import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.persistence.database.DatabaseMigrator
 import org.bibletranslationtools.otter.common.persistence.database.daos.CheckingStatusDao
@@ -23,9 +22,7 @@ import org.bibletranslationtools.otter.common.persistence.database.daos.Translat
 import org.bibletranslationtools.otter.common.persistence.database.daos.VersificationDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.WorkbookDescriptorDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.WorkbookTypeDao
-import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.InternalResourceApi
-import org.jetbrains.compose.resources.Resource
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.conf.Settings
@@ -39,7 +36,7 @@ class AndroidAppDatabase(
     context: Context,
     databaseFile: File,
     directoryProvider: IDirectoryProvider
-): AppDatabase {
+): IAppDatabase {
 
     override val dsl: DSLContext
     private val connection: Connection

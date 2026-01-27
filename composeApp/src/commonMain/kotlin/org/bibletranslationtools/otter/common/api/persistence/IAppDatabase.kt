@@ -24,12 +24,11 @@ import org.jooq.impl.DSL
 import org.bibletranslationtools.otter.common.persistence.database.DATABASE_INSTALLABLE_NAME
 import org.bibletranslationtools.otter.common.persistence.database.SCHEMA_VERSION
 import org.bibletranslationtools.otter.common.persistence.database.daos.*
-import java.io.IOException
 import java.io.InputStream
 
 const val CREATION_SCRIPT = "sql/CreateAppDb.sql"
 
-interface AppDatabase {
+interface IAppDatabase {
     val dsl: DSLContext
 
     fun setup(schemaFileStream: InputStream) {

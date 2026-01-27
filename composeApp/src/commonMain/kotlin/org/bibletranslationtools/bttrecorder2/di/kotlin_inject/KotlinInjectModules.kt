@@ -2,10 +2,7 @@ package org.bibletranslationtools.bttrecorder2.di.kotlin_inject
 
 import me.tatarka.inject.annotations.Component
 import me.tatarka.inject.annotations.Provides
-import org.bibletranslationtools.otter.common.api.persistence.AppDatabase
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.api.persistence.ILanguageDataSource
-import org.bibletranslationtools.otter.common.api.persistence.ILocaleDataSource
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IContentRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IInstalledEntityRepository
@@ -18,13 +15,7 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IVers
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.WorkbookRepository
-import org.bibletranslationtools.otter.common.audio.wav.IWaveFileCreator
-import org.bibletranslationtools.otter.common.data.IAppInfo
-import org.bibletranslationtools.otter.common.device.IAudioPlayer
-import org.bibletranslationtools.otter.common.device.IAudioRecorder
 import org.bibletranslationtools.otter.common.domain.languages.LanguageDataSource
-import org.bibletranslationtools.otter.common.domain.plugins.IAudioPluginRegistrar
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito.auth.AuthProvider
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.IZipEntryTreeBuilder
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ZipEntryTreeBuilder
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.CollectionRepository
@@ -38,7 +29,6 @@ import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.Tak
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.VersificationRepository
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.WorkbookDescriptorRepository
 
-import java.io.File
 import javax.inject.Singleton
 
 @Component

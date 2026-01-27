@@ -73,7 +73,6 @@ kotlin {
 //    content.extendsFrom(runtime)
 
     sourceSets {
-        val desktopMain by getting
 
         val androidMain by getting {
             dependencies {
@@ -84,7 +83,8 @@ kotlin {
                 // Koin for Android
                 implementation(libs.koin.android)
                 // For Compose on Android
-                implementation(libs.koin.compose)            }
+                implementation(libs.koin.compose)
+            }
         }
 
         val commonTest by getting {
@@ -185,9 +185,15 @@ kotlin {
                 implementation(libs.koin.core)
             }
         }
-        desktopMain.dependencies {
-            implementation(compose.desktop.currentOs)
-            implementation(libs.kotlinx.coroutines.swing)
+
+        val desktopMain by getting {
+            dependencies {
+                implementation(compose.desktop.currentOs)
+                implementation(libs.kotlinx.coroutines.swing)
+
+                implementation("org.xerial:sqlite-jdbc:3.49.0.0")
+                //sqllite("org.xerial:sqlite-jdbc:$sqliteJdbcVer")
+            }
         }
 
         dependencies {

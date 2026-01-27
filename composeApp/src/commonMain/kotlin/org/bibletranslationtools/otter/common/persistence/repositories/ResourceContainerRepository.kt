@@ -38,7 +38,7 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportExc
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.castOrFindImportException
 import org.bibletranslationtools.otter.common.api.persistence.repositories.*
-import org.bibletranslationtools.otter.common.api.persistence.AppDatabase
+import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.CollectionMapper
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.ContentMapper
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.LanguageMapper
@@ -46,7 +46,7 @@ import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.map
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 
 class ResourceContainerRepository @Inject constructor(
-    private val database: AppDatabase,
+    private val database: IAppDatabase,
     private val collectionRepository: ICollectionRepository,
     private val contentRepository: IContentRepository,
     private val resourceRepository: IResourceRepository,
