@@ -23,8 +23,10 @@ import dagger.BindsInstance
 import dagger.Component
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SplashScreenViewModel
 import org.bibletranslationtools.otter.common.di.modules.AppContextModule
+import org.bibletranslationtools.otter.common.di.modules.AppDatabaseModule
 import org.bibletranslationtools.otter.common.di.modules.AppRepositoriesModule
 import org.bibletranslationtools.otter.common.di.modules.DirectoryProviderModule
+import org.bibletranslationtools.otter.common.di.modules.ZipEntryTreeBuilderModule
 import org.bibletranslationtools.recorder2.MainActivity
 import javax.inject.Singleton
 
@@ -33,10 +35,12 @@ import javax.inject.Singleton
         AppContextModule::class,
         DirectoryProviderModule::class,
         AppRepositoriesModule::class,
+        AppDatabaseModule::class,
+        ZipEntryTreeBuilderModule::class
     ]
 )
 @Singleton
-interface AppDependencyGraph {
+interface AppDependencyGraph: DependencyProvider {
     @Component.Builder
     interface Builder {
         @BindsInstance
@@ -46,5 +50,5 @@ interface AppDependencyGraph {
     }
 
     fun inject(activity: MainActivity)
-    fun inject(viewModel: SplashScreenViewModel)
+    override fun inject(viewModel: SplashScreenViewModel)
 }

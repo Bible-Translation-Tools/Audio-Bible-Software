@@ -4,14 +4,14 @@ package org.bibletranslationtools.otter.database
 
 import android.content.Context
 import com.readystatesoftware.sqliteasset.SQLiteAssetHelper
-import org.bibletranslationtools.otter.common.api.persistence.AppDatabase
-import org.bibletranslationtools.otter.common.api.persistence.CREATION_SCRIPT
+import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.persistence.database.DatabaseMigrator
 import org.bibletranslationtools.otter.common.persistence.database.daos.CheckingStatusDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.CollectionDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.ContentDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.ContentTypeDao
+import org.bibletranslationtools.otter.common.persistence.database.daos.InstalledEntityDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.LanguageDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.MarkerDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.ResourceLinkDao
@@ -22,11 +22,11 @@ import org.bibletranslationtools.otter.common.persistence.database.daos.Translat
 import org.bibletranslationtools.otter.common.persistence.database.daos.VersificationDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.WorkbookDescriptorDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.WorkbookTypeDao
-import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.InternalResourceApi
-import org.jetbrains.compose.resources.Resource
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
+import org.jooq.conf.Settings
+import org.jooq.conf.StatementType
 import org.jooq.impl.DSL
 import java.io.File
 import java.sql.Connection
@@ -36,7 +36,7 @@ class AndroidAppDatabase(
     context: Context,
     databaseFile: File,
     directoryProvider: IDirectoryProvider
-): AppDatabase {
+): IAppDatabase {
 
     override val dsl: DSLContext
     private val connection: Connection
@@ -45,15 +45,20 @@ class AndroidAppDatabase(
         Class.forName("org.sqldroid.SQLDroidDriver").newInstance()
 
         connection = DriverManager.getConnection("jdbc:sqlite:" + SQLiteAssetHelper(context, "tr.sqlite", null, 14).writableDatabase.path)
-        dsl = DSL.using(connection, SQLDialect.SQLITE)
-//
-//        try {
-//            context.assets.open("databases/CreateAppDb.sql").use {
-//                setup(it)
-//            }
-//        } catch (e: Exception) {
-//            e.printStackTrace()
-//        }
+
+        val settings = Settings()
+            .withFetchWarnings(false) // This is the key fix
+            .withStatementType(StatementType.STATIC_STATEMENT) // Forces inlined SQL
+
+        dsl = DSL.using(connection, SQLDialect.SQLITE, settings)
+
+        try {
+            context.assets.open("databases/CreateAppDb.sql").use {
+                setup(it)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
 
         DatabaseMigrator(directoryProvider).migrate(dsl)
     }
@@ -69,8 +74,7 @@ class AndroidAppDatabase(
     override val takeDao = TakeDao(dsl)
     override val markerDao = MarkerDao(dsl)
 
-    override val installedEntityDao =
-        org.bibletranslationtools.otter.common.persistence.database.daos.InstalledEntityDao(dsl)
+    override val installedEntityDao = InstalledEntityDao(dsl)
     override val translationDao = TranslationDao(dsl)
     override val versificationDao = VersificationDao(dsl)
     override val workbookTypeDao = WorkbookTypeDao(dsl)

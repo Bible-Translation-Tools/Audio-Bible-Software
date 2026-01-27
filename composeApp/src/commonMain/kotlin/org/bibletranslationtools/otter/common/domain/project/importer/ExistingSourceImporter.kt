@@ -19,6 +19,8 @@
 package org.bibletranslationtools.otter.common.domain.project.importer
 
 import io.reactivex.Single
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
 import org.slf4j.LoggerFactory
 import org.wycliffeassociates.otter.common.collections.OtterTree
 import org.bibletranslationtools.otter.common.data.primitives.CollectionOrContent
@@ -45,9 +47,10 @@ class ExistingSourceImporter @Inject constructor(
     private val resourceMetadataRepository: IResourceMetadataRepository,
     private val resourceContainerRepository: IResourceContainerRepository,
     private val zipEntryTreeBuilder: IZipEntryTreeBuilder,
-    private val deleteUseCase: DeleteResourceContainer,
-    private val importUseCase: ImportProjectUseCase
-) : RCImporter(directoryProvider, resourceMetadataRepository) {
+    private val deleteUseCase: DeleteResourceContainer
+) : RCImporter(directoryProvider, resourceMetadataRepository), KoinComponent {
+
+    private val importUseCase: ImportProjectUseCase by inject()
 
     private val logger = LoggerFactory.getLogger(this.javaClass)
     private var languageName = ""

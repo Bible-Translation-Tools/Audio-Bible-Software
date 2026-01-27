@@ -123,7 +123,7 @@ object MergeTextContent {
             stream.use { ifs ->
                 val temp = createTempFile()
                 temp.outputStream().use { ofs ->
-                    ifs.transferTo(ofs)
+                    ifs.copyTo(ofs)
                 }
                 filesToMerge.put(path, temp)
             }

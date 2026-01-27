@@ -48,7 +48,7 @@ import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.domain.mapper.mapToMetadata
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
-import org.bibletranslationtools.otter.common.api.persistence.AppDatabase
+import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.WorkbookDescriptorEntity
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.CollectionEntity
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.ResourceMetadataEntity
@@ -67,7 +67,7 @@ import java.time.LocalDateTime
 import javax.inject.Inject
 
 class CollectionRepository @Inject constructor(
-    private val database: AppDatabase,
+    private val database: IAppDatabase,
     private val directoryProvider: IDirectoryProvider,
     private val collectionMapper: CollectionMapper,
     private val metadataMapper: ResourceMetadataMapper,

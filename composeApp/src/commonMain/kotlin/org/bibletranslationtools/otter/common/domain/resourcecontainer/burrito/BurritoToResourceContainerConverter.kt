@@ -185,10 +185,10 @@ class BurritoToResourceContainerConverter @Inject constructor(
         val timingFile = File(tempDir, File(timing).name)
 
         audioFile.outputStream().use { output ->
-            inputAccessor.getInputStream(file).transferTo(output)
+            inputAccessor.getInputStream(file).copyTo(output)
         }
         timingFile.outputStream().use { output ->
-            inputAccessor.getInputStream(timing).transferTo(output)
+            inputAccessor.getInputStream(timing).copyTo(output)
         }
 
         val audio = OratureAudioFile(audioFile)
@@ -203,7 +203,7 @@ class BurritoToResourceContainerConverter @Inject constructor(
 
         outputAccessor.write(file) { output ->
             audioFile.inputStream().use { input ->
-                input.transferTo(output)
+                input.copyTo(output)
             }
         }
 
@@ -214,7 +214,7 @@ class BurritoToResourceContainerConverter @Inject constructor(
 
             outputAccessor.write(cuePath) { output ->
                 cueFile.inputStream().use { input ->
-                    input.transferTo(output)
+                    input.copyTo(output)
                 }
             }
         }
@@ -236,7 +236,7 @@ class BurritoToResourceContainerConverter @Inject constructor(
                 val newPath = "$bookNumber-${book.uppercase(Locale.US)}.usfm"
                 inputAccessor.getInputStream(usfmFile).use { ifs ->
                     outputAccessor.write(newPath) {
-                        ifs.transferTo(it)
+                        ifs.copyTo(it)
                     }
                 }
             }
@@ -267,7 +267,7 @@ class BurritoToResourceContainerConverter @Inject constructor(
                     }"
                     inputAccessor.getInputStream(audioFile).use { ifs ->
                         outputAccessor.write(newPath) {
-                            ifs.transferTo(it)
+                            ifs.copyTo(it)
                         }
                     }
                 }

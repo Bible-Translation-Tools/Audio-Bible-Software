@@ -19,7 +19,7 @@
 package org.bibletranslationtools.otter.common.domain.resourcecontainer
 
 internal object RcConstants {
-    const val MEDIA_DIR = "content"
+    const val MEDIA_DIR = "composeResources/files/content"
     const val APP_SPECIFIC_DIR = ".apps/orature"
     const val TAKE_DIR = "$APP_SPECIFIC_DIR/takes"
     const val SOURCE_DIR = "$APP_SPECIFIC_DIR/source"

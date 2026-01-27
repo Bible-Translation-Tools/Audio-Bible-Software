@@ -13,12 +13,15 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import org.bibletranslationtools.bttrecorder2.ui.App
 import org.bibletranslationtools.bttrecorder2.ui.components.ProgressPieView
+import org.bibletranslationtools.bttrecorder2.ui.MockData
 import org.bibletranslationtools.bttrecorder2.ui.components.ProjectCard
 import org.bibletranslationtools.bttrecorder2.ui.screens.MainMenuScreen
-import org.bibletranslationtools.bttrecorder2.ui.screens.Project
-import org.bibletranslationtools.bttrecorder2.ui.screens.ProjectManagementScreen
+import org.bibletranslationtools.bttrecorder2.ui.screens.ProjectManagementContent
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementUiState
+import org.bibletranslationtools.bttrecorder2.ui.screens.SplashScreen
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.database.AndroidAppDatabase
+import org.koin.android.ext.android.inject
 import java.io.File
 import javax.inject.Inject
 
@@ -26,17 +29,17 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var directoryProvider: IDirectoryProvider
 
+    val koinDirectoryProvider: IDirectoryProvider by inject()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        (application as Application).appComponent.inject(this)
-
+        
         lifecycleScope.launch {
             try {
                 val db = AndroidAppDatabase(
                     applicationContext,
-                    File(directoryProvider.databaseDirectory, "tr.sqlite"),
-                    directoryProvider
+                    File(koinDirectoryProvider.databaseDirectory, "tr.sqlite"),
+                    koinDirectoryProvider
                 )
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -78,24 +81,25 @@ fun ProgessPiePreview() {
 @Composable
 fun ProjectCardPreview() {
     ProjectCard(
-        Project(
-            language = "English",
-            book = "Genesis",
-            progress = 65
-        ),
+        workbook = MockData.mockWorkbooks[0],
+        onWorkbookClick = {},
         onInfoClick = {},
-        onRecordClick = {},
-        onProjectClick = {}
+        onRecordClick = {}
     )
 }
 
 @Preview(showBackground = true)
 @Composable
 fun ProjectManagementScreenPreview() {
-    val sampleProjects = listOf(
-        Project("English", "Genesis", 65),
-        Project("Spanish", "Exodus", 20),
-        Project("French", "Leviticus", 90)
+    ProjectManagementContent(
+        uiState = ProjectManagementUiState.Success(MockData.mockWorkbooks),
+        onNewProjectClick = {},
+        onProjectClick = {}
     )
-    ProjectManagementScreen(onNewProjectClick = {}, onProjectClick = {}, projects = sampleProjects)
+}
+
+@Preview(showBackground = true)
+@Composable
+fun SplashScreenPreview() {
+    SplashScreen()
 }

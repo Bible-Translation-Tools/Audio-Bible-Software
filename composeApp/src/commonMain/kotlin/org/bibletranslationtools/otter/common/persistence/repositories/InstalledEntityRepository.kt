@@ -20,11 +20,11 @@ package org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories
 
 import org.bibletranslationtools.otter.common.api.persistence.config.Installable
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IInstalledEntityRepository
-import org.bibletranslationtools.otter.common.api.persistence.AppDatabase
+import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
 import javax.inject.Inject
 
 class InstalledEntityRepository @Inject constructor(
-    private val database: AppDatabase
+    private val database: IAppDatabase
 ) : IInstalledEntityRepository {
 
     private val installedEntityDao = database.installedEntityDao
