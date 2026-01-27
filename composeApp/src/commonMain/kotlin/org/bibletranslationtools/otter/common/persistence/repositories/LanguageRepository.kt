@@ -21,6 +21,7 @@ package org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories
 import io.reactivex.Completable
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.rx2.await
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.workbook.Translation
@@ -247,6 +248,27 @@ class LanguageRepository @Inject constructor(
             }
             .subscribeOn(Schedulers.io())
     }
+
+    override suspend fun getAllSuspend(): List<Language> = getAll().await()
+    override suspend fun updateSuspend(obj: Language) = update(obj).await()
+    override suspend fun deleteSuspend(obj: Language) = delete(obj).await()
+
+    override suspend fun insertSuspend(language: Language): Int = insert(language).await()
+    override suspend fun insertAllSuspend(languages: List<Language>): List<Int> = insertAll(languages).await()
+    override suspend fun upsertAllSuspend(languages: List<Language>) = upsertAll(languages).await()
+    override suspend fun updateRegionsSuspend(languages: List<Language>) = updateRegions(languages).await()
+    override suspend fun getBySlugSuspend(slug: String): Language = getBySlug(slug).await()
+    override suspend fun getGatewaySuspend(): List<Language> = getGateway().await()
+    override suspend fun getAvailableGatewaySourcesSuspend(): List<Language> = getAvailableGatewaySources().await()
+    override suspend fun getTargetsSuspend(): List<Language> = getTargets().await()
+
+    override suspend fun getTranslationSuspend(sourceLanguage: Language, targetLanguage: Language): Translation =
+        getTranslation(sourceLanguage, targetLanguage).await()
+
+    override suspend fun getAllTranslationsSuspend(): List<Translation> = getAllTranslations().await()
+    override suspend fun insertTranslationSuspend(translation: Translation): Int = insertTranslation(translation).await()
+    override suspend fun updateTranslationSuspend(translation: Translation) = updateTranslation(translation).await()
+    override suspend fun deleteTranslationSuspend(translation: Translation) = deleteTranslation(translation).await()
 
     /**
      * Returns a list of source languages (slug) that have the matching resource container

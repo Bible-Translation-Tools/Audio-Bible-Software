@@ -35,4 +35,14 @@ interface ITakeRepository : IRepository<Take> {
     fun deleteExpiredTakes(expiry: Int = 0): Completable
     fun getByCollection(chapterCollection: Collection, includeDeleted: Boolean = false): Single<List<Take>>
     fun getContentType(take: Take): Single<ContentType>
+
+    suspend fun insertForContentSuspend(take: Take, content: Content): Int
+    suspend fun getByContentSuspend(content: Content, includeDeleted: Boolean = false): List<Take>
+    suspend fun deleteForContentSuspend(content: Content)
+    suspend fun removeNonExistentTakesSuspend()
+    suspend fun markDeletedSuspend(take: Take)
+    suspend fun getSoftDeletedTakesSuspend(project: Collection): List<Take>
+    suspend fun deleteExpiredTakesSuspend(expiry: Int = 0)
+    suspend fun getByCollectionSuspend(chapterCollection: Collection, includeDeleted: Boolean = false): List<Take>
+    suspend fun getContentTypeSuspend(take: Take): ContentType
 }

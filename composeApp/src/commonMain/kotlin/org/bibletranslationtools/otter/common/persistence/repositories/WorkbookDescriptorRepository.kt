@@ -22,6 +22,8 @@ import io.reactivex.Completable
 import io.reactivex.Maybe
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.rx2.await
+import kotlinx.coroutines.rx2.awaitSingleOrNull
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
@@ -158,6 +160,10 @@ class WorkbookDescriptorRepository @Inject constructor(
             0.0
         }
     }
+
+    override suspend fun getByIdSuspend(id: Int): WorkbookDescriptor? = getById(id).awaitSingleOrNull()
+    override suspend fun getAllSuspend(): List<WorkbookDescriptor> = getAll().await()
+    override suspend fun deleteSuspend(list: List<WorkbookDescriptor>) = delete(list).await()
 
     private fun mapToEntity(obj: WorkbookDescriptor): WorkbookDescriptorEntity {
         return WorkbookDescriptorEntity(

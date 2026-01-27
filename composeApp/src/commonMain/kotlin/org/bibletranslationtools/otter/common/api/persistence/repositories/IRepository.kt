@@ -25,4 +25,8 @@ interface IRepository<T> {
     fun getAll(): Single<List<T>>
     fun update(obj: T): Completable
     fun delete(obj: T): Completable
+
+    suspend fun getAllSuspend(): List<T>
+    suspend fun updateSuspend(obj: T)
+    suspend fun deleteSuspend(obj: T)
 }

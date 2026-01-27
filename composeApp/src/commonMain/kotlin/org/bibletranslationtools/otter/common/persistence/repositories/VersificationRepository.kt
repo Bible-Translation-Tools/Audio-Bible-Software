@@ -26,6 +26,8 @@ import io.reactivex.Completable
 import io.reactivex.Maybe
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.rx2.await
+import kotlinx.coroutines.rx2.awaitSingleOrNull
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.domain.versification.ParatextVersification
 import org.bibletranslationtools.otter.common.domain.versification.Versification
@@ -67,6 +69,8 @@ class VersificationRepository @Inject constructor(
             }
             .ignoreElement()
             .subscribeOn(Schedulers.io())
-
     }
+
+    override suspend fun getVersificationSuspend(slug: String): Versification? = getVersification(slug).awaitSingleOrNull()
+    override suspend fun insertVersificationSuspend(slug: String, path: File) = insertVersification(slug, path).await()
 }

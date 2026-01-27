@@ -25,6 +25,8 @@ import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 
+import kotlinx.coroutines.flow.Flow
+
 interface IContentRepository : IRepository<Content> {
     // Insert for a collection
     fun insertForCollection(contentList: List<Content>, collection: Collection): Single<List<Content>>
@@ -47,4 +49,14 @@ interface IContentRepository : IRepository<Content> {
     ): Completable
 
     fun updateAll(content: List<Content>): Completable
+
+    suspend fun insertForCollectionSuspend(contentList: List<Content>, collection: Collection): List<Content>
+    suspend fun getByCollectionSuspend(collection: Collection): List<Content>
+    fun getByCollectionFlow(collection: Collection): Flow<List<Content>>
+    suspend fun getCollectionMetaContentSuspend(collection: Collection): Content
+    suspend fun getSourcesSuspend(content: Content): List<Content>
+    suspend fun updateSourcesSuspend(content: Content, sourceContents: List<Content>)
+    suspend fun deleteForCollectionSuspend(chapterCollection: Collection, typeFilter: ContentType? = null)
+    suspend fun linkDerivedToSourceSuspend(derivedContents: List<Content>, sourceContents: List<Content>)
+    suspend fun updateAllSuspend(content: List<Content>)
 }

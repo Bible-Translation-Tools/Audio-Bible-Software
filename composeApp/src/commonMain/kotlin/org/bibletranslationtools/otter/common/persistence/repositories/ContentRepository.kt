@@ -23,6 +23,9 @@ import io.reactivex.Completable
 import io.reactivex.Observable
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.rx2.asFlow
+import kotlinx.coroutines.rx2.await
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.Content
@@ -212,6 +215,23 @@ class ContentRepository @Inject constructor(
             }.subscribeOn(Schedulers.io())
     }
 
+    override fun linkDerivedToSource(
+        derivedContents: List<Content>,
+        sourceContents: List<Content>
+    ): Completable {
+        return Completable
+            .fromAction {
+                derivedContents.forEach { derived ->
+                    sourceContents.forEach { source ->
+                        if (derived.labelKey == source.labelKey && derived.type == source.type) {
+                            contentDao.linkDerivative(derived.id, source.id)
+                        }
+                    }
+                }
+            }
+            .subscribeOn(Schedulers.io())
+    }
+
     override fun update(obj: Content): Completable {
         return Completable
             .fromAction {
@@ -260,25 +280,36 @@ class ContentRepository @Inject constructor(
         }
     }
 
-    override fun linkDerivedToSource(
-        derivedContents: List<Content>,
-        sourceContents: List<Content>
-    ): Completable {
-        if (sourceContents.isEmpty()) {
-            return Completable.complete()
-        }
+    override suspend fun getAllSuspend(): List<Content> = getAll().await()
+    override suspend fun updateSuspend(obj: Content) = update(obj).await()
+    override suspend fun deleteSuspend(obj: Content) = delete(obj).await()
 
-        return Completable.fromAction {
-            derivedContents.forEach { content ->
-                for (verse in content.start..content.end) {
-                    val sourceId = sourceContents.firstOrNull { it.sort == verse }?.id
-                    if (sourceId != null) {
-                        contentDao.linkDerivative(content.id, sourceId)
-                    }
-                }
-            }
-        }
-    }
+    override suspend fun insertForCollectionSuspend(contentList: List<Content>, collection: Collection): List<Content> =
+        insertForCollection(contentList, collection).await()
+
+    override suspend fun getByCollectionSuspend(collection: Collection): List<Content> =
+        getByCollection(collection).await()
+
+    override fun getByCollectionFlow(collection: Collection): Flow<List<Content>> =
+        getByCollectionWithPersistentConnection(collection).asFlow()
+
+    override suspend fun getCollectionMetaContentSuspend(collection: Collection): Content =
+        getCollectionMetaContent(collection).await()
+
+    override suspend fun getSourcesSuspend(content: Content): List<Content> =
+        getSources(content).await()
+
+    override suspend fun updateSourcesSuspend(content: Content, sourceContents: List<Content>) =
+        updateSources(content, sourceContents).await()
+
+    override suspend fun deleteForCollectionSuspend(chapterCollection: Collection, typeFilter: ContentType?) =
+        deleteForCollection(chapterCollection, typeFilter).await()
+
+    override suspend fun linkDerivedToSourceSuspend(derivedContents: List<Content>, sourceContents: List<Content>) =
+        linkDerivedToSource(derivedContents, sourceContents).await()
+
+    override suspend fun updateAllSuspend(content: List<Content>) =
+        updateAll(content).await()
 
     private fun buildContent(entity: ContentEntity): Content {
         // Check for sources

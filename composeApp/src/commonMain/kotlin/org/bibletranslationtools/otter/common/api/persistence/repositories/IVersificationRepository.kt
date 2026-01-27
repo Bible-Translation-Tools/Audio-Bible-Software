@@ -26,4 +26,7 @@ import java.io.File
 interface IVersificationRepository {
     fun getVersification(slug: String): Maybe<Versification>
     fun insertVersification(slug: String, path: File): Completable
+
+    suspend fun getVersificationSuspend(slug: String): Versification?
+    suspend fun insertVersificationSuspend(slug: String, path: File)
 }

@@ -37,4 +37,18 @@ interface ILanguageRepository : IRepository<Language> {
     fun insertTranslation(translation: Translation): Single<Int>
     fun updateTranslation(translation: Translation): Completable
     fun deleteTranslation(translation: Translation): Completable
+
+    suspend fun insertSuspend(language: Language): Int
+    suspend fun insertAllSuspend(languages: List<Language>): List<Int>
+    suspend fun upsertAllSuspend(languages: List<Language>)
+    suspend fun updateRegionsSuspend(languages: List<Language>)
+    suspend fun getBySlugSuspend(slug: String): Language
+    suspend fun getGatewaySuspend(): List<Language>
+    suspend fun getAvailableGatewaySourcesSuspend(): List<Language>
+    suspend fun getTargetsSuspend(): List<Language>
+    suspend fun getTranslationSuspend(sourceLanguage: Language, targetLanguage: Language): Translation
+    suspend fun getAllTranslationsSuspend(): List<Translation>
+    suspend fun insertTranslationSuspend(translation: Translation): Int
+    suspend fun updateTranslationSuspend(translation: Translation)
+    suspend fun deleteTranslationSuspend(translation: Translation)
 }
