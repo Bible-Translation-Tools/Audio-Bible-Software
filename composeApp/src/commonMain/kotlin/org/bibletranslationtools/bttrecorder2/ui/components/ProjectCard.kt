@@ -48,7 +48,8 @@ fun ProjectCard(
                 .fillMaxWidth()
                 .wrapContentHeight()
                 .clickable { onWorkbookClick(workbook) }, // Make the row clickable as well
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Start
         ) {
             Text(
                 text = workbook.targetLanguage.anglicizedName,
@@ -62,7 +63,7 @@ fun ProjectCard(
             )
  
             Text(
-                text = workbook.label,
+                text = workbook.title,
                 modifier = Modifier
                     .weight(0.3f)
                     .wrapContentWidth(),

@@ -1,8 +1,6 @@
 package org.bibletranslationtools.bttrecorder2.di.koin
 
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.api.persistence.ILanguageDataSource
-import org.bibletranslationtools.otter.common.api.persistence.ILocaleDataSource
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IContentRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IInstalledEntityRepository
@@ -15,13 +13,7 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IVers
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.WorkbookRepository
-import org.bibletranslationtools.otter.common.audio.wav.IWaveFileCreator
-import org.bibletranslationtools.otter.common.data.IAppInfo
-import org.bibletranslationtools.otter.common.device.IAudioPlayer
-import org.bibletranslationtools.otter.common.device.IAudioRecorder
 import org.bibletranslationtools.otter.common.domain.languages.LanguageDataSource
-import org.bibletranslationtools.otter.common.domain.plugins.IAudioPluginRegistrar
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito.auth.AuthProvider
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.IZipEntryTreeBuilder
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ZipEntryTreeBuilder
 import org.koin.core.module.dsl.bind
@@ -30,14 +22,13 @@ import org.koin.dsl.module
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.CollectionRepository
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.ContentRepository
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.InstalledEntityRepository
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.LanguageRepository
+import org.bibletranslationtools.otter.common.persistence.repositories.LanguageRepository
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.ResourceContainerRepository
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.ResourceMetadataRepository
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.ResourceRepository
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.TakeRepository
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.VersificationRepository
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.WorkbookDescriptorRepository
-import java.io.File
 
 // commonMain - Wrapper interface
 interface AppContext

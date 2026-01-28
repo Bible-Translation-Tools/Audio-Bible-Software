@@ -30,6 +30,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import org.bibletranslationtools.bttrecorder2.ui.components.ProjectCard
@@ -45,6 +46,10 @@ fun ProjectManagementScreen(
     onProjectClick: (WorkbookDescriptor) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+
+    LaunchedEffect(Unit) {
+        viewModel.loadWorkbooks()
+    }
 
     ProjectManagementContent(
         uiState = uiState,
@@ -104,13 +109,15 @@ fun ProjectManagementContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Start
             ) {
 
                 // Language Sort
                 Row(
                     modifier = Modifier.weight(0.4f),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Start
                 ) {
                     Icon(
                         imageVector = Icons.Filled.RecordVoiceOver,
@@ -123,7 +130,8 @@ fun ProjectManagementContent(
                 // Book Sort
                 Row(
                     modifier = Modifier.weight(0.3f),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Start
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.LibraryBooks,
@@ -133,10 +141,10 @@ fun ProjectManagementContent(
                     Text("Book")
                 }
 
-                // Progress Sort (replace with your icon)
                 Row(
                     modifier = Modifier.weight(0.3f),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Start
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Book,
@@ -147,7 +155,6 @@ fun ProjectManagementContent(
                 }
             }
 
-            // Project List (using LazyColumn for better performance)
             when (val state = uiState) {
                 is ProjectManagementUiState.Loading -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

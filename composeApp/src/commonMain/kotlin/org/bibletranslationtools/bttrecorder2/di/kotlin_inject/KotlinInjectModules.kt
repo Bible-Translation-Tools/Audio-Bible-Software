@@ -21,7 +21,7 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.Z
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.CollectionRepository
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.ContentRepository
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.InstalledEntityRepository
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.LanguageRepository
+import org.bibletranslationtools.otter.common.persistence.repositories.LanguageRepository
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.ResourceContainerRepository
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.ResourceMetadataRepository
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.ResourceRepository
