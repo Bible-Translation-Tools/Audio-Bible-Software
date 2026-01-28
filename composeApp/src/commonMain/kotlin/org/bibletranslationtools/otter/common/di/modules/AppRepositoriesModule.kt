@@ -21,7 +21,6 @@ package org.bibletranslationtools.otter.common.di.modules
 import dagger.Binds
 import dagger.Module
 import org.bibletranslationtools.otter.common.api.persistence.ILanguageDataSource
-import org.bibletranslationtools.otter.common.api.persistence.ILocaleDataSource
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IContentRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IInstalledEntityRepository
@@ -35,6 +34,7 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IWork
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.WorkbookRepository
 import org.bibletranslationtools.otter.common.domain.languages.LanguageDataSource
+import org.bibletranslationtools.otter.common.persistence.repositories.LanguageRepository
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.*
 import javax.inject.Singleton
 

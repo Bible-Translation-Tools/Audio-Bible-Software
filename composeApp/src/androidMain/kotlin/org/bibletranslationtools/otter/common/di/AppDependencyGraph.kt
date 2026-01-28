@@ -18,37 +18,37 @@
  */
 package org.bibletranslationtools.otter.common.di
 
-import android.app.Application
-import dagger.BindsInstance
-import dagger.Component
-import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SplashScreenViewModel
-import org.bibletranslationtools.otter.common.di.modules.AppContextModule
-import org.bibletranslationtools.otter.common.di.modules.AppDatabaseModule
-import org.bibletranslationtools.otter.common.di.modules.AppRepositoriesModule
-import org.bibletranslationtools.otter.common.di.modules.DirectoryProviderModule
-import org.bibletranslationtools.otter.common.di.modules.ZipEntryTreeBuilderModule
-import org.bibletranslationtools.recorder2.MainActivity
-import javax.inject.Singleton
-
-@Component(
-    modules = [
-        AppContextModule::class,
-        DirectoryProviderModule::class,
-        AppRepositoriesModule::class,
-        AppDatabaseModule::class,
-        ZipEntryTreeBuilderModule::class
-    ]
-)
-@Singleton
-interface AppDependencyGraph: DependencyProvider {
-    @Component.Builder
-    interface Builder {
-        @BindsInstance
-        fun application(application: Application): Builder
-
-        fun build(): AppDependencyGraph
-    }
-
-    fun inject(activity: MainActivity)
-    override fun inject(viewModel: SplashScreenViewModel)
-}
+//import android.app.Application
+//import dagger.BindsInstance
+//import dagger.Component
+//import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SplashScreenViewModel
+//import org.bibletranslationtools.otter.common.di.modules.AppContextModule
+//import org.bibletranslationtools.otter.common.di.modules.AppDatabaseModule
+//import org.bibletranslationtools.otter.common.di.modules.AppRepositoriesModule
+//import org.bibletranslationtools.otter.common.di.modules.DirectoryProviderModule
+//import org.bibletranslationtools.otter.common.di.modules.ZipEntryTreeBuilderModule
+//import org.bibletranslationtools.bttrecorder2.MainActivity
+//import javax.inject.Singleton
+//
+//@Component(
+//    modules = [
+//        AppContextModule::class,
+//        DirectoryProviderModule::class,
+//        AppRepositoriesModule::class,
+//        AppDatabaseModule::class,
+//        ZipEntryTreeBuilderModule::class
+//    ]
+//)
+//@Singleton
+//interface AppDependencyGraph: DependencyProvider {
+//    @Component.Builder
+//    interface Builder {
+//        @BindsInstance
+//        fun application(application: Application): Builder
+//
+//        fun build(): AppDependencyGraph
+//    }
+//
+//    fun inject(activity: MainActivity)
+//    override fun inject(viewModel: SplashScreenViewModel)
+//}

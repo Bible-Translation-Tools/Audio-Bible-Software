@@ -1,4 +1,3 @@
-import org.gradle.api.internal.artifacts.configurations.Configurations
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -92,6 +91,7 @@ kotlin {
                 implementation(libs.kotlin.test)
                 implementation(libs.kotlin.test.junit)
                 implementation(libs.koin.test)
+                implementation(libs.kotlinx.coroutines.test)
             }
         }
 
@@ -178,6 +178,18 @@ kotlin {
                 implementation("me.tatarka.inject:kotlin-inject-runtime:$kotlinInjectVer")
 
                 implementation(libs.koin.core)
+
+                implementation("io.github.vinceglb:filekit-core:${"0.12.0"}")
+                implementation("io.github.vinceglb:filekit-dialogs:${"0.12.0"}")
+                implementation("io.github.vinceglb:filekit-dialogs-compose:${"0.12.0"}")
+                implementation("io.github.vinceglb:filekit-coil:${"0.12.0"}")
+            }
+        }
+
+        val desktopTest by getting {
+            // dependsOn(commonTest)
+            dependencies {
+                implementation(libs.kotlin.test.junit)
             }
         }
 
@@ -234,7 +246,8 @@ dependencies {
 
 compose.desktop {
     application {
-        mainClass = "org.bibletranslationtools.recorder2.MainKt"
+         mainClass = "org.bibletranslationtools.recorder2.MainKt"
+        //mainClass = "org.bibletranslationtools.bttrecorder2.demo.MainKt"
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)

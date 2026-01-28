@@ -1,6 +1,6 @@
 [versions]
-agp = "8.8.1"
-android-compileSdk = "35"
+agp = "8.11.2"
+android-compileSdk = "36"
 android-minSdk = "26"
 android-targetSdk = "35"
 androidx-activityCompose = "1.9.3"
@@ -42,6 +42,7 @@ sqldroid = { module = "org.sqldroid:sqldroid", version.ref = "sqldroid" }
 androidx-runtime-android = { group = "androidx.compose.runtime", name = "runtime-android", version.ref = "runtimeAndroid" }
 androidx-ui-android = { group = "androidx.compose.ui", name = "ui-android", version.ref = "uiAndroid" }
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinx-coroutines"}
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
 androidx-material3-android = { group = "androidx.compose.material3", name = "material3-android", version.ref = "material3-android" }
 material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "material3" }
 koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }

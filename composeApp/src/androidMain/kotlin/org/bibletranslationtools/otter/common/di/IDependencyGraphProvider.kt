@@ -18,6 +18,6 @@
  */
 package org.bibletranslationtools.otter.common.di
 
-interface IDependencyGraphProvider {
-    val dependencyGraph: AppDependencyGraph
-}
+//interface IDependencyGraphProvider {
+//    val dependencyGraph: AppDependencyGraph
+//}

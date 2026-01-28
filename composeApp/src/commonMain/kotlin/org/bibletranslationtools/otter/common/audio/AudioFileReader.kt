@@ -21,6 +21,7 @@ package org.bibletranslationtools.otter.common.audio
 import java.io.Closeable
 
 interface AudioFileReader: Closeable, AutoCloseable {
+
     /**
      * Gives the sample rate of the audio in bits (bitrate)
      */
