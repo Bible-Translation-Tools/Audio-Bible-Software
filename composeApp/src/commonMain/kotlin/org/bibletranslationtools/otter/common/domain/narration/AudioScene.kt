@@ -20,7 +20,7 @@ package org.bibletranslationtools.otter.common.domain.narration
 
 import io.reactivex.Observable
 import org.slf4j.LoggerFactory
-import org.bibletranslationtools.otter.common.audio.AudioFileReader
+import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
 import java.util.*
 import kotlin.math.max
 import kotlin.math.roundToInt

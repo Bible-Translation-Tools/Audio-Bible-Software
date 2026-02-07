@@ -8,7 +8,7 @@ import io.reactivex.disposables.Disposable
 import io.reactivex.observables.ConnectableObservable
 import io.reactivex.schedulers.Schedulers
 import org.slf4j.LoggerFactory
-import org.bibletranslationtools.otter.common.audio.AudioFileReader
+import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
 import org.bibletranslationtools.otter.common.data.audio.BookMarker
 import org.bibletranslationtools.otter.common.data.audio.ChapterMarker

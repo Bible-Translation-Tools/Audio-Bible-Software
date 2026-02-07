@@ -18,7 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.device
 
-import org.bibletranslationtools.otter.common.audio.AudioFileReader
+import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
 
 interface AudioFileReaderProvider {
     fun getAudioFileReader(start: Int? = null, end: Int? = null): AudioFileReader

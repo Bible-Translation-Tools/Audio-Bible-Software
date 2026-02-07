@@ -18,7 +18,8 @@
  */
 package org.bibletranslationtools.otter.common.audio.pcm
 
-import org.bibletranslationtools.otter.common.audio.*
+import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
+import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
 import java.io.RandomAccessFile
 import java.lang.Exception
 import java.lang.IllegalStateException
@@ -29,11 +30,14 @@ import java.nio.channels.FileChannel
 internal class PcmFileReader(
     val pcm: PcmFile,
     start: Int? = null,
-    end: Int? = null
+    end: Int? = null,
+    override val spec: AudioSpec = AudioSpec(sampleRate = pcm.sampleRate, bitDepth = pcm.bitsPerSample, channels = pcm.channels)
 ) : AudioFileReader {
-    override val sampleRate: Int = pcm.sampleRate
-    override val channels: Int = pcm.channels
-    override val sampleSizeBits: Int = pcm.bitsPerSample
+    val sampleRate: Int
+        get() = spec.sampleRate
+    val channels: Int
+        get() = spec.channels
+
     override val framePosition: Int
         get() = (mappedFile?.position() ?: 0) / pcm.frameSizeInBytes
     override val totalFrames: Int
@@ -60,9 +64,9 @@ internal class PcmFileReader(
     }
 
     @Throws(ArrayIndexOutOfBoundsException::class)
-    override fun seek(sample: Int) {
+    override fun seek(sample: Long) {
         mappedFile?.let { _mappedFile ->
-            val index = Integer.min(pcm.sampleIndex(sample), _mappedFile.limit())
+            val index = Integer.min(pcm.sampleIndex(sample.toInt()), _mappedFile.limit())
             _mappedFile.position(index)
         } ?: run {
             throw IllegalStateException("Tried to seek before opening file")

@@ -18,8 +18,8 @@
  */
 package org.bibletranslationtools.otter.common.domain.audio
 
-import org.bibletranslationtools.otter.common.audio.AudioFileReader
 import org.bibletranslationtools.otter.common.device.AudioFileReaderProvider
+import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
 import java.io.File
 
 class OratureAudioFileReaderProvider(val file: File) : AudioFileReaderProvider {

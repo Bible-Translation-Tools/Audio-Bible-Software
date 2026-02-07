@@ -121,7 +121,7 @@ object MergeTextContent {
         val filesToMerge = mutableMapOf<String, File>()
         files.forEach { (path, stream) ->
             stream.use { ifs ->
-                val temp = createTempFile()
+                val temp = kotlin.io.path.createTempFile().toFile()
                 temp.outputStream().use { ofs ->
                     ifs.copyTo(ofs)
                 }

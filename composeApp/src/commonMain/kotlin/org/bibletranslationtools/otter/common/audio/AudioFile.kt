@@ -24,6 +24,7 @@ import java.io.OutputStream
 import org.bibletranslationtools.otter.common.audio.pcm.PcmFile
 import org.bibletranslationtools.otter.common.audio.wav.WavFile
 import org.bibletranslationtools.otter.common.audio.wav.WavMetadata
+import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
 
 const val DEFAULT_SAMPLE_RATE = 44100
 const val DEFAULT_CHANNELS = 1

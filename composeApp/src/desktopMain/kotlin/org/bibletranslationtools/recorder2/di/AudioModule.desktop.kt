@@ -15,7 +15,7 @@ import org.koin.dsl.module
 val jvmAudioModule = module {
     single<AudioDeviceSelector> { JvmAudioDeviceSelector() }
     single<AudioHardwareProvider> { JvmAudioHardwareProvider() }
-    single<AudioProcessor> { JvmAudioProcessor() }
+    // single<AudioProcessor> { JvmAudioProcessor() }
 
     // Initial dummy sink/source for factory startup
     single<AudioSink> { JvmAudioSink { null } }

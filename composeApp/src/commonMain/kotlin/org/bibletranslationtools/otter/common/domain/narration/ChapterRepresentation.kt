@@ -26,7 +26,7 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.reactivex.rxkotlin.toObservable
 import io.reactivex.subjects.PublishSubject
 import org.slf4j.LoggerFactory
-import org.bibletranslationtools.otter.common.audio.AudioFileReader
+import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
 import org.bibletranslationtools.otter.common.data.audio.BookMarker
 import org.bibletranslationtools.otter.common.data.audio.ChapterMarker
@@ -36,6 +36,7 @@ import org.bibletranslationtools.otter.common.data.primitives.CHAPTER_TITLE_SORT
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.device.AudioFileReaderProvider
+import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import java.io.File
 import java.io.RandomAccessFile
@@ -371,11 +372,9 @@ internal class ChapterRepresentation(
 
     inner class ChapterRepresentationConnection(
         var start: Int? = null,
-        var end: Int?
+        var end: Int?,
+        override val spec: AudioSpec = AudioSpec()
     ) : AudioFileReader {
-        override val sampleRate: Int = this@ChapterRepresentation.sampleRate
-        override val channels: Int = this@ChapterRepresentation.channels
-        override val sampleSizeBits: Int = this@ChapterRepresentation.sampleSize
 
         private var randomAccessFile: RandomAccessFile? = null
 
@@ -609,15 +608,15 @@ internal class ChapterRepresentation(
         }
 
         @Synchronized
-        override fun seek(frame: Int) {
+        override fun seek(frame: Long) {
             // If we are locked to a verse, we assume that the frame is in the relative verse space,
             // so we need to map the frame to call relativeVerseToRelativeChapter(), then pass the return to
             // relativeToAbsolute
             val lockedVerse = lockToVerse.get()
             val relativeChapterFrame = if (lockedVerse != CHAPTER_UNLOCKED) {
-                frameInVerseToFrameInChapter(frame, lockedVerse)
+                frameInVerseToFrameInChapter(frame.toInt(), lockedVerse)
             } else {
-                frame
+                frame.toInt()
             }
             position = relativeChapterFrameToAbsoluteIndex(relativeChapterFrame)
         }

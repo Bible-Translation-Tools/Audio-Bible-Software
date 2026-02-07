@@ -23,11 +23,12 @@ import java.io.IOException
 import java.lang.Integer.max
 import java.lang.Integer.min
 import org.bibletranslationtools.otter.common.audio.AudioCue
-import org.bibletranslationtools.otter.common.audio.AudioFileReader
 import org.bibletranslationtools.otter.common.audio.AudioFormatStrategy
 import org.bibletranslationtools.otter.common.audio.DEFAULT_BITS_PER_SAMPLE
 import org.bibletranslationtools.otter.common.audio.DEFAULT_CHANNELS
 import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
+import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
+import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
 import org.yellowcouch.javazoom.RandomAccessDecoder
 import java.io.OutputStream
 import java.lang.IllegalStateException
@@ -38,7 +39,8 @@ private const val MP3_BUFFER_SIZE = 24576
 class MP3FileReader(
     val file: File,
     start: Int? = null,
-    end: Int? = null
+    end: Int? = null,
+    override val spec: AudioSpec = AudioSpec(sampleRate = DEFAULT_SAMPLE_RATE, bitDepth = DEFAULT_BITS_PER_SAMPLE, channels = DEFAULT_CHANNELS)
 ) : AudioFormatStrategy, AudioFileReader {
 
     private var decoder: RandomAccessDecoder? = RandomAccessDecoder(file.absolutePath)
@@ -52,7 +54,7 @@ class MP3FileReader(
 
     override val sampleRate: Int = DEFAULT_SAMPLE_RATE
     override val channels: Int = DEFAULT_CHANNELS
-    override val sampleSizeBits: Int = DEFAULT_BITS_PER_SAMPLE
+
     override val framePosition: Int
         get() = pos - start
 
@@ -129,10 +131,10 @@ class MP3FileReader(
         return bytes.size.coerceAtMost(remainingFrames * 2)
     }
 
-    override fun seek(sample: Int) {
+    override fun seek(frame: Long) {
         // seek API should not be aware of audio outside of start and end;
         // so that a selected section can be treated as its own "track"
-        val mappedSample = sample + start
+        val mappedSample = frame.toInt() + start
         pos = max(start, min(mappedSample, end))
     }
 

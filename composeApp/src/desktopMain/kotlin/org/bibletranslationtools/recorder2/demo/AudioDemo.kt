@@ -6,6 +6,7 @@ import androidx.compose.ui.window.application
 import org.bibletranslationtools.recorder2.di.jvmAudioModule
 import org.bibletranslationtools.bttrecorder2.di.koin.commonAudioModule
 import org.bibletranslationtools.bttrecorder2.ui.demo.AudioDashboard
+import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.device.newaudio.AudioDeviceSelector
 import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
 import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
@@ -20,6 +21,7 @@ fun main() = application {
     val config = koinApp.get<AudioSystemConfig>()
     val selector = koinApp.get<AudioDeviceSelector>()
     val playerFactory = koinApp.get<AudioPlayerConnectionFactory>()
+    val directoryProvider = koinApp.get<IDirectoryProvider>()
 
     // Start the observer that hot-swaps hardware
     config.start()
@@ -32,7 +34,7 @@ fun main() = application {
 
     Window(onCloseRequest = ::exitApplication, title = "Otter Audio Test") {
         MaterialTheme {
-            AudioDashboard(playerFactory, selector)
+            AudioDashboard(playerFactory, selector, directoryProvider)
         }
     }
 }

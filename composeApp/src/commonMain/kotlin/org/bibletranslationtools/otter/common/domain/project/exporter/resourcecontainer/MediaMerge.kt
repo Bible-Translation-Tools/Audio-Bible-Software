@@ -147,7 +147,7 @@ object MediaMerge {
         filtered.forEach { filename ->
             if (fromRC.accessor.fileExists(filename)) {
                 fromRC.accessor.getInputStream(filename).use { ifs ->
-                    val temp = createTempFile()
+                    val temp = kotlin.io.path.createTempFile().toFile()
                     temp.outputStream().use { ofs ->
                         ifs.copyTo(ofs)
                     }

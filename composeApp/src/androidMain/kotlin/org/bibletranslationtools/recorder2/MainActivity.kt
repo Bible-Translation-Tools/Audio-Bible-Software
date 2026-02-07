@@ -22,32 +22,89 @@ import org.bibletranslationtools.bttrecorder2.ui.screens.SplashScreen
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.database.AndroidAppDatabase
 import org.koin.android.ext.android.inject
-import java.io.File
-import javax.inject.Inject
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.setContent
+import androidx.compose.runtime.LaunchedEffect
+import org.bibletranslationtools.bttrecorder2.di.koin.commonAudioModule
+import org.bibletranslationtools.bttrecorder2.ui.demo.AudioDashboard
+import org.bibletranslationtools.otter.common.device.newaudio.AudioDeviceSelector
+import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
+import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
+import org.bibletranslationtools.otter.common.device.newaudio.AudioSystemConfig
+import org.bibletranslationtools.recorder2.di.androidAudioModule
+import org.koin.android.ext.android.inject
+import org.koin.android.ext.koin.androidContext
+import org.koin.core.context.startKoin
+
+//class MainActivity : ComponentActivity() {
+//    @Inject
+//    lateinit var directoryProvider: IDirectoryProvider
+//
+//    val koinDirectoryProvider: IDirectoryProvider by inject()
+//
+//    override fun onCreate(savedInstanceState: Bundle?) {
+//        super.onCreate(savedInstanceState)
+//
+//        lifecycleScope.launch {
+//            try {
+//                val db = AndroidAppDatabase(
+//                    applicationContext,
+//                    File(koinDirectoryProvider.databaseDirectory, "tr.sqlite"),
+//                    koinDirectoryProvider
+//                )
+//            } catch (e: Exception) {
+//                e.printStackTrace()
+//            }
+//        }
+//
+//        setContent {
+//            App()
+//        }
+//    }
+//}
+
+
+
 
 class MainActivity : ComponentActivity() {
-    @Inject
-    lateinit var directoryProvider: IDirectoryProvider
 
-    val koinDirectoryProvider: IDirectoryProvider by inject()
+    // Inject our orchestrator
+    private val audioConfig: AudioSystemConfig by inject()
+    val selector: AudioDeviceSelector by inject()
+    val playerFactory: AudioPlayerConnectionFactory by inject()
+    val directoryProvider : IDirectoryProvider by inject()
+
+    // Load initial defaults if needed
+    val defaultSpec = AudioSpec()
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        lifecycleScope.launch {
-            try {
-                val db = AndroidAppDatabase(
-                    applicationContext,
-                    File(koinDirectoryProvider.databaseDirectory, "tr.sqlite"),
-                    koinDirectoryProvider
-                )
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+
+        // Start the observer that hot-swaps hardware
+        audioConfig.start()
+
+        selector.getOutputDevices(defaultSpec).firstOrNull()?.let {
+            selector.selectOutputDevice(it)
         }
 
         setContent {
-            App()
+            // 3. Handle Recording Permissions
+            val permissionLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission()
+            ) { isGranted ->
+                // Handle permission result if necessary
+            }
+
+            LaunchedEffect(Unit) {
+                permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            }
+
+            // 4. Load the Common UI we built earlier
+            // The same AudioDashboard we use on Desktop!
+            AudioDashboard(playerFactory, selector, directoryProvider)
         }
     }
 }

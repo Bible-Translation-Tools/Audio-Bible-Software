@@ -18,6 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.audio
 
+import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
 import java.io.OutputStream
 
 interface AudioFormatStrategy {

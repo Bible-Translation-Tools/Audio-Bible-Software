@@ -19,7 +19,7 @@
 package org.bibletranslationtools.otter.common.domain.narration
 
 import org.slf4j.LoggerFactory
-import org.bibletranslationtools.otter.common.audio.AudioFileReader
+import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
 import org.wycliffeassociates.otter.common.collections.FloatRingBuffer
 import org.wycliffeassociates.otter.common.recorder.PCMCompressor
 import java.nio.ByteBuffer
@@ -63,15 +63,15 @@ class AudioReaderDrawable(
 
         var totalFramesToRead = secondsOnScreen * recordingSampleRate
 
-        val paddedFrames = padStart(pcmCompressor, audioReader.frameSizeBytes, location, totalFramesToRead)
+        val paddedFrames = padStart(pcmCompressor, audioReader.spec.bytesPerFrame, location, totalFramesToRead)
 
         pcmCompressor.clear() // clear the compressor after potentially padding 0s
         totalFramesToRead -= paddedFrames
 
         val clampedFrameLoc = location.coerceIn(0..audioReader.totalFrames)
-        audioReader.seek(clampedFrameLoc)
+        audioReader.seek(clampedFrameLoc.toLong())
 
-        val frameSizeBytes = audioReader.frameSizeBytes
+        val frameSizeBytes = audioReader.spec.bytesPerFrame
         var framesToRead = max(min(totalFramesToRead, audioReader.totalFrames - clampedFrameLoc), 0)
 
         var retry = 0

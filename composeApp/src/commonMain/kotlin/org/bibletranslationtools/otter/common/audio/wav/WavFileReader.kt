@@ -18,8 +18,9 @@
  */
 package org.bibletranslationtools.otter.common.audio.wav
 
+import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
+import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
 import org.slf4j.LoggerFactory
-import org.bibletranslationtools.otter.common.audio.AudioFileReader
 import java.io.RandomAccessFile
 import java.lang.Exception
 import java.lang.IllegalStateException
@@ -29,15 +30,24 @@ import java.nio.ByteBuffer
 import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
 
-internal class WavFileReader(val wav: WavFile, start: Int? = null, end: Int? = null) : AudioFileReader {
+internal class WavFileReader(
+    val wav: WavFile,
+    start: Int? = null,
+    end: Int? = null,
+    override val spec: AudioSpec = AudioSpec(sampleRate = wav.sampleRate, bitDepth = wav.bitsPerSample, channels = wav.channels)
+) :
+    AudioFileReader {
 
     private val logger = LoggerFactory.getLogger(WavFileReader::class.java)
 
     override val totalFrames: Int
         get() = end - start
-    override val sampleRate: Int = wav.sampleRate
-    override val channels: Int = wav.channels
-    override val sampleSizeBits: Int = wav.bitsPerSample
+    val sampleRate: Int
+        get() = spec.sampleRate
+    val channels: Int
+        get() = spec.channels
+    val sampleSizeBits: Int = wav.bitsPerSample
+
     override val framePosition: Int
         get() = (mappedFile?.position() ?: 0) / wav.frameSizeInBytes
 
@@ -104,9 +114,9 @@ internal class WavFileReader(val wav: WavFile, start: Int? = null, end: Int? = n
     }
 
     @Throws(ArrayIndexOutOfBoundsException::class)
-    override fun seek(sample: Int) {
+    override fun seek(sample: Long) {
         mappedFile?.let { _mappedFile ->
-            val index = min(wav.sampleIndex(sample), _mappedFile.limit())
+            val index = min(wav.sampleIndex(sample.toInt()), _mappedFile.limit())
             _mappedFile.position(index)
         } ?: run {
             throw IllegalStateException("Tried to seek before opening file")

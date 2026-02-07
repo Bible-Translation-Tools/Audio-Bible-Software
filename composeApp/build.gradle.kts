@@ -204,8 +204,6 @@ kotlin {
         }
 
         dependencies {
-            ksp("me.tatarka.inject:kotlin-inject-compiler-ksp:$kotlinInjectVer")
-            ksp("com.google.dagger:dagger-compiler:$daggerVer")
             implementation("bibleineverylanguage:langnames@json")
         }
     }

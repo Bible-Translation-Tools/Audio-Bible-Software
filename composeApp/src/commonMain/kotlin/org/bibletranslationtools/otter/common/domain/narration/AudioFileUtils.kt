@@ -19,8 +19,8 @@
 package org.bibletranslationtools.otter.common.domain.narration
 
 import org.bibletranslationtools.otter.common.audio.AudioFile
-import org.bibletranslationtools.otter.common.audio.AudioFileReader
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
 import java.io.File
 import javax.inject.Inject
 

@@ -31,7 +31,7 @@ import io.reactivex.subjects.PublishSubject
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.audio.AudioFile
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
-import org.bibletranslationtools.otter.common.audio.AudioFileReader
+import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
 import org.bibletranslationtools.otter.common.data.primitives.MimeType
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
@@ -659,7 +659,7 @@ class Narration @AssistedInject constructor(
     }
 
     fun scrollAudio(delta: Int) {
-        chapterReaderConnection.seek(delta)
+        chapterReaderConnection.seek(delta.toLong())
     }
 
     /**
@@ -671,7 +671,7 @@ class Narration @AssistedInject constructor(
             lockToVerse(null)
         }
         player.seek(location)
-        chapterReaderConnection.seek(location)
+        chapterReaderConnection.seek(location.toLong())
     }
 
     /**

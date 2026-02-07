@@ -1,10 +1,10 @@
 package org.bibletranslationtools.otter.common.domain.audio
 
 import org.slf4j.LoggerFactory
-import org.bibletranslationtools.otter.common.audio.AudioFileReader
 import org.bibletranslationtools.otter.common.audio.wav.WavFile
 import org.bibletranslationtools.otter.common.audio.wav.WavOutputStream
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
+import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
@@ -37,7 +37,7 @@ class AudioBouncer @Inject constructor() {
                 bouncedAudio.delete()
             }
 
-            val wav = WavFile(bouncedAudio, reader.channels, reader.sampleRate, reader.sampleSizeBits)
+            val wav = WavFile(bouncedAudio, reader.spec.channels, reader.spec.sampleRate, reader.spec.bytesPerSample * 8)
             WavOutputStream(wav, buffered = true).use { out ->
                 while (reader.hasRemaining() && !isInterrupted.get()) {
                     val read = reader.getPcmBuffer(bytes)

@@ -63,11 +63,11 @@ class AudioBufferPlayer(
 
                     if (currentReader == null || !currentReader.hasRemaining()) break
 
-                    val inputBuffer = ByteArray(processor.inputBufferSize)
+                    val inputBuffer = ByteArray(processor.inputBufferSize * currentReader.spec.bytesPerFrame)
                     val read = currentReader.getPcmBuffer(inputBuffer)
 
                     if (read > 0) {
-                        val output = processor.process(inputBuffer.copyOf(read))
+                        val output = inputBuffer //processor.process(inputBuffer.copyOf(read))
 
                         // We lock again to ensure the sink isn't swapped
                         // while we are physically writing to hardware.

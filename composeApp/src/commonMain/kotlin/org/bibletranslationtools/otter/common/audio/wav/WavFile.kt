@@ -26,6 +26,7 @@ import java.lang.Exception
 import java.nio.ByteBuffer
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.audio.*
+import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
 
 
 enum class WavType {
