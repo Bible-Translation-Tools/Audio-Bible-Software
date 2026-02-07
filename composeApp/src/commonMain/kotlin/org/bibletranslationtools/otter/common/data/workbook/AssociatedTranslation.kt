@@ -19,11 +19,16 @@
 package org.bibletranslationtools.otter.common.data.workbook
 
 import com.jakewharton.rxrelay2.Relay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.rx2.asFlow
 
 class AssociatedTranslation(
     val sourceRate: Relay<Double>,
     val targetRate: Relay<Double>
 ) {
+    val sourceRateFlow: Flow<Double> get() = sourceRate.asFlow()
+    val targetRateFlow: Flow<Double> get() = targetRate.asFlow()
+
     fun updateSourceRate(rate: Double) = sourceRate.accept(rate)
 
     fun updateTargetRate(rate: Double) = targetRate.accept(rate)

@@ -22,6 +22,8 @@ import io.reactivex.Completable
 import io.reactivex.Maybe
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.rx2.await
+import kotlinx.coroutines.rx2.awaitSingleOrNull
 import org.bibletranslationtools.otter_db.jooq.Tables.DUBLIN_CORE_ENTITY
 import org.bibletranslationtools.otter_db.jooq.Tables.RC_LINK_ENTITY
 import org.bibletranslationtools.otter_db.jooq.Tables.RESOURCE_LINK
@@ -207,6 +209,53 @@ class CollectionRepository @Inject constructor(
                 }
         }
     }
+
+    override suspend fun getAllSuspend(): List<Collection> = getAll().await()
+    override suspend fun updateSuspend(obj: Collection) = update(obj).await()
+    override suspend fun deleteSuspend(obj: Collection) = delete(obj).await()
+
+    override suspend fun insertSuspend(collection: Collection): Int = insert(collection).await()
+    override suspend fun getProjectSuspend(id: Int): Collection? = getProject(id).awaitSingleOrNull()
+    override suspend fun getDerivedProjectSuspend(sourceProject: Collection): Collection? =
+        getDerivedProject(sourceProject).awaitSingleOrNull()
+
+    override suspend fun getDerivedProjectsSuspend(): List<Collection> = getDerivedProjects().await()
+    override suspend fun getSourceProjectsSuspend(): List<Collection> = getSourceProjects().await()
+    override suspend fun getRootSourcesSuspend(): List<Collection> = getRootSources().await()
+    override suspend fun getSourceSuspend(project: Collection): Collection? = getSource(project).awaitSingleOrNull()
+    override suspend fun getChildrenSuspend(collection: Collection): List<Collection> = getChildren(collection).await()
+    override suspend fun getProjectBySlugAndMetadataSuspend(slug: String, metadata: ResourceMetadata): Collection =
+        getProjectBySlugAndMetadata(slug, metadata).await()
+
+    override suspend fun updateSourceSuspend(collection: Collection, newSource: Collection) =
+        updateSource(collection, newSource).await()
+
+    override suspend fun updateParentSuspend(collection: Collection, newParent: Collection) =
+        updateParent(collection, newParent).await()
+
+    override suspend fun deriveProjectSuspend(
+        sourceMetadatas: List<ResourceMetadata>,
+        sourceCollection: Collection,
+        language: Language,
+        verseByVerse: Boolean,
+        mode: ProjectMode
+    ): Collection = deriveProject(sourceMetadatas, sourceCollection, language, verseByVerse, mode).await()
+
+    override suspend fun deriveProjectsSuspend(
+        rootCollection: Collection,
+        language: Language,
+        verseByVerse: Boolean,
+        mode: ProjectMode
+    ): List<Collection> = deriveProjects(rootCollection, language, verseByVerse, mode).await()
+
+    override suspend fun deleteProjectSuspend(project: Collection, deleteAudio: Boolean) =
+        deleteProject(project, deleteAudio).await()
+
+    override suspend fun deleteResourcesSuspend(project: Collection, deleteAudio: Boolean) =
+        deleteResources(project, deleteAudio).await()
+
+    override suspend fun collectionsWithoutTakesSuspend(project: Collection): List<Collection> =
+        collectionsWithoutTakes(project).await()
 
     override fun getAll(): Single<List<Collection>> {
         return Single

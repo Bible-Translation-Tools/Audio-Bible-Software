@@ -20,6 +20,7 @@ package org.bibletranslationtools.otter.common.api.persistence.repositories
 
 import io.reactivex.Completable
 import io.reactivex.Observable
+import kotlinx.coroutines.flow.Flow
 import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
@@ -35,4 +36,9 @@ interface IResourceRepository : IRepository<Content> {
 
     // Prepare SubtreeHasResources table
     fun calculateAndSetSubtreeHasResources(collectionId: Int)
+
+    fun getResourcesFlow(collection: Collection, resourceMetadata: ResourceMetadata): Flow<Content>
+    fun getResourcesFlow(content: Content, resourceMetadata: ResourceMetadata): Flow<Content>
+    suspend fun linkToContentSuspend(resource: Content, content: Content, dublinCoreFk: Int)
+    suspend fun linkToCollectionSuspend(resource: Content, collection: Collection, dublinCoreFk: Int)
 }

@@ -19,9 +19,13 @@
 package org.bibletranslationtools.otter.common.data.workbook
 
 import io.reactivex.Observable
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.rx2.asFlow
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 
 data class ResourceGroup(
     val metadata: ResourceMetadata,
     val resources: Observable<Resource>
-)
+) {
+    val resourcesFlow: Flow<Resource> get() = resources.asFlow()
+}

@@ -26,6 +26,8 @@ import io.reactivex.Single
 import io.reactivex.disposables.CompositeDisposable
 import io.reactivex.disposables.Disposable
 import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.rx2.await
+import kotlinx.coroutines.rx2.awaitSingleOrNull
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
 import org.bibletranslationtools.otter.common.data.primitives.Collection
@@ -170,6 +172,22 @@ class WorkbookRepository(
             .map { sourceProject ->
                 get(sourceProject, project)
             }
+    }
+
+    override suspend fun getSoftDeletedTakesSuspend(book: Book): List<ModelTake> {
+        return getSoftDeletedTakes(book).await()
+    }
+
+    override suspend fun getProjectsSuspend(): List<Workbook> {
+        return getProjects().await()
+    }
+
+    override suspend fun getProjectsSuspend(translation: Translation): List<Workbook> {
+        return getProjects(translation).await()
+    }
+
+    override suspend fun getWorkbookSuspend(project: Collection): Workbook? {
+        return getWorkbook(project).awaitSingleOrNull()
     }
 
     private fun book(bookCollection: Collection, disposables: MutableList<Disposable>): Book {

@@ -20,6 +20,8 @@ package org.bibletranslationtools.otter.common.data.workbook
 
 import io.reactivex.Observable
 import io.reactivex.rxkotlin.cast
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.rx2.asFlow
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.data.primitives.Collection
@@ -44,6 +46,9 @@ class Book(
         get() = resourceMetadata.language
 
     override val children: Observable<BookElement> = chapters.cast()
+    override val childrenFlow: Flow<BookElement> by lazy { chapters.cast<BookElement>().asFlow() }
+
+    val chaptersFlow: Flow<Chapter> get() = chapters.asFlow()
 
     fun toCollection(): Collection = Collection(
         sort,

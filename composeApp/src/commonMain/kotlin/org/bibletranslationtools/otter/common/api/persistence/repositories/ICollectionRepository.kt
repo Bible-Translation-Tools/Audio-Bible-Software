@@ -73,4 +73,32 @@ interface ICollectionRepository : IRepository<Collection> {
     fun deleteResources(project: Collection, deleteAudio: Boolean): Completable
 
     fun collectionsWithoutTakes(project: Collection): Single<List<Collection>>
+
+    suspend fun insertSuspend(collection: Collection): Int
+    suspend fun getProjectSuspend(id: Int): Collection?
+    suspend fun getDerivedProjectSuspend(sourceProject: Collection): Collection?
+    suspend fun getDerivedProjectsSuspend(): List<Collection>
+    suspend fun getSourceProjectsSuspend(): List<Collection>
+    suspend fun getRootSourcesSuspend(): List<Collection>
+    suspend fun getSourceSuspend(project: Collection): Collection?
+    suspend fun getChildrenSuspend(collection: Collection): List<Collection>
+    suspend fun getProjectBySlugAndMetadataSuspend(slug: String, metadata: ResourceMetadata): Collection
+    suspend fun updateSourceSuspend(collection: Collection, newSource: Collection)
+    suspend fun updateParentSuspend(collection: Collection, newParent: Collection)
+    suspend fun deriveProjectSuspend(
+        sourceMetadatas: List<ResourceMetadata>,
+        sourceCollection: Collection,
+        language: Language,
+        verseByVerse: Boolean,
+        mode: ProjectMode
+    ): Collection
+    suspend fun deriveProjectsSuspend(
+        rootCollection: Collection,
+        language: Language,
+        verseByVerse: Boolean,
+        mode: ProjectMode
+    ): List<Collection>
+    suspend fun deleteProjectSuspend(project: Collection, deleteAudio: Boolean)
+    suspend fun deleteResourcesSuspend(project: Collection, deleteAudio: Boolean)
+    suspend fun collectionsWithoutTakesSuspend(project: Collection): List<Collection>
 }
