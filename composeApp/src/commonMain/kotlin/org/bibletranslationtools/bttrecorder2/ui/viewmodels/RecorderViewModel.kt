@@ -29,6 +29,9 @@ import org.bibletranslationtools.otter.common.recorder.RecordingTimer
 import org.bibletranslationtools.otter.common.recorder.WavFileWriter
 import java.io.File
 import java.time.LocalDate
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
 
 class RecorderViewModel(
     private val workbookRepository: IWorkbookRepository,
@@ -42,10 +45,16 @@ class RecorderViewModel(
     }
 
     data class TargetUiState(
+        val sourceLabel: String = "",
+        val bookLabel: String = "",
+        val chapterValue: String = "",
+        val unitValue: String = "",
         val title: String = "",
         val subtitle: String = "",
-        val canGoPrevious: Boolean = false,
-        val canGoNext: Boolean = false
+        val canGoPreviousChapter: Boolean = false,
+        val canGoNextChapter: Boolean = false,
+        val canGoPreviousUnit: Boolean = false,
+        val canGoNextUnit: Boolean = false
     )
 
     private data class RecordingTarget(
@@ -68,6 +77,7 @@ class RecorderViewModel(
     private var currentTempAudioFile: File? = null
     private var recorderJob: Job? = null
     private var timerTickerJob: Job? = null
+    private var volumeTickerJob: Job? = null
     private var takeStreamJob: Job? = null
 
     private val timer = RecordingTimer()
@@ -82,6 +92,9 @@ class RecorderViewModel(
 
     private val _timerText = MutableStateFlow("00:00:00")
     val timerText: StateFlow<String> = _timerText.asStateFlow()
+
+    private val _volumeLevel = MutableStateFlow(0f)
+    val volumeLevel: StateFlow<Float> = _volumeLevel.asStateFlow()
 
     private val _waveformRenderer = MutableStateFlow<ActiveRecordingRenderer?>(null)
     val waveformRenderer: StateFlow<ActiveRecordingRenderer?> = _waveformRenderer.asStateFlow()
@@ -147,6 +160,78 @@ class RecorderViewModel(
         }
     }
 
+    fun goPreviousChapter() {
+        if (_recordingState.value != RecordingUiState.Idle) return
+        val current = currentTarget() ?: return
+        val targetChunkSort = current.chunk?.sort
+        val prevChapterSort = targets
+            .map { it.chapter.sort }
+            .distinct()
+            .sorted()
+            .lastOrNull { it < current.chapter.sort }
+            ?: return
+
+        val nextIndex = targets.indexOfFirst {
+            it.chapter.sort == prevChapterSort && (
+                if (targetChunkSort == null) it.chunk == null else it.chunk?.sort == targetChunkSort
+            )
+        }.let { idx ->
+            if (idx >= 0) idx else targets.indexOfFirst { it.chapter.sort == prevChapterSort && it.chunk == null }
+        }
+        if (nextIndex >= 0) switchToTarget(nextIndex)
+    }
+
+    fun goNextChapter() {
+        if (_recordingState.value != RecordingUiState.Idle) return
+        val current = currentTarget() ?: return
+        val targetChunkSort = current.chunk?.sort
+        val nextChapterSort = targets
+            .map { it.chapter.sort }
+            .distinct()
+            .sorted()
+            .firstOrNull { it > current.chapter.sort }
+            ?: return
+
+        val nextIndex = targets.indexOfFirst {
+            it.chapter.sort == nextChapterSort && (
+                if (targetChunkSort == null) it.chunk == null else it.chunk?.sort == targetChunkSort
+            )
+        }.let { idx ->
+            if (idx >= 0) idx else targets.indexOfFirst { it.chapter.sort == nextChapterSort && it.chunk == null }
+        }
+        if (nextIndex >= 0) switchToTarget(nextIndex)
+    }
+
+    fun goPreviousUnit() {
+        if (_recordingState.value != RecordingUiState.Idle) return
+        val current = currentTarget() ?: return
+        val currentChunk = current.chunk ?: return
+        val chapterChunkTargets = targets
+            .withIndex()
+            .filter { it.value.chapter.sort == current.chapter.sort && it.value.chunk != null }
+            .sortedBy { it.value.chunk?.sort }
+        val currentPos = chapterChunkTargets.indexOfFirst { it.value.chunk?.sort == currentChunk.sort }
+        if (currentPos > 0) {
+            switchToTarget(chapterChunkTargets[currentPos - 1].index)
+        }
+    }
+
+    fun goNextUnit() {
+        if (_recordingState.value != RecordingUiState.Idle) return
+        val current = currentTarget() ?: return
+        val currentChunk = current.chunk ?: return
+        val chapterChunkTargets = targets
+            .withIndex()
+            .filter { it.value.chapter.sort == current.chapter.sort && it.value.chunk != null }
+            .sortedBy { it.value.chunk?.sort }
+        val currentPos = chapterChunkTargets.indexOfFirst { it.value.chunk?.sort == currentChunk.sort }
+        if (currentPos >= 0 && currentPos < chapterChunkTargets.lastIndex) {
+            switchToTarget(chapterChunkTargets[currentPos + 1].index)
+        }
+    }
+
+    private fun currentTarget(): RecordingTarget? = targets.getOrNull(currentTargetIndex)
+
     private fun canNavigateTo(index: Int): Boolean {
         return index in targets.indices && _recordingState.value == RecordingUiState.Idle
     }
@@ -174,11 +259,25 @@ class RecorderViewModel(
             "Unit ${target.chunk.label}"
         }
         val subtitle = "Chapter ${target.chapter.label}"
+        val chapterValue = target.chapter.sort.toString()
+        val unitValue = (target.chunk?.sort ?: 0).toString()
+        val chapterSorts = targets.map { it.chapter.sort }.distinct().sorted()
+        val chunkSortsInChapter = targets
+            .mapNotNull { if (it.chapter.sort == target.chapter.sort) it.chunk?.sort else null }
+            .distinct()
+            .sorted()
+
         _targetUi.value = TargetUiState(
+            sourceLabel = wb.source.resourceMetadata.identifier.uppercase(),
+            bookLabel = wb.target.label,
+            chapterValue = chapterValue,
+            unitValue = unitValue,
             title = title,
             subtitle = subtitle,
-            canGoPrevious = index > 0 && _recordingState.value == RecordingUiState.Idle,
-            canGoNext = index < targets.lastIndex && _recordingState.value == RecordingUiState.Idle
+            canGoPreviousChapter = chapterSorts.any { it < target.chapter.sort } && _recordingState.value == RecordingUiState.Idle,
+            canGoNextChapter = chapterSorts.any { it > target.chapter.sort } && _recordingState.value == RecordingUiState.Idle,
+            canGoPreviousUnit = target.chunk != null && chunkSortsInChapter.any { it < target.chunk.sort } && _recordingState.value == RecordingUiState.Idle,
+            canGoNextUnit = target.chunk != null && chunkSortsInChapter.any { it > target.chunk.sort } && _recordingState.value == RecordingUiState.Idle
         )
 
         takeStreamJob?.cancel()
@@ -202,6 +301,7 @@ class RecorderViewModel(
             viewModelScope
         )
         _waveformRenderer.value = renderer
+        startVolumeTicker()
 
         if (!recorderInitialized) {
             recorderJob = viewModelScope.launch(Dispatchers.IO) {
@@ -322,6 +422,7 @@ class RecorderViewModel(
         timer.pause()
         timer.reset()
         _timerText.value = "00:00:00"
+        _volumeLevel.value = 0f
 
         wavFileWriter?.pause()
         val recorder = audioRecorderFactory.getRecorderWorker()
@@ -346,6 +447,32 @@ class RecorderViewModel(
         _timerText.value = formatElapsed(timer.timeElapsed)
     }
 
+    private fun startVolumeTicker() {
+        if (volumeTickerJob?.isActive == true) return
+        volumeTickerJob = viewModelScope.launch {
+            while (true) {
+                val renderer = _waveformRenderer.value
+                val buffer = renderer?.floatBuffer?.array
+                if (renderer != null && buffer != null && buffer.isNotEmpty()) {
+                    val window = min(buffer.size, 120)
+                    val from = max(0, buffer.size - window)
+                    var peak = 0f
+                    var i = from
+                    while (i < buffer.size) {
+                        peak = max(peak, abs(buffer[i]))
+                        i++
+                    }
+                    val normalized = (peak / 32768f).coerceIn(0f, 1f)
+                    val eased = if (_isRecording.value) normalized else (_volumeLevel.value * 0.9f)
+                    _volumeLevel.value = eased
+                } else {
+                    _volumeLevel.value *= 0.9f
+                }
+                delay(33)
+            }
+        }
+    }
+
     private fun formatElapsed(ms: Long): String {
         return String.format(
             "%02d:%02d:%02d",
@@ -358,9 +485,20 @@ class RecorderViewModel(
     private fun updateNavigationAvailability() {
         val state = _targetUi.value
         val canNavigate = _recordingState.value == RecordingUiState.Idle
+        val current = currentTarget()
+        val currentChapterSort = current?.chapter?.sort
+        val currentChunkSort = current?.chunk?.sort
+        val chapterSorts = targets.map { it.chapter.sort }.distinct().sorted()
+        val chunkSortsInChapter = targets
+            .mapNotNull { if (it.chapter.sort == currentChapterSort) it.chunk?.sort else null }
+            .distinct()
+            .sorted()
+
         _targetUi.value = state.copy(
-            canGoPrevious = canNavigate && currentTargetIndex > 0,
-            canGoNext = canNavigate && currentTargetIndex < targets.lastIndex
+            canGoPreviousChapter = canNavigate && currentChapterSort != null && chapterSorts.any { it < currentChapterSort },
+            canGoNextChapter = canNavigate && currentChapterSort != null && chapterSorts.any { it > currentChapterSort },
+            canGoPreviousUnit = canNavigate && currentChunkSort != null && chunkSortsInChapter.any { it < currentChunkSort },
+            canGoNextUnit = canNavigate && currentChunkSort != null && chunkSortsInChapter.any { it > currentChunkSort }
         )
     }
 
@@ -370,6 +508,7 @@ class RecorderViewModel(
         wavFileWriter?.close()
         takeStreamJob?.cancel()
         stopTimerTicker()
+        volumeTickerJob?.cancel()
         recorderJob?.cancel()
         viewModelScope.launch {
             try {
