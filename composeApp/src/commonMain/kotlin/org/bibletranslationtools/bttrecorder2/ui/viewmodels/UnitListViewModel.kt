@@ -27,11 +27,14 @@ import org.bibletranslationtools.otter.common.data.workbook.Take
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.firstOrNull
 import org.bibletranslationtools.otter.common.data.workbook.DateHolder
 import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerEvent
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
+import kotlinx.coroutines.CoroutineDispatcher
 
 data class UnitUiModel(
     val unit: Chunk,
@@ -50,7 +53,9 @@ data class UnitListUiState(
     val currentPlayingTake: Take? = null
 )
 
-class UnitListViewModel : ViewModel(), KoinComponent {
+class UnitListViewModel(
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+) : ViewModel(), KoinComponent {
 
     private val workbookRepository: IWorkbookRepository by inject()
     private val workbookDescriptorRepository: IWorkbookDescriptorRepository by inject()
@@ -122,7 +127,48 @@ class UnitListViewModel : ViewModel(), KoinComponent {
     }
 
     fun loadUnits(workbookSourceId: Int, workbookTargetId: Int, chapterNumber: Int) {
-        
+        viewModelScope.launch(ioDispatcher) {
+            _uiState.update { it.copy(isLoading = true) }
+            try {
+                val sourceC = collectionRepository.getProjectSuspend(workbookSourceId)
+                val targetC = collectionRepository.getProjectSuspend(workbookTargetId)
+
+                if (sourceC == null || targetC == null) {
+                    _uiState.update { it.copy(isLoading = false, error = "Project not found") }
+                    return@launch
+                }
+
+                val workbook = workbookRepository.get(sourceC, targetC)
+
+                val chapter = workbook.target.chaptersFlow.firstOrNull { it.sort == chapterNumber }
+
+                if (chapter == null) {
+                    _uiState.update { it.copy(isLoading = false, error = "Chapter not found", workbook = workbook) }
+                    return@launch
+                }
+
+                _uiState.update { it.copy(workbook = workbook, chapter = chapter) }
+
+                chapter.observableFlowChunks.collect { chunks ->
+                    val units = chunks.map { chunk ->
+                        UnitUiModel(
+                            unit = chunk,
+                            hasContent = chunk.hasSelectedAudio(),
+                            takes = chunk.audio.getAllTakes().count { !it.isDeleted() }
+                        )
+                    }
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            units = units
+                        )
+                    }
+                }
+
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, error = e.message ?: "Unknown error") }
+            }
+        }
     }
 
 
