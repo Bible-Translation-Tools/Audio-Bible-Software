@@ -37,77 +37,76 @@ import org.bibletranslationtools.recorder2.di.androidAudioModule
 import org.koin.android.ext.android.inject
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
-
-//class MainActivity : ComponentActivity() {
-//    @Inject
-//    lateinit var directoryProvider: IDirectoryProvider
-//
-//    val koinDirectoryProvider: IDirectoryProvider by inject()
-//
-//    override fun onCreate(savedInstanceState: Bundle?) {
-//        super.onCreate(savedInstanceState)
-//
-//        lifecycleScope.launch {
-//            try {
-//                val db = AndroidAppDatabase(
-//                    applicationContext,
-//                    File(koinDirectoryProvider.databaseDirectory, "tr.sqlite"),
-//                    koinDirectoryProvider
-//                )
-//            } catch (e: Exception) {
-//                e.printStackTrace()
-//            }
-//        }
-//
-//        setContent {
-//            App()
-//        }
-//    }
-//}
-
-
-
+import java.io.File
 
 class MainActivity : ComponentActivity() {
 
-    // Inject our orchestrator
-    private val audioConfig: AudioSystemConfig by inject()
-    val selector: AudioDeviceSelector by inject()
-    val playerFactory: AudioPlayerConnectionFactory by inject()
-    val directoryProvider : IDirectoryProvider by inject()
-
-    // Load initial defaults if needed
-    val defaultSpec = AudioSpec()
-
+    val koinDirectoryProvider: IDirectoryProvider by inject()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Start the observer that hot-swaps hardware
-        audioConfig.start()
-
-        selector.getOutputDevices(defaultSpec).firstOrNull()?.let {
-            selector.selectOutputDevice(it)
+        lifecycleScope.launch {
+            try {
+                val db = AndroidAppDatabase(
+                    applicationContext,
+                    File(koinDirectoryProvider.databaseDirectory, "tr.sqlite"),
+                    koinDirectoryProvider
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
 
         setContent {
-            // 3. Handle Recording Permissions
-            val permissionLauncher = rememberLauncherForActivityResult(
-                ActivityResultContracts.RequestPermission()
-            ) { isGranted ->
-                // Handle permission result if necessary
-            }
-
-            LaunchedEffect(Unit) {
-                permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-            }
-
-            // 4. Load the Common UI we built earlier
-            // The same AudioDashboard we use on Desktop!
-            AudioDashboard(playerFactory, selector, directoryProvider)
+            App()
         }
     }
 }
+
+
+
+
+//class MainActivity : ComponentActivity() {
+//
+//    // Inject our orchestrator
+//    private val audioConfig: AudioSystemConfig by inject()
+//    val selector: AudioDeviceSelector by inject()
+//    val playerFactory: AudioPlayerConnectionFactory by inject()
+//    val directoryProvider : IDirectoryProvider by inject()
+//
+//    // Load initial defaults if needed
+//    val defaultSpec = AudioSpec()
+//
+//
+//    override fun onCreate(savedInstanceState: Bundle?) {
+//        super.onCreate(savedInstanceState)
+//
+//        // Start the observer that hot-swaps hardware
+//        audioConfig.start()
+//
+//        selector.getOutputDevices(defaultSpec).firstOrNull()?.let {
+//            selector.selectOutputDevice(it)
+//        }
+//
+//        setContent {
+//            // 3. Handle Recording Permissions
+//            val permissionLauncher = rememberLauncherForActivityResult(
+//                ActivityResultContracts.RequestPermission()
+//            ) { isGranted ->
+//                // Handle permission result if necessary
+//            }
+//
+//            LaunchedEffect(Unit) {
+//                permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+//            }
+//
+//            // 4. Load the Common UI we built earlier
+//            // The same AudioDashboard we use on Desktop!
+//            AudioDashboard(playerFactory, selector, directoryProvider)
+//        }
+//    }
+//}
 
 @Preview
 @Composable

@@ -18,6 +18,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterListViewModel
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterUiModel
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.foundation.layout.Row
+
+import org.jetbrains.compose.ui.tooling.preview.Preview
+import org.bibletranslationtools.bttrecorder2.ui.MockData
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterListUiState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -26,7 +33,8 @@ fun ChapterListScreen(
     workbookTargetId: Int,
     viewModel: ChapterListViewModel = viewModel { ChapterListViewModel() },
     onBackClick: () -> Unit,
-    onChapterClick: (Int) -> Unit
+    onChapterClick: (Int) -> Unit,
+    onCompileClick: (Int) -> Unit = {}
 ) {
 
     LaunchedEffect(workbookSourceId, workbookTargetId) {
@@ -34,12 +42,27 @@ fun ChapterListScreen(
     }
 
     val uiState by viewModel.uiState.collectAsState()
-    val workbook = uiState.workbook
 
+    ChapterListContent(
+        uiState = uiState,
+        onBackClick = onBackClick,
+        onChapterClick = onChapterClick,
+        onCompileClick = onCompileClick
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ChapterListContent(
+    uiState: ChapterListUiState,
+    onBackClick: () -> Unit,
+    onChapterClick: (Int) -> Unit,
+    onCompileClick: (Int) -> Unit
+) {
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text(workbook?.target?.title ?: "Loading...") },
+                title = { Text(uiState.workbook?.target?.title ?: "Loading...") },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back")
@@ -69,10 +92,11 @@ fun ChapterListScreen(
                 )
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(uiState.chapters) { chapter ->
-                        ListItem(
-                            headlineContent = { Text(chapter.title) }, // Using titleKey as label
-                            modifier = Modifier.clickable { onChapterClick(chapter.sort) }
+                    items(uiState.chapters) { uiModel ->
+                        ChapterItem(
+                            uiModel = uiModel,
+                            onClick = { onChapterClick(uiModel.chapter.sort) },
+                            onCompileClick = { onCompileClick(uiModel.chapter.sort) }
                         )
                         HorizontalDivider()
                     }
@@ -80,4 +104,67 @@ fun ChapterListScreen(
             }
         }
     }
+}
+
+@Composable
+fun ChapterItem(
+    uiModel: ChapterUiModel,
+    onClick: () -> Unit,
+    onCompileClick: () -> Unit
+) {
+    ListItem(
+        headlineContent = {
+            Text(
+                text = uiModel.chapter.title,
+                fontWeight = if (uiModel.hasContent) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal
+            )
+        },
+        trailingContent = {
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                 if (uiModel.hasContent) {
+                    IconButton(onClick = onCompileClick) {
+                        Icon(androidx.compose.material.icons.Icons.Default.Build, contentDescription = "Compile")
+                    }
+                }
+                if (uiModel.progress > 0) {
+                    CircularProgressIndicator(
+                        progress = { uiModel.progress },
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.dp,
+                    )
+                }
+            }
+        },
+        modifier = Modifier.clickable { onClick() }
+    )
+}
+@Preview
+@Composable
+fun ChapterItemPreview() {
+    ChapterItem(
+        uiModel = ChapterUiModel(
+            chapter = MockData.createMockChapter(1, "Chapter 1", "1"),
+            hasContent = true,
+            progress = 0.5f
+        ),
+        onClick = {},
+        onCompileClick = {}
+    )
+}
+
+@Preview
+@Composable
+fun ChapterListContentPreview() {
+    ChapterListContent(
+        uiState = ChapterListUiState(
+            chapters = listOf(
+                ChapterUiModel(MockData.createMockChapter(1, "Chapter 1", "1"), true, 0.5f),
+                ChapterUiModel(MockData.createMockChapter(2, "Chapter 2", "2"), false, 0f)
+            ),
+            workbook = null // Workbook is optional for title
+        ),
+        onBackClick = {},
+        onChapterClick = {},
+        onCompileClick = {}
+    )
 }

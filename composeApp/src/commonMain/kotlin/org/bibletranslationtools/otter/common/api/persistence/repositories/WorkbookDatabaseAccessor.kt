@@ -56,6 +56,7 @@ interface IWorkbookDatabaseAccessors {
     fun getDerivedProjects(): Single<List<Collection>>
     fun getSourceProject(targetProject: Collection): Maybe<Collection>
     fun getTranslation(sourceLanguage: Language, targetLanguage: Language): Single<Translation>
+    fun insertTranslation(translation: Translation): Single<Int>
     fun updateTranslation(translation: Translation): Completable
     fun clearContentForCollection(
         chapterCollection: Collection,
@@ -169,6 +170,10 @@ class WorkbookDatabaseAccessor(
 
     override fun getTranslation(sourceLanguage: Language, targetLanguage: Language): Single<Translation> {
         return languageRepo.getTranslation(sourceLanguage, targetLanguage)
+    }
+
+    override fun insertTranslation(translation: Translation): Single<Int> {
+        return languageRepo.insertTranslation(translation)
     }
 
     override fun updateTranslation(translation: Translation): Completable {

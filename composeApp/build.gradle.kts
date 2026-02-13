@@ -102,7 +102,6 @@ kotlin {
             // apply("fetchAssets.gradle")
 
             dependencies {
-
                 implementation(compose.runtime)
                 implementation(compose.foundation)
                 implementation(compose.material)
@@ -110,14 +109,14 @@ kotlin {
                 implementation(compose.components.resources)
                 implementation(compose.components.uiToolingPreview)
                 implementation(libs.androidx.lifecycle.viewmodel)
+                implementation(libs.androidx.lifecycle.viewmodel.compose)
                 implementation(libs.androidx.lifecycle.runtime.compose)
+                implementation(libs.androidx.navigation.compose)
                 implementation(libs.material3)
                 implementation(compose.materialIconsExtended)
                 implementation(compose.ui)
                 implementation(compose.components.resources)
                 implementation(compose.components.uiToolingPreview)
-                implementation(libs.androidx.lifecycle.viewmodel)
-                implementation(libs.androidx.lifecycle.runtime.compose)
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.coroutines.rx2)
 
@@ -169,7 +168,6 @@ kotlin {
                 implementation("com.mpatric:mp3agic:$mp3TagVer")
                 implementation("be.tarsos:tarsosdsp:$tarsosDspVer")
 
-                implementation("org.jetbrains.androidx.navigation:navigation-compose:2.8.0-alpha10")
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
 
                 //Dagger2

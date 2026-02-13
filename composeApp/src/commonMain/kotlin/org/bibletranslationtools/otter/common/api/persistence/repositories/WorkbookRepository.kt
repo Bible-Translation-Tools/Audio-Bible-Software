@@ -463,15 +463,29 @@ class WorkbookRepository(
         val targetRateRelay = BehaviorRelay.createDefault(1.0)
 
         val translation = db.getTranslation(sourceLanguage, targetLanguage)
+            .onErrorResumeNext {
+                val newTranslation = Translation(
+                    source = sourceLanguage,
+                    target = targetLanguage,
+                    modifiedTs = java.time.LocalDateTime.now()
+                )
+                db.insertTranslation(newTranslation).map { id ->
+                    newTranslation.apply { this.id = id }
+                }
+            }
 
         val translationSubscription = translation
             .doOnError { e ->
                 logger.error("Error in getTranslation, source: $sourceLanguage, target: $targetLanguage", e)
             }
-            .subscribe { _translation ->
+            .subscribe({ _translation ->
                 sourceRateRelay.accept(_translation.sourceRate)
                 targetRateRelay.accept(_translation.targetRate)
-            }
+            }, { e ->
+                // Ensure we log the error even if onErrorResumeNext failed (which shouldn't happen ideally)
+                // and prevent the crash.
+                logger.error("Critical error in translation subscription", e)
+            })
 
         val sourceRateRelaySubscription = subscribePlaybackRateRelay(
             sourceRateRelay,

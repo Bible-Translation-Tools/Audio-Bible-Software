@@ -16,8 +16,22 @@ import androidx.compose.foundation.lazy.items
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import org.bibletranslationtools.otter.common.data.workbook.Chunk
+import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.UnitListViewModel
+
+import org.bibletranslationtools.bttrecorder2.ui.MockData
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,13 +49,34 @@ fun UnitListScreen(
     }
 
     val uiState by viewModel.uiState.collectAsState()
-    val workbook = uiState.workbook
-    val chapter = uiState.chapter
+
+    UnitListContent(
+        uiState = uiState,
+        onBackClick = onBackClick,
+        onUnitClick = onUnitClick,
+        onPlayPause = { viewModel.togglePlay(it) },
+        onDelete = { unit, take -> viewModel.deleteTake(unit, take) },
+        onCycle = { unit, direction -> viewModel.cycleTake(unit, direction) }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun UnitListContent(
+    uiState: org.bibletranslationtools.bttrecorder2.ui.viewmodels.UnitListUiState,
+    onBackClick: () -> Unit,
+    onUnitClick: (Int) -> Unit,
+    onPlayPause: (Chunk) -> Unit,
+    onDelete: (Chunk, Take) -> Unit,
+    onCycle: (Chunk, Int) -> Unit
+) {
+    // Track expanded unit
+    var expandedUnitSort by remember { mutableStateOf<Int?>(null) }
 
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("${workbook?.target?.title ?: ""} - Chapter ${chapter?.sort ?: ""}") },
+                title = { Text("${uiState.workbook?.target?.title ?: ""} - Chapter ${uiState.chapter?.sort ?: ""}") },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back")
@@ -70,16 +105,166 @@ fun UnitListScreen(
                     modifier = Modifier.align(Alignment.Center)
                 )
             } else {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(uiState.units) { unit ->
-                        ListItem(
-                            headlineContent = { Text("Verse ${unit.sort}") }, // Assuming verses
-                            modifier = Modifier.clickable { onUnitClick(unit.sort) }
-                        )
-                        HorizontalDivider()
+//                LazyColumn(modifier = Modifier.fillMaxSize()) {
+//                    items(uiState.units) { unit ->
+//                        UnitCard(
+//                            unit = unit,
+//                            isExpanded = expandedUnitSort == unit.sort,
+//                            onExpandClick = {
+//                                expandedUnitSort = if (expandedUnitSort == unit.sort) null else unit.sort
+//                            },
+//                            isPlaying = uiState.isPlaying && uiState.currentPlayingTake?.file == unit.audio.getSelectedTake()?.file,
+//                            playbackProgress = if (uiState.isPlaying && uiState.currentPlayingTake?.file == unit.audio.getSelectedTake()?.file) uiState.playbackProgress else 0f,
+//                            onPlayPause = { onPlayPause(unit) },
+//                            onDelete = { take -> onDelete(unit, take) },
+//                            onCycle = { direction -> onCycle(unit, direction) },
+//                            onRecord = { onUnitClick(unit.sort) }
+//                        )
+//                        HorizontalDivider()
+//                    }
+//                }
+            }
+        }
+    }
+}
+
+@Composable
+fun UnitCard(
+    unit: Chunk,
+    isExpanded: Boolean,
+    onExpandClick: () -> Unit,
+    isPlaying: Boolean,
+    playbackProgress: Float,
+    onPlayPause: () -> Unit,
+    onDelete: (Take) -> Unit,
+    onCycle: (Int) -> Unit,
+    onRecord: () -> Unit
+) {
+    val selectedTake = unit.audio.getSelectedTake()
+    
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp)
+            .clickable { onExpandClick() },
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "Verse ${unit.label}", // Use label or sort
+                    style = MaterialTheme.typography.titleMedium
+                )
+                if (selectedTake != null) {
+                    Icon(imageVector = Icons.Default.Check, contentDescription = "Has Recording")
+                }
+            }
+
+            if (isExpanded) {
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Audio Controls
+                if (selectedTake != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        IconButton(onClick = { onCycle(-1) }) {
+                            Icon(Icons.Default.KeyboardArrowLeft, "Previous Take")
+                        }
+                        
+                        Text(text = "Take ${selectedTake.number}")
+                        
+                        IconButton(onClick = { onCycle(1) }) {
+                            Icon(Icons.Default.KeyboardArrowRight, "Next Take")
+                        }
                     }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        IconButton(onClick = onPlayPause) {
+                            Icon(
+                                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = if (isPlaying) "Pause" else "Play"
+                            )
+                        }
+                        
+                        LinearProgressIndicator(
+                            progress = { playbackProgress },
+                            modifier = Modifier.weight(1f).height(8.dp),
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        IconButton(onClick = { onDelete(selectedTake) }) {
+                            Icon(Icons.Default.Delete, "Delete Take", tint = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                } else {
+                    Text("No recording selected", style = MaterialTheme.typography.bodyMedium)
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                Button(
+                    onClick = onRecord,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Mic, "Record")
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Record")
                 }
             }
         }
     }
 }
+
+@Preview
+@Composable
+fun UnitCardPreview() {
+    UnitCard(
+        unit = MockData.createMockChunk(1, "1", hasAudio = true),
+        isExpanded = true,
+        onExpandClick = {},
+        isPlaying = false,
+        playbackProgress = 0.3f,
+        onPlayPause = {},
+        onDelete = {},
+        onCycle = {},
+        onRecord = {}
+    )
+}
+
+//@Preview
+//@Composable
+//fun UnitListContentPreview() {
+//    UnitListContent(
+//        uiState = org.bibletranslationtools.bttrecorder2.ui.viewmodels.UnitListUiState(
+//            units = listOf(
+//                MockData.createMockChunk(1, "1", hasAudio = true),
+//                MockData.createMockChunk(2, "2", hasAudio = false)
+//            ),
+//            chapter = MockData.createMockChapter(1, "Chapter 1", "1"),
+//            workbook = null
+//        ),
+//        onBackClick = {},
+//        onUnitClick = {},
+//        onPlayPause = {},
+//        onDelete = { _, _ -> },
+//        onCycle = { _, _ -> }
+//    )
+//}

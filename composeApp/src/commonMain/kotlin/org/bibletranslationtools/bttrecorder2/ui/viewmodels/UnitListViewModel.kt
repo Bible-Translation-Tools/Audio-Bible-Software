@@ -17,15 +17,37 @@ import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.rx2.await
+import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnection
+import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
+import org.bibletranslationtools.otter.common.device.newaudio.IAudioPlayer
+import org.bibletranslationtools.otter.common.data.workbook.Take
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import org.bibletranslationtools.otter.common.data.workbook.DateHolder
+import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerEvent
+import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
+data class UnitUiModel(
+    val unit: Chunk,
+    val hasContent: Boolean = false,
+    val takes: Int = 0
+)
+
 data class UnitListUiState(
     val isLoading: Boolean = false,
-    val units: List<Chunk> = emptyList(),
+    val units: List<UnitUiModel> = emptyList(),
     val chapter: Chapter? = null,
     val workbook: Workbook? = null,
-    val error: String? = null
+    val error: String? = null,
+    val isPlaying: Boolean = false,
+    val playbackProgress: Float = 0f,
+    val currentPlayingTake: Take? = null
 )
 
 class UnitListViewModel : ViewModel(), KoinComponent {
@@ -37,54 +59,129 @@ class UnitListViewModel : ViewModel(), KoinComponent {
     private val _uiState = MutableStateFlow(UnitListUiState())
     val uiState: StateFlow<UnitListUiState> = _uiState.asStateFlow()
 
-    fun loadUnits(
-        workbookSourceId: Int,
-        workbookTargetId: Int,
-        chapterNumber: Int
-    ) {
+    private val audioConnectionFactory: AudioPlayerConnectionFactory by inject()
+    private var audioPlayer: IAudioPlayer? = null
+
+    // Unique ID for this player connection
+    private val playerId = kotlin.random.Random.nextInt()
+
+    private var playbackJob: Job? = null
+
+    init {
+        // Initialize player
+        audioPlayer = AudioPlayerConnection(
+            id = playerId,
+            factory = audioConnectionFactory,
+            scope = viewModelScope
+        )
+
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
-            try {
-                // 1. Fetch WorkbookDescriptor
-                val sourceC = collectionRepository.getProject(workbookSourceId).blockingGet()
-                val targetC = collectionRepository.getProject(workbookTargetId).blockingGet()
-
-                val workbook = workbookRepository.get(sourceC, targetC)
-
-                if (workbook == null) {
-                    _uiState.update { it.copy(isLoading = false, error = "Workbook not found") }
-                    return@launch
-                }
-
-                // 2. Fetch Chapters (Children of target collection)
-                val targetBook = workbook.target
-                val chapter: Chapter = targetBook.chapters.filter { it.sort == chapterNumber }.blockingFirst()
-
-                if (chapter == null) {
-                    _uiState.update { 
-                        it.copy(
-                            isLoading = false, 
-                            workbook = workbook,
-                            error = "Chapter $chapterNumber not found" 
-                        ) 
+            audioPlayer?.events?.collect { event ->
+                when (event) {
+                    is AudioPlayerEvent.Play -> {
+                        _uiState.update { it.copy(isPlaying = true) }
+                        startProgressTicker()
                     }
-                    return@launch
+
+                    is AudioPlayerEvent.Pause,
+                    is AudioPlayerEvent.Stop,
+                    is AudioPlayerEvent.Error -> {
+                        _uiState.update { it.copy(isPlaying = false) }
+                        stopProgressTicker()
+                        if (event is AudioPlayerEvent.Error) {
+                            _uiState.update { it.copy(error = event.message) }
+                        }
+                    }
+
+                    is AudioPlayerEvent.Complete -> {
+                        _uiState.update { it.copy(isPlaying = false, playbackProgress = 0f) }
+                        stopProgressTicker()
+                    }
+
+                    else -> {}
                 }
-
-                val units = chapter.chunks.blockingGet()
-
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        workbook = workbook,
-                        chapter = chapter,
-                        units = units
-                    )
-                }
-
-            } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = e.message ?: "Unknown error") }
             }
         }
+    }
+
+    private fun startProgressTicker() {
+        playbackJob?.cancel()
+        playbackJob = viewModelScope.launch {
+            while (isActive) {
+                val duration = audioPlayer?.getDurationMs() ?: 0
+                val position = audioPlayer?.getLocationMs() ?: 0
+                val progress = if (duration > 0) position.toFloat() / duration else 0f
+                _uiState.update { it.copy(playbackProgress = progress) }
+                delay(100)
+            }
+        }
+    }
+
+    private fun stopProgressTicker() {
+        playbackJob?.cancel()
+    }
+
+    fun loadUnits(workbookSourceId: Int, workbookTargetId: Int, chapterNumber: Int) {
+        
+    }
+
+
+    override fun onCleared() {
+        super.onCleared()
+        audioPlayer?.release()
+        stopProgressTicker()
+    }
+
+    // Audio Controls
+    fun togglePlay(unit: Chunk) {
+        val take = unit.audio.getSelectedTake()
+        if (take != null) {
+            playTake(take)
+        }
+    }
+
+    fun playTake(take: Take) {
+        viewModelScope.launch {
+            try {
+                if (_uiState.value.currentPlayingTake == take && _uiState.value.isPlaying) {
+                    audioPlayer?.pause()
+                } else {
+                    val reader = OratureAudioFile(take.file).reader()
+                    audioPlayer?.load(reader)
+                    audioPlayer?.play()
+                    _uiState.update { it.copy(currentPlayingTake = take) }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(error = "Failed to play audio: ${e.message}") }
+            }
+        }
+    }
+
+    fun pauseAudio() {
+        audioPlayer?.pause()
+    }
+
+    // Take Management
+    fun deleteTake(unit: Chunk, take: Take) {
+        take.deletedTimestamp.accept(DateHolder.now())
+    }
+
+    fun selectTake(unit: Chunk, take: Take) {
+        unit.audio.selectTake(take)
+    }
+
+    fun cycleTake(unit: Chunk, direction: Int) {
+        val takes = unit.audio.getAllTakes().filter { !it.isDeleted() }.sortedBy { it.number }
+        if (takes.isEmpty()) return
+
+        val currentTake = unit.audio.getSelectedTake()
+        val currentIndex = if (currentTake != null) takes.indexOf(currentTake) else -1
+
+        var newIndex = currentIndex + direction
+        if (newIndex >= takes.size) newIndex = 0
+        if (newIndex < 0) newIndex = takes.size - 1
+
+        val newTake = takes[newIndex]
+        selectTake(unit, newTake)
     }
 }

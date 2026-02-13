@@ -17,42 +17,42 @@ import org.bibletranslationtools.otter.common.device.newaudio.AudioSystemConfig
 import org.bibletranslationtools.recorder2.di.jvmAudioModule
 import org.koin.core.context.startKoin
 
-fun main() = application {
-
-    startKoin {
-        modules(appModules)
-    }
-
-    Window(
-        onCloseRequest = ::exitApplication,
-        title = "BTT-Recorder2",
-    ) {
-        App()
-    }
-}
-
 //fun main() = application {
-//    val koinApp = startKoin {
+//
+//    startKoin {
 //        modules(*appModules.toTypedArray(), commonAudioModule, jvmAudioModule)
-//    }.koin
-//
-//    val config = koinApp.get<AudioSystemConfig>()
-//    val selector = koinApp.get<AudioDeviceSelector>()
-//    val playerFactory = koinApp.get<AudioPlayerConnectionFactory>()
-//    val directoryProvider = koinApp.get<IDirectoryProvider>()
-//
-//    // Start the observer that hot-swaps hardware
-//    config.start()
-//
-//    // Load initial defaults if needed
-//    val defaultSpec = AudioSpec()
-//    selector.getOutputDevices(defaultSpec).firstOrNull()?.let {
-//        selector.selectOutputDevice(it)
 //    }
 //
-//    Window(onCloseRequest = ::exitApplication, title = "Otter Audio Test") {
-//        MaterialTheme {
-//            AudioDashboard(playerFactory, selector, directoryProvider)
-//        }
+//    Window(
+//        onCloseRequest = ::exitApplication,
+//        title = "BTT-Recorder2",
+//    ) {
+//        App()
 //    }
 //}
+
+fun main() = application {
+    val koinApp = startKoin {
+        modules(*appModules.toTypedArray(), commonAudioModule, jvmAudioModule)
+    }.koin
+
+    val config = koinApp.get<AudioSystemConfig>()
+    val selector = koinApp.get<AudioDeviceSelector>()
+    val playerFactory = koinApp.get<AudioPlayerConnectionFactory>()
+    val directoryProvider = koinApp.get<IDirectoryProvider>()
+
+    // Start the observer that hot-swaps hardware
+    config.start()
+
+    // Load initial defaults if needed
+    val defaultSpec = AudioSpec()
+    selector.getOutputDevices(defaultSpec).firstOrNull()?.let {
+        selector.selectOutputDevice(it)
+    }
+
+    Window(onCloseRequest = ::exitApplication, title = "Otter Audio Test") {
+        MaterialTheme {
+            AudioDashboard(playerFactory, selector, directoryProvider)
+        }
+    }
+}

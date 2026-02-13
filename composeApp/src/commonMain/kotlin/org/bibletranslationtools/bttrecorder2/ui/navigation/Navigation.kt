@@ -85,6 +85,10 @@ fun Navigation(
                 onBackClick = { navController.popBackStack() },
                 onChapterClick = { chapter ->
                     navController.navigate(UnitListRoute(route.workbookSourceId, route.workbookTargetId, chapter))
+                },
+                onCompileClick = { chapterId ->
+                    // TODO: Implement compilation logic
+                    println("Compile clicked for chapter $chapterId")
                 }
             )
         }
