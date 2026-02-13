@@ -8,8 +8,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,19 +35,19 @@ fun RecorderScreen(
     viewModel: RecorderViewModel,
     onBackClick: () -> Unit
 ) {
-    val isRecording by viewModel.isRecording.collectAsState()
+    val state by viewModel.recordingState.collectAsState()
     val waveformRenderer by viewModel.waveformRenderer.collectAsState()
-    val targetName by viewModel.targetName.collectAsState()
-    
-    // Manage render initialization based on size
+    val targetUi by viewModel.targetUi.collectAsState()
+    val timerText by viewModel.timerText.collectAsState()
+
     var viewWidth by remember { mutableStateOf(0) }
-    
+
     LaunchedEffect(viewWidth) {
         if (viewWidth > 0 && waveformRenderer == null) {
             viewModel.initializeAudio(viewWidth)
         }
     }
-    
+
     DisposableEffect(Unit) {
         onDispose {
             viewModel.cleanup()
@@ -59,7 +62,10 @@ fun RecorderScreen(
                     Text("Back")
                 }
                 Spacer(modifier = Modifier.weight(1f))
-                Text(targetName, style = MaterialTheme.typography.titleMedium)
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(targetUi.title, style = MaterialTheme.typography.titleMedium)
+                    Text(targetUi.subtitle, style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
     ) { padding ->
@@ -88,19 +94,68 @@ fun RecorderScreen(
                     Text("Initializing Audio...", modifier = Modifier.align(Alignment.Center))
                 }
             }
-            
-            // Controls
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(
+                    onClick = { viewModel.goPreviousTarget() },
+                    enabled = targetUi.canGoPrevious
+                ) {
+                    Text("Previous")
+                }
+                Text(timerText, style = MaterialTheme.typography.titleMedium)
+                OutlinedButton(
+                    onClick = { viewModel.goNextTarget() },
+                    enabled = targetUi.canGoNext
+                ) {
+                    Text("Next")
+                }
+            }
+
             Row(
                 modifier = Modifier.padding(32.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (isRecording) {
-                    Button(onClick = { viewModel.stopRecording() }) {
-                        Text("Stop")
+                when (state) {
+                    RecorderViewModel.RecordingUiState.Idle -> {
+                        Button(onClick = { viewModel.startRecording() }) {
+                            Text("Record")
+                        }
                     }
-                } else {
-                    Button(onClick = { viewModel.startRecording() }) {
-                        Text("Record")
+
+                    RecorderViewModel.RecordingUiState.Recording -> {
+                        Button(onClick = { viewModel.pauseRecording() }) {
+                            Text("Pause")
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(onClick = { viewModel.stopRecording() }) {
+                            Text("Stop")
+                        }
+                    }
+
+                    RecorderViewModel.RecordingUiState.Paused -> {
+                        Button(onClick = { viewModel.resumeRecording() }) {
+                            Text("Resume")
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(onClick = { viewModel.stopRecording() }) {
+                            Text("Stop")
+                        }
+                    }
+
+                    RecorderViewModel.RecordingUiState.Review -> {
+                        Button(onClick = { viewModel.saveRecording() }) {
+                            Text("Save")
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        OutlinedButton(onClick = { viewModel.cancelRecording() }) {
+                            Text("Cancel")
+                        }
                     }
                 }
             }
