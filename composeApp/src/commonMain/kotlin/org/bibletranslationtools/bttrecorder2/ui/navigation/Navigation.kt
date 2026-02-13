@@ -21,6 +21,10 @@ import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SplashScreenViewMode
 import androidx.navigation.toRoute
 
 
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
+import org.koin.mp.KoinPlatform.getKoin
+
 @Composable
 fun Navigation(
     navController: NavHostController
@@ -99,9 +103,40 @@ fun Navigation(
                 workbookTargetId = route.workbookTargetId,
                 chapterNumber = route.chapterNumber,
                 onBackClick = { navController.popBackStack() },
-                onUnitClick = { unit ->
-                    // TODO: Navigate to Recording screen
+                onUnitClick = { unitSort ->
+                    navController.navigate(RecorderRoute(route.workbookSourceId,route.workbookTargetId,route.chapterNumber, unitSort))
+                },
+                onRecordChapter = {
+                   navController.navigate(RecorderRoute(route.workbookSourceId,route.workbookTargetId,route.chapterNumber, -1))
                 }
+            )
+        }
+        composable<RecorderRoute> { backStackEntry ->
+            val route = backStackEntry.toRoute<RecorderRoute>()
+
+            val sourceId = route.sourceId?: 0
+            val targetId = route.targetId
+            val chapterNumber = route.chapterNumber
+            val unitNumArg = route.unitNumber
+            val unitNumber = if (unitNumArg == -1) null else unitNumArg
+
+            // Using koinViewModel to get the ViewModel with dependencies injected
+            val koin = getKoin()
+            val vm: org.bibletranslationtools.bttrecorder2.ui.viewmodels.RecorderViewModel = viewModel { koin.get() }
+            
+            // Initial load
+            LaunchedEffect(sourceId, targetId, chapterNumber, unitNumber) {
+                vm.loadTarget(
+                    sourceId = sourceId,
+                    targetId = targetId,
+                    chapterNumber = chapterNumber,
+                    unitNumber = unitNumber
+                )
+            }
+            
+            org.bibletranslationtools.bttrecorder2.ui.screens.RecorderScreen(
+                viewModel = vm,
+                onBackClick = { navController.popBackStack() }
             )
         }
         composable<ProjectWizardRoute> {

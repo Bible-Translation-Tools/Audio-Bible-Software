@@ -105,7 +105,7 @@ val authModule = module {
 
 val commonModules = listOf(
     *implicitModules.toTypedArray(),
-    audioModule,
+    commonAudioModule,
 //    appDatabaseModule,
     appPreferencesModule,
 //    directoryProviderModule,

@@ -28,6 +28,14 @@ import io.reactivex.disposables.CompositeDisposable
 import io.reactivex.disposables.Disposable
 import io.reactivex.schedulers.Schedulers
 import io.reactivex.subjects.PublishSubject
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.rx2.asFlow
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.audio.AudioFile
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
@@ -43,7 +51,7 @@ import org.bibletranslationtools.otter.common.device.IAudioRecorder
 import org.bibletranslationtools.otter.common.domain.audio.AudioBouncer
 import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
-import org.wycliffeassociates.otter.common.recorder.WavFileWriter
+import org.bibletranslationtools.otter.common.recorder.WavFileWriter
 import java.io.File
 import java.lang.Integer.max
 import java.time.LocalDate
@@ -75,6 +83,7 @@ class Narration @AssistedInject constructor(
     private val uncommittedRecordedFrames = AtomicInteger(0)
 
     private val disposables = CompositeDisposable()
+    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
     val audioReader: AudioFileReader
         get() = chapterRepresentation.getAudioFileReader()
@@ -137,17 +146,26 @@ class Narration @AssistedInject constructor(
      * Counts the number of audio frames that have been recorded since activating a recording
      */
     private fun activeRecordingFrameCounter(writer: WavFileWriter): Disposable {
-        return Observable
-            .combineLatest(writer.isWriting, getRecorderAudioStream())
-            { isWriting, bytes -> Pair(isWriting, bytes) }
-            .map { (isWriting, bytes) ->
+        val job = scope.launch {
+            combine(
+                writer.isWriting,
+                getRecorderAudioStream().asFlow()
+            ) { isWriting, bytes ->
                 if (isWriting) {
                     uncommittedRecordedFrames.addAndGet(bytes.size / DEFAULT_FRAME_SIZE_BYTES)
                 }
+            }.collect()
+        }
+
+        return object : Disposable {
+            override fun dispose() {
+                job.cancel()
             }
-            .subscribeOn(Schedulers.io())
-            .subscribe()
-            .also { disposables.add(it) }
+
+            override fun isDisposed(): Boolean {
+                return !job.isActive
+            }
+        }
     }
 
     /**
@@ -208,7 +226,7 @@ class Narration @AssistedInject constructor(
         isRecording.set(false)
         recorder.stop()
 
-        writer?.writer?.dispose()
+        writer?.close()
         writer = null
     }
 
@@ -472,13 +490,14 @@ class Narration @AssistedInject constructor(
     }
 
     private fun initializeWavWriter(): WavFileWriter {
+        val flow = recorder.getAudioStream().asFlow()
         writer = WavFileWriter(
             chapterRepresentation.scratchAudio,
-            recorder.getAudioStream(),
-            true
-        ) {
-            /* no op */
-        }
+            flow,
+            true,
+            { /* no op */ },
+            scope
+        )
         return writer!!
     }
 
@@ -700,6 +719,7 @@ class Narration @AssistedInject constructor(
     }
 
     fun close() {
+        scope.cancel()
         disposables.dispose()
         player.stop()
         player.close()

@@ -41,7 +41,8 @@ fun UnitListScreen(
     chapterNumber: Int,
     viewModel: UnitListViewModel = viewModel { UnitListViewModel() },
     onBackClick: () -> Unit,
-    onUnitClick: (Int) -> Unit
+    onUnitClick: (Int) -> Unit,
+    onRecordChapter: () -> Unit
 ) {
 
     LaunchedEffect(workbookSourceId, workbookTargetId, chapterNumber) {
@@ -54,6 +55,7 @@ fun UnitListScreen(
         uiState = uiState,
         onBackClick = onBackClick,
         onUnitClick = onUnitClick,
+        onRecordChapter = onRecordChapter,
         onPlayPause = { viewModel.togglePlay(it) },
         onDelete = { unit, take -> viewModel.deleteTake(unit, take) },
         onCycle = { unit, direction -> viewModel.cycleTake(unit, direction) }
@@ -66,6 +68,7 @@ fun UnitListContent(
     uiState: org.bibletranslationtools.bttrecorder2.ui.viewmodels.UnitListUiState,
     onBackClick: () -> Unit,
     onUnitClick: (Int) -> Unit,
+    onRecordChapter: () -> Unit,
     onPlayPause: (Chunk) -> Unit,
     onDelete: (Chunk, Take) -> Unit,
     onCycle: (Chunk, Int) -> Unit
@@ -82,10 +85,16 @@ fun UnitListContent(
                         Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back")
                     }
                 },
+                actions = {
+                    IconButton(onClick = onRecordChapter) {
+                        Icon(imageVector = Icons.Default.Mic, contentDescription = "Record Chapter")
+                    }
+                },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primary,
                     titleContentColor = MaterialTheme.colorScheme.onPrimary,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimary
+                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimary,
+                    actionIconContentColor = MaterialTheme.colorScheme.onPrimary
                 )
             )
         }

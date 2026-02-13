@@ -16,7 +16,7 @@
  * You should have received a copy of the GNU General Public License
  * along with Orature.  If not, see <https://www.gnu.org/licenses/>.
  */
-package org.wycliffeassociates.otter.common.recorder
+package org.bibletranslationtools.otter.common.recorder
 
 /**
  * Created by sarabiaj on 9/4/2015.

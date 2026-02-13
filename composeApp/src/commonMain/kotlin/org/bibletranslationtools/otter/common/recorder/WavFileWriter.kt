@@ -16,58 +16,69 @@
  * You should have received a copy of the GNU General Public License
  * along with Orature.  If not, see <https://www.gnu.org/licenses/>.
  */
-package org.wycliffeassociates.otter.common.recorder
+package org.bibletranslationtools.otter.common.recorder
 
-import io.reactivex.Observable
-import io.reactivex.schedulers.Schedulers
-import io.reactivex.subjects.PublishSubject
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.slf4j.LoggerFactory
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
 
 class WavFileWriter(
     private val oratureAudioFile: OratureAudioFile,
-    private val audioStream: Observable<ByteArray>,
+    private val audioStream: Flow<ByteArray>,
     private val append: Boolean = false,
-    private val onComplete: () -> Unit
+    private val onComplete: () -> Unit,
+    private val scope: CoroutineScope
 ) {
     private val logger = LoggerFactory.getLogger(WavFileWriter::class.java)
 
     private var record = AtomicBoolean(false)
-    private val writingSubject = PublishSubject.create<Boolean>()
-    val isWriting = writingSubject.map { it }
+    private val _isWriting = MutableStateFlow(false)
+    val isWriting = _isWriting.asStateFlow()
+
+    private var writerJob: Job? = null
 
     fun start() {
         record.set(true)
-        writingSubject.onNext(true)
+        _isWriting.value = true
     }
 
     fun pause() {
         record.set(false)
-        writingSubject.onNext(false)
+        _isWriting.value = false
     }
 
-    val writer = Observable
-        .using(
-            {
-                oratureAudioFile.writer(append = append, buffered = true)
-            },
-            { writer ->
-                audioStream.map {
+    /**
+     * Starts listening to the audio stream and writing to the file.
+     * Call this after initialization.
+     */
+    fun listen() {
+        writerJob = scope.launch(Dispatchers.IO) {
+            val writer = oratureAudioFile.writer(append = append, buffered = true)
+            try {
+                audioStream.collect { byteArray ->
                     if (record.get()) {
-                        writer.write(it)
+                        writer.write(byteArray)
                         writer.flush()
                     }
                 }
-            },
-            { writer ->
+            } catch (e: Exception) {
+                logger.error("Error in WavFileWriter", e)
+            } finally {
                 writer.close()
-                writingSubject.onComplete()
+                _isWriting.value = false
                 onComplete()
             }
-        )
-        .subscribeOn(Schedulers.io())
-        .doOnError { e -> logger.error("Error in WavFileWriter", e) }
-        .subscribe()
+        }
+    }
+
+    fun close() {
+        writerJob?.cancel()
+    }
 }

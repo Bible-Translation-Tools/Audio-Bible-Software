@@ -5,6 +5,7 @@ import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectCreationViewM
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SplashScreenViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.UnitListViewModel
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.RecorderViewModel
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.domain.audio.AudioBouncer
 import org.bibletranslationtools.otter.common.domain.audio.AudioConverter
@@ -145,6 +146,7 @@ val implicitViewModelModule = module {
     singleOf(::ProjectCreationViewModel)
     singleOf(::ChapterListViewModel)
     singleOf(::UnitListViewModel)
+    factoryOf(::RecorderViewModel)
 //    factoryOf(::HomePageViewModel2)
 //    factoryOf(::AddPluginViewModel)
 //

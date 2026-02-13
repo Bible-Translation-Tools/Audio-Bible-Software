@@ -19,9 +19,14 @@
 package org.bibletranslationtools.otter.common.domain.narration
 
 import io.reactivex.Observable
-import org.wycliffeassociates.otter.common.recorder.ActiveRecordingRenderer
+import org.bibletranslationtools.otter.common.recorder.ActiveRecordingRenderer
 import java.util.*
 import kotlin.math.min
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.rx2.asFlow
 
 class ActiveRecordingDrawable(
     private val incomingAudioStream: Observable<ByteArray>,
@@ -30,12 +35,14 @@ class ActiveRecordingDrawable(
     private val secondsOnScreen: Int,
     private val recordingSampleRate: Int,
 ) {
+    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
     private val activeRenderer = ActiveRecordingRenderer(
-        incomingAudioStream,
-        recordingActive,
+        incomingAudioStream.asFlow(),
+        recordingActive.asFlow(),
         width,
-        secondsOnScreen
+        secondsOnScreen,
+        scope
     )
 
     private val waveformDrawable = FloatArray(width * 2)
@@ -77,5 +84,6 @@ class ActiveRecordingDrawable(
      */
     fun close() {
         activeRenderer.close()
+        scope.cancel()
     }
 }
