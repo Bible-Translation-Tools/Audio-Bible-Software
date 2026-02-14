@@ -10,7 +10,11 @@ class JvmAudioSource(
     private var currentLine: TargetDataLine? = null
 
     override fun open(spec: AudioSpec) {
-        val line = lineProvider() ?: throw IllegalStateException("No TargetDataLine available")
+        val line = try {
+            lineProvider()
+        } catch (e: Exception) {
+            throw IllegalStateException("Failed to acquire TargetDataLine from provider", e)
+        } ?: throw IllegalStateException("No TargetDataLine available")
 
         val format = AudioFormat(
             spec.sampleRate.toFloat(),
@@ -21,7 +25,14 @@ class JvmAudioSource(
         )
 
         if (!line.isOpen) {
-            line.open(format)
+            try {
+                line.open(format)
+            } catch (e: Exception) {
+                throw IllegalStateException(
+                    "Unable to open TargetDataLine with format $format",
+                    e
+                )
+            }
         }
         currentLine = line
     }

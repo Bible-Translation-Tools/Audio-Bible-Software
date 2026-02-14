@@ -96,6 +96,9 @@ class RecorderViewModel(
     private val _volumeLevel = MutableStateFlow(0f)
     val volumeLevel: StateFlow<Float> = _volumeLevel.asStateFlow()
 
+    private val _audioError = MutableStateFlow<String?>(null)
+    val audioError: StateFlow<String?> = _audioError.asStateFlow()
+
     private val _waveformRenderer = MutableStateFlow<ActiveRecordingRenderer?>(null)
     val waveformRenderer: StateFlow<ActiveRecordingRenderer?> = _waveformRenderer.asStateFlow()
 
@@ -305,10 +308,14 @@ class RecorderViewModel(
 
         if (!recorderInitialized) {
             recorderJob = viewModelScope.launch(Dispatchers.IO) {
-                recorder.start(AudioSpec())
-                recorderInitialized = true
+                try {
+                    recorder.start(AudioSpec())
+                    recorderInitialized = true
+                    _audioError.value = null
+                } catch (e: Exception) {
+                    _audioError.value = e.message ?: "Unable to start recording device."
+                }
             }
-            recorderInitialized = true
         }
 
         if (currentTempAudioFile == null) {
@@ -324,7 +331,8 @@ class RecorderViewModel(
             val tempFile = File.createTempFile("rec_", ".wav")
             currentTempAudioFile = tempFile
 
-            val oratureFile = OratureAudioFile(tempFile)
+            // Initialize with explicit format so a valid WAV header is created on first write.
+            val oratureFile = OratureAudioFile(tempFile, 1, 44100, 16)
 
             wavFileWriter = WavFileWriter(
                 oratureAudioFile = oratureFile,
@@ -340,7 +348,7 @@ class RecorderViewModel(
     }
 
     fun startRecording() {
-        if (associatedAudio == null || _recordingState.value == RecordingUiState.Review) return
+        if (associatedAudio == null || _recordingState.value == RecordingUiState.Review || _audioError.value != null) return
         _isRecording.value = true
         _recordingState.value = RecordingUiState.Recording
         hasRecordedAudio = true

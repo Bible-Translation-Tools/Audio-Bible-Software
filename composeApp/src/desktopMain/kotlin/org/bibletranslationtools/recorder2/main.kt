@@ -19,9 +19,17 @@ import org.koin.core.context.startKoin
 
 fun main() = application {
 
-    startKoin {
+    val koin = startKoin {
         modules(*appModules.toTypedArray(), commonAudioModule, jvmAudioModule)
-    }
+    }.koin
+
+    // Initialize audio routing at startup so recorder/player factories are not left on dummy hardware.
+    val config = koin.get<AudioSystemConfig>()
+    val selector = koin.get<AudioDeviceSelector>()
+    val defaultSpec = AudioSpec()
+    config.start()
+    selector.getOutputDevices(defaultSpec).firstOrNull()?.let { selector.selectOutputDevice(it) }
+    selector.getInputDevices(defaultSpec).firstOrNull()?.let { selector.selectInputDevice(it) }
 
     Window(
         onCloseRequest = ::exitApplication,

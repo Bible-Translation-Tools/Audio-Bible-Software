@@ -55,6 +55,7 @@ fun RecorderScreen(
     val targetUi by viewModel.targetUi.collectAsState()
     val timerText by viewModel.timerText.collectAsState()
     val volumeLevel by viewModel.volumeLevel.collectAsState()
+    val audioError by viewModel.audioError.collectAsState()
 
     var viewWidth by remember { mutableStateOf(0) }
 
@@ -156,6 +157,10 @@ fun RecorderScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("No source audio", color = TranslationRecorderTheme.gray0, style = MaterialTheme.typography.titleMedium)
+                if (audioError != null) {
+                    Spacer(Modifier.width(12.dp))
+                    Text(audioError ?: "", color = TranslationRecorderTheme.strongRed, style = MaterialTheme.typography.bodySmall)
+                }
             }
 
             Row(
