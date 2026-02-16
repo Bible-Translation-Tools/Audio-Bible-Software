@@ -114,24 +114,24 @@ fun UnitListContent(
                     modifier = Modifier.align(Alignment.Center)
                 )
             } else {
-//                LazyColumn(modifier = Modifier.fillMaxSize()) {
-//                    items(uiState.units) { unit ->
-//                        UnitCard(
-//                            unit = unit,
-//                            isExpanded = expandedUnitSort == unit.sort,
-//                            onExpandClick = {
-//                                expandedUnitSort = if (expandedUnitSort == unit.sort) null else unit.sort
-//                            },
-//                            isPlaying = uiState.isPlaying && uiState.currentPlayingTake?.file == unit.audio.getSelectedTake()?.file,
-//                            playbackProgress = if (uiState.isPlaying && uiState.currentPlayingTake?.file == unit.audio.getSelectedTake()?.file) uiState.playbackProgress else 0f,
-//                            onPlayPause = { onPlayPause(unit) },
-//                            onDelete = { take -> onDelete(unit, take) },
-//                            onCycle = { direction -> onCycle(unit, direction) },
-//                            onRecord = { onUnitClick(unit.sort) }
-//                        )
-//                        HorizontalDivider()
-//                    }
-//                }
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(uiState.units) { unitHolder ->
+                        UnitCard(
+                            unit = unitHolder.unit,
+                            isExpanded = expandedUnitSort == unitHolder.unit.sort,
+                            onExpandClick = {
+                                expandedUnitSort = if (expandedUnitSort == unitHolder.unit.sort) null else unitHolder.unit.sort
+                            },
+                            isPlaying = uiState.isPlaying && uiState.currentPlayingTake?.file == unitHolder.unit.audio.getSelectedTake()?.file,
+                            playbackProgress = if (uiState.isPlaying && uiState.currentPlayingTake?.file == unitHolder.unit.audio.getSelectedTake()?.file) uiState.playbackProgress else 0f,
+                            onPlayPause = { onPlayPause(unitHolder.unit) },
+                            onDelete = { take -> onDelete(unitHolder.unit, take) },
+                            onCycle = { direction -> onCycle(unitHolder.unit, direction) },
+                            onRecord = { onUnitClick(unitHolder.unit.sort) }
+                        )
+                        HorizontalDivider()
+                    }
+                }
             }
         }
     }

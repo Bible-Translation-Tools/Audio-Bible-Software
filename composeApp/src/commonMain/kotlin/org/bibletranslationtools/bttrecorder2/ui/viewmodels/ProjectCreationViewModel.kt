@@ -12,6 +12,7 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.ILang
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.Language
+import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.domain.collections.CreateProject
 import org.koin.core.component.KoinComponent
@@ -132,8 +133,9 @@ class ProjectCreationViewModel : ViewModel(), KoinComponent {
             try {
                 createProject.create(
                     sourceProject = source,
-                    targetLanguage = targetLang
-                    // mode and logic handled inside create for defaults
+                    targetLanguage = targetLang,
+                    mode = ProjectMode.NARRATION,
+                    deriveProjectFromVerses = true
                 ).blockingGet()
                 _uiState.update { it.copy(isLoading = false, isCreated = true) }
             } catch (e: Exception) {
