@@ -6,6 +6,9 @@ import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementVie
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SplashScreenViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.UnitListViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.RecorderViewModel
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.PlaybackViewModel
+import org.bibletranslationtools.otter.common.audio.wav.IWaveFileCreator
+import org.bibletranslationtools.otter.common.audio.wav.WaveFileCreator
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.domain.audio.AudioBouncer
 import org.bibletranslationtools.otter.common.domain.audio.AudioConverter
@@ -63,6 +66,8 @@ import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.map
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.TranslationMapper
 
 val implicitCommonModule = module {
+    single<IWaveFileCreator> { WaveFileCreator() }
+
     // Collections
     factoryOf(::DeleteTranslation)
     factoryOf(::CreateTranslation)
@@ -147,6 +152,7 @@ val implicitViewModelModule = module {
     singleOf(::ChapterListViewModel)
     singleOf(::UnitListViewModel)
     factoryOf(::RecorderViewModel)
+    factoryOf(::PlaybackViewModel)
 //    factoryOf(::HomePageViewModel2)
 //    factoryOf(::AddPluginViewModel)
 //
@@ -176,5 +182,4 @@ val implicitModules = listOf(
     implicitCommonModule,
     implicitViewModelModule
 )
-
 

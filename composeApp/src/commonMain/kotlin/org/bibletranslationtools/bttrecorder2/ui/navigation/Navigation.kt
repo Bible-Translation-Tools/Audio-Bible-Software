@@ -10,19 +10,16 @@ import androidx.navigation.compose.composable
 import kotlinx.coroutines.launch
 import org.bibletranslationtools.bttrecorder2.ui.screens.ChapterListScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.MainMenuScreen
+import org.bibletranslationtools.bttrecorder2.ui.screens.PlaybackScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.ProjectManagementScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.ProjectWizardScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.SplashScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.UnitListScreen
-import org.bibletranslationtools.bttrecorder2.ui.MockData
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.PlaybackViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectCreationViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SplashScreenViewModel
 import androidx.navigation.toRoute
-
-
-import androidx.navigation.NavType
-import androidx.navigation.navArgument
 import org.koin.mp.KoinPlatform.getKoin
 
 @Composable
@@ -114,7 +111,7 @@ fun Navigation(
         composable<RecorderRoute> { backStackEntry ->
             val route = backStackEntry.toRoute<RecorderRoute>()
 
-            val sourceId = route.sourceId?: 0
+            val sourceId = route.sourceId
             val targetId = route.targetId
             val chapterNumber = route.chapterNumber
             val unitNumArg = route.unitNumber
@@ -135,6 +132,43 @@ fun Navigation(
             }
             
             org.bibletranslationtools.bttrecorder2.ui.screens.RecorderScreen(
+                viewModel = vm,
+                onNavigateToPlayback = { takeNumber ->
+                    navController.navigate(
+                        PlaybackRoute(
+                            sourceId = sourceId,
+                            targetId = targetId,
+                            chapterNumber = chapterNumber,
+                            unitNumber = unitNumArg,
+                            takeNumber = takeNumber
+                        )
+                    )
+                },
+                onBackClick = { navController.popBackStack() }
+            )
+        }
+        composable<PlaybackRoute> { backStackEntry ->
+            val route = backStackEntry.toRoute<PlaybackRoute>()
+            val koin = getKoin()
+            val vm: PlaybackViewModel = viewModel { koin.get() }
+
+            LaunchedEffect(
+                route.sourceId,
+                route.targetId,
+                route.chapterNumber,
+                route.unitNumber,
+                route.takeNumber
+            ) {
+                vm.loadTarget(
+                    sourceId = route.sourceId,
+                    targetId = route.targetId,
+                    chapterNumber = route.chapterNumber,
+                    unitNumber = route.unitNumber,
+                    takeNumber = route.takeNumber
+                )
+            }
+
+            PlaybackScreen(
                 viewModel = vm,
                 onBackClick = { navController.popBackStack() }
             )

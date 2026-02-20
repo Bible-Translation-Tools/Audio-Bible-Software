@@ -6,8 +6,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
@@ -104,6 +107,9 @@ class RecorderViewModel(
 
     private val _targetUi = MutableStateFlow(TargetUiState())
     val targetUi: StateFlow<TargetUiState> = _targetUi.asStateFlow()
+
+    private val _savedTakeEvents = MutableSharedFlow<Int>(extraBufferCapacity = 1)
+    val savedTakeEvents: SharedFlow<Int> = _savedTakeEvents.asSharedFlow()
 
     fun loadTarget(
         sourceId: Int,
@@ -410,6 +416,7 @@ class RecorderViewModel(
                 sessionFile.copyTo(newTake.file, overwrite = true)
                 withContext(Dispatchers.Main) {
                     audio.insertTake(newTake)
+                    _savedTakeEvents.tryEmit(newTake.number)
                     resetSessionForTarget()
                 }
             } catch (e: Exception) {

@@ -29,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.flow.collectLatest
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,6 +49,7 @@ import androidx.compose.material.icons.filled.Stop
 @Composable
 fun RecorderScreen(
     viewModel: RecorderViewModel,
+    onNavigateToPlayback: (Int) -> Unit,
     onBackClick: () -> Unit
 ) {
     val state by viewModel.recordingState.collectAsState()
@@ -62,6 +64,12 @@ fun RecorderScreen(
     LaunchedEffect(viewWidth) {
         if (viewWidth > 0 && waveformRenderer == null) {
             viewModel.initializeAudio(viewWidth)
+        }
+    }
+
+    LaunchedEffect(viewModel) {
+        viewModel.savedTakeEvents.collectLatest { takeNumber ->
+            onNavigateToPlayback(takeNumber)
         }
     }
 
