@@ -5,7 +5,7 @@ import io.reactivex.Completable
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.test.runTest
-import org.bibletranslationtools.otter.common.api.persistence.AppDatabase
+import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
 import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.Take
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.CollectionMapper
@@ -23,7 +23,7 @@ import kotlin.test.assertEquals
 
 class TakeRepositoryTest {
 
-    private val db = mockk<AppDatabase>()
+    private val db = mockk<IAppDatabase>()
     private val takeDao = mockk<TakeDao>()
     private val markerDao = mockk<MarkerDao>()
     private val contentDao = mockk<ContentDao>()

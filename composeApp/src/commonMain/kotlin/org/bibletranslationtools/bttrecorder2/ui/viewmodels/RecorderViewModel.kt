@@ -402,6 +402,20 @@ class RecorderViewModel(
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                // Finalize WAV header before copying. Without this, saved takes can report 0 duration.
+                wavFileWriter?.pause()
+                wavFileWriter?.closeAndJoin()
+
+                val capturedFrames = runCatching { OratureAudioFile(sessionFile).totalFrames }.getOrDefault(0)
+                if (capturedFrames <= 0) {
+                    withContext(Dispatchers.Main) {
+                        _audioError.value = "No recorded audio was captured. Please record again."
+                        _recordingState.value = RecordingUiState.Idle
+                        hasRecordedAudio = false
+                    }
+                    return@launch
+                }
+
                 val newTakeNumber = audio.getNewTakeNumberSuspend()
                 val filename = namer.generateName(newTakeNumber, AudioFileFormat.WAV)
                 val takeFile = File(dir, filename)

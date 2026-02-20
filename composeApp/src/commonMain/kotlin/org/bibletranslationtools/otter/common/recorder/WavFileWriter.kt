@@ -19,8 +19,9 @@
 package org.bibletranslationtools.otter.common.recorder
 
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -59,7 +60,7 @@ class WavFileWriter(
      * Call this after initialization.
      */
     fun listen() {
-        writerJob = scope.launch(Dispatchers.IO) {
+        writerJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
             val writer = oratureAudioFile.writer(append = append, buffered = true)
             try {
                 audioStream.collect { byteArray ->
@@ -80,5 +81,17 @@ class WavFileWriter(
 
     fun close() {
         writerJob?.cancel()
+    }
+
+    /**
+     * Cancels the writer and waits until the output stream is fully closed.
+     * Use this before consuming or copying the target WAV file so header lengths are finalized.
+     */
+    suspend fun closeAndJoin() {
+        record.set(false)
+        _isWriting.value = false
+        val job = writerJob ?: return
+        job.cancelAndJoin()
+        writerJob = null
     }
 }

@@ -9,36 +9,44 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
+import org.bibletranslationtools.bttrecorder2.ui.playback.CutAwareAudioFileReader
 import org.bibletranslationtools.bttrecorder2.ui.playback.PlaybackWaveformRenderer
+import org.bibletranslationtools.bttrecorder2.ui.playback.WaveEditSession
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
+import org.bibletranslationtools.otter.common.data.audio.AudioMarker
 import org.bibletranslationtools.otter.common.data.audio.VerseMarker
 import org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
+import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
 import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnection
 import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
 import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerEvent
 import org.bibletranslationtools.otter.common.device.newaudio.IAudioPlayer
+import org.bibletranslationtools.otter.common.domain.audio.AudioBouncer
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.content.Recordable
 import org.bibletranslationtools.otter.common.domain.content.TakeCreator
 import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
 import java.io.File
+import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.random.Random
 
 class PlaybackViewModel(
     private val workbookRepository: IWorkbookRepository,
     private val audioPlayerFactory: AudioPlayerConnectionFactory,
-    private val takeCreator: TakeCreator
+    private val takeCreator: TakeCreator,
+    private val audioBouncer: AudioBouncer
 ) : ViewModel() {
     data class TargetUiState(
         val sourceLabel: String = "",
@@ -57,11 +65,24 @@ class PlaybackViewModel(
         val selectedTake: Take? = null,
         val isPlaying: Boolean = false,
         val progress: Float = 0f,
+        val currentFrame: Int = 0,
+        val durationFrames: Int = 0,
+        val sampleRate: Int = 44100,
+        val elapsedMs: Int = 0,
+        val durationMs: Int = 0,
         val elapsedText: String = "00:00:00",
         val durationText: String = "00:00:00",
         val waveformSamples: FloatArray = floatArrayOf(),
+        val markerFrames: List<Int> = emptyList(),
         val showMinimap: Boolean = true,
         val sourceAudioAvailable: Boolean = false,
+        val isEditMode: Boolean = false,
+        val selectionStartProgress: Float? = null,
+        val selectionEndProgress: Float? = null,
+        val canCutSelection: Boolean = false,
+        val canUndoEdit: Boolean = false,
+        val canRedoEdit: Boolean = false,
+        val hasEdits: Boolean = false,
         // Product decision: edited output defaults to a new take.
         val saveEditsAsNewTakeDefault: Boolean = true,
         val error: String? = null
@@ -77,6 +98,7 @@ class PlaybackViewModel(
 
     private val _uiState = MutableStateFlow(PlaybackUiState())
     val uiState: StateFlow<PlaybackUiState> = _uiState.asStateFlow()
+
     private val _editedTakeSavedEvents = MutableSharedFlow<Int>(extraBufferCapacity = 1)
     val editedTakeSavedEvents: SharedFlow<Int> = _editedTakeSavedEvents.asSharedFlow()
 
@@ -99,7 +121,15 @@ class PlaybackViewModel(
 
     private var waveformWidth: Int = 0
     private var waveformRenderer: PlaybackWaveformRenderer? = null
+    private var waveformSampleRate: Int = 44100
     private var markerFrames: List<Int> = emptyList()
+    private var baseMarkers: List<AudioMarker> = emptyList()
+    private var activeTake: Take? = null
+
+    private var editSession: WaveEditSession? = null
+    private var isEditMode: Boolean = false
+    private var selectionStartFrame: Int? = null
+    private var selectionEndFrame: Int? = null
 
     init {
         viewModelScope.launch {
@@ -109,13 +139,16 @@ class PlaybackViewModel(
                         _uiState.value = _uiState.value.copy(isPlaying = true, error = null)
                         startTicker()
                     }
+
                     AudioPlayerEvent.Pause,
                     AudioPlayerEvent.Stop,
                     AudioPlayerEvent.Complete -> {
                         _uiState.value = _uiState.value.copy(isPlaying = false)
                         stopTicker()
                         refreshTransport()
+                        refreshWaveform()
                     }
+
                     is AudioPlayerEvent.Error -> {
                         _uiState.value = _uiState.value.copy(
                             isPlaying = false,
@@ -123,6 +156,7 @@ class PlaybackViewModel(
                         )
                         stopTicker()
                     }
+
                     else -> Unit
                 }
             }
@@ -158,11 +192,7 @@ class PlaybackViewModel(
             val desiredUnit = if (unitNumber == -1) null else unitNumber
             val initialIndex = expandedTargets.indexOfFirst { target ->
                 if (target.chapter.sort != chapterNumber) return@indexOfFirst false
-                if (desiredUnit == null) {
-                    target.chunk == null
-                } else {
-                    target.chunk?.sort == desiredUnit
-                }
+                if (desiredUnit == null) target.chunk == null else target.chunk?.sort == desiredUnit
             }
 
             workbook = foundWorkbook
@@ -174,9 +204,10 @@ class PlaybackViewModel(
     fun setWaveformWidth(width: Int) {
         if (width <= 0 || width == waveformWidth) return
         waveformWidth = width
-        val selectedTake = _uiState.value.selectedTake ?: return
-        setupWaveformRenderer(selectedTake)
-        refreshWaveform()
+        activeTake?.let {
+            setupWaveformRenderer(it)
+            refreshWaveform()
+        }
     }
 
     fun togglePlayPause() {
@@ -226,7 +257,7 @@ class PlaybackViewModel(
         val idx = targets.indexOfFirst {
             it.chapter.sort == prevChapter && (
                 if (chunkSort == null) it.chunk == null else it.chunk?.sort == chunkSort
-            )
+                )
         }.let { if (it >= 0) it else targets.indexOfFirst { t -> t.chapter.sort == prevChapter && t.chunk == null } }
         if (idx >= 0) switchToTarget(idx)
     }
@@ -240,7 +271,7 @@ class PlaybackViewModel(
         val idx = targets.indexOfFirst {
             it.chapter.sort == nextChapter && (
                 if (chunkSort == null) it.chunk == null else it.chunk?.sort == chunkSort
-            )
+                )
         }.let { if (it >= 0) it else targets.indexOfFirst { t -> t.chapter.sort == nextChapter && t.chunk == null } }
         if (idx >= 0) switchToTarget(idx)
     }
@@ -289,49 +320,142 @@ class PlaybackViewModel(
         _uiState.value = _uiState.value.copy(showMinimap = show)
     }
 
-    /**
-     * Persists edited audio as a new take.
-     * Product default: never overwrite an existing take with edit output.
-     */
-    fun saveEditedAudioAsNewTake(editedAudioFile: File) {
-        val wb = workbook ?: return
-        val target = currentTarget() ?: return
-        val audio = associatedAudio ?: return
+    fun startEditing() {
+        if (_uiState.value.selectedTake == null) return
+        isEditMode = true
+        updateEditUi()
+    }
+
+    fun finishEditing() {
+        isEditMode = false
+        clearSelectionInternal()
+        updateEditUi()
+    }
+
+    fun discardEdits() {
+        val take = activeTake ?: return
+        val current = audioPlayer.getLocationInFrames()
+        createFreshEditSession(take)
+        isEditMode = false
+        clearSelectionInternal()
+        reloadCurrentTakePlayback(current.coerceAtMost(editSession?.editedTotalFrames ?: current))
+    }
+
+    fun markSelectionStartAtCurrent() {
+        if (!isEditMode) return
+        selectionStartFrame = audioPlayer.getLocationInFrames()
+        updateEditUi()
+    }
+
+    fun markSelectionEndAtCurrent() {
+        if (!isEditMode) return
+        selectionEndFrame = audioPlayer.getLocationInFrames()
+        updateEditUi()
+    }
+
+    fun clearSelection() {
+        clearSelectionInternal()
+        updateEditUi()
+    }
+
+    fun cutSelection() {
+        if (!isEditMode) return
+        val start = selectionStartFrame ?: return
+        val end = selectionEndFrame ?: return
+        val session = editSession ?: return
+        if (abs(end - start) < 2) return
+        val seekTo = min(start, end)
+        if (session.cutRelative(start, end)) {
+            clearSelectionInternal()
+            reloadCurrentTakePlayback(seekTo.coerceAtMost(session.editedTotalFrames))
+        }
+    }
+
+    fun undoEdit() {
+        val session = editSession ?: return
+        if (!session.undo()) return
+        val seekTo = audioPlayer.getLocationInFrames().coerceAtMost(session.editedTotalFrames)
+        reloadCurrentTakePlayback(seekTo)
+    }
+
+    fun redoEdit() {
+        val session = editSession ?: return
+        if (!session.redo()) return
+        val seekTo = audioPlayer.getLocationInFrames().coerceAtMost(session.editedTotalFrames)
+        reloadCurrentTakePlayback(seekTo)
+    }
+
+    fun saveCurrentEditsAsNewTake() {
+        val take = activeTake ?: return
+        val session = editSession ?: return
+        if (!session.hasEdits()) {
+            _uiState.value = _uiState.value.copy(error = "No edits to save")
+            return
+        }
 
         viewModelScope.launch(Dispatchers.IO) {
             runCatching {
-                if (!editedAudioFile.exists()) {
-                    throw IllegalStateException("Edited audio file does not exist")
-                }
-
-                val newTakeNumber = audio.getNewTakeNumberSuspend()
-                val namer = WorkbookFileNamerBuilder.createFileNamer(
-                    workbook = wb,
-                    chapter = target.chapter,
-                    chunk = target.chunk,
-                    recordable = target.recordable,
-                    rcSlug = wb.sourceMetadataSlug
-                )
-
-                val filename = namer.generateName(newTakeNumber, AudioFileFormat.WAV)
-                val takeDir = wb.projectFilesAccessor.getChapterAudioDir(wb, target.chapter)
-                val newTake = takeCreator.createNewTake(
-                    newTakeNumber = newTakeNumber,
-                    filename = filename,
-                    audioDir = takeDir,
-                    createEmpty = false
-                )
-
-                editedAudioFile.copyTo(newTake.file, overwrite = true)
-                audio.insertTake(newTake)
-                audio.selectTake(newTake)
-                _editedTakeSavedEvents.tryEmit(newTake.number)
+                val tempEditedWav = File.createTempFile("edited_", ".wav")
+                val reader = buildReaderForTake(take)
+                val markers = mapEditedMarkers(baseMarkers)
+                audioBouncer.bounceAudio(tempEditedWav, reader, markers)
+                persistEditedFileAsNewTake(tempEditedWav)
+                tempEditedWav.delete()
             }.onFailure { e ->
                 _uiState.value = _uiState.value.copy(
                     error = e.message ?: "Failed to save edited take"
                 )
             }
         }
+    }
+
+    /**
+     * Persists edited audio as a new take.
+     * Product default: never overwrite an existing take with edit output.
+     */
+    fun saveEditedAudioAsNewTake(editedAudioFile: File) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                persistEditedFileAsNewTake(editedAudioFile)
+            }.onFailure { e ->
+                _uiState.value = _uiState.value.copy(
+                    error = e.message ?: "Failed to save edited take"
+                )
+            }
+        }
+    }
+
+    private suspend fun persistEditedFileAsNewTake(editedAudioFile: File) {
+        val wb = workbook ?: return
+        val target = currentTarget() ?: return
+        val audio = associatedAudio ?: return
+
+        if (!editedAudioFile.exists()) {
+            throw IllegalStateException("Edited audio file does not exist")
+        }
+
+        val newTakeNumber = audio.getNewTakeNumberSuspend()
+        val namer = WorkbookFileNamerBuilder.createFileNamer(
+            workbook = wb,
+            chapter = target.chapter,
+            chunk = target.chunk,
+            recordable = target.recordable,
+            rcSlug = wb.sourceMetadataSlug
+        )
+
+        val filename = namer.generateName(newTakeNumber, AudioFileFormat.WAV)
+        val takeDir = wb.projectFilesAccessor.getChapterAudioDir(wb, target.chapter)
+        val newTake = takeCreator.createNewTake(
+            newTakeNumber = newTakeNumber,
+            filename = filename,
+            audioDir = takeDir,
+            createEmpty = false
+        )
+
+        editedAudioFile.copyTo(newTake.file, overwrite = true)
+        audio.insertTake(newTake)
+        audio.selectTake(newTake)
+        _editedTakeSavedEvents.tryEmit(newTake.number)
     }
 
     private fun currentTarget(): PlaybackTarget? = targets.getOrNull(currentTargetIndex)
@@ -349,18 +473,28 @@ class PlaybackViewModel(
         stopTicker()
         closeWaveformRenderer()
         markerFrames = emptyList()
+        baseMarkers = emptyList()
+        activeTake = null
+        editSession = null
+        isEditMode = false
+        clearSelectionInternal()
 
         _uiState.value = _uiState.value.copy(
             selectedTake = null,
             takes = emptyList(),
             waveformSamples = floatArrayOf(),
             progress = 0f,
+            currentFrame = 0,
+            durationFrames = 0,
+            sampleRate = 44100,
+            markerFrames = emptyList(),
             elapsedText = "00:00:00",
             durationText = "00:00:00",
             error = null
         )
 
         updateTargetUi(target, wb)
+        updateEditUi()
         observeTargetAudio()
     }
 
@@ -425,34 +559,113 @@ class PlaybackViewModel(
 
     private fun loadTakeForPlayback(take: Take) {
         runCatching {
-            val audioFile = OratureAudioFile(take.file)
-            val playerReader = audioFile.reader()
-            playerReader.open()
-            audioPlayer.load(playerReader)
-            audioPlayer.seek(0)
-
-            markerFrames = OratureAudioFile(take.file)
-                .getMarker<VerseMarker>()
-                .map { it.location }
-                .sorted()
-
-            setupWaveformRenderer(take)
-            refreshTransport()
-            refreshWaveform()
+            activeTake = take
+            createFreshEditSession(take)
+            val originalAudio = OratureAudioFile(take.file)
+            baseMarkers = originalAudio.getMarkers().sortedBy { it.location }
+            markerFrames = baseMarkers.filterIsInstance<VerseMarker>().map { it.location }
+            isEditMode = false
+            clearSelectionInternal()
+            reloadCurrentTakePlayback(0)
         }.onFailure { e ->
             _uiState.value = _uiState.value.copy(error = e.message ?: "Failed to load take")
         }
     }
 
+    private fun createFreshEditSession(take: Take) {
+        val totalFrames = OratureAudioFile(take.file).totalFrames
+        editSession = WaveEditSession(totalFrames)
+    }
+
+    private fun buildReaderForTake(take: Take): AudioFileReader {
+        val baseReader = OratureAudioFile(take.file).reader()
+        val ranges = editSession?.rangesSnapshot().orEmpty()
+        return if (ranges.isEmpty()) {
+            baseReader
+        } else {
+            CutAwareAudioFileReader(baseReader, ranges)
+        }
+    }
+
+    private fun mapEditedMarkers(markers: List<AudioMarker>): List<AudioMarker> {
+        val session = editSession ?: return markers
+        if (!session.hasEdits()) return markers
+
+        return markers.mapNotNull { marker ->
+            if (session.isFrameRemoved(marker.location)) {
+                null
+            } else {
+                marker.clone(session.absoluteToRelative(marker.location))
+            }
+        }.sortedBy { it.location }
+    }
+
+    private fun refreshMarkerFrames() {
+        markerFrames = mapEditedMarkers(baseMarkers)
+            .filterIsInstance<VerseMarker>()
+            .map { it.location }
+            .sorted()
+        _uiState.value = _uiState.value.copy(markerFrames = markerFrames)
+    }
+
+    private fun reloadCurrentTakePlayback(seekFrame: Int) {
+        val take = activeTake ?: return
+        audioPlayer.pause()
+        stopTicker()
+
+        val reader = buildReaderForTake(take)
+        waveformSampleRate = reader.spec.sampleRate
+        val durationFrames = reader.totalFrames
+        val clampedSeek = seekFrame.coerceIn(0, durationFrames)
+
+        audioPlayer.load(reader)
+        audioPlayer.seek(clampedSeek)
+
+        setupWaveformRenderer(take)
+        refreshMarkerFrames()
+        refreshTransport()
+        refreshWaveform()
+        updateEditUi()
+    }
+
     private fun setupWaveformRenderer(take: Take) {
         closeWaveformRenderer()
         if (waveformWidth <= 0) return
-        val reader = OratureAudioFile(take.file).reader()
+        val reader = buildReaderForTake(take)
+        waveformSampleRate = reader.spec.sampleRate
         reader.open()
         waveformRenderer = PlaybackWaveformRenderer(
             reader = reader,
             width = waveformWidth,
             secondsOnScreen = 10
+        )
+    }
+
+    private fun clearSelectionInternal() {
+        selectionStartFrame = null
+        selectionEndFrame = null
+    }
+
+    private fun updateEditUi() {
+        val duration = audioPlayer.getDurationInFrames().coerceAtLeast(1)
+        val startProgress = selectionStartFrame
+            ?.coerceIn(0, duration)
+            ?.let { it.toFloat() / duration.toFloat() }
+        val endProgress = selectionEndFrame
+            ?.coerceIn(0, duration)
+            ?.let { it.toFloat() / duration.toFloat() }
+        val canCut = selectionStartFrame != null &&
+            selectionEndFrame != null &&
+            abs((selectionStartFrame ?: 0) - (selectionEndFrame ?: 0)) >= 2
+
+        _uiState.value = _uiState.value.copy(
+            isEditMode = isEditMode,
+            selectionStartProgress = startProgress,
+            selectionEndProgress = endProgress,
+            canCutSelection = canCut,
+            canUndoEdit = editSession?.canUndo() == true,
+            canRedoEdit = editSession?.canRedo() == true,
+            hasEdits = editSession?.hasEdits() == true
         )
     }
 
@@ -483,13 +696,21 @@ class PlaybackViewModel(
     private fun refreshTransport() {
         val durationMs = audioPlayer.getDurationMs().coerceAtLeast(0)
         val positionMs = audioPlayer.getLocationMs().coerceIn(0, durationMs)
+        val durationFrames = audioPlayer.getDurationInFrames().coerceAtLeast(0)
+        val currentFrame = audioPlayer.getLocationInFrames().coerceIn(0, durationFrames)
         val progress = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f
 
         _uiState.value = _uiState.value.copy(
             progress = progress,
+            currentFrame = currentFrame,
+            durationFrames = durationFrames,
+            sampleRate = waveformSampleRate,
+            elapsedMs = positionMs,
+            durationMs = durationMs,
             elapsedText = formatTime(positionMs),
             durationText = formatTime(durationMs)
         )
+        updateEditUi()
     }
 
     private fun formatTime(ms: Int): String {

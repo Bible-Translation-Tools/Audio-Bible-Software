@@ -4,7 +4,7 @@ import io.mockk.*
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.test.runTest
-import org.bibletranslationtools.otter.common.api.persistence.AppDatabase
+import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.persistence.database.daos.CollectionDao
@@ -22,7 +22,7 @@ import kotlin.test.assertEquals
 
 class CollectionRepositoryTest {
 
-    private val db = mockk<AppDatabase>()
+    private val db = mockk<IAppDatabase>()
     private val directoryProvider = mockk<IDirectoryProvider>()
     private val collectionMapper = mockk<CollectionMapper>()
     private val metadataMapper = mockk<ResourceMetadataMapper>()

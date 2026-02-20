@@ -7,7 +7,7 @@ import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
-import org.bibletranslationtools.otter.common.api.persistence.AppDatabase
+import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
@@ -24,7 +24,7 @@ import kotlin.test.assertEquals
 
 class ResourceRepositoryTest {
 
-    private val db = mockk<AppDatabase>()
+    private val db = mockk<IAppDatabase>()
     private val contentDao = mockk<ContentDao>()
     private val contentTypeDao = mockk<ContentTypeDao>()
     private val collectionDao = mockk<CollectionDao>()

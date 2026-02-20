@@ -46,6 +46,10 @@ class AudioPlayerConnection(
         scope.launch {
             factory.connect(id, reader, lastPosition)
             val worker = factory.getPlayerWorker()
+            if (worker.getLocationInFrames() >= reader.totalFrames.toLong()) {
+                lastPosition = 0
+                worker.seek(0)
+            }
             worker.processor.setPlaybackRate(playbackRate)
             worker.play()
         }

@@ -42,11 +42,15 @@ class WavFileWriterTest {
 
         delay(100)
         writer.pause()
-        writer.close()
+        writer.closeAndJoin()
 
         // WAV should contain header + some payload data.
         assertTrue(tempWav.exists())
         assertTrue(tempWav.length() > 44L, "Expected WAV payload beyond header")
+        assertTrue(
+            OratureAudioFile(tempWav).totalFrames > 0,
+            "Expected finalized WAV header with non-zero frame count"
+        )
     }
 
     private fun sinePcm16le(
@@ -66,4 +70,3 @@ class WavFileWriterTest {
         return out
     }
 }
-

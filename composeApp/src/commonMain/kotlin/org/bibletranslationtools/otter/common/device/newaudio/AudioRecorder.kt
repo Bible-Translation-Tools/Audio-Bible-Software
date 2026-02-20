@@ -66,11 +66,15 @@ class AudioRecorder(
         }
     }
 
-    suspend fun stop() = mutex.withLock {
+    suspend fun stop() {
         isPaused = false
         recordingJob?.cancel()
-        _source.stop()
-        _source.close()
+        recordingJob = null
+
+        mutex.withLock {
+            _source.stop()
+            _source.close()
+        }
     }
 
     fun isRecording(): Boolean = recordingJob?.isActive == true && !isPaused

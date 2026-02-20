@@ -22,6 +22,8 @@ class AudioBufferPlayer(
     private var _sink: AudioSink = sink
 
     private var startPosition: Long = 0
+    private var playedFrames: Long = 0
+    private var bytesPerFrame: Int = 2
     private var isPaused = false
 
     /**
@@ -42,6 +44,9 @@ class AudioBufferPlayer(
             processor.configure(spec)
             _sink.open(spec)
         }
+        startPosition = 0
+        playedFrames = 0
+        bytesPerFrame = reader.spec.bytesPerFrame.coerceAtLeast(1)
         _events.emit(AudioPlayerEvent.Load)
     }
 
@@ -49,11 +54,10 @@ class AudioBufferPlayer(
         if (playbackJob?.isActive == true) return
         isPaused = false
 
-        playbackJob = scope.launch {
+        playbackJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {
                 _events.emit(AudioPlayerEvent.Play)
-
-                // Stable reference for this iteration
+                // Start sink immediately on play so transport state is observable without race.
                 mutex.withLock { _sink.start() }
 
                 while (isActive && !isPaused) {
@@ -68,11 +72,11 @@ class AudioBufferPlayer(
 
                     if (read > 0) {
                         val output = inputBuffer //processor.process(inputBuffer.copyOf(read))
-
-                        // We lock again to ensure the sink isn't swapped
-                        // while we are physically writing to hardware.
-                        mutex.withLock {
-                            _sink.write(output, 0, output.size)
+                        val written = currentSink.write(output, 0, read)
+                        if (written > 0) {
+                            mutex.withLock {
+                                playedFrames += (written / bytesPerFrame)
+                            }
                         }
                     }
                 }
@@ -96,7 +100,7 @@ class AudioBufferPlayer(
     fun pause() {
         isPaused = true
         playbackJob?.cancel()
-        scope.launch {
+        runBlocking {
             mutex.withLock {
                 _sink.stop()
                 _sink.flush()
@@ -116,12 +120,13 @@ class AudioBufferPlayer(
 
         reader?.seek(framePosition)
         startPosition = framePosition
+        playedFrames = 0
 
         if (wasPlaying) play()
     }
 
     fun getLocationInFrames(): Long = runBlocking {
-        mutex.withLock { startPosition + _sink.framePosition }
+        mutex.withLock { startPosition + playedFrames }
     }
 
     fun release() = runBlocking {

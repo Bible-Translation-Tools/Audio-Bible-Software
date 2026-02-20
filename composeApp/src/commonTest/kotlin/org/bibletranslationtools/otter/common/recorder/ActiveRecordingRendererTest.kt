@@ -2,53 +2,81 @@ package org.bibletranslationtools.otter.common.recorder
 
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.cancel
 import kotlin.math.PI
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.test.fail
 
 class ActiveRecordingRendererTest {
 
     @Test
-    fun rendererKeepsTenSecondWindowWithinRingBufferCapacity() = runTest {
+    fun rendererKeepsTenSecondWindowWithinRingBufferCapacity() = runBlocking {
         val width = 100
         val secondsOnScreen = 10
         val sampleRate = 44100
-        val stream = MutableSharedFlow<ByteArray>(extraBufferCapacity = 4096)
+        // Keep enough replayed chunks so the renderer receives the full stream
+        // even if collection starts slightly after emissions begin.
+        val stream = MutableSharedFlow<ByteArray>(replay = 2048, extraBufferCapacity = 4096)
         val recording = MutableStateFlow(true)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
         val renderer = ActiveRecordingRenderer(
             stream = stream,
             recordingStatus = recording,
             width = width,
             secondsOnScreen = secondsOnScreen,
-            scope = this
+            scope = scope
         )
 
-        // Ensure collector jobs are active.
-        advanceUntilIdle()
+        try {
+            delay(50)
 
-        // Emit 12 seconds of low-frequency (2 Hz) sine to overfill the window.
-        val totalSamples = sampleRate * 12
-        val chunkSamples = 512
-        var emitted = 0
-        while (emitted < totalSamples) {
-            val count = minOf(chunkSamples, totalSamples - emitted)
-            stream.emit(sinePcm16le(startIndex = emitted, sampleCount = count, frequencyHz = 2.0, sampleRate = sampleRate))
-            emitted += count
+            // Emit 12 seconds of low-frequency (2 Hz) sine to overfill the window.
+            val totalSamples = sampleRate * 12
+            val chunkSamples = 512
+            var emitted = 0
+            while (emitted < totalSamples) {
+                val count = minOf(chunkSamples, totalSamples - emitted)
+                stream.tryEmit(
+                    sinePcm16le(
+                        startIndex = emitted,
+                        sampleCount = count,
+                        frequencyHz = 2.0,
+                        sampleRate = sampleRate
+                    )
+                )
+                emitted += count
+            }
+
+            eventually(timeoutMs = 4000) {
+                renderer.floatBuffer.size() == width * 2
+            }
+
+            // Ring buffer should clamp to width * 2 (min,max per x pixel).
+            assertEquals(width * 2, renderer.floatBuffer.size())
+            assertTrue(renderer.floatBuffer.array.any { it != 0f }, "Expected non-zero waveform data")
+        } finally {
+            renderer.close()
+            scope.cancel()
         }
+    }
 
-        advanceUntilIdle()
-
-        // Ring buffer should clamp to width * 2 (min,max per x pixel).
-        assertEquals(width * 2, renderer.floatBuffer.size())
-        assertTrue(renderer.floatBuffer.array.any { it != 0f }, "Expected non-zero waveform data")
-
-        renderer.close()
+    private suspend fun eventually(timeoutMs: Long, condition: () -> Boolean) {
+        val started = System.currentTimeMillis()
+        while (System.currentTimeMillis() - started < timeoutMs) {
+            if (condition()) return
+            delay(20)
+        }
+        fail("Condition was not met within ${timeoutMs}ms")
     }
 
     private fun sinePcm16le(
@@ -68,4 +96,3 @@ class ActiveRecordingRendererTest {
         return out
     }
 }
-

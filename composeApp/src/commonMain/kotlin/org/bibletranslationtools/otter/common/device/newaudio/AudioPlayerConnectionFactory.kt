@@ -1,14 +1,19 @@
 package org.bibletranslationtools.otter.common.device.newaudio
 
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-class AudioPlayerConnectionFactory(
+class AudioPlayerConnectionFactory private constructor(
     private var sink: AudioSink,
-    private val processor: AudioProcessor
+    private val processor: AudioProcessor,
+    private val player: AudioBufferPlayer
 ) {
-    // The actual worker
-    private val player = AudioBufferPlayer(sink, processor)
+    constructor(sink: AudioSink, processor: AudioProcessor) : this(
+        sink = sink,
+        processor = processor,
+        player = AudioBufferPlayer(sink, processor)
+    )
 
     // Tracks which virtual connection is "active" in the hardware
     private var activeConnectionId: Int? = null
@@ -46,6 +51,20 @@ class AudioPlayerConnectionFactory(
         // 4. Resume if it was playing
         if (wasRunning) {
             player.play()
+        }
+    }
+
+    companion object {
+        fun createForScope(
+            sink: AudioSink,
+            processor: AudioProcessor,
+            scope: CoroutineScope
+        ): AudioPlayerConnectionFactory {
+            return AudioPlayerConnectionFactory(
+                sink = sink,
+                processor = processor,
+                player = AudioBufferPlayer(sink, processor, scope)
+            )
         }
     }
 }

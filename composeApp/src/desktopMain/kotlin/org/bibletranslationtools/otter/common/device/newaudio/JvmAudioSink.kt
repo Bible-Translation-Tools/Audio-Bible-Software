@@ -26,9 +26,12 @@ class JvmAudioSink(
             spec.isBigEndian
         )
 
-        if (!line.isOpen) {
-            line.open(format)
+        if (line.isOpen) {
+            line.stop()
+            line.flush()
+            line.close()
         }
+        line.open(format)
         currentLine = line
     }
 
