@@ -213,8 +213,12 @@ class PlaybackViewModel(
     fun togglePlayPause() {
         if (_uiState.value.selectedTake == null) return
         if (_uiState.value.isPlaying) {
+            _uiState.value = _uiState.value.copy(isPlaying = false)
+            stopTicker()
             audioPlayer.pause()
         } else {
+            _uiState.value = _uiState.value.copy(isPlaying = true, error = null)
+            startTicker()
             audioPlayer.play()
         }
     }

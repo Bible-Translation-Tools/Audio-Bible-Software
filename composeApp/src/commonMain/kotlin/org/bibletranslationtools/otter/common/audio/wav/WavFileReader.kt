@@ -56,17 +56,24 @@ internal class WavFileReader(
 
     private var mappedFile: MappedByteBuffer? = null
     private var channel: FileChannel? = null
+    private var isEmptyMapping: Boolean = false
 
     override fun open() {
         mappedFile?.let { release() }
+        isEmptyMapping = false
         val (begin, end) = computeBounds(wav)
+        val mapSize = end - begin
+        if (mapSize <= 0) {
+            isEmptyMapping = true
+            return
+        }
         mappedFile =
             RandomAccessFile(wav.file, "r").use {
                 channel = it.channel
                 channel!!.map(
                     FileChannel.MapMode.READ_ONLY,
                     begin.toLong(),
-                    (end - begin).toLong()
+                    mapSize.toLong()
                 )
             }
     }
@@ -104,6 +111,7 @@ internal class WavFileReader(
     }
 
     override fun getPcmBuffer(bytes: ByteArray): Int {
+        if (isEmptyMapping) return 0
         mappedFile?.let { _mappedFile ->
             val written = _mappedFile.remaining().coerceAtMost(bytes.size)
             _mappedFile.get(bytes, 0, written)
@@ -115,6 +123,7 @@ internal class WavFileReader(
 
     @Throws(ArrayIndexOutOfBoundsException::class)
     override fun seek(sample: Long) {
+        if (isEmptyMapping) return
         mappedFile?.let { _mappedFile ->
             val index = min(wav.sampleIndex(sample.toInt()), _mappedFile.limit())
             _mappedFile.position(index)
@@ -124,10 +133,12 @@ internal class WavFileReader(
     }
 
     override fun hasRemaining(): Boolean {
+        if (isEmptyMapping) return false
         return mappedFile?.hasRemaining() ?: throw IllegalStateException("hasRemaining called before opening file")
     }
 
     override fun release() {
+        isEmptyMapping = false
         if (mappedFile != null) {
             try {
                 // https://stackoverflow.com/questions/25238110/how-to-properly-close-mappedbytebuffer/25239834#25239834

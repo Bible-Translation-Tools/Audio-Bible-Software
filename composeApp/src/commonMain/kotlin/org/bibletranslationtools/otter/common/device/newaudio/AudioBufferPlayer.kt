@@ -22,8 +22,6 @@ class AudioBufferPlayer(
     private var _sink: AudioSink = sink
 
     private var startPosition: Long = 0
-    private var playedFrames: Long = 0
-    private var bytesPerFrame: Int = 2
     private var isPaused = false
 
     /**
@@ -45,8 +43,6 @@ class AudioBufferPlayer(
             _sink.open(spec)
         }
         startPosition = 0
-        playedFrames = 0
-        bytesPerFrame = reader.spec.bytesPerFrame.coerceAtLeast(1)
         _events.emit(AudioPlayerEvent.Load)
     }
 
@@ -72,21 +68,17 @@ class AudioBufferPlayer(
 
                     if (read > 0) {
                         val output = inputBuffer //processor.process(inputBuffer.copyOf(read))
-                        val written = currentSink.write(output, 0, read)
-                        if (written > 0) {
-                            mutex.withLock {
-                                playedFrames += (written / bytesPerFrame)
-                            }
-                        }
+                        currentSink.write(output, 0, read)
                     }
                 }
 
                 if (!isPaused) {
-                    mutex.withLock {
-                        if (reader?.hasRemaining() == false) {
-                            _sink.drain()
-                            _events.emit(AudioPlayerEvent.Complete)
-                        }
+                    val sinkToDrain = mutex.withLock {
+                        if (reader?.hasRemaining() == false) _sink else null
+                    }
+                    if (sinkToDrain != null) {
+                        sinkToDrain.drain()
+                        _events.emit(AudioPlayerEvent.Complete)
                     }
                 }
             } catch (e: Exception) {
@@ -120,13 +112,19 @@ class AudioBufferPlayer(
 
         reader?.seek(framePosition)
         startPosition = framePosition
-        playedFrames = 0
 
         if (wasPlaying) play()
     }
 
     fun getLocationInFrames(): Long = runBlocking {
-        mutex.withLock { startPosition + playedFrames }
+        mutex.withLock {
+            val sinkFramePosition = _sink.framePosition
+            val sinkLocation = startPosition + sinkFramePosition
+            val readerLocation = reader?.framePosition?.toLong()?.let {
+                if (it == 0L) startPosition else it
+            }
+            if (sinkFramePosition > 0L) sinkLocation else (readerLocation ?: sinkLocation)
+        }
     }
 
     fun release() = runBlocking {

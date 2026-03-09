@@ -380,3 +380,4 @@ DerivedData/
 
 # End of https://www.gitignore.io/api/xcode,macos,kotlin,android,windows,intellij,androidstudio
 /composeApp/old/
+Makefile

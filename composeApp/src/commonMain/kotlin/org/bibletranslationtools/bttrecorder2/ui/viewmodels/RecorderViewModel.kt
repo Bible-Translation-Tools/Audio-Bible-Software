@@ -31,6 +31,8 @@ import org.bibletranslationtools.otter.common.recorder.ActiveRecordingRenderer
 import org.bibletranslationtools.otter.common.recorder.RecordingTimer
 import org.bibletranslationtools.otter.common.recorder.WavFileWriter
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.time.LocalDate
 import kotlin.math.abs
 import kotlin.math.max
@@ -316,6 +318,7 @@ class RecorderViewModel(
             recorderJob = viewModelScope.launch(Dispatchers.IO) {
                 try {
                     recorder.start(AudioSpec())
+                    recorder.pause()
                     recorderInitialized = true
                     _audioError.value = null
                 } catch (e: Exception) {
@@ -355,17 +358,31 @@ class RecorderViewModel(
 
     fun startRecording() {
         if (associatedAudio == null || _recordingState.value == RecordingUiState.Review || _audioError.value != null) return
-        _isRecording.value = true
-        _recordingState.value = RecordingUiState.Recording
-        hasRecordedAudio = true
-        timer.start()
-        startTimerTicker()
         wavFileWriter?.start()
-        updateNavigationAvailability()
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                audioRecorderFactory.getRecorderWorker().start(AudioSpec())
+                withContext(Dispatchers.Main) {
+                    _isRecording.value = true
+                    _recordingState.value = RecordingUiState.Recording
+                    hasRecordedAudio = true
+                    timer.start()
+                    startTimerTicker()
+                    updateNavigationAvailability()
+                    _audioError.value = null
+                }
+            } catch (e: Exception) {
+                wavFileWriter?.pause()
+                withContext(Dispatchers.Main) {
+                    _audioError.value = e.message ?: "Unable to start recording device."
+                }
+            }
+        }
     }
 
     fun pauseRecording() {
         if (_recordingState.value != RecordingUiState.Recording) return
+        audioRecorderFactory.getRecorderWorker().pause()
         _isRecording.value = false
         _recordingState.value = RecordingUiState.Paused
         wavFileWriter?.pause()
@@ -375,16 +392,30 @@ class RecorderViewModel(
 
     fun resumeRecording() {
         if (_recordingState.value != RecordingUiState.Paused) return
-        _isRecording.value = true
-        _recordingState.value = RecordingUiState.Recording
-        timer.start()
-        startTimerTicker()
         wavFileWriter?.start()
-        updateNavigationAvailability()
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                audioRecorderFactory.getRecorderWorker().start(AudioSpec())
+                withContext(Dispatchers.Main) {
+                    _isRecording.value = true
+                    _recordingState.value = RecordingUiState.Recording
+                    timer.start()
+                    startTimerTicker()
+                    updateNavigationAvailability()
+                    _audioError.value = null
+                }
+            } catch (e: Exception) {
+                wavFileWriter?.pause()
+                withContext(Dispatchers.Main) {
+                    _audioError.value = e.message ?: "Unable to resume recording device."
+                }
+            }
+        }
     }
 
     fun stopRecording() {
         if (_recordingState.value != RecordingUiState.Recording && _recordingState.value != RecordingUiState.Paused) return
+        audioRecorderFactory.getRecorderWorker().pause()
         _isRecording.value = false
         _recordingState.value = RecordingUiState.Review
         wavFileWriter?.pause()
@@ -402,18 +433,14 @@ class RecorderViewModel(
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                runCatching { audioRecorderFactory.getRecorderWorker().pause() }
                 // Finalize WAV header before copying. Without this, saved takes can report 0 duration.
                 wavFileWriter?.pause()
                 wavFileWriter?.closeAndJoin()
 
-                val capturedFrames = runCatching { OratureAudioFile(sessionFile).totalFrames }.getOrDefault(0)
+                val capturedFrames = ensurePlayableSessionAudio(sessionFile)
                 if (capturedFrames <= 0) {
-                    withContext(Dispatchers.Main) {
-                        _audioError.value = "No recorded audio was captured. Please record again."
-                        _recordingState.value = RecordingUiState.Idle
-                        hasRecordedAudio = false
-                    }
-                    return@launch
+                    throw IllegalStateException("Unable to finalize recording for save.")
                 }
 
                 val newTakeNumber = audio.getNewTakeNumberSuspend()
@@ -427,7 +454,16 @@ class RecorderViewModel(
                     createdTimestamp = LocalDate.now()
                 )
 
-                sessionFile.copyTo(newTake.file, overwrite = true)
+                val stagedTakeFile = File(dir, "${filename}.staging.wav")
+                runCatching { stagedTakeFile.delete() }
+                sessionFile.copyTo(stagedTakeFile, overwrite = true)
+                val stagedFrames = runCatching { OratureAudioFile(stagedTakeFile).totalFrames }.getOrDefault(0)
+                if (stagedFrames <= 0) {
+                    runCatching { stagedTakeFile.delete() }
+                    throw IllegalStateException("Saved recording is invalid.")
+                }
+                commitStagedTake(stagedTakeFile, takeFile)
+
                 withContext(Dispatchers.Main) {
                     audio.insertTake(newTake)
                     _savedTakeEvents.tryEmit(newTake.number)
@@ -435,7 +471,53 @@ class RecorderViewModel(
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+                _audioError.value = e.message ?: "Unable to save recording."
             }
+        }
+    }
+
+    private fun ensurePlayableSessionAudio(sessionFile: File): Int {
+        var frames = runCatching { OratureAudioFile(sessionFile).totalFrames }.getOrDefault(0)
+        if (frames > 0) return frames
+
+        // Guarantee a parseable WAV so downstream loading never fails on invalid header.
+        runCatching {
+            if (sessionFile.length() < 44L) {
+                val fresh = OratureAudioFile(sessionFile, 1, 44100, 16)
+                fresh.writer(append = true, buffered = true).use { writer ->
+                    writer.write(ByteArray(2))
+                    writer.flush()
+                }
+            } else {
+                OratureAudioFile(sessionFile).writer(append = true, buffered = true).use { writer ->
+                    writer.write(ByteArray(2))
+                    writer.flush()
+                }
+            }
+        }
+
+        frames = runCatching { OratureAudioFile(sessionFile).totalFrames }.getOrDefault(0)
+        return frames
+    }
+
+    private fun commitStagedTake(stagedTakeFile: File, takeFile: File) {
+        takeFile.parentFile?.mkdirs()
+        runCatching {
+            Files.move(
+                stagedTakeFile.toPath(),
+                takeFile.toPath(),
+                StandardCopyOption.REPLACE_EXISTING,
+                StandardCopyOption.ATOMIC_MOVE
+            )
+        }.onFailure {
+            stagedTakeFile.copyTo(takeFile, overwrite = true)
+            runCatching { stagedTakeFile.delete() }
+        }
+
+        val committedFrames = runCatching { OratureAudioFile(takeFile).totalFrames }.getOrDefault(0)
+        if (committedFrames <= 0) {
+            runCatching { takeFile.delete() }
+            throw IllegalStateException("Saved recording is invalid.")
         }
     }
 
