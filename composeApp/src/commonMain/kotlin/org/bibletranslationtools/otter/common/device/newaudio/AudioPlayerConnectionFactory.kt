@@ -16,17 +16,26 @@ class AudioPlayerConnectionFactory private constructor(
     )
 
     // Tracks which virtual connection is "active" in the hardware
+    @Volatile
     private var activeConnectionId: Int? = null
+    private var activeReader: AudioFileReader? = null
+    private var activeStartPosition: Long = 0
     private val mutex = Mutex()
 
     fun isActiveConnection(id: Int): Boolean = activeConnectionId == id
 
     suspend fun connect(connectionId: Int, reader: AudioFileReader, position: Long) = mutex.withLock {
-        if (activeConnectionId != connectionId) {
+        val needsReconnect = activeConnectionId != connectionId ||
+            activeReader !== reader ||
+            activeStartPosition != position
+
+        if (needsReconnect) {
             player.pause()
             player.load(reader)
             player.seek(position)
             activeConnectionId = connectionId
+            activeReader = reader
+            activeStartPosition = position
         }
     }
 

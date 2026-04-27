@@ -1,16 +1,20 @@
 package org.bibletranslationtools.otter.common.device.newaudio
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 
 class AudioPlayerConnection(
     private val id: Int,
     private val factory: AudioPlayerConnectionFactory,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val controlDispatcher: CoroutineDispatcher? = null
 ) : IAudioPlayer {
 
+    @Volatile
     private var _reader: AudioFileReader? = null
+    @Volatile
     private var lastPosition: Long = 0
     private var playbackRate: Double = 1.0
 
@@ -26,7 +30,7 @@ class AudioPlayerConnection(
     override fun load(reader: AudioFileReader) {
         this._reader = reader
         this.lastPosition = 0
-        scope.launch {
+        launchControl {
             factory.connect(id, reader, 0)
         }
     }
@@ -34,7 +38,7 @@ class AudioPlayerConnection(
     override fun loadSection(reader: AudioFileReader, frameStart: Int, frameEnd: Int) {
         this._reader = reader
         this.lastPosition = frameStart.toLong()
-        scope.launch {
+        launchControl {
             // We assume the reader implementation handles the boundary
             // of the section internally once seeked
             factory.connect(id, reader, lastPosition)
@@ -43,7 +47,7 @@ class AudioPlayerConnection(
 
     override fun play() {
         val reader = _reader ?: return
-        scope.launch {
+        launchControl {
             factory.connect(id, reader, lastPosition)
             val worker = factory.getPlayerWorker()
             if (worker.getLocationInFrames() >= reader.totalFrames.toLong()) {
@@ -56,11 +60,13 @@ class AudioPlayerConnection(
     }
 
     override fun pause() {
-        val worker = factory.getPlayerWorker()
         // Only pause if we are the one currently holding the hardware
         if (factory.isActiveConnection(id)) {
-            lastPosition = worker.getLocationInFrames()
-            worker.pause()
+            launchControl {
+                val worker = factory.getPlayerWorker()
+                lastPosition = worker.getLocationInFrames()
+                worker.pause()
+            }
         }
     }
 
@@ -69,11 +75,12 @@ class AudioPlayerConnection(
     }
 
     override fun stop() {
-        if (factory.isActiveConnection(id)) {
-            factory.getPlayerWorker().pause()
-        }
+        val shouldPause = factory.isActiveConnection(id)
         lastPosition = 0
-        scope.launch {
+        launchControl {
+            if (shouldPause) {
+                factory.getPlayerWorker().pause()
+            }
             _reader?.seek(0)
         }
     }
@@ -81,7 +88,7 @@ class AudioPlayerConnection(
     override fun seek(position: Int) {
         lastPosition = position.toLong()
         if (factory.isActiveConnection(id)) {
-            scope.launch {
+            launchControl {
                 factory.getPlayerWorker().seek(lastPosition)
             }
         }
@@ -90,7 +97,9 @@ class AudioPlayerConnection(
     override fun changeRate(rate: Double) {
         this.playbackRate = rate
         if (factory.isActiveConnection(id)) {
-            factory.getPlayerWorker().processor.setPlaybackRate(rate)
+            launchControl {
+                factory.getPlayerWorker().processor.setPlaybackRate(rate)
+            }
         }
     }
 
@@ -108,8 +117,18 @@ class AudioPlayerConnection(
     }
 
     override fun getLocationInFrames(): Int {
-        return if (factory.isActiveConnection(id)) {
-            factory.getPlayerWorker().getLocationInFrames().toInt()
+        val workerPosition = factory.getPlayerWorker().getLocationInFrames().toInt()
+        val duration = _reader?.totalFrames ?: 0
+
+        if (factory.isActiveConnection(id)) {
+            lastPosition = workerPosition.toLong()
+            return workerPosition
+        }
+
+        val plausibleWorkerPosition = workerPosition in 0..duration && workerPosition >= lastPosition.toInt()
+        return if (plausibleWorkerPosition) {
+            lastPosition = workerPosition.toLong()
+            workerPosition
         } else {
             lastPosition.toInt()
         }
@@ -122,6 +141,14 @@ class AudioPlayerConnection(
 
     override fun close() {
         release()
+    }
+
+    private inline fun launchControl(crossinline block: suspend () -> Unit) {
+        if (controlDispatcher != null) {
+            scope.launch(controlDispatcher) { block() }
+        } else {
+            scope.launch { block() }
+        }
     }
 
     override fun release() {

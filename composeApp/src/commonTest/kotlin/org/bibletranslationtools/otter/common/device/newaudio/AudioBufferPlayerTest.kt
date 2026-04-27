@@ -54,4 +54,33 @@ class AudioBufferPlayerTest {
         assertTrue(player.getLocationInFrames() > 0, "Location should advance even if sink frame position is unavailable")
         player.release()
     }
+
+    @Test
+    fun testLocationUsesReaderWhenSinkPositionIsStale() = runTest {
+        val sink = object : AudioSink {
+            override val isRunning: Boolean
+                get() = true
+            override val framePosition: Long
+                get() = 1L
+
+            override fun open(spec: AudioSpec) = Unit
+            override fun start() = Unit
+            override fun write(data: ByteArray, offset: Int, size: Int): Int = size
+            override fun stop() = Unit
+            override fun drain() = Unit
+            override fun flush() = Unit
+            override fun close() = Unit
+        }
+
+        val processor = IdentityAudioProcessor()
+        val player = AudioBufferPlayer(sink, processor, this)
+        val reader = MockAudioFileReader(totalFrames = 4_096)
+
+        player.load(reader)
+        player.play()
+        testScheduler.advanceUntilIdle()
+
+        assertTrue(player.getLocationInFrames() > 1, "Location should advance beyond stale sink-reported frame")
+        player.release()
+    }
 }

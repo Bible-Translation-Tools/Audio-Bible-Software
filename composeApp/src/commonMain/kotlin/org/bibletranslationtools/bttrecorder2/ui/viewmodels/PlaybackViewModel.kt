@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
 import org.bibletranslationtools.bttrecorder2.ui.playback.CutAwareAudioFileReader
@@ -106,7 +107,8 @@ class PlaybackViewModel(
     private val audioPlayer: IAudioPlayer = AudioPlayerConnection(
         id = playerId,
         factory = audioPlayerFactory,
-        scope = viewModelScope
+        scope = viewModelScope,
+        controlDispatcher = Dispatchers.Default
     )
 
     private var workbook: Workbook? = null
@@ -118,6 +120,7 @@ class PlaybackViewModel(
     private var takesJob: Job? = null
     private var selectedJob: Job? = null
     private var tickerJob: Job? = null
+    private var waveformRenderJob: Job? = null
 
     private var waveformWidth: Int = 0
     private var waveformRenderer: PlaybackWaveformRenderer? = null
@@ -238,6 +241,12 @@ class PlaybackViewModel(
         val fallback = max(current - (5 * 44100), 0)
         val target = markerFrames.lastOrNull { it < current - epsilon } ?: fallback
         audioPlayer.seek(target)
+        refreshTransport()
+        refreshWaveform()
+    }
+
+    fun seekToStart() {
+        audioPlayer.seek(0)
         refreshTransport()
         refreshWaveform()
     }
@@ -676,9 +685,13 @@ class PlaybackViewModel(
     private fun refreshWaveform() {
         val renderer = waveformRenderer ?: return
         val frame = audioPlayer.getLocationInFrames()
-        _uiState.value = _uiState.value.copy(
-            waveformSamples = renderer.renderCentered(frame)
-        )
+        if (waveformRenderJob?.isActive == true) return
+        waveformRenderJob = viewModelScope.launch(Dispatchers.Default) {
+            val samples = renderer.renderCentered(frame)
+            _uiState.update { state ->
+                state.copy(waveformSamples = samples)
+            }
+        }
     }
 
     private fun startTicker() {
@@ -695,6 +708,8 @@ class PlaybackViewModel(
     private fun stopTicker() {
         tickerJob?.cancel()
         tickerJob = null
+        waveformRenderJob?.cancel()
+        waveformRenderJob = null
     }
 
     private fun refreshTransport() {
@@ -726,6 +741,8 @@ class PlaybackViewModel(
     }
 
     private fun closeWaveformRenderer() {
+        waveformRenderJob?.cancel()
+        waveformRenderJob = null
         waveformRenderer?.close()
         waveformRenderer = null
     }

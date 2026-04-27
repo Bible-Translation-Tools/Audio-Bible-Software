@@ -77,7 +77,8 @@ class UnitListViewModel(
         audioPlayer = AudioPlayerConnection(
             id = playerId,
             factory = audioConnectionFactory,
-            scope = viewModelScope
+            scope = viewModelScope,
+            controlDispatcher = Dispatchers.Default
         )
 
         viewModelScope.launch {

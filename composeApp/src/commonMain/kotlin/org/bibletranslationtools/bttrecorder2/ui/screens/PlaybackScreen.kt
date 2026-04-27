@@ -222,8 +222,8 @@ fun PlaybackScreen(
             )
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = viewModel::seekToPreviousCue) {
-                    Icon(Icons.Default.SkipPrevious, contentDescription = "Previous cue", tint = Color.White)
+                IconButton(onClick = viewModel::seekToStart) {
+                    Icon(Icons.Default.SkipPrevious, contentDescription = "Seek to start", tint = Color.White)
                 }
                 IconButton(onClick = viewModel::togglePlayPause) {
                     Icon(

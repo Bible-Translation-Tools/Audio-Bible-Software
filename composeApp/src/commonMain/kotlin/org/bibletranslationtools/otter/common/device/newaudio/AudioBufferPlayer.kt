@@ -23,6 +23,8 @@ class AudioBufferPlayer(
 
     private var startPosition: Long = 0
     private var isPaused = false
+    @Volatile
+    private var lastKnownLocationInFrames: Long = 0
 
     /**
      * Updates the hardware sink safely.
@@ -43,6 +45,7 @@ class AudioBufferPlayer(
             _sink.open(spec)
         }
         startPosition = 0
+        lastKnownLocationInFrames = 0
         _events.emit(AudioPlayerEvent.Load)
     }
 
@@ -50,7 +53,7 @@ class AudioBufferPlayer(
         if (playbackJob?.isActive == true) return
         isPaused = false
 
-        playbackJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+        playbackJob = scope.launch {
             try {
                 _events.emit(AudioPlayerEvent.Play)
                 // Start sink immediately on play so transport state is observable without race.
@@ -69,6 +72,13 @@ class AudioBufferPlayer(
                     if (read > 0) {
                         val output = inputBuffer //processor.process(inputBuffer.copyOf(read))
                         currentSink.write(output, 0, read)
+                        val readerFrame = currentReader.framePosition.toLong()
+                        if (readerFrame > 0L) {
+                            lastKnownLocationInFrames = readerFrame
+                        } else {
+                            val framesRead = read / currentReader.spec.bytesPerFrame.coerceAtLeast(1)
+                            lastKnownLocationInFrames += framesRead.toLong()
+                        }
                     }
                 }
 
@@ -78,6 +88,10 @@ class AudioBufferPlayer(
                     }
                     if (sinkToDrain != null) {
                         sinkToDrain.drain()
+                        val completedFrames = mutex.withLock { reader?.totalFrames?.toLong() }
+                        if (completedFrames != null && completedFrames >= 0L) {
+                            lastKnownLocationInFrames = completedFrames
+                        }
                         _events.emit(AudioPlayerEvent.Complete)
                     }
                 }
@@ -112,20 +126,12 @@ class AudioBufferPlayer(
 
         reader?.seek(framePosition)
         startPosition = framePosition
+        lastKnownLocationInFrames = framePosition
 
         if (wasPlaying) play()
     }
 
-    fun getLocationInFrames(): Long = runBlocking {
-        mutex.withLock {
-            val sinkFramePosition = _sink.framePosition
-            val sinkLocation = startPosition + sinkFramePosition
-            val readerLocation = reader?.framePosition?.toLong()?.let {
-                if (it == 0L) startPosition else it
-            }
-            if (sinkFramePosition > 0L) sinkLocation else (readerLocation ?: sinkLocation)
-        }
-    }
+    fun getLocationInFrames(): Long = lastKnownLocationInFrames
 
     fun release() = runBlocking {
         mutex.withLock {
