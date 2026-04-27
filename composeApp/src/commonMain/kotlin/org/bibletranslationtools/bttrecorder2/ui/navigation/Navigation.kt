@@ -87,9 +87,10 @@ fun Navigation(
                 onChapterClick = { chapter ->
                     navController.navigate(UnitListRoute(route.workbookSourceId, route.workbookTargetId, chapter))
                 },
-                onCompileClick = { chapterId ->
-                    // TODO: Implement compilation logic
-                    println("Compile clicked for chapter $chapterId")
+                onRecordChapter = { chapterSort ->
+                    navController.navigate(
+                        RecorderRoute(route.workbookSourceId, route.workbookTargetId, chapterSort, -1)
+                    )
                 }
             )
         }
@@ -101,10 +102,21 @@ fun Navigation(
                 chapterNumber = route.chapterNumber,
                 onBackClick = { navController.popBackStack() },
                 onUnitClick = { unitSort ->
-                    navController.navigate(RecorderRoute(route.workbookSourceId,route.workbookTargetId,route.chapterNumber, unitSort))
+                    navController.navigate(RecorderRoute(route.workbookSourceId, route.workbookTargetId, route.chapterNumber, unitSort))
                 },
                 onRecordChapter = {
-                   navController.navigate(RecorderRoute(route.workbookSourceId,route.workbookTargetId,route.chapterNumber, -1))
+                    navController.navigate(RecorderRoute(route.workbookSourceId, route.workbookTargetId, route.chapterNumber, -1))
+                },
+                onOpenPlayback = { unitSort, takeNumber ->
+                    navController.navigate(
+                        PlaybackRoute(
+                            sourceId = route.workbookSourceId,
+                            targetId = route.workbookTargetId,
+                            chapterNumber = route.chapterNumber,
+                            unitNumber = unitSort,
+                            takeNumber = takeNumber
+                        )
+                    )
                 }
             )
         }
@@ -142,7 +154,9 @@ fun Navigation(
                             unitNumber = unitNumArg,
                             takeNumber = takeNumber
                         )
-                    )
+                    ) {
+                        popUpTo<RecorderRoute> { inclusive = true }
+                    }
                 },
                 onBackClick = { navController.popBackStack() }
             )

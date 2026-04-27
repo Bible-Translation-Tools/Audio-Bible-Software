@@ -8,18 +8,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IContentRepository
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
-import org.bibletranslationtools.otter.common.data.primitives.Collection
-import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.rx2.await
+import kotlinx.coroutines.flow.firstOrNull
 import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnection
 import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
 import org.bibletranslationtools.otter.common.device.newaudio.IAudioPlayer
@@ -28,7 +21,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.firstOrNull
 import org.bibletranslationtools.otter.common.data.workbook.DateHolder
 import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerEvent
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
@@ -50,7 +42,13 @@ data class UnitListUiState(
     val error: String? = null,
     val isPlaying: Boolean = false,
     val playbackProgress: Float = 0f,
-    val currentPlayingTake: Take? = null
+    val currentPlayingTake: Take? = null,
+    // key = unit.sort, value = index into sorted non-deleted takes list being browsed
+    val currentTakeIndices: Map<Int, Int> = emptyMap(),
+    val elapsedText: String = "00:00:00",
+    val durationText: String = "00:00:00",
+    // Pre-computed durations; key = take file absolutePath, value = "HH:MM:SS"
+    val takeDurations: Map<String, String> = emptyMap()
 )
 
 class UnitListViewModel(
@@ -58,7 +56,6 @@ class UnitListViewModel(
 ) : ViewModel(), KoinComponent {
 
     private val workbookRepository: IWorkbookRepository by inject()
-    private val workbookDescriptorRepository: IWorkbookDescriptorRepository by inject()
     private val collectionRepository: ICollectionRepository by inject()
 
     private val _uiState = MutableStateFlow(UnitListUiState())
@@ -67,13 +64,10 @@ class UnitListViewModel(
     private val audioConnectionFactory: AudioPlayerConnectionFactory by inject()
     private var audioPlayer: IAudioPlayer? = null
 
-    // Unique ID for this player connection
     private val playerId = kotlin.random.Random.nextInt()
-
     private var playbackJob: Job? = null
 
     init {
-        // Initialize player
         audioPlayer = AudioPlayerConnection(
             id = playerId,
             factory = audioConnectionFactory,
@@ -88,7 +82,6 @@ class UnitListViewModel(
                         _uiState.update { it.copy(isPlaying = true) }
                         startProgressTicker()
                     }
-
                     is AudioPlayerEvent.Pause,
                     is AudioPlayerEvent.Stop,
                     is AudioPlayerEvent.Error -> {
@@ -98,12 +91,10 @@ class UnitListViewModel(
                             _uiState.update { it.copy(error = event.message) }
                         }
                     }
-
                     is AudioPlayerEvent.Complete -> {
-                        _uiState.update { it.copy(isPlaying = false, playbackProgress = 0f) }
+                        _uiState.update { it.copy(isPlaying = false, playbackProgress = 0f, elapsedText = "00:00:00") }
                         stopProgressTicker()
                     }
-
                     else -> {}
                 }
             }
@@ -114,10 +105,16 @@ class UnitListViewModel(
         playbackJob?.cancel()
         playbackJob = viewModelScope.launch {
             while (isActive) {
-                val duration = audioPlayer?.getDurationMs() ?: 0
-                val position = audioPlayer?.getLocationMs() ?: 0
-                val progress = if (duration > 0) position.toFloat() / duration else 0f
-                _uiState.update { it.copy(playbackProgress = progress) }
+                val durationMs = audioPlayer?.getDurationMs() ?: 0
+                val positionMs = audioPlayer?.getLocationMs() ?: 0
+                val progress = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f
+                _uiState.update {
+                    it.copy(
+                        playbackProgress = progress,
+                        elapsedText = formatTime(positionMs),
+                        durationText = formatTime(durationMs)
+                    )
+                }
                 delay(100)
             }
         }
@@ -125,6 +122,14 @@ class UnitListViewModel(
 
     private fun stopProgressTicker() {
         playbackJob?.cancel()
+    }
+
+    private fun formatTime(ms: Int): String {
+        val totalSeconds = ms / 1000
+        val hours = totalSeconds / 3600
+        val minutes = (totalSeconds % 3600) / 60
+        val seconds = totalSeconds % 60
+        return "%02d:%02d:%02d".format(hours, minutes, seconds)
     }
 
     fun loadUnits(workbookSourceId: Int, workbookTargetId: Int, chapterNumber: Int) {
@@ -140,7 +145,6 @@ class UnitListViewModel(
                 }
 
                 val workbook = workbookRepository.get(sourceC, targetC)
-
                 val chapter = workbook.target.chaptersFlow.firstOrNull { it.sort == chapterNumber }
 
                 if (chapter == null) {
@@ -158,20 +162,58 @@ class UnitListViewModel(
                             takes = chunk.audio.getAllTakes().count { !it.isDeleted() }
                         )
                     }
+
+                    // Build initial browse indices pointing at each unit's selected take.
+                    // Preserve any indices the user has already set.
+                    val initialIndices = chunks.associate { chunk ->
+                        val takes = chunk.audio.getAllTakes()
+                            .filter { !it.isDeleted() }
+                            .sortedBy { it.number }
+                        val selected = chunk.audio.getSelectedTake()
+                        val idx = if (selected != null) takes.indexOf(selected).coerceAtLeast(0) else 0
+                        chunk.sort to idx
+                    }
+                    val existing = _uiState.value.currentTakeIndices
+                    val mergedIndices = initialIndices + existing.filter { (sort, _) ->
+                        chunks.any { it.sort == sort }
+                    }
+
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            units = units
+                            units = units,
+                            currentTakeIndices = mergedIndices
                         )
                     }
-                }
 
+                    // Compute durations for any takes not yet in the cache.
+                    launch(ioDispatcher) {
+                        val existing = _uiState.value.takeDurations
+                        val newDurations = mutableMapOf<String, String>()
+                        chunks.forEach { chunk ->
+                            chunk.audio.getAllTakes().filter { !it.isDeleted() }.forEach { take ->
+                                val key = take.file.absolutePath
+                                if (!existing.containsKey(key)) {
+                                    try {
+                                        val af = OratureAudioFile(take.file)
+                                        val ms = (af.totalFrames.toLong() * 1000L / af.sampleRate).toInt()
+                                        newDurations[key] = formatTime(ms)
+                                    } catch (_: Exception) {}
+                                }
+                            }
+                        }
+                        if (newDurations.isNotEmpty()) {
+                            _uiState.update { it.copy(takeDurations = it.takeDurations + newDurations) }
+                        }
+                    }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, error = e.message ?: "Unknown error") }
             }
         }
     }
-
 
     override fun onCleared() {
         super.onCleared()
@@ -179,12 +221,18 @@ class UnitListViewModel(
         stopProgressTicker()
     }
 
-    // Audio Controls
+    // Returns the take the user is currently browsing for a unit (may differ from selected take).
+    private fun getCurrentViewedTake(unit: Chunk): Take? {
+        val takes = unit.audio.getAllTakes()
+            .filter { !it.isDeleted() }
+            .sortedBy { it.number }
+        val index = _uiState.value.currentTakeIndices[unit.sort] ?: 0
+        return takes.getOrNull(index)
+    }
+
     fun togglePlay(unit: Chunk) {
-        val take = unit.audio.getSelectedTake()
-        if (take != null) {
-            playTake(take)
-        }
+        val take = getCurrentViewedTake(unit) ?: return
+        playTake(take)
     }
 
     fun playTake(take: Take) {
@@ -204,31 +252,45 @@ class UnitListViewModel(
         }
     }
 
-    fun pauseAudio() {
-        audioPlayer?.pause()
+    // Cycles through takes without changing the officially selected take.
+    fun cycleTake(unit: Chunk, direction: Int) {
+        val takes = unit.audio.getAllTakes()
+            .filter { !it.isDeleted() }
+            .sortedBy { it.number }
+        if (takes.isEmpty()) return
+
+        val currentIndex = _uiState.value.currentTakeIndices[unit.sort] ?: 0
+        val newIndex = (currentIndex + direction + takes.size) % takes.size
+        _uiState.update { state ->
+            state.copy(currentTakeIndices = state.currentTakeIndices + (unit.sort to newIndex))
+        }
     }
 
-    // Take Management
-    fun deleteTake(unit: Chunk, take: Take) {
-        take.deletedTimestamp.accept(DateHolder.now())
-    }
-
-    fun selectTake(unit: Chunk, take: Take) {
+    // Explicitly marks the currently browsed take as the selected take.
+    fun selectCurrentTake(unit: Chunk) {
+        val take = getCurrentViewedTake(unit) ?: return
         unit.audio.selectTake(take)
     }
 
-    fun cycleTake(unit: Chunk, direction: Int) {
-        val takes = unit.audio.getAllTakes().filter { !it.isDeleted() }.sortedBy { it.number }
-        if (takes.isEmpty()) return
-
-        val currentTake = unit.audio.getSelectedTake()
-        val currentIndex = if (currentTake != null) takes.indexOf(currentTake) else -1
-
-        var newIndex = currentIndex + direction
-        if (newIndex >= takes.size) newIndex = 0
-        if (newIndex < 0) newIndex = takes.size - 1
-
-        val newTake = takes[newIndex]
-        selectTake(unit, newTake)
+    fun deleteTake(unit: Chunk, take: Take) {
+        take.deletedTimestamp.accept(DateHolder.now())
+        val remaining = unit.audio.getAllTakes()
+            .filter { !it.isDeleted() }
+            .sortedBy { it.number }
+        val clamped = (_uiState.value.currentTakeIndices[unit.sort] ?: 0)
+            .coerceIn(0, (remaining.size - 1).coerceAtLeast(0))
+        // Updating `units` guarantees the state object always changes (different takes count),
+        // so StateFlow emits and recomposition fires even when the clamped index is unchanged.
+        val updatedUnits = _uiState.value.units.map { uiModel ->
+            if (uiModel.unit.sort == unit.sort) {
+                uiModel.copy(hasContent = unit.hasSelectedAudio(), takes = remaining.size)
+            } else uiModel
+        }
+        _uiState.update { state ->
+            state.copy(
+                units = updatedUnits,
+                currentTakeIndices = state.currentTakeIndices + (unit.sort to clamped)
+            )
+        }
     }
 }
