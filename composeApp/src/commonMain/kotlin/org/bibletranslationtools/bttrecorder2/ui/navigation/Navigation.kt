@@ -170,7 +170,17 @@ fun Navigation(
 
             PlaybackScreen(
                 viewModel = vm,
-                onBackClick = { navController.popBackStack() }
+                onBackClick = { navController.popBackStack() },
+                onNavigateToRecorder = { sourceId, targetId, chapterNumber, unitNumber ->
+                    navController.navigate(
+                        RecorderRoute(
+                            sourceId = sourceId,
+                            targetId = targetId,
+                            chapterNumber = chapterNumber,
+                            unitNumber = unitNumber
+                        )
+                    )
+                }
             )
         }
         composable<ProjectWizardRoute> {

@@ -12,10 +12,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
 import org.bibletranslationtools.bttrecorder2.ui.playback.CutAwareAudioFileReader
+import org.bibletranslationtools.bttrecorder2.ui.playback.MinimapWaveformRenderer
 import org.bibletranslationtools.bttrecorder2.ui.playback.PlaybackWaveformRenderer
 import org.bibletranslationtools.bttrecorder2.ui.playback.WaveEditSession
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
@@ -49,21 +51,20 @@ class PlaybackViewModel(
     private val takeCreator: TakeCreator,
     private val audioBouncer: AudioBouncer
 ) : ViewModel() {
+
     data class TargetUiState(
-        val sourceLabel: String = "",
+        val languageLabel: String = "",
+        val projectLabel: String = "",
         val bookLabel: String = "",
         val chapterValue: String = "",
-        val unitValue: String = "",
-        val canGoPreviousChapter: Boolean = false,
-        val canGoNextChapter: Boolean = false,
-        val canGoPreviousUnit: Boolean = false,
-        val canGoNextUnit: Boolean = false
+        val unitValue: String = ""
     )
 
     data class PlaybackUiState(
         val targetUi: TargetUiState = TargetUiState(),
         val takes: List<Take> = emptyList(),
         val selectedTake: Take? = null,
+        val currentTakeLabel: String = "",
         val isPlaying: Boolean = false,
         val progress: Float = 0f,
         val currentFrame: Int = 0,
@@ -75,19 +76,35 @@ class PlaybackViewModel(
         val durationText: String = "00:00:00",
         val waveformSamples: FloatArray = floatArrayOf(),
         val markerFrames: List<Int> = emptyList(),
+        val markerLabels: List<String> = emptyList(),
+        val minimapSamples: FloatArray = floatArrayOf(),
         val showMinimap: Boolean = true,
         val sourceAudioAvailable: Boolean = false,
-        val isEditMode: Boolean = false,
         val selectionStartProgress: Float? = null,
         val selectionEndProgress: Float? = null,
         val canCutSelection: Boolean = false,
         val canUndoEdit: Boolean = false,
         val canRedoEdit: Boolean = false,
         val hasEdits: Boolean = false,
-        // Product decision: edited output defaults to a new take.
-        val saveEditsAsNewTakeDefault: Boolean = true,
+        val isVerseMarkerMode: Boolean = false,
+        val versesMarked: Int = 0,
         val error: String? = null
     )
+
+    sealed class NavEvent {
+        data class Rerecord(
+            val sourceId: Int,
+            val targetId: Int,
+            val chapterNumber: Int,
+            val unitNumber: Int
+        ) : NavEvent()
+        data class Insert(
+            val sourceId: Int,
+            val targetId: Int,
+            val chapterNumber: Int,
+            val unitNumber: Int
+        ) : NavEvent()
+    }
 
     private data class PlaybackTarget(
         val chapter: Chapter,
@@ -102,6 +119,9 @@ class PlaybackViewModel(
 
     private val _editedTakeSavedEvents = MutableSharedFlow<Int>(extraBufferCapacity = 1)
     val editedTakeSavedEvents: SharedFlow<Int> = _editedTakeSavedEvents.asSharedFlow()
+
+    private val _navEvents = MutableSharedFlow<NavEvent>(extraBufferCapacity = 1)
+    val navEvents: SharedFlow<NavEvent> = _navEvents.asSharedFlow()
 
     private val playerId = Random.nextInt()
     private val audioPlayer: IAudioPlayer = AudioPlayerConnection(
@@ -120,21 +140,37 @@ class PlaybackViewModel(
     private var takesJob: Job? = null
     private var selectedJob: Job? = null
     private var tickerJob: Job? = null
-    private var waveformRenderJob: Job? = null
+    private var minimapRenderJob: Job? = null
+
+    // Desired waveform center frame. collectLatest ensures each new value cancels
+    // any in-progress render so the latest drag position always wins.
+    private val _desiredWaveformFrame = MutableStateFlow(0)
 
     private var waveformWidth: Int = 0
+    private var minimapWidth: Int = 0
     private var waveformRenderer: PlaybackWaveformRenderer? = null
+    private var minimapRenderer: MinimapWaveformRenderer? = null
     private var waveformSampleRate: Int = 44100
     private var markerFrames: List<Int> = emptyList()
+    private var markerLabels: List<String> = emptyList()
     private var baseMarkers: List<AudioMarker> = emptyList()
     private var activeTake: Take? = null
 
     private var editSession: WaveEditSession? = null
-    private var isEditMode: Boolean = false
     private var selectionStartFrame: Int? = null
     private var selectionEndFrame: Int? = null
 
+    private val droppedVerseMarkerFrames = mutableListOf<Int>()
+
     init {
+        viewModelScope.launch(Dispatchers.Default) {
+            _desiredWaveformFrame.collectLatest { frame ->
+                val renderer = waveformRenderer ?: return@collectLatest
+                val samples = renderer.renderCentered(frame)
+                _uiState.update { it.copy(waveformSamples = samples) }
+            }
+        }
+
         viewModelScope.launch {
             audioPlayer.events.collect { event ->
                 when (event) {
@@ -213,6 +249,12 @@ class PlaybackViewModel(
         }
     }
 
+    fun setMinimapWidth(width: Int) {
+        if (width <= 0 || width == minimapWidth) return
+        minimapWidth = width
+        activeTake?.let { loadMinimapSamples(it) }
+    }
+
     fun togglePlayPause() {
         if (_uiState.value.selectedTake == null) return
         if (_uiState.value.isPlaying) {
@@ -230,156 +272,86 @@ class PlaybackViewModel(
         val duration = audioPlayer.getDurationInFrames()
         if (duration <= 0) return
         val frame = (duration * progress.coerceIn(0f, 1f)).toInt()
+        println("seekToProgress: progress=$progress, targetFrame=$frame, duration=$duration")
         audioPlayer.seek(frame)
         refreshTransport()
         refreshWaveform()
     }
 
-    fun seekToPreviousCue() {
+    fun seekBackward() {
         val current = audioPlayer.getLocationInFrames()
-        val epsilon = 300
-        val fallback = max(current - (5 * 44100), 0)
-        val target = markerFrames.lastOrNull { it < current - epsilon } ?: fallback
+        val target = max(current - (5 * waveformSampleRate), 0)
         audioPlayer.seek(target)
         refreshTransport()
         refreshWaveform()
     }
 
-    fun seekToStart() {
-        audioPlayer.seek(0)
-        refreshTransport()
-        refreshWaveform()
-    }
-
-    fun seekToNextCue() {
+    fun seekForward() {
         val current = audioPlayer.getLocationInFrames()
         val duration = audioPlayer.getDurationInFrames()
-        val fallback = (current + (5 * 44100)).coerceAtMost(duration)
-        val target = markerFrames.firstOrNull { it > current + 300 } ?: fallback
+        val target = min(current + (5 * waveformSampleRate), duration)
         audioPlayer.seek(target)
         refreshTransport()
         refreshWaveform()
     }
 
-    fun goPreviousChapter() {
-        if (_uiState.value.isPlaying) return
-        val current = currentTarget() ?: return
-        val chunkSort = current.chunk?.sort
-        val prevChapter = targets.map { it.chapter.sort }.distinct().sorted().lastOrNull { it < current.chapter.sort }
-            ?: return
-        val idx = targets.indexOfFirst {
-            it.chapter.sort == prevChapter && (
-                if (chunkSort == null) it.chunk == null else it.chunk?.sort == chunkSort
-                )
-        }.let { if (it >= 0) it else targets.indexOfFirst { t -> t.chapter.sort == prevChapter && t.chunk == null } }
-        if (idx >= 0) switchToTarget(idx)
+    fun seekToFrame(absoluteFrame: Int) {
+        val duration = audioPlayer.getDurationInFrames()
+        if (duration <= 0) return
+        val target = absoluteFrame.coerceIn(0, duration)
+        audioPlayer.seek(target)
+        // Update currentFrame synchronously so the Canvas uses the correct center immediately
+        // when dragAccumPx resets on drag-end, before the async waveform render completes.
+        _uiState.update { it.copy(
+            currentFrame = target,
+            progress = target.toFloat() / duration.toFloat()
+        ) }
+        refreshTransport()
+        _desiredWaveformFrame.value = target
     }
 
-    fun goNextChapter() {
-        if (_uiState.value.isPlaying) return
-        val current = currentTarget() ?: return
-        val chunkSort = current.chunk?.sort
-        val nextChapter = targets.map { it.chapter.sort }.distinct().sorted().firstOrNull { it > current.chapter.sort }
-            ?: return
-        val idx = targets.indexOfFirst {
-            it.chapter.sort == nextChapter && (
-                if (chunkSort == null) it.chunk == null else it.chunk?.sort == chunkSort
-                )
-        }.let { if (it >= 0) it else targets.indexOfFirst { t -> t.chapter.sort == nextChapter && t.chunk == null } }
-        if (idx >= 0) switchToTarget(idx)
-    }
-
-    fun goPreviousUnit() {
-        if (_uiState.value.isPlaying) return
-        val current = currentTarget() ?: return
-        val currentChunk = current.chunk ?: return
-        val unitsInChapter = targets.withIndex()
-            .filter { it.value.chapter.sort == current.chapter.sort && it.value.chunk != null }
-            .sortedBy { it.value.chunk?.sort }
-        val pos = unitsInChapter.indexOfFirst { it.value.chunk?.sort == currentChunk.sort }
-        if (pos > 0) switchToTarget(unitsInChapter[pos - 1].index)
-    }
-
-    fun goNextUnit() {
-        if (_uiState.value.isPlaying) return
-        val current = currentTarget() ?: return
-        val currentChunk = current.chunk ?: return
-        val unitsInChapter = targets.withIndex()
-            .filter { it.value.chapter.sort == current.chapter.sort && it.value.chunk != null }
-            .sortedBy { it.value.chunk?.sort }
-        val pos = unitsInChapter.indexOfFirst { it.value.chunk?.sort == currentChunk.sort }
-        if (pos >= 0 && pos < unitsInChapter.lastIndex) switchToTarget(unitsInChapter[pos + 1].index)
-    }
-
-    fun selectPreviousTake() {
-        val takes = _uiState.value.takes
-        val selected = _uiState.value.selectedTake ?: return
-        if (takes.isEmpty()) return
-        val idx = takes.indexOfFirst { it.number == selected.number }
-        if (idx <= 0) return
-        associatedAudio?.selectTake(takes[idx - 1])
-    }
-
-    fun selectNextTake() {
-        val takes = _uiState.value.takes
-        val selected = _uiState.value.selectedTake ?: return
-        if (takes.isEmpty()) return
-        val idx = takes.indexOfFirst { it.number == selected.number }
-        if (idx < 0 || idx >= takes.lastIndex) return
-        associatedAudio?.selectTake(takes[idx + 1])
+    fun seekByFrameDelta(deltaFrames: Int) {
+        seekToFrame(audioPlayer.getLocationInFrames() + deltaFrames)
     }
 
     fun showMinimap(show: Boolean) {
         _uiState.value = _uiState.value.copy(showMinimap = show)
     }
 
-    fun startEditing() {
-        if (_uiState.value.selectedTake == null) return
-        isEditMode = true
-        updateEditUi()
-    }
-
-    fun finishEditing() {
-        isEditMode = false
-        clearSelectionInternal()
-        updateEditUi()
-    }
-
-    fun discardEdits() {
-        val take = activeTake ?: return
-        val current = audioPlayer.getLocationInFrames()
-        createFreshEditSession(take)
-        isEditMode = false
-        clearSelectionInternal()
-        reloadCurrentTakePlayback(current.coerceAtMost(editSession?.editedTotalFrames ?: current))
-    }
-
     fun markSelectionStartAtCurrent() {
-        if (!isEditMode) return
         selectionStartFrame = audioPlayer.getLocationInFrames()
+        // Reset end mark if start moved past it
+        val end = selectionEndFrame
+        if (end != null && selectionStartFrame != null && end <= selectionStartFrame!!) {
+            selectionEndFrame = null
+        }
         updateEditUi()
     }
 
     fun markSelectionEndAtCurrent() {
-        if (!isEditMode) return
-        selectionEndFrame = audioPlayer.getLocationInFrames()
-        updateEditUi()
+        val start = selectionStartFrame ?: return
+        val current = audioPlayer.getLocationInFrames()
+        if (current != start) {
+            selectionEndFrame = current
+            updateEditUi()
+        }
     }
 
     fun clearSelection() {
-        clearSelectionInternal()
+        selectionStartFrame = null
+        selectionEndFrame = null
         updateEditUi()
     }
 
     fun cutSelection() {
-        if (!isEditMode) return
         val start = selectionStartFrame ?: return
         val end = selectionEndFrame ?: return
         val session = editSession ?: return
         if (abs(end - start) < 2) return
         val seekTo = min(start, end)
         if (session.cutRelative(start, end)) {
-            clearSelectionInternal()
+            selectionStartFrame = null
+            selectionEndFrame = null
             reloadCurrentTakePlayback(seekTo.coerceAtMost(session.editedTotalFrames))
         }
     }
@@ -422,20 +394,86 @@ class PlaybackViewModel(
         }
     }
 
-    /**
-     * Persists edited audio as a new take.
-     * Product default: never overwrite an existing take with edit output.
-     */
-    fun saveEditedAudioAsNewTake(editedAudioFile: File) {
+    fun enterVerseMarkerMode() {
+        if (_uiState.value.selectedTake == null) return
+        droppedVerseMarkerFrames.clear()
+        _uiState.value = _uiState.value.copy(
+            isVerseMarkerMode = true,
+            versesMarked = 0
+        )
+    }
+
+    fun exitVerseMarkerMode() {
+        droppedVerseMarkerFrames.clear()
+        _uiState.value = _uiState.value.copy(
+            isVerseMarkerMode = false,
+            versesMarked = 0
+        )
+    }
+
+    fun dropVerseMarkerAtCurrentPosition() {
+        val frame = audioPlayer.getLocationInFrames()
+        droppedVerseMarkerFrames.add(frame)
+        val allMarkerFrames = (markerFrames + droppedVerseMarkerFrames).distinct().sorted()
+        val allMarkerLabels = buildMarkerLabelsForFrames(allMarkerFrames)
+        _uiState.value = _uiState.value.copy(
+            versesMarked = droppedVerseMarkerFrames.size,
+            markerFrames = allMarkerFrames,
+            markerLabels = allMarkerLabels
+        )
+    }
+
+    fun saveVerseMarkersAsNewTake() {
+        if (droppedVerseMarkerFrames.isEmpty()) {
+            exitVerseMarkerMode()
+            return
+        }
+        val take = activeTake ?: return
+
         viewModelScope.launch(Dispatchers.IO) {
             runCatching {
-                persistEditedFileAsNewTake(editedAudioFile)
+                val tempWav = File.createTempFile("marked_", ".wav")
+                val reader = buildReaderForTake(take)
+                val allMarkerFrames = (markerFrames + droppedVerseMarkerFrames).distinct().sorted()
+                val newMarkers = allMarkerFrames.mapIndexed { idx, frame ->
+                    VerseMarker(start = idx + 1, end = idx + 1, location = frame)
+                }
+                audioBouncer.bounceAudio(tempWav, reader, newMarkers)
+                persistEditedFileAsNewTake(tempWav)
+                tempWav.delete()
             }.onFailure { e ->
                 _uiState.value = _uiState.value.copy(
-                    error = e.message ?: "Failed to save edited take"
+                    error = e.message ?: "Failed to save verse markers"
                 )
             }
         }
+        exitVerseMarkerMode()
+    }
+
+    fun onRerecord() {
+        val wb = workbook ?: return
+        val target = currentTarget() ?: return
+        _navEvents.tryEmit(
+            NavEvent.Rerecord(
+                sourceId = wb.source.collectionId,
+                targetId = wb.target.collectionId,
+                chapterNumber = target.chapter.sort,
+                unitNumber = target.chunk?.sort ?: 0
+            )
+        )
+    }
+
+    fun onInsert() {
+        val wb = workbook ?: return
+        val target = currentTarget() ?: return
+        _navEvents.tryEmit(
+            NavEvent.Insert(
+                sourceId = wb.source.collectionId,
+                targetId = wb.target.collectionId,
+                chapterNumber = target.chapter.sort,
+                unitNumber = target.chunk?.sort ?: 0
+            )
+        )
     }
 
     private suspend fun persistEditedFileAsNewTake(editedAudioFile: File) {
@@ -485,24 +523,32 @@ class PlaybackViewModel(
         audioPlayer.pause()
         stopTicker()
         closeWaveformRenderer()
+        closeMinimapRenderer()
         markerFrames = emptyList()
+        markerLabels = emptyList()
         baseMarkers = emptyList()
         activeTake = null
         editSession = null
-        isEditMode = false
-        clearSelectionInternal()
+        selectionStartFrame = null
+        selectionEndFrame = null
+        droppedVerseMarkerFrames.clear()
 
         _uiState.value = _uiState.value.copy(
             selectedTake = null,
             takes = emptyList(),
+            currentTakeLabel = "",
             waveformSamples = floatArrayOf(),
+            minimapSamples = floatArrayOf(),
             progress = 0f,
             currentFrame = 0,
             durationFrames = 0,
             sampleRate = 44100,
             markerFrames = emptyList(),
+            markerLabels = emptyList(),
             elapsedText = "00:00:00",
             durationText = "00:00:00",
+            isVerseMarkerMode = false,
+            versesMarked = 0,
             error = null
         )
 
@@ -512,22 +558,13 @@ class PlaybackViewModel(
     }
 
     private fun updateTargetUi(target: PlaybackTarget, wb: Workbook) {
-        val chapterSorts = targets.map { it.chapter.sort }.distinct().sorted()
-        val chunkSorts = targets
-            .mapNotNull { if (it.chapter.sort == target.chapter.sort) it.chunk?.sort else null }
-            .distinct()
-            .sorted()
-        val canNavigate = !_uiState.value.isPlaying
         _uiState.value = _uiState.value.copy(
             targetUi = TargetUiState(
-                sourceLabel = wb.source.resourceMetadata.identifier.uppercase(),
+                languageLabel = wb.target.language.name,
+                projectLabel = wb.target.resourceMetadata.identifier.uppercase(),
                 bookLabel = wb.target.label,
                 chapterValue = target.chapter.sort.toString(),
-                unitValue = (target.chunk?.sort ?: 0).toString(),
-                canGoPreviousChapter = canNavigate && chapterSorts.any { it < target.chapter.sort },
-                canGoNextChapter = canNavigate && chapterSorts.any { it > target.chapter.sort },
-                canGoPreviousUnit = canNavigate && target.chunk != null && chunkSorts.any { it < target.chunk.sort },
-                canGoNextUnit = canNavigate && target.chunk != null && chunkSorts.any { it > target.chunk.sort }
+                unitValue = (target.chunk?.sort ?: 0).toString()
             )
         )
     }
@@ -577,12 +614,21 @@ class PlaybackViewModel(
             val originalAudio = OratureAudioFile(take.file)
             baseMarkers = originalAudio.getMarkers().sortedBy { it.location }
             markerFrames = baseMarkers.filterIsInstance<VerseMarker>().map { it.location }
-            isEditMode = false
-            clearSelectionInternal()
+            markerLabels = baseMarkers.filterIsInstance<VerseMarker>().map { it.label }
+            droppedVerseMarkerFrames.clear()
+            selectionStartFrame = null
+            selectionEndFrame = null
             reloadCurrentTakePlayback(0)
         }.onFailure { e ->
             _uiState.value = _uiState.value.copy(error = e.message ?: "Failed to load take")
         }
+    }
+
+    private fun buildMarkerLabelsForFrames(frames: List<Int>): List<String> {
+        // Reconstruct labels by matching existing base markers, then numbering new ones
+        val existingByFrame = baseMarkers.filterIsInstance<VerseMarker>()
+            .associate { it.location to it.label }
+        return frames.map { frame -> existingByFrame[frame] ?: "+" }
     }
 
     private fun createFreshEditSession(take: Take) {
@@ -614,11 +660,13 @@ class PlaybackViewModel(
     }
 
     private fun refreshMarkerFrames() {
-        markerFrames = mapEditedMarkers(baseMarkers)
-            .filterIsInstance<VerseMarker>()
-            .map { it.location }
-            .sorted()
-        _uiState.value = _uiState.value.copy(markerFrames = markerFrames)
+        val editedMarkers = mapEditedMarkers(baseMarkers).filterIsInstance<VerseMarker>()
+        markerFrames = editedMarkers.map { it.location }.sorted()
+        markerLabels = editedMarkers.sortedBy { it.location }.map { it.label }
+        _uiState.value = _uiState.value.copy(
+            markerFrames = markerFrames,
+            markerLabels = markerLabels
+        )
     }
 
     private fun reloadCurrentTakePlayback(seekFrame: Int) {
@@ -635,6 +683,7 @@ class PlaybackViewModel(
         audioPlayer.seek(clampedSeek)
 
         setupWaveformRenderer(take)
+        loadMinimapSamples(take)
         refreshMarkerFrames()
         refreshTransport()
         refreshWaveform()
@@ -654,9 +703,19 @@ class PlaybackViewModel(
         )
     }
 
-    private fun clearSelectionInternal() {
-        selectionStartFrame = null
-        selectionEndFrame = null
+    private fun loadMinimapSamples(take: Take) {
+        closeMinimapRenderer()
+        if (minimapWidth <= 0) return
+        minimapRenderJob = viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val reader = buildReaderForTake(take)
+                reader.open()
+                val renderer = MinimapWaveformRenderer(reader = reader, width = minimapWidth)
+                minimapRenderer = renderer
+                val samples = renderer.render()
+                _uiState.update { it.copy(minimapSamples = samples) }
+            }
+        }
     }
 
     private fun updateEditUi() {
@@ -672,7 +731,6 @@ class PlaybackViewModel(
             abs((selectionStartFrame ?: 0) - (selectionEndFrame ?: 0)) >= 2
 
         _uiState.value = _uiState.value.copy(
-            isEditMode = isEditMode,
             selectionStartProgress = startProgress,
             selectionEndProgress = endProgress,
             canCutSelection = canCut,
@@ -683,15 +741,7 @@ class PlaybackViewModel(
     }
 
     private fun refreshWaveform() {
-        val renderer = waveformRenderer ?: return
-        val frame = audioPlayer.getLocationInFrames()
-        if (waveformRenderJob?.isActive == true) return
-        waveformRenderJob = viewModelScope.launch(Dispatchers.Default) {
-            val samples = renderer.renderCentered(frame)
-            _uiState.update { state ->
-                state.copy(waveformSamples = samples)
-            }
-        }
+        _desiredWaveformFrame.value = audioPlayer.getLocationInFrames()
     }
 
     private fun startTicker() {
@@ -708,8 +758,6 @@ class PlaybackViewModel(
     private fun stopTicker() {
         tickerJob?.cancel()
         tickerJob = null
-        waveformRenderJob?.cancel()
-        waveformRenderJob = null
     }
 
     private fun refreshTransport() {
@@ -718,6 +766,7 @@ class PlaybackViewModel(
         val durationFrames = audioPlayer.getDurationInFrames().coerceAtLeast(0)
         val currentFrame = audioPlayer.getLocationInFrames().coerceIn(0, durationFrames)
         val progress = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f
+        val take = _uiState.value.selectedTake
 
         _uiState.value = _uiState.value.copy(
             progress = progress,
@@ -727,7 +776,8 @@ class PlaybackViewModel(
             elapsedMs = positionMs,
             durationMs = durationMs,
             elapsedText = formatTime(positionMs),
-            durationText = formatTime(durationMs)
+            durationText = formatTime(durationMs),
+            currentTakeLabel = take?.let { "Take ${it.number}" } ?: ""
         )
         updateEditUi()
     }
@@ -741,10 +791,15 @@ class PlaybackViewModel(
     }
 
     private fun closeWaveformRenderer() {
-        waveformRenderJob?.cancel()
-        waveformRenderJob = null
         waveformRenderer?.close()
         waveformRenderer = null
+    }
+
+    private fun closeMinimapRenderer() {
+        minimapRenderJob?.cancel()
+        minimapRenderJob = null
+        minimapRenderer?.close()
+        minimapRenderer = null
     }
 
     fun cleanup() {
@@ -752,6 +807,7 @@ class PlaybackViewModel(
         takesJob?.cancel()
         selectedJob?.cancel()
         closeWaveformRenderer()
+        closeMinimapRenderer()
         audioPlayer.release()
     }
 
