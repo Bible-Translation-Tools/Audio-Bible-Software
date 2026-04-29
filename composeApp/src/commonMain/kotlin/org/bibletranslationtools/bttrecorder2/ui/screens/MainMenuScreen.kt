@@ -10,21 +10,26 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.MainMenuViewModel
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
 @Composable
 fun MainMenuScreen(
+    viewModel: MainMenuViewModel = viewModel { MainMenuViewModel() },
     onRecordClick: () -> Unit,
-    onFilesClick: () -> Unit,
-    language: () -> String,
-    book: () -> String
+    onFilesClick: () -> Unit
 ) {
+    val uiState by viewModel.uiState.collectAsState()
+
     Row(
         modifier = Modifier
             .fillMaxSize()
@@ -39,56 +44,75 @@ fun MainMenuScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // Files Button
             Icon(
                 imageVector = Icons.Default.Folder,
-                contentDescription = "stringResource(id = R.string.files_content_desc)",
-                modifier = Modifier
-                    .size(48.dp)
-                    .background(MaterialTheme.colorScheme.secondary)
-                    .clickable { onFilesClick() },
+                contentDescription = "Files",
+                modifier = Modifier.size(48.dp),
                 tint = Color.White
             )
         }
-        // Record Button
+
         Column(
             modifier = Modifier
                 .weight(0.67f)
                 .fillMaxHeight()
-                .background(MaterialTheme.colorScheme.primary)
+                .background(
+                    if (uiState.hasActiveProject) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                )
                 .clickable { onRecordClick() },
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
             Icon(
                 imageVector = Icons.Filled.Mic,
-                contentDescription = "stringResource(id = R.string.record_content_desc)",
-                modifier = Modifier.size(48.dp), // Adjust size as needed
+                contentDescription = "Record",
+                modifier = Modifier.size(48.dp),
                 tint = Color.White
             )
 
-            Text(
-                text = language(),
-                color = MaterialTheme.colorScheme.onSecondary,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-
-            Text(
-                text = book(),
-                color = MaterialTheme.colorScheme.onSecondary,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 8.dp)
-
-            )
+            if (uiState.hasActiveProject) {
+                if (uiState.languageDisplay.isNotEmpty()) {
+                    Text(
+                        text = uiState.languageDisplay,
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+                if (uiState.bookDisplay.isNotEmpty()) {
+                    Text(
+                        text = uiState.bookDisplay,
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                if (uiState.chapterDisplay.isNotEmpty()) {
+                    Text(
+                        text = uiState.chapterDisplay,
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                if (uiState.unitDisplay.isNotEmpty()) {
+                    Text(
+                        text = uiState.unitDisplay,
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+            }
         }
     }
 }
 
-@Preview()
+@Preview
 @Composable
-fun DefaultPreview() {
-    MainMenuScreen({}, {}, { "Language" }, { "Book" })
+fun MainMenuPreview() {
+    MainMenuScreen(onRecordClick = {}, onFilesClick = {})
 }

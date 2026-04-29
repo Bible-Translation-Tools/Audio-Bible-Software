@@ -2,13 +2,17 @@ package org.bibletranslationtools.bttrecorder2.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.bibletranslationtools.bttrecorder2.preferences.IAppPreferences
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
@@ -33,21 +37,33 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
 
     private val workbookRepository: IWorkbookRepository by inject()
     private val collectionRepository: ICollectionRepository by inject()
+    private val appPreferences: IAppPreferences by inject()
 
     private val _uiState = MutableStateFlow(ChapterListUiState())
     val uiState: StateFlow<ChapterListUiState> = _uiState.asStateFlow()
 
     private var loadingJob: Job? = null
 
-    fun loadChapters(workbookSourceId: Int, workbookTargetId: Int) {
+    fun loadChapters() {
         loadingJob?.cancel()
-        loadingJob = viewModelScope.launch {
+        loadingJob = viewModelScope.launch(Dispatchers.IO) {
             _uiState.update { it.copy(isLoading = true, chapters = emptyList()) }
             try {
-                val sourceC = collectionRepository.getProject(workbookSourceId).blockingGet()
-                val targetC = collectionRepository.getProject(workbookTargetId).blockingGet()
-                val workbook = workbookRepository.get(sourceC, targetC)
+                val nav = appPreferences.navState.first()
+                if (!nav.hasActiveWorkbook) {
+                    _uiState.update { it.copy(isLoading = false, error = "No active project") }
+                    return@launch
+                }
 
+                val sourceC = collectionRepository.getProjectSuspend(nav.workbookSourceId)
+                val targetC = collectionRepository.getProjectSuspend(nav.workbookTargetId)
+
+                if (sourceC == null || targetC == null) {
+                    _uiState.update { it.copy(isLoading = false, error = "Project not found") }
+                    return@launch
+                }
+
+                val workbook = workbookRepository.get(sourceC, targetC)
                 if (workbook == null) {
                     _uiState.update { it.copy(isLoading = false, error = "Workbook not found") }
                     return@launch
@@ -55,13 +71,8 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
 
                 _uiState.update { it.copy(workbook = workbook) }
 
-                // coroutineScope gives structured concurrency: all per-chapter collectors
-                // are cancelled together when loadingJob is cancelled.
                 coroutineScope {
                     workbook.target.chaptersFlow.collect { chapter ->
-                        // Each chapter gets its own collector on observableFlowChunks.
-                        // This fixes the race condition where chunksSuspend() returns the
-                        // BehaviorRelay's initial empty list before the DB query completes.
                         launch {
                             chapter.observableFlowChunks.collect { chunks ->
                                 val hasContent = chunks.any { it.hasSelectedAudio() }
@@ -81,7 +92,8 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
                         }
                     }
                 }
-
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, error = e.message ?: "Unknown error") }
             }

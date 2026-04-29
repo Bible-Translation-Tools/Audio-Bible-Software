@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.bibletranslationtools.bttrecorder2.preferences.IAppPreferences
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
@@ -26,7 +27,9 @@ import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerEvent
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.flow.first
 
 data class UnitUiModel(
     val unit: Chunk,
@@ -57,6 +60,7 @@ class UnitListViewModel(
 
     private val workbookRepository: IWorkbookRepository by inject()
     private val collectionRepository: ICollectionRepository by inject()
+    private val appPreferences: IAppPreferences by inject()
 
     private val _uiState = MutableStateFlow(UnitListUiState())
     val uiState: StateFlow<UnitListUiState> = _uiState.asStateFlow()
@@ -132,12 +136,18 @@ class UnitListViewModel(
         return "%02d:%02d:%02d".format(hours, minutes, seconds)
     }
 
-    fun loadUnits(workbookSourceId: Int, workbookTargetId: Int, chapterNumber: Int) {
+    fun loadUnits() {
         viewModelScope.launch(ioDispatcher) {
             _uiState.update { it.copy(isLoading = true) }
             try {
-                val sourceC = collectionRepository.getProjectSuspend(workbookSourceId)
-                val targetC = collectionRepository.getProjectSuspend(workbookTargetId)
+                val nav = appPreferences.navState.first()
+                if (!nav.hasActiveChapter) {
+                    _uiState.update { it.copy(isLoading = false, error = "No active chapter") }
+                    return@launch
+                }
+
+                val sourceC = collectionRepository.getProjectSuspend(nav.workbookSourceId)
+                val targetC = collectionRepository.getProjectSuspend(nav.workbookTargetId)
 
                 if (sourceC == null || targetC == null) {
                     _uiState.update { it.copy(isLoading = false, error = "Project not found") }
@@ -145,7 +155,7 @@ class UnitListViewModel(
                 }
 
                 val workbook = workbookRepository.get(sourceC, targetC)
-                val chapter = workbook.target.chaptersFlow.firstOrNull { it.sort == chapterNumber }
+                val chapter = workbook.target.chaptersFlow.firstOrNull { it.sort == nav.chapterSort }
 
                 if (chapter == null) {
                     _uiState.update { it.copy(isLoading = false, error = "Chapter not found", workbook = workbook) }
@@ -207,7 +217,7 @@ class UnitListViewModel(
                         }
                     }
                 }
-            } catch (e: kotlinx.coroutines.CancellationException) {
+            } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, error = e.message ?: "Unknown error") }

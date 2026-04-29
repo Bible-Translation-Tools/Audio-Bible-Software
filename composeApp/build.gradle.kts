@@ -181,6 +181,8 @@ kotlin {
 
                 implementation(libs.koin.core)
 
+                implementation(libs.datastore.preferences)
+
                 implementation("io.github.vinceglb:filekit-core:${"0.12.0"}")
                 implementation("io.github.vinceglb:filekit-dialogs:${"0.12.0"}")
                 implementation("io.github.vinceglb:filekit-dialogs-compose:${"0.12.0"}")

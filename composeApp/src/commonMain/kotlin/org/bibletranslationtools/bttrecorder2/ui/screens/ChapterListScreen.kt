@@ -26,15 +26,13 @@ import org.bibletranslationtools.bttrecorder2.ui.MockData
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChapterListScreen(
-    workbookSourceId: Int,
-    workbookTargetId: Int,
     viewModel: ChapterListViewModel = viewModel { ChapterListViewModel() },
     onBackClick: () -> Unit,
     onChapterClick: (Int) -> Unit,
     onRecordChapter: (Int) -> Unit = {}
 ) {
-    LaunchedEffect(workbookSourceId, workbookTargetId) {
-        viewModel.loadChapters(workbookSourceId, workbookTargetId)
+    LaunchedEffect(Unit) {
+        viewModel.loadChapters()
     }
 
     val uiState by viewModel.uiState.collectAsState()

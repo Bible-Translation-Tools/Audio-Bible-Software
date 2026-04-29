@@ -15,10 +15,10 @@ object ProjectManagementRoute
 object ProjectWizardRoute
 
 @Serializable
-data class ChapterListRoute(val workbookSourceId: Int, val workbookTargetId: Int)
+object ChapterListRoute
 
 @Serializable
-data class UnitListRoute(val workbookSourceId: Int, val workbookTargetId: Int, val chapterNumber: Int)
+object UnitListRoute
 
 @Serializable
 data class RecorderRoute(

@@ -39,17 +39,14 @@ private val GreenPlay = Color(0xFF4CAF50)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UnitListScreen(
-    workbookSourceId: Int,
-    workbookTargetId: Int,
-    chapterNumber: Int,
     viewModel: UnitListViewModel = viewModel { UnitListViewModel() },
     onBackClick: () -> Unit,
     onUnitClick: (Int) -> Unit,
     onRecordChapter: () -> Unit,
     onOpenPlayback: (unitSort: Int, takeNumber: Int) -> Unit
 ) {
-    LaunchedEffect(workbookSourceId, workbookTargetId, chapterNumber) {
-        viewModel.loadUnits(workbookSourceId, workbookTargetId, chapterNumber)
+    LaunchedEffect(Unit) {
+        viewModel.loadUnits()
     }
 
     val uiState by viewModel.uiState.collectAsState()
