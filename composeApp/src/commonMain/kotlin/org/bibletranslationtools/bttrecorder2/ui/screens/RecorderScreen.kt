@@ -37,6 +37,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.sp
+import org.bibletranslationtools.bttrecorder2.ui.playback.SourceAudioPlayerController
 import org.bibletranslationtools.bttrecorder2.ui.recorder.WaveformView
 import org.bibletranslationtools.bttrecorder2.ui.theme.TranslationRecorderTheme
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.RecorderViewModel
@@ -59,6 +65,7 @@ fun RecorderScreen(
     val timerText by viewModel.timerText.collectAsState()
     val volumeLevel by viewModel.volumeLevel.collectAsState()
     val audioError by viewModel.audioError.collectAsState()
+    val sourceAudioState by viewModel.sourceAudioState.collectAsState()
 
     var viewWidth by remember { mutableStateOf(0) }
 
@@ -156,20 +163,12 @@ fun RecorderScreen(
                 )
             }
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(64.dp)
-                    .background(TranslationRecorderTheme.darkGray0)
-                    .padding(horizontal = 14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("No source audio", color = TranslationRecorderTheme.gray0, style = MaterialTheme.typography.titleMedium)
-                if (audioError != null) {
-                    Spacer(Modifier.width(12.dp))
-                    Text(audioError ?: "", color = TranslationRecorderTheme.strongRed, style = MaterialTheme.typography.bodySmall)
-                }
-            }
+            SourceAudioRow(
+                state = sourceAudioState,
+                audioError = audioError,
+                onTogglePlayPause = viewModel::toggleSourcePlayback,
+                onSeek = viewModel::seekSourceToProgress
+            )
 
             Row(
                 modifier = Modifier
@@ -320,6 +319,91 @@ private fun RecordTransportButton(
     ) {
         IconButton(onClick = action) {
             Icon(icon, contentDescription = "record transport", tint = Color.White, modifier = Modifier.size(42.dp))
+        }
+    }
+}
+
+/**
+ * Source-audio playback row shown above the transport controls.
+ * Renders one of three states:
+ *   - Available: play/pause button + scrubber + monospace elapsed/duration labels
+ *   - Unavailable: muted "No source audio" message
+ *   - Audio device error: appended in strong red
+ *
+ * The scrubber is intentionally bound to the same green play color used elsewhere
+ * for play affordances; matching the existing visual language for "this is the
+ * playback control".
+ */
+@Composable
+private fun SourceAudioRow(
+    state: SourceAudioPlayerController.UiState,
+    audioError: String?,
+    onTogglePlayPause: () -> Unit,
+    onSeek: (Float) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(64.dp)
+            .background(TranslationRecorderTheme.darkGray0)
+            .padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (state.available) {
+            IconButton(
+                onClick = onTogglePlayPause,
+                modifier = Modifier.size(40.dp)
+            ) {
+                Icon(
+                    imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = if (state.isPlaying) "Pause source" else "Play source",
+                    tint = Color(0xFF4CAF50),
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = state.elapsedText,
+                style = TextStyle(
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp,
+                    color = Color.White
+                )
+            )
+            Slider(
+                value = state.progress,
+                onValueChange = onSeek,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 8.dp),
+                colors = SliderDefaults.colors(
+                    thumbColor = Color(0xFF4CAF50),
+                    activeTrackColor = Color(0xFF4CAF50),
+                    inactiveTrackColor = Color.White.copy(alpha = 0.2f)
+                )
+            )
+            Text(
+                text = state.durationText,
+                style = TextStyle(
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp,
+                    color = Color.White
+                )
+            )
+        } else {
+            Text(
+                "No source audio",
+                color = TranslationRecorderTheme.gray0,
+                style = MaterialTheme.typography.titleMedium
+            )
+        }
+        if (audioError != null) {
+            Spacer(Modifier.width(12.dp))
+            Text(
+                audioError,
+                color = TranslationRecorderTheme.strongRed,
+                style = MaterialTheme.typography.bodySmall
+            )
         }
     }
 }

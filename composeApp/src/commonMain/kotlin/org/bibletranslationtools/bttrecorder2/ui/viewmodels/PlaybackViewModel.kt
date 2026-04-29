@@ -19,6 +19,7 @@ import kotlinx.coroutines.rx2.await
 import org.bibletranslationtools.bttrecorder2.ui.playback.CutAwareAudioFileReader
 import org.bibletranslationtools.bttrecorder2.ui.playback.MinimapWaveformRenderer
 import org.bibletranslationtools.bttrecorder2.ui.playback.PlaybackWaveformRenderer
+import org.bibletranslationtools.bttrecorder2.ui.playback.SourceAudioPlayerController
 import org.bibletranslationtools.bttrecorder2.ui.playback.WaveEditSession
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
@@ -130,6 +131,13 @@ class PlaybackViewModel(
         scope = viewModelScope,
         controlDispatcher = Dispatchers.Default
     )
+
+    private val sourceAudioController = SourceAudioPlayerController(
+        factory = audioPlayerFactory,
+        scope = viewModelScope
+    )
+
+    val sourceAudioState: StateFlow<SourceAudioPlayerController.UiState> = sourceAudioController.uiState
 
     private var workbook: Workbook? = null
     private var targets: List<PlaybackTarget> = emptyList()
@@ -555,6 +563,21 @@ class PlaybackViewModel(
         updateTargetUi(target, wb)
         updateEditUi()
         observeTargetAudio()
+
+        // Resolve and load source audio for this target. Disk-bound work goes off
+        // the main thread; the controller's state flow drives the UI.
+        viewModelScope.launch(Dispatchers.IO) {
+            val available = sourceAudioController.load(wb, target.chapter, target.chunk)
+            _uiState.update { it.copy(sourceAudioAvailable = available) }
+        }
+    }
+
+    fun toggleSourcePlayback() {
+        sourceAudioController.togglePlayPause()
+    }
+
+    fun seekSourceToProgress(progress: Float) {
+        sourceAudioController.seekToProgress(progress)
     }
 
     private fun updateTargetUi(target: PlaybackTarget, wb: Workbook) {
@@ -808,6 +831,7 @@ class PlaybackViewModel(
         selectedJob?.cancel()
         closeWaveformRenderer()
         closeMinimapRenderer()
+        sourceAudioController.release()
         audioPlayer.release()
     }
 

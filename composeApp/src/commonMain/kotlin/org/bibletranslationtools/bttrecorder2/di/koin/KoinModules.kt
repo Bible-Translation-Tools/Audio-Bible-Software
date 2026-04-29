@@ -16,6 +16,7 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.Workb
 import org.bibletranslationtools.otter.common.domain.languages.LanguageDataSource
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.IZipEntryTreeBuilder
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ZipEntryTreeBuilder
+import org.bibletranslationtools.bttrecorder2.domain.SourceAudioImporter
 import org.bibletranslationtools.bttrecorder2.preferences.DataStoreAppPreferences
 import org.bibletranslationtools.bttrecorder2.preferences.IAppPreferences
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
@@ -61,6 +62,7 @@ val appPreferencesModule = module {
         dir.mkdirs()
         DataStoreAppPreferences(dir.absolutePath)
     }
+    single { SourceAudioImporter(get()) }
 }
 
 val appRepositoriesModule = module {

@@ -35,8 +35,12 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.text.font.FontFamily
+import org.bibletranslationtools.bttrecorder2.ui.playback.SourceAudioPlayerController
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -158,6 +162,7 @@ fun PlaybackScreen(
         }
 
         // ── Minimap / source audio ────────────────────────────────────────────
+        val sourceAudioState by viewModel.sourceAudioState.collectAsState()
         MinimapWidget(
             showMinimap = ui.showMinimap,
             minimapSamples = ui.minimapSamples,
@@ -169,7 +174,9 @@ fun PlaybackScreen(
             onSeek = viewModel::seekToProgress,
             onShowMinimap = { viewModel.showMinimap(true) },
             onShowSource = { viewModel.showMinimap(false) },
-            sourceAudioAvailable = ui.sourceAudioAvailable,
+            sourceAudioState = sourceAudioState,
+            onSourceTogglePlayPause = viewModel::toggleSourcePlayback,
+            onSourceSeek = viewModel::seekSourceToProgress,
             onWidthChanged = viewModel::setMinimapWidth
         )
 
@@ -460,7 +467,9 @@ private fun MinimapWidget(
     onSeek: (Float) -> Unit,
     onShowMinimap: () -> Unit,
     onShowSource: () -> Unit,
-    sourceAudioAvailable: Boolean,
+    sourceAudioState: SourceAudioPlayerController.UiState,
+    onSourceTogglePlayPause: () -> Unit,
+    onSourceSeek: (Float) -> Unit,
     onWidthChanged: (Int) -> Unit
 ) {
     Row(
@@ -488,16 +497,12 @@ private fun MinimapWidget(
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = if (sourceAudioAvailable) "Source audio available" else "No source audio",
-                        color = TranslationRecorderTheme.gray0,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
+                SourceAudioPanel(
+                    state = sourceAudioState,
+                    onTogglePlayPause = onSourceTogglePlayPause,
+                    onSeek = onSourceSeek,
+                    modifier = Modifier.fillMaxSize()
+                )
             }
         }
         Column(
@@ -520,6 +525,74 @@ private fun MinimapWidget(
                 )
             }
         }
+    }
+}
+
+/**
+ * Inline source-audio player rendered inside the minimap toggle area when the
+ * user selects the source-audio tab. Mirrors the recorder screen's source row:
+ * play/pause + monospace timecode + scrubber. When unavailable, shows a muted
+ * "no source audio" message.
+ */
+@Composable
+private fun SourceAudioPanel(
+    state: SourceAudioPlayerController.UiState,
+    onTogglePlayPause: () -> Unit,
+    onSeek: (Float) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (!state.available) {
+        Box(modifier = modifier, contentAlignment = Alignment.Center) {
+            Text(
+                text = "No source audio",
+                color = TranslationRecorderTheme.gray0,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+        return
+    }
+
+    Row(
+        modifier = modifier.padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = onTogglePlayPause, modifier = Modifier.size(36.dp)) {
+            Icon(
+                imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                contentDescription = if (state.isPlaying) "Pause source" else "Play source",
+                tint = Color(0xFF4CAF50),
+                modifier = Modifier.size(28.dp)
+            )
+        }
+        Spacer(Modifier.width(4.dp))
+        Text(
+            text = state.elapsedText,
+            style = TextStyle(
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
+                color = Color.White
+            )
+        )
+        Slider(
+            value = state.progress,
+            onValueChange = onSeek,
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 6.dp),
+            colors = SliderDefaults.colors(
+                thumbColor = Color(0xFF4CAF50),
+                activeTrackColor = Color(0xFF4CAF50),
+                inactiveTrackColor = Color.White.copy(alpha = 0.2f)
+            )
+        )
+        Text(
+            text = state.durationText,
+            style = TextStyle(
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
+                color = Color.White
+            )
+        )
     }
 }
 

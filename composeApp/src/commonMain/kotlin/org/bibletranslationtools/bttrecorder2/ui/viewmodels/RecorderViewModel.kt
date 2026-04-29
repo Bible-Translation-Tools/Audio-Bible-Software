@@ -22,6 +22,8 @@ import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
+import org.bibletranslationtools.bttrecorder2.ui.playback.SourceAudioPlayerController
+import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
 import org.bibletranslationtools.otter.common.device.newaudio.AudioRecorderConnectionFactory
 import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
@@ -37,8 +39,16 @@ import java.time.LocalDate
 
 class RecorderViewModel(
     private val workbookRepository: IWorkbookRepository,
-    private val audioRecorderFactory: AudioRecorderConnectionFactory
+    private val audioRecorderFactory: AudioRecorderConnectionFactory,
+    audioPlayerFactory: AudioPlayerConnectionFactory
 ) : ViewModel() {
+
+    private val sourceAudioController = SourceAudioPlayerController(
+        factory = audioPlayerFactory,
+        scope = viewModelScope
+    )
+
+    val sourceAudioState: StateFlow<SourceAudioPlayerController.UiState> = sourceAudioController.uiState
     enum class RecordingUiState {
         Idle,
         Recording,
@@ -295,7 +305,21 @@ class RecorderViewModel(
             }
         }
 
+        // Load source audio for the new target. Done off the IO dispatcher because
+        // the accessor reads from disk (and possibly extracts from a Resource Container).
+        viewModelScope.launch(Dispatchers.IO) {
+            sourceAudioController.load(wb, target.chapter, target.chunk)
+        }
+
         resetSessionForTarget()
+    }
+
+    fun toggleSourcePlayback() {
+        sourceAudioController.togglePlayPause()
+    }
+
+    fun seekSourceToProgress(progress: Float) {
+        sourceAudioController.seekToProgress(progress)
     }
 
     fun initializeAudio(width: Int) {
@@ -622,6 +646,7 @@ class RecorderViewModel(
         stopTimerTicker()
         volumeTickerJob?.cancel()
         recorderJob?.cancel()
+        sourceAudioController.release()
         viewModelScope.launch {
             try {
                 audioRecorderFactory.getRecorderWorker().stop()
