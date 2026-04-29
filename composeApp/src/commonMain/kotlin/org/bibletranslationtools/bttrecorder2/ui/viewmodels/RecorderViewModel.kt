@@ -34,9 +34,6 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.time.LocalDate
-import kotlin.math.abs
-import kotlin.math.max
-import kotlin.math.min
 
 class RecorderViewModel(
     private val workbookRepository: IWorkbookRepository,
@@ -312,13 +309,16 @@ class RecorderViewModel(
             viewModelScope
         )
         _waveformRenderer.value = renderer
-        startVolumeTicker()
+        // Start volume monitor BEFORE starting recorder so we don't miss any
+        // SharedFlow packets during the brief gap before our subscription registers.
+        startVolumeMonitor()
 
         if (!recorderInitialized) {
             recorderJob = viewModelScope.launch(Dispatchers.IO) {
                 try {
+                    // Keep the recorder running while the screen is visible so the
+                    // volume meter shows live mic input even before recording starts.
                     recorder.start(AudioSpec())
-                    recorder.pause()
                     recorderInitialized = true
                     _audioError.value = null
                 } catch (e: Exception) {
@@ -382,7 +382,8 @@ class RecorderViewModel(
 
     fun pauseRecording() {
         if (_recordingState.value != RecordingUiState.Recording) return
-        audioRecorderFactory.getRecorderWorker().pause()
+        // Don't pause the recorder itself — keep mic live so the volume meter
+        // still reflects what the user would be recording. Only pause the writer.
         _isRecording.value = false
         _recordingState.value = RecordingUiState.Paused
         wavFileWriter?.pause()
@@ -415,7 +416,7 @@ class RecorderViewModel(
 
     fun stopRecording() {
         if (_recordingState.value != RecordingUiState.Recording && _recordingState.value != RecordingUiState.Paused) return
-        audioRecorderFactory.getRecorderWorker().pause()
+        // Keep mic live so the volume meter continues to respond in Review state.
         _isRecording.value = false
         _recordingState.value = RecordingUiState.Review
         wavFileWriter?.pause()
@@ -433,7 +434,6 @@ class RecorderViewModel(
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                runCatching { audioRecorderFactory.getRecorderWorker().pause() }
                 // Finalize WAV header before copying. Without this, saved takes can report 0 duration.
                 wavFileWriter?.pause()
                 wavFileWriter?.closeAndJoin()
@@ -558,28 +558,29 @@ class RecorderViewModel(
         _timerText.value = formatElapsed(timer.timeElapsed)
     }
 
-    private fun startVolumeTicker() {
+    private fun startVolumeMonitor() {
         if (volumeTickerJob?.isActive == true) return
-        volumeTickerJob = viewModelScope.launch {
-            while (true) {
-                val renderer = _waveformRenderer.value
-                val buffer = renderer?.floatBuffer?.array
-                if (renderer != null && buffer != null && buffer.isNotEmpty()) {
-                    val window = min(buffer.size, 120)
-                    val from = max(0, buffer.size - window)
-                    var peak = 0f
-                    var i = from
-                    while (i < buffer.size) {
-                        peak = max(peak, abs(buffer[i]))
-                        i++
+        val recorder = audioRecorderFactory.getRecorderWorker()
+        // Read raw audio bytes from the SharedFlow and compute peak amplitude per packet.
+        // SharedFlow allows multiple collectors, so this runs alongside the renderer and writer.
+        volumeTickerJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                recorder.audioStream.collect { bytes ->
+                    var peak = 0
+                    var i = 0
+                    while (i + 1 < bytes.size) {
+                        // 16-bit little-endian signed PCM
+                        val low = bytes[i].toInt() and 0xFF
+                        val high = bytes[i + 1].toInt()
+                        val sample = (high shl 8) or low
+                        val a = if (sample < 0) -sample else sample
+                        if (a > peak) peak = a
+                        i += 2
                     }
-                    val normalized = (peak / 32768f).coerceIn(0f, 1f)
-                    val eased = if (_isRecording.value) normalized else (_volumeLevel.value * 0.9f)
-                    _volumeLevel.value = eased
-                } else {
-                    _volumeLevel.value *= 0.9f
+                    _volumeLevel.value = (peak / 32768f).coerceIn(0f, 1f)
                 }
-                delay(33)
+            } catch (_: Exception) {
+                // ignore collector errors; cleanup() will cancel the job
             }
         }
     }

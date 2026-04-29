@@ -1,5 +1,6 @@
 package org.bibletranslationtools.bttrecorder2.ui.screens
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -150,9 +151,8 @@ fun RecorderScreen(
                 VolumeMeter(
                     level = volumeLevel,
                     modifier = Modifier
-                        .width(28.dp)
+                        .width(24.dp)
                         .fillMaxHeight()
-                        .padding(vertical = 8.dp, horizontal = 4.dp)
                 )
             }
 
@@ -248,30 +248,50 @@ private fun StepperControl(
     }
 }
 
+/**
+ * Volume meter that matches the original BTT-Recorder design: a solid filled bar
+ * grown symmetrically from a horizontal centerline (top half mirrored to bottom).
+ * The bar's color steps through volumeBase → volumeLow → volumeGood → volumeHigh →
+ * volumeClipped based on the peak amplitude (normalized 0..1) using the same
+ * thresholds as the legacy app: -24 dB / -18 dB / -3 dB / 0 dB.
+ */
 @Composable
 private fun VolumeMeter(level: Float, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.Bottom,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        val segments = 18
-        val lit = (segments * level.coerceIn(0f, 1f)).toInt()
-        for (i in 0 until segments) {
-            val on = i < lit
-            val color = when {
-                i < 6 -> if (on) TranslationRecorderTheme.volumeLow else TranslationRecorderTheme.volumeBase.copy(alpha = 0.35f)
-                i < 12 -> if (on) TranslationRecorderTheme.volumeGood else TranslationRecorderTheme.volumeBase.copy(alpha = 0.35f)
-                i < 15 -> if (on) TranslationRecorderTheme.volumeHigh else TranslationRecorderTheme.volumeBase.copy(alpha = 0.35f)
-                else -> if (on) TranslationRecorderTheme.volumeClipped else TranslationRecorderTheme.volumeBase.copy(alpha = 0.35f)
-            }
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(4.dp)
-                    .background(color, RoundedCornerShape(1.dp))
+    val color = when {
+        level < 0.063f -> TranslationRecorderTheme.volumeBase    // < -24 dB
+        level < 0.126f -> TranslationRecorderTheme.volumeLow     // -24..-18 dB
+        level < 0.708f -> TranslationRecorderTheme.volumeGood    // -18..-3 dB
+        level < 1.0f   -> TranslationRecorderTheme.volumeHigh    // -3..0 dB
+        else           -> TranslationRecorderTheme.volumeClipped // clipping
+    }
+    val baselineColor = TranslationRecorderTheme.secondary
+
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val center = h / 2f
+        val halfBarHeight = (level.coerceIn(0f, 1f)) * (h / 2f)
+
+        // Centerline (matches CanvasView's baseline draw)
+        drawRect(
+            color = baselineColor,
+            topLeft = androidx.compose.ui.geometry.Offset(0f, center - 0.5f),
+            size = androidx.compose.ui.geometry.Size(w, 1f)
+        )
+
+        if (halfBarHeight > 0f) {
+            // Top half (grows up from center)
+            drawRect(
+                color = color,
+                topLeft = androidx.compose.ui.geometry.Offset(0f, center - halfBarHeight),
+                size = androidx.compose.ui.geometry.Size(w, halfBarHeight)
             )
-            Spacer(Modifier.height(2.dp))
+            // Bottom half (grows down from center)
+            drawRect(
+                color = color,
+                topLeft = androidx.compose.ui.geometry.Offset(0f, center),
+                size = androidx.compose.ui.geometry.Size(w, halfBarHeight)
+            )
         }
     }
 }
