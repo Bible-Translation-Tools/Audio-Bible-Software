@@ -2,10 +2,13 @@ package org.bibletranslationtools.bttrecorder2.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.bibletranslationtools.bttrecorder2.ui.navigation.ProjectWizardRoute
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
@@ -45,6 +48,21 @@ class ProjectManagementViewModel(
 
     fun onNewProjectClick() {
         // TODO: Handle new project click (navigation to Project Wizard)
+    }
+
+    fun deleteWorkbook(workbook: WorkbookDescriptor) {
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    workbookDescriptorRepository.deleteSuspend(listOf(workbook))
+                }
+                loadWorkbooks()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.value = ProjectManagementUiState.Error(e.message ?: "Failed to delete project")
+            }
+        }
     }
 }
 

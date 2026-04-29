@@ -33,7 +33,11 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import org.bibletranslationtools.bttrecorder2.ui.components.ProjectCard
+import org.bibletranslationtools.bttrecorder2.ui.components.ProjectInfoDialog
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementUiState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementViewModel
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
@@ -54,7 +58,8 @@ fun ProjectManagementScreen(
     ProjectManagementContent(
         uiState = uiState,
         onNewProjectClick = onNewProjectClick,
-        onProjectClick = onProjectClick
+        onProjectClick = onProjectClick,
+        onDeleteWorkbook = viewModel::deleteWorkbook
     )
 }
 
@@ -63,8 +68,23 @@ fun ProjectManagementScreen(
 fun ProjectManagementContent(
     uiState: ProjectManagementUiState,
     onNewProjectClick: () -> Unit,
-    onProjectClick: (WorkbookDescriptor) -> Unit
+    onProjectClick: (WorkbookDescriptor) -> Unit,
+    onDeleteWorkbook: (WorkbookDescriptor) -> Unit = {}
 ) {
+    // Currently-displayed info dialog target. Null = no dialog.
+    var infoDialogTarget by remember { mutableStateOf<WorkbookDescriptor?>(null) }
+
+    infoDialogTarget?.let { target ->
+        ProjectInfoDialog(
+            workbook = target,
+            onDismiss = { infoDialogTarget = null },
+            onDelete = {
+                onDeleteWorkbook(target)
+                infoDialogTarget = null
+            }
+        )
+    }
+
     //val context = LocalContext.current
     val toolbarColor = MaterialTheme.colorScheme.primary // Example color
     val backgroundColor = MaterialTheme.colorScheme.background // Example color
@@ -167,7 +187,7 @@ fun ProjectManagementContent(
                             ProjectCard(
                                 workbook = workbook,
                                 onWorkbookClick = { onProjectClick(workbook) },
-                                onInfoClick = { /* TODO */ },
+                                onInfoClick = { infoDialogTarget = workbook },
                                 onRecordClick = { /* TODO */ }
                             )
                         }
