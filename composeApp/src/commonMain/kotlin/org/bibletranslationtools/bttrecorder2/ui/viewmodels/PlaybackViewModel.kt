@@ -786,7 +786,7 @@ class PlaybackViewModel(
             while (_uiState.value.isPlaying) {
                 refreshTransport()
                 refreshWaveform()
-                delay(33)
+                delay(16)
             }
         }
     }
