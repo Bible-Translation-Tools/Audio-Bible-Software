@@ -55,7 +55,7 @@ fun ProjectInfoDialog(
     var isImporting by remember { mutableStateOf(false) }
 
     val picker = rememberFilePickerLauncher(
-        type = FileKitType.File(extensions = listOf("wav", "mp3")),
+        type = FileKitType.File(extensions = SourceAudioImporter.pickerExtensions),
         mode = FileKitMode.Multiple(),
         title = "Import source audio"
     ) { selectedFiles: List<PlatformFile>? ->

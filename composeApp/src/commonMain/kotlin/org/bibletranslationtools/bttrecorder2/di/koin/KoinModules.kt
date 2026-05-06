@@ -62,7 +62,7 @@ val appPreferencesModule = module {
         dir.mkdirs()
         DataStoreAppPreferences(dir.absolutePath)
     }
-    single { SourceAudioImporter(get()) }
+    single { SourceAudioImporter(get(), get()) }
 }
 
 val appRepositoriesModule = module {
