@@ -12,7 +12,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
@@ -150,8 +149,9 @@ class PlaybackViewModel(
     private var tickerJob: Job? = null
     private var minimapRenderJob: Job? = null
 
-    // Desired waveform center frame. collectLatest ensures each new value cancels
-    // any in-progress render so the latest drag position always wins.
+    // Desired waveform center frame. The init-block collector serializes renders
+    // and uses `conflate()` so the latest desired frame always wins, dropping
+    // intermediate values when a render is in flight.
     private val _desiredWaveformFrame = MutableStateFlow(0)
 
     private var waveformWidth: Int = 0
@@ -177,9 +177,17 @@ class PlaybackViewModel(
     private var diagTickIndex: Int = 0
 
     init {
-        viewModelScope.launch(Dispatchers.Default) {
-            _desiredWaveformFrame.collectLatest { frame ->
-                val renderer = waveformRenderer ?: return@collectLatest
+        // Serialize waveform renders to a single worker. `collectLatest` would
+        // not help here: `renderCentered` is non-suspending, so cancellation
+        // has no effect and a "cancelled" render still runs to completion on
+        // its worker while the new one starts on a different worker, thrashing
+        // the CPU. With limitedParallelism(1), only one render runs at a time;
+        // StateFlow already conflates by definition, so when a render is in
+        // flight, intermediate desired-frame values are dropped and the next
+        // render picks up whatever the latest value is when the worker frees.
+        viewModelScope.launch(Dispatchers.Default.limitedParallelism(1)) {
+            _desiredWaveformFrame.collect { frame ->
+                val renderer = waveformRenderer ?: return@collect
                 val startNs = System.nanoTime()
                 val samples = renderer.renderCentered(frame)
                 val elapsedMicros = (System.nanoTime() - startNs) / 1_000L
@@ -783,18 +791,82 @@ class PlaybackViewModel(
         diagPrevPlayFrame = -1L
         diagTickIndex = 0
         tickerJob = viewModelScope.launch {
+            // Interpolated playback clock. AudioTrack.playbackHeadPosition only
+            // updates at the HAL's chunk granularity (~10 ms), so polling it on
+            // every tick would still produce micro-stalls between updates. We
+            // anchor once at play start and let the wall clock drive the cursor
+            // forward at the audio sample rate, validating periodically against
+            // the observed cursor and snapping only on large drifts (seek /
+            // pause-resume / stall). 60 Hz polling matches typical display
+            // refresh and keeps state-update churn moderate; interpolation
+            // makes the cursor smooth between samples regardless of the
+            // source's chunky updates.
+            val sampleRate = waveformSampleRate.coerceAtLeast(1).toLong()
+            var anchorFrame = audioPlayer.getLocationInFrames().toLong()
+            var anchorNs = System.nanoTime()
+            var lastValidationNs = anchorNs
+
             while (_uiState.value.isPlaying) {
-                refreshTransport()
-                refreshWaveform()
                 delay(16)
+                val nowNs = System.nanoTime()
+
+                // Every ~500 ms, check whether the interpolated cursor has
+                // diverged from the real one. Snap if drift exceeds 250 ms
+                // (seek / glitch); ignore smaller drifts to avoid visible
+                // micro-jumps from the chunky source.
+                if (nowNs - lastValidationNs > 500_000_000L) {
+                    lastValidationNs = nowNs
+                    val observed = audioPlayer.getLocationInFrames().toLong()
+                    val interpolated = anchorFrame + (nowNs - anchorNs) * sampleRate / 1_000_000_000L
+                    val drift = observed - interpolated
+                    if (kotlin.math.abs(drift) > sampleRate / 4L) {
+                        anchorFrame = observed
+                        anchorNs = nowNs
+                    }
+                }
+
+                val displayFrameLong = anchorFrame + (nowNs - anchorNs) * sampleRate / 1_000_000_000L
+                refreshTransportInterpolated(displayFrameLong, sampleRate.toInt())
+                _desiredWaveformFrame.value = _uiState.value.currentFrame
             }
         }
     }
 
-    // Logs per-tick playback-position diagnostics so we can confirm whether the
-    // waveform-scroll stutter is driven by bursty AudioTrack write-callback
-    // updates. Compares the reader-side write cursor (what the UI uses) against
-    // the sink-side play cursor (AudioTrack.playbackHeadPosition on Android).
+    // Variant of refreshTransport that uses an externally-supplied display frame
+    // (from the interpolated playback clock) instead of polling the player's
+    // chunky cursor. Derives positionMs from the frame + sample rate so the time
+    // readout advances smoothly too.
+    private fun refreshTransportInterpolated(displayFrameLong: Long, sampleRate: Int) {
+        val durationFrames = audioPlayer.getDurationInFrames().coerceAtLeast(0)
+        val durationMs = audioPlayer.getDurationMs().coerceAtLeast(0)
+        val sr = sampleRate.coerceAtLeast(1)
+        val clampedFrame = displayFrameLong.coerceIn(0L, durationFrames.toLong()).toInt()
+        val positionMs = (clampedFrame.toLong() * 1000L / sr).toInt().coerceIn(0, durationMs)
+        val progress = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f
+        val take = _uiState.value.selectedTake
+
+        logTickPositionDiagnostics(clampedFrame)
+
+        _uiState.value = _uiState.value.copy(
+            progress = progress,
+            currentFrame = clampedFrame,
+            durationFrames = durationFrames,
+            sampleRate = sr,
+            elapsedMs = positionMs,
+            durationMs = durationMs,
+            elapsedText = formatTime(positionMs),
+            durationText = formatTime(durationMs),
+            currentTakeLabel = take?.let { "Take ${it.number}" } ?: ""
+        )
+        updateEditUi()
+    }
+
+    // Logs per-frame playback-position diagnostics so we can verify smoothness.
+    // After the vsync-interpolation refactor, `writeFrame` is the displayed
+    // (interpolated) frame and should advance ~sampleRate/displayHz per tick;
+    // `playFrame` is the raw AudioTrack.playbackHeadPosition and will still
+    // step in chunks. `leadFrames` shows how far the interpolated cursor leads
+    // (or lags) the observed one.
     private fun logTickPositionDiagnostics(writeFrame: Int) {
         val nowNs = System.nanoTime()
         val playFrame = runCatching { audioPlayerFactory.getPlayerWorker().debugSinkFramePosition() }

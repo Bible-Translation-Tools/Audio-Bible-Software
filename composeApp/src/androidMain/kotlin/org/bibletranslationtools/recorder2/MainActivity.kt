@@ -23,10 +23,12 @@ import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.database.AndroidAppDatabase
 import org.koin.android.ext.android.inject
 import android.Manifest
+import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.LaunchedEffect
+import androidx.core.content.ContextCompat
 import org.bibletranslationtools.bttrecorder2.di.koin.commonAudioModule
 import org.bibletranslationtools.bttrecorder2.ui.demo.AudioDashboard
 import org.bibletranslationtools.otter.common.device.newaudio.AudioDeviceSelector
@@ -59,6 +61,21 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
+            // Ask for RECORD_AUDIO at runtime if not already granted; AudioRecord
+            // construction silently fails its STATE_INITIALIZED check otherwise,
+            // surfacing as "Failed to initialize AudioRecord" in AndroidAudioSource.
+            val permissionLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission()
+            ) { /* If denied, AudioRecord.open() will throw when the user tries to record. */ }
+            LaunchedEffect(Unit) {
+                val granted = ContextCompat.checkSelfPermission(
+                    this@MainActivity,
+                    Manifest.permission.RECORD_AUDIO
+                ) == PackageManager.PERMISSION_GRANTED
+                if (!granted) {
+                    permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                }
+            }
             App()
         }
     }
@@ -111,12 +128,12 @@ class MainActivity : ComponentActivity() {
 @Preview
 @Composable
 fun AppAndroidPreview() {
-   MainMenuScreen(
-       language = {"eng"},
-       book = {"gen"},
-       onFilesClick = {},
-       onRecordClick = {}
-   )
+//   MainMenuScreen(
+//       language = {"eng"},
+//       book = {"gen"},
+//       onFilesClick = {},
+//       onRecordClick = {}
+//   )
 }
 
 // Example usage:
