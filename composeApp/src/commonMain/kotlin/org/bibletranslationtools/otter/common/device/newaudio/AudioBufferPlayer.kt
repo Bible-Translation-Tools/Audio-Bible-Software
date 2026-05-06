@@ -26,6 +26,13 @@ class AudioBufferPlayer(
     @Volatile
     private var lastKnownLocationInFrames: Long = 0
 
+    // Absolute frame at which the current AudioTrack play session started.
+    // The sink's framePosition (e.g. AudioTrack.playbackHeadPosition) resets to
+    // 0 on every flush/stop, so to expose an absolute position we add this
+    // anchor to the sink's relative position. Reset on play() and seek().
+    @Volatile
+    private var sessionStartFrame: Long = 0
+
     /**
      * Updates the hardware sink safely.
      * If the loop is running, the next iteration will wait for this to finish.
@@ -56,6 +63,9 @@ class AudioBufferPlayer(
         playbackJob = scope.launch {
             try {
                 _events.emit(AudioPlayerEvent.Play)
+                // Anchor the play cursor: pause/seek flushed the sink, so its
+                // framePosition is about to start counting from 0.
+                sessionStartFrame = lastKnownLocationInFrames
                 // Start sink immediately on play so transport state is observable without race.
                 mutex.withLock { _sink.start() }
 
@@ -127,11 +137,28 @@ class AudioBufferPlayer(
         reader?.seek(framePosition)
         startPosition = framePosition
         lastKnownLocationInFrames = framePosition
+        sessionStartFrame = framePosition
 
         if (wasPlaying) play()
     }
 
-    fun getLocationInFrames(): Long = lastKnownLocationInFrames
+    // Returns the smooth play cursor (sink's framePosition + session anchor) while
+    // playing, falling back to the write cursor when the sink is idle. Capped by
+    // lastKnownLocationInFrames so we never report past what's been queued, which
+    // matters during the tail (drain) when the sink may briefly lag the writer.
+    fun getLocationInFrames(): Long {
+        val sink = _sink
+        return if (sink.isRunning) {
+            (sessionStartFrame + sink.framePosition).coerceAtMost(lastKnownLocationInFrames)
+        } else {
+            lastKnownLocationInFrames
+        }
+    }
+
+    // Debug-only: expose the underlying sink's framePosition so the UI can log
+    // the play cursor (e.g. AudioTrack.playbackHeadPosition) alongside the
+    // reader-side write cursor while diagnosing waveform-scroll stutter.
+    fun debugSinkFramePosition(): Long = _sink.framePosition
 
     fun release() = runBlocking {
         mutex.withLock {

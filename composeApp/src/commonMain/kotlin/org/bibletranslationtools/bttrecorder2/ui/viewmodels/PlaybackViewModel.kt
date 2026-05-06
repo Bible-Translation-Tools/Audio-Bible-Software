@@ -170,11 +170,20 @@ class PlaybackViewModel(
 
     private val droppedVerseMarkerFrames = mutableListOf<Int>()
 
+    // Diagnostic state for waveform-scroll stutter investigation.
+    private var diagPrevTickNs: Long = 0L
+    private var diagPrevWriteFrame: Int = -1
+    private var diagPrevPlayFrame: Long = -1L
+    private var diagTickIndex: Int = 0
+
     init {
         viewModelScope.launch(Dispatchers.Default) {
             _desiredWaveformFrame.collectLatest { frame ->
                 val renderer = waveformRenderer ?: return@collectLatest
+                val startNs = System.nanoTime()
                 val samples = renderer.renderCentered(frame)
+                val elapsedMicros = (System.nanoTime() - startNs) / 1_000L
+                println("[WAVE-DIAG] renderCentered frame=$frame tookMicros=$elapsedMicros")
                 _uiState.update { it.copy(waveformSamples = samples) }
             }
         }
@@ -769,6 +778,10 @@ class PlaybackViewModel(
 
     private fun startTicker() {
         if (tickerJob?.isActive == true) return
+        diagPrevTickNs = 0L
+        diagPrevWriteFrame = -1
+        diagPrevPlayFrame = -1L
+        diagTickIndex = 0
         tickerJob = viewModelScope.launch {
             while (_uiState.value.isPlaying) {
                 refreshTransport()
@@ -776,6 +789,33 @@ class PlaybackViewModel(
                 delay(33)
             }
         }
+    }
+
+    // Logs per-tick playback-position diagnostics so we can confirm whether the
+    // waveform-scroll stutter is driven by bursty AudioTrack write-callback
+    // updates. Compares the reader-side write cursor (what the UI uses) against
+    // the sink-side play cursor (AudioTrack.playbackHeadPosition on Android).
+    private fun logTickPositionDiagnostics(writeFrame: Int) {
+        val nowNs = System.nanoTime()
+        val playFrame = runCatching { audioPlayerFactory.getPlayerWorker().debugSinkFramePosition() }
+            .getOrDefault(-1L)
+        val deltaWrite = if (diagPrevWriteFrame < 0) 0 else writeFrame - diagPrevWriteFrame
+        val deltaPlay = if (diagPrevPlayFrame < 0) 0L else playFrame - diagPrevPlayFrame
+        val deltaMs = if (diagPrevTickNs == 0L) 0L else (nowNs - diagPrevTickNs) / 1_000_000L
+        val lead = if (playFrame >= 0) writeFrame.toLong() - playFrame else -1L
+        println(
+            "[WAVE-DIAG] tick=" + diagTickIndex +
+                " dtMs=" + deltaMs +
+                " writeFrame=" + writeFrame +
+                " dWrite=" + deltaWrite +
+                " playFrame=" + playFrame +
+                " dPlay=" + deltaPlay +
+                " leadFrames=" + lead
+        )
+        diagTickIndex += 1
+        diagPrevTickNs = nowNs
+        diagPrevWriteFrame = writeFrame
+        diagPrevPlayFrame = playFrame
     }
 
     private fun stopTicker() {
@@ -790,6 +830,8 @@ class PlaybackViewModel(
         val currentFrame = audioPlayer.getLocationInFrames().coerceIn(0, durationFrames)
         val progress = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f
         val take = _uiState.value.selectedTake
+
+        logTickPositionDiagnostics(currentFrame)
 
         _uiState.value = _uiState.value.copy(
             progress = progress,
