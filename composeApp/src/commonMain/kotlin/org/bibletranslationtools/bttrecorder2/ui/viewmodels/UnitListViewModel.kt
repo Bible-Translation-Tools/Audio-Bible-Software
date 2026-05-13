@@ -10,6 +10,7 @@ import kotlinx.coroutines.launch
 import org.bibletranslationtools.bttrecorder2.preferences.IAppPreferences
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
+import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
@@ -79,39 +80,56 @@ class UnitListViewModel(
             controlDispatcher = Dispatchers.Default
         )
 
+        // We deliberately do NOT drive isPlaying from the events flow.
+        //
+        //   1. `play()` is fire-and-forget on a control dispatcher, so a Pause
+        //      event from the global worker (e.g., from the recorder or chapter
+        //      player taking over) can fire after we've called play() but
+        //      before our connection becomes active — that would flip the UI
+        //      back to "paused" with the position reset.
+        //   2. `pause()` does NOT emit a Stop, but `load()` may; treating Stop
+        //      as "the user paused" reset our position state to zero.
+        //
+        // Instead, isPlaying is owned by user intent (set in playTake) and the
+        // ticker; events are only used to surface errors.
         viewModelScope.launch {
             audioPlayer?.events?.collect { event ->
-                when (event) {
-                    is AudioPlayerEvent.Play -> {
-                        _uiState.update { it.copy(isPlaying = true) }
-                        startProgressTicker()
-                    }
-                    is AudioPlayerEvent.Pause,
-                    is AudioPlayerEvent.Stop,
-                    is AudioPlayerEvent.Error -> {
-                        _uiState.update { it.copy(isPlaying = false) }
-                        stopProgressTicker()
-                        if (event is AudioPlayerEvent.Error) {
-                            _uiState.update { it.copy(error = event.message) }
-                        }
-                    }
-                    is AudioPlayerEvent.Complete -> {
-                        _uiState.update { it.copy(isPlaying = false, playbackProgress = 0f, elapsedText = "00:00:00") }
-                        stopProgressTicker()
-                    }
-                    else -> {}
+                if (event is AudioPlayerEvent.Error) {
+                    _uiState.update { it.copy(error = event.message) }
                 }
             }
         }
     }
 
+    /**
+     * Polls position + duration at 100 ms intervals and pushes them into UI
+     * state. End-of-playback (position reaches duration) resets the slider and
+     * flips isPlaying back to false. The ticker is otherwise only stopped by
+     * an explicit user pause via [playTake].
+     */
     private fun startProgressTicker() {
-        playbackJob?.cancel()
+        if (playbackJob?.isActive == true) return
         playbackJob = viewModelScope.launch {
             while (isActive) {
+                delay(100)
                 val durationMs = audioPlayer?.getDurationMs() ?: 0
                 val positionMs = audioPlayer?.getLocationMs() ?: 0
-                val progress = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f
+                val progress = if (durationMs > 0) {
+                    (positionMs.toFloat() / durationMs).coerceIn(0f, 1f)
+                } else 0f
+
+                if (durationMs > 0 && positionMs >= durationMs) {
+                    _uiState.update {
+                        it.copy(
+                            isPlaying = false,
+                            playbackProgress = 0f,
+                            elapsedText = "00:00:00",
+                            durationText = formatTime(durationMs)
+                        )
+                    }
+                    break
+                }
+
                 _uiState.update {
                     it.copy(
                         playbackProgress = progress,
@@ -119,13 +137,14 @@ class UnitListViewModel(
                         durationText = formatTime(durationMs)
                     )
                 }
-                delay(100)
             }
+            playbackJob = null
         }
     }
 
     private fun stopProgressTicker() {
         playbackJob?.cancel()
+        playbackJob = null
     }
 
     private fun formatTime(ms: Int): String {
@@ -164,7 +183,13 @@ class UnitListViewModel(
 
                 _uiState.update { it.copy(workbook = workbook, chapter = chapter) }
 
-                chapter.observableFlowChunks.collect { chunks ->
+                chapter.observableFlowChunks.collect { allChunks ->
+                    // Drop the chapter-meta chunk so the unit list only shows individual
+                    // verses. The chapter's compiled take lives on `chapter.audio` (see
+                    // ChapterTranslationBuilder) and the chapter list owns its UI; this
+                    // screen is exclusively for per-verse takes.
+                    val chunks = allChunks.filter { it.contentType == ContentType.TEXT }
+
                     val units = chunks.map { chunk ->
                         UnitUiModel(
                             unit = chunk,
@@ -246,15 +271,47 @@ class UnitListViewModel(
     }
 
     fun playTake(take: Take) {
-        viewModelScope.launch {
+        viewModelScope.launch(ioDispatcher) {
             try {
-                if (_uiState.value.currentPlayingTake == take && _uiState.value.isPlaying) {
-                    audioPlayer?.pause()
+                val state = _uiState.value
+                val isSameTakeLoaded = state.currentPlayingTake?.file?.absolutePath ==
+                    take.file.absolutePath
+
+                if (isSameTakeLoaded) {
+                    // The take is already in the player. Toggle without reloading
+                    // — reloading would reset the worker's position to 0, which is
+                    // why pressing pause used to "snap back" the slider.
+                    if (state.isPlaying) {
+                        audioPlayer?.pause()
+                        _uiState.update { it.copy(isPlaying = false) }
+                        stopProgressTicker()
+                    } else {
+                        audioPlayer?.play()
+                        _uiState.update { it.copy(isPlaying = true) }
+                        startProgressTicker()
+                    }
                 } else {
+                    // Switching to a different take. If something else is playing,
+                    // pause first so the previous ticker stops cleanly.
+                    if (state.isPlaying) {
+                        audioPlayer?.pause()
+                        stopProgressTicker()
+                    }
+
                     val reader = OratureAudioFile(take.file).reader()
                     audioPlayer?.load(reader)
+                    val durationMs = audioPlayer?.getDurationMs() ?: 0
                     audioPlayer?.play()
-                    _uiState.update { it.copy(currentPlayingTake = take) }
+                    _uiState.update {
+                        it.copy(
+                            currentPlayingTake = take,
+                            isPlaying = true,
+                            playbackProgress = 0f,
+                            elapsedText = "00:00:00",
+                            durationText = formatTime(durationMs)
+                        )
+                    }
+                    startProgressTicker()
                 }
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = "Failed to play audio: ${e.message}") }
@@ -283,6 +340,14 @@ class UnitListViewModel(
     }
 
     fun deleteTake(unit: Chunk, take: Take) {
+        // Stop playback if the deleted take is the one currently loaded.
+        val playingSame = _uiState.value.currentPlayingTake?.file?.absolutePath ==
+            take.file.absolutePath
+        if (playingSame) {
+            runCatching { audioPlayer?.pause() }
+            stopProgressTicker()
+        }
+
         take.deletedTimestamp.accept(DateHolder.now())
         val remaining = unit.audio.getAllTakes()
             .filter { !it.isDeleted() }
@@ -299,7 +364,12 @@ class UnitListViewModel(
         _uiState.update { state ->
             state.copy(
                 units = updatedUnits,
-                currentTakeIndices = state.currentTakeIndices + (unit.sort to clamped)
+                currentTakeIndices = state.currentTakeIndices + (unit.sort to clamped),
+                isPlaying = if (playingSame) false else state.isPlaying,
+                currentPlayingTake = if (playingSame) null else state.currentPlayingTake,
+                playbackProgress = if (playingSame) 0f else state.playbackProgress,
+                elapsedText = if (playingSame) "00:00:00" else state.elapsedText,
+                durationText = if (playingSame) "00:00:00" else state.durationText
             )
         }
     }

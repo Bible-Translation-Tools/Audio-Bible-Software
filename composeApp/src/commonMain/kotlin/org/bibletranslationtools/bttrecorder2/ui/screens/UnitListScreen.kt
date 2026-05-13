@@ -146,8 +146,16 @@ fun UnitListContent(
                             .sortedBy { it.number }
                         val currentIndex = uiState.currentTakeIndices[unit.sort] ?: 0
                         val currentTake = takes.getOrNull(currentIndex)
-                        val isThisUnitPlaying = uiState.isPlaying &&
-                            uiState.currentPlayingTake?.file == currentTake?.file
+                        // The take is "loaded" as long as the player is holding it
+                        // (whether or not it's actively playing right now). Use *that*
+                        // to gate slider/elapsed/duration values so a pause doesn't
+                        // visually snap the cursor back to zero — only the play/pause
+                        // icon depends on isPlaying. This mirrors how the chapter
+                        // player gates its expanded panel on `isLoadedHere`.
+                        val isThisUnitLoaded =
+                            uiState.currentPlayingTake?.file == currentTake?.file &&
+                                currentTake != null
+                        val isThisUnitPlaying = isThisUnitLoaded && uiState.isPlaying
 
                         val precomputedDuration = currentTake?.file?.absolutePath
                             ?.let { uiState.takeDurations[it] }
@@ -163,9 +171,9 @@ fun UnitListContent(
                                 expandedUnitSort = if (expandedUnitSort == unit.sort) null else unit.sort
                             },
                             isPlaying = isThisUnitPlaying,
-                            playbackProgress = if (isThisUnitPlaying) uiState.playbackProgress else 0f,
-                            elapsedText = if (isThisUnitPlaying) uiState.elapsedText else "00:00:00",
-                            durationText = if (isThisUnitPlaying) uiState.durationText else precomputedDuration,
+                            playbackProgress = if (isThisUnitLoaded) uiState.playbackProgress else 0f,
+                            elapsedText = if (isThisUnitLoaded) uiState.elapsedText else "00:00:00",
+                            durationText = if (isThisUnitLoaded) uiState.durationText else precomputedDuration,
                             onPlayPause = { onPlayPause(unit) },
                             onDelete = {
                                 if (currentTake != null) {
