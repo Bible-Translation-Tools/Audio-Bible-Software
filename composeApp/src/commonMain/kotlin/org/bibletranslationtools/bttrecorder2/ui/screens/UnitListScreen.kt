@@ -3,8 +3,9 @@ package org.bibletranslationtools.bttrecorder2.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import org.bibletranslationtools.bttrecorder2.ui.components.LazyColumnWithScrollbar
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
@@ -138,7 +139,11 @@ fun UnitListContent(
                     modifier = Modifier.align(Alignment.Center)
                 )
             } else {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                val listState = rememberLazyListState()
+                LazyColumnWithScrollbar(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize()
+                ) {
                     items(uiState.units) { unitHolder ->
                         val unit = unitHolder.unit
                         val takes = unit.audio.getAllTakes()

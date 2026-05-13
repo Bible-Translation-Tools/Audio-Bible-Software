@@ -3,8 +3,8 @@ package org.bibletranslationtools.bttrecorder2.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import org.bibletranslationtools.bttrecorder2.ui.components.LazyColumnWithScrollbar
 import org.bibletranslationtools.bttrecorder2.ui.components.ProgressPieView
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterListViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterUiModel
@@ -145,7 +146,11 @@ fun ChapterListContent(
                     )
                 }
                 else -> {
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    val listState = rememberLazyListState()
+                    LazyColumnWithScrollbar(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
                         items(uiState.chapters, key = { it.chapter.sort }) { uiModel ->
                             val isLoadedHere =
                                 uiState.loadedChapterSort == uiModel.chapter.sort
