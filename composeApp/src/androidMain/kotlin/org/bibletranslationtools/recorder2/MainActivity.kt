@@ -3,6 +3,7 @@ package org.bibletranslationtools.recorder2
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -46,6 +47,13 @@ class MainActivity : ComponentActivity() {
     val koinDirectoryProvider: IDirectoryProvider by inject()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Opt in to edge-to-edge so the system status bar + 3-button nav bar
+        // become transparent. The Compose root (see App.kt) then applies
+        // safeDrawingPadding() so UI content stays clear of those bars while
+        // the app background paints under them. Without this call, on Android
+        // versions/devices using gesture nav we'd letterbox; with 3-button nav
+        // the system inset is non-zero and our content would otherwise overlap.
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
         lifecycleScope.launch {
