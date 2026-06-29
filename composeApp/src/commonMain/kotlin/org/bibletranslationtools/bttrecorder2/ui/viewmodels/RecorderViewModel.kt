@@ -156,7 +156,16 @@ class RecorderViewModel(
                 }
             }
 
-            val safeInitialIndex = if (initialIndex >= 0) initialIndex else 0
+            // When the requested target isn't found (e.g. entering from the
+            // project-list mic or the home Record button with no specific verse),
+            // fall back to the first *verse* rather than the chapter-meta target,
+            // matching the original recorder which opened on the first recordable
+            // unit. Chapter-level entry (unitNumber == null + matching chapter)
+            // still resolves explicitly above, so this only affects no-match.
+            val safeInitialIndex = when {
+                initialIndex >= 0 -> initialIndex
+                else -> expandedTargets.indexOfFirst { it.chunk != null }.takeIf { it >= 0 } ?: 0
+            }
 
             workbook = foundWorkbook
             targets = expandedTargets
@@ -440,13 +449,18 @@ class RecorderViewModel(
 
     fun stopRecording() {
         if (_recordingState.value != RecordingUiState.Recording && _recordingState.value != RecordingUiState.Paused) return
-        // Keep mic live so the volume meter continues to respond in Review state.
         _isRecording.value = false
+        // Enter the transient "committing" state (Review) and immediately persist
+        // the take, then navigate to Playback for review/edit. This mirrors the
+        // original recorder: Stop writes + commits the take, and the *Playback*
+        // screen is the single review/edit step — there is no separate in-recorder
+        // Save/Cancel gate.
         _recordingState.value = RecordingUiState.Review
         wavFileWriter?.pause()
         timer.pause()
         stopTimerTicker()
         updateNavigationAvailability()
+        saveRecording()
     }
 
     fun saveRecording() {
@@ -495,7 +509,12 @@ class RecorderViewModel(
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
-                _audioError.value = e.message ?: "Unable to save recording."
+                withContext(Dispatchers.Main) {
+                    _audioError.value = e.message ?: "Unable to save recording."
+                    // Don't leave the recorder stuck in the committing state; reset
+                    // to a fresh idle session so the user can re-record.
+                    resetSessionForTarget()
+                }
             }
         }
     }

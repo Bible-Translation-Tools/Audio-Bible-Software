@@ -18,11 +18,23 @@ import org.bibletranslationtools.bttrecorder2.ui.screens.ProjectManagementScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.ProjectWizardScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.SplashScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.UnitListScreen
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportProjectViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.MainMenuViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.PlaybackViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectCreationViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SplashScreenViewModel
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.navigation.toRoute
 import org.koin.mp.KoinPlatform.getKoin
 
@@ -32,6 +44,7 @@ fun Navigation(
 ) {
     val scope = rememberCoroutineScope()
     val appPreferences = remember { getKoin().get<IAppPreferences>() }
+    val exportViewModel = remember { getKoin().get<ExportProjectViewModel>() }
 
     NavHost(
         navController = navController,
@@ -70,12 +83,22 @@ fun Navigation(
                 onRecordClick = {
                     scope.launch {
                         val nav = appPreferences.navState.first()
+                        // The home Record button always drops the user straight into
+                        // the recorder for the active project (like the original),
+                        // never onto a chapter/unit list. It resumes the exact verse
+                        // if one is saved, otherwise the chapter's first verse, or the
+                        // project's first verse. With no active project, fall back to
+                        // the project list to pick/create one.
                         when {
                             nav.hasActiveUnit -> navController.navigate(
                                 RecorderRoute(nav.workbookSourceId, nav.workbookTargetId, nav.chapterSort, nav.unitSort)
                             )
-                            nav.hasActiveChapter -> navController.navigate(UnitListRoute)
-                            nav.hasActiveWorkbook -> navController.navigate(ChapterListRoute)
+                            nav.hasActiveChapter -> navController.navigate(
+                                RecorderRoute(nav.workbookSourceId, nav.workbookTargetId, nav.chapterSort, -1)
+                            )
+                            nav.hasActiveWorkbook -> navController.navigate(
+                                RecorderRoute(nav.workbookSourceId, nav.workbookTargetId, -1, -1)
+                            )
                             else -> navController.navigate(ProjectManagementRoute)
                         }
                     }
@@ -97,6 +120,25 @@ fun Navigation(
                             workbookDesc.targetCollection.id
                         )
                         navController.navigate(ChapterListRoute)
+                    }
+                },
+                onRecordClick = { workbookDesc ->
+                    // Project-list mic: jump straight into the recorder at the
+                    // project's first verse (matching the original's per-project
+                    // record button), instead of drilling through chapter/unit lists.
+                    scope.launch {
+                        appPreferences.setActiveWorkbook(
+                            workbookDesc.sourceCollection.id,
+                            workbookDesc.targetCollection.id
+                        )
+                        navController.navigate(
+                            RecorderRoute(
+                                workbookDesc.sourceCollection.id,
+                                workbookDesc.targetCollection.id,
+                                -1,
+                                -1
+                            )
+                        )
                     }
                 }
             )
@@ -168,6 +210,20 @@ fun Navigation(
             val chapterNumber = route.chapterNumber
             val unitNumArg = route.unitNumber
             val unitNumber = if (unitNumArg == -1) null else unitNumArg
+
+            // Block entry into the recorder if the user is currently exporting
+            // a backup for this exact workbook. Allowing recording would mean
+            // writing a new take into a directory the exporter is actively
+            // walking — risking a half-zipped file in the .orature archive.
+            val exportingRoute by exportViewModel.exportingRoute.collectAsState()
+            val isThisWorkbookExporting = exportingRoute == (sourceId to targetId)
+
+            if (isThisWorkbookExporting) {
+                RecorderBlockedByExportScreen(
+                    onBackClick = { navController.popBackStack() }
+                )
+                return@composable
+            }
 
             val koin = getKoin()
             val vm: org.bibletranslationtools.bttrecorder2.ui.viewmodels.RecorderViewModel = viewModel { koin.get() }
@@ -246,6 +302,31 @@ fun Navigation(
                     navController.popBackStack()
                 }
             )
+        }
+    }
+}
+
+/**
+ * Shown in place of the Recorder screen when the user navigates into a project
+ * whose backup is currently in flight. Recording during export would race the
+ * file walk in [BackupProjectExporter.copyTakeFiles], so we lock the user out
+ * until the export resolves.
+ */
+@Composable
+private fun RecorderBlockedByExportScreen(onBackClick: () -> Unit) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(24.dp)
+        ) {
+            Text("This project is being backed up.")
+            Text(
+                text = "Recording is paused until the backup finishes.",
+                modifier = Modifier.padding(top = 8.dp)
+            )
+            TextButton(onClick = onBackClick, modifier = Modifier.padding(top = 16.dp)) {
+                Text("Back")
+            }
         }
     }
 }

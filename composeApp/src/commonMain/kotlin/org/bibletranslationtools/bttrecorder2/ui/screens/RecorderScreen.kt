@@ -52,6 +52,15 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
+import btt_recorder2.composeapp.generated.resources.Res
+import btt_recorder2.composeapp.generated.resources.action_back
+import btt_recorder2.composeapp.generated.resources.cd_record_transport
+import btt_recorder2.composeapp.generated.resources.recorder_initializing_audio
+import btt_recorder2.composeapp.generated.resources.recorder_label_chapter
+import btt_recorder2.composeapp.generated.resources.recorder_label_verse
+import btt_recorder2.composeapp.generated.resources.recorder_saving
+import btt_recorder2.composeapp.generated.resources.recorder_stop
+import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun RecorderScreen(
@@ -100,7 +109,7 @@ fun RecorderScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBackClick, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                Icon(Icons.Default.ArrowBack, contentDescription = stringResource(Res.string.action_back), tint = Color.White)
             }
             Text(
                 "${targetUi.sourceLabel}  ${targetUi.bookLabel}",
@@ -109,7 +118,7 @@ fun RecorderScreen(
             )
             Spacer(Modifier.width(12.dp))
             StepperControl(
-                label = "Chapter",
+                label = stringResource(Res.string.recorder_label_chapter),
                 value = targetUi.chapterValue,
                 onMinus = viewModel::goPreviousChapter,
                 onPlus = viewModel::goNextChapter,
@@ -118,7 +127,7 @@ fun RecorderScreen(
             )
             Spacer(Modifier.width(12.dp))
             StepperControl(
-                label = "Verse",
+                label = stringResource(Res.string.recorder_label_verse),
                 value = targetUi.unitValue,
                 onMinus = viewModel::goPreviousUnit,
                 onPlus = viewModel::goNextUnit,
@@ -152,7 +161,7 @@ fun RecorderScreen(
                             backgroundColor = Color.Black
                         )
                     } else {
-                        Text("Initializing Audio...", color = Color.White, modifier = Modifier.align(Alignment.Center))
+                        Text(stringResource(Res.string.recorder_initializing_audio), color = Color.White, modifier = Modifier.align(Alignment.Center))
                     }
                 }
                 VolumeMeter(
@@ -193,21 +202,15 @@ fun RecorderScreen(
                         Spacer(Modifier.width(120.dp))
                     }
                     RecorderViewModel.RecordingUiState.Recording -> {
-                        OutlinedButton(onClick = viewModel::stopRecording) { Text("Stop", color = Color.White) }
+                        OutlinedButton(onClick = viewModel::stopRecording) { Text(stringResource(Res.string.recorder_stop), color = Color.White) }
                     }
                     RecorderViewModel.RecordingUiState.Paused -> {
-                        OutlinedButton(onClick = viewModel::stopRecording) { Text("Stop", color = Color.White) }
+                        OutlinedButton(onClick = viewModel::stopRecording) { Text(stringResource(Res.string.recorder_stop), color = Color.White) }
                     }
                     RecorderViewModel.RecordingUiState.Review -> {
-                        Row {
-                            OutlinedButton(onClick = viewModel::saveRecording) {
-                                Text("Save", color = Color.White)
-                            }
-                            Spacer(Modifier.width(8.dp))
-                            OutlinedButton(onClick = viewModel::cancelRecording) {
-                                Text("Cancel", color = Color.White)
-                            }
-                        }
+                        // Transient committing state: Stop persisted the take and we
+                        // navigate to Playback for review/edit. No Save/Cancel gate.
+                        Text(stringResource(Res.string.recorder_saving), color = Color.White, style = MaterialTheme.typography.titleMedium)
                     }
                 }
             }
@@ -318,7 +321,7 @@ private fun RecordTransportButton(
         contentAlignment = Alignment.Center
     ) {
         IconButton(onClick = action) {
-            Icon(icon, contentDescription = "record transport", tint = Color.White, modifier = Modifier.size(42.dp))
+            Icon(icon, contentDescription = stringResource(Res.string.cd_record_transport), tint = Color.White, modifier = Modifier.size(42.dp))
         }
     }
 }

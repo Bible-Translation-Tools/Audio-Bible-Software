@@ -5,6 +5,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
@@ -25,6 +26,37 @@ import kotlinx.coroutines.withContext
 import org.bibletranslationtools.bttrecorder2.domain.SourceAudioImporter
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.koin.mp.KoinPlatform.getKoin
+import org.jetbrains.compose.resources.stringResource
+import btt_recorder2.composeapp.generated.resources.Res
+import btt_recorder2.composeapp.generated.resources.action_cancel
+import btt_recorder2.composeapp.generated.resources.action_close
+import btt_recorder2.composeapp.generated.resources.action_delete
+import btt_recorder2.composeapp.generated.resources.action_dismiss
+import btt_recorder2.composeapp.generated.resources.cd_back_up_project
+import btt_recorder2.composeapp.generated.resources.cd_delete_project
+import btt_recorder2.composeapp.generated.resources.cd_edit_label
+import btt_recorder2.composeapp.generated.resources.info_delete_project_message
+import btt_recorder2.composeapp.generated.resources.info_delete_project_title
+import btt_recorder2.composeapp.generated.resources.info_dialog_title
+import btt_recorder2.composeapp.generated.resources.info_import_none
+import btt_recorder2.composeapp.generated.resources.info_import_partial
+import btt_recorder2.composeapp.generated.resources.info_import_source_audio_title
+import btt_recorder2.composeapp.generated.resources.info_import_success
+import btt_recorder2.composeapp.generated.resources.info_importing_source_audio
+import btt_recorder2.composeapp.generated.resources.info_row_mode
+import btt_recorder2.composeapp.generated.resources.info_row_project
+import btt_recorder2.composeapp.generated.resources.info_row_source_audio
+import btt_recorder2.composeapp.generated.resources.info_row_source_audio_language
+import btt_recorder2.composeapp.generated.resources.info_row_target_language
+import btt_recorder2.composeapp.generated.resources.info_row_translation_type
+import btt_recorder2.composeapp.generated.resources.info_source_audio_available
+import btt_recorder2.composeapp.generated.resources.info_source_audio_imported
+import btt_recorder2.composeapp.generated.resources.info_source_audio_not_available
+import btt_recorder2.composeapp.generated.resources.info_translation_type_regular
+import btt_recorder2.composeapp.generated.resources.info_translation_type_udb
+import btt_recorder2.composeapp.generated.resources.info_translation_type_ulb
+import btt_recorder2.composeapp.generated.resources.info_value_unknown
+import btt_recorder2.composeapp.generated.resources.value_name_with_code
 import java.util.Locale
 
 /**
@@ -40,7 +72,9 @@ import java.util.Locale
 fun ProjectInfoDialog(
     workbook: WorkbookDescriptor,
     onDismiss: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onBackup: () -> Unit = {},
+    isExportingThisWorkbook: Boolean = false
 ) {
     val importer = remember { getKoin().get<SourceAudioImporter>() }
     val scope = rememberCoroutineScope()
@@ -57,7 +91,7 @@ fun ProjectInfoDialog(
     val picker = rememberFilePickerLauncher(
         type = FileKitType.File(extensions = SourceAudioImporter.pickerExtensions),
         mode = FileKitMode.Multiple(),
-        title = "Import source audio"
+        title = stringResource(Res.string.info_import_source_audio_title)
     ) { selectedFiles: List<PlatformFile>? ->
         val files = selectedFiles.orEmpty()
         if (files.isEmpty()) return@rememberFilePickerLauncher
@@ -75,18 +109,24 @@ fun ProjectInfoDialog(
     if (pendingDelete) {
         AlertDialog(
             onDismissRequest = { pendingDelete = false },
-            title = { Text("Delete project?") },
+            title = { Text(stringResource(Res.string.info_delete_project_title)) },
             text = {
-                Text("This will remove ${workbook.title} (${workbook.targetLanguage.anglicizedName}) and all of its takes from this device.")
+                Text(
+                    stringResource(
+                        Res.string.info_delete_project_message,
+                        workbook.title,
+                        workbook.targetLanguage.anglicizedName
+                    )
+                )
             },
             confirmButton = {
                 TextButton(onClick = {
                     pendingDelete = false
                     onDelete()
-                }) { Text("Delete") }
+                }) { Text(stringResource(Res.string.action_delete)) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDelete = false }) { Text("Cancel") }
+                TextButton(onClick = { pendingDelete = false }) { Text(stringResource(Res.string.action_cancel)) }
             }
         )
     }
@@ -106,7 +146,11 @@ fun ProjectInfoDialog(
             Column(modifier = Modifier.fillMaxWidth()) {
                 // Title — "{Book} - {Language}"
                 Text(
-                    text = "${workbook.title} - ${workbook.targetLanguage.anglicizedName}",
+                    text = stringResource(
+                        Res.string.info_dialog_title,
+                        workbook.title,
+                        workbook.targetLanguage.anglicizedName
+                    ),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -120,32 +164,39 @@ fun ProjectInfoDialog(
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = 20.dp, vertical = 4.dp)
                 ) {
-                    InfoRow(label = "Project", value = "${workbook.title} (${workbook.slug})")
-
                     InfoRow(
-                        label = "Target Language",
-                        value = "${workbook.targetLanguage.anglicizedName} (${workbook.targetLanguage.slug})"
+                        label = stringResource(Res.string.info_row_project),
+                        value = stringResource(Res.string.value_name_with_code, workbook.title, workbook.slug)
                     )
 
                     InfoRow(
-                        label = "Translation Type",
+                        label = stringResource(Res.string.info_row_target_language),
+                        value = stringResource(
+                            Res.string.value_name_with_code,
+                            workbook.targetLanguage.anglicizedName,
+                            workbook.targetLanguage.slug
+                        )
+                    )
+
+                    InfoRow(
+                        label = stringResource(Res.string.info_row_translation_type),
                         value = formatTranslationType(workbook.targetCollection.resourceContainer?.identifier)
                     )
 
                     InfoRow(
-                        label = "Mode",
+                        label = stringResource(Res.string.info_row_mode),
                         value = workbook.mode.name.lowercase().replaceFirstChar { it.uppercase() }
                     )
 
                     InfoRowWithEdit(
-                        label = "Source Audio Language",
+                        label = stringResource(Res.string.info_row_source_audio_language),
                         value = formatSourceLanguage(workbook),
                         onEdit = { /* TODO: source-audio language editor not yet ported */ },
                         editEnabled = false
                     )
 
                     InfoRowWithEdit(
-                        label = "Source Audio",
+                        label = stringResource(Res.string.info_row_source_audio),
                         value = sourceAudioStatus(workbook, hasUserImportedAudio),
                         onEdit = { picker.launch() },
                         editEnabled = !isImporting
@@ -170,7 +221,7 @@ fun ProjectInfoDialog(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Importing source audio…",
+                                text = stringResource(Res.string.info_importing_source_audio),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -183,23 +234,35 @@ fun ProjectInfoDialog(
                     modifier = Modifier.padding(top = 8.dp)
                 )
 
-                // Action row — delete on the left, close on the right.
-                // Export/share icons from the original layout intentionally omitted.
+                // Action row — delete + backup on the left, close on the right.
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 8.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { pendingDelete = true }) {
+                    IconButton(
+                        onClick = { pendingDelete = true },
+                        enabled = !isExportingThisWorkbook
+                    ) {
                         Icon(
                             imageVector = Icons.Filled.Delete,
-                            contentDescription = "Delete project",
+                            contentDescription = stringResource(Res.string.cd_delete_project),
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    IconButton(
+                        onClick = onBackup,
+                        enabled = !isExportingThisWorkbook
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.CloudUpload,
+                            contentDescription = stringResource(Res.string.cd_back_up_project),
                             tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                     Spacer(modifier = Modifier.weight(1f))
-                    TextButton(onClick = onDismiss) { Text("Close") }
+                    TextButton(onClick = onDismiss) { Text(stringResource(Res.string.action_close)) }
                 }
             }
         }
@@ -261,7 +324,7 @@ private fun InfoRowWithEdit(
         ) {
             Icon(
                 imageVector = Icons.Filled.Edit,
-                contentDescription = "Edit $label",
+                contentDescription = stringResource(Res.string.cd_edit_label, label),
                 tint = if (editEnabled) MaterialTheme.colorScheme.primary
                 else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
             )
@@ -287,9 +350,14 @@ private fun ImportStatusBanner(status: ImportStatus, onDismiss: () -> Unit) {
         color = containerColor,
         shape = RoundedCornerShape(6.dp)
     ) {
+        val headline = when (status.severity) {
+            Severity.SUCCESS -> stringResource(Res.string.info_import_success, status.importedCount)
+            Severity.PARTIAL -> stringResource(Res.string.info_import_partial, status.importedCount, status.total)
+            Severity.ERROR -> stringResource(Res.string.info_import_none)
+        }
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             Text(
-                text = status.headline,
+                text = headline,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = contentColor
@@ -310,7 +378,7 @@ private fun ImportStatusBanner(status: ImportStatus, onDismiss: () -> Unit) {
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                 modifier = Modifier.align(Alignment.End)
             ) {
-                Text("Dismiss", color = contentColor, style = MaterialTheme.typography.labelMedium)
+                Text(stringResource(Res.string.action_dismiss), color = contentColor, style = MaterialTheme.typography.labelMedium)
             }
         }
     }
@@ -320,7 +388,8 @@ private enum class Severity { SUCCESS, PARTIAL, ERROR }
 
 private data class ImportStatus(
     val severity: Severity,
-    val headline: String,
+    val importedCount: Int,
+    val total: Int,
     val detailLines: List<String>
 ) {
     companion object {
@@ -332,42 +401,49 @@ private data class ImportStatus(
                 anyImported && anyProblems -> Severity.PARTIAL
                 else -> Severity.ERROR
             }
-            val headline = when (severity) {
-                Severity.SUCCESS -> "Imported ${result.imported.size} source audio file${"s".takeIf { result.imported.size != 1 } ?: ""}."
-                Severity.PARTIAL -> "Imported ${result.imported.size} of ${result.total}. Some files were skipped."
-                Severity.ERROR -> "No files imported."
-            }
-            val details = (result.skipped + result.errors)
-            return ImportStatus(severity, headline, details)
+            // The localized headline is composed in ImportStatusBanner from the
+            // severity + counts; detail lines are file-level diagnostics from the
+            // importer (filenames/format hints) and pass through verbatim.
+            return ImportStatus(
+                severity = severity,
+                importedCount = result.imported.size,
+                total = result.total,
+                detailLines = result.skipped + result.errors
+            )
         }
     }
 }
 
+@Composable
 private fun sourceAudioStatus(
     workbook: WorkbookDescriptor,
     hasUserImported: Boolean
 ): String {
     return when {
-        hasUserImported -> "Imported"
-        workbook.hasSourceAudio -> "Available"
-        else -> "Not available"
+        hasUserImported -> stringResource(Res.string.info_source_audio_imported)
+        workbook.hasSourceAudio -> stringResource(Res.string.info_source_audio_available)
+        else -> stringResource(Res.string.info_source_audio_not_available)
     }
 }
 
+@Composable
 private fun formatTranslationType(identifier: String?): String {
-    if (identifier == null) return "Unknown"
+    if (identifier == null) return stringResource(Res.string.info_value_unknown)
     return when (identifier.lowercase()) {
-        "ulb" -> "Unlocked Literal Bible ($identifier)"
-        "udb" -> "Unlocked Dynamic Bible ($identifier)"
-        else -> "Regular (${identifier.uppercase(Locale.getDefault())})"
+        "ulb" -> stringResource(Res.string.info_translation_type_ulb, identifier)
+        "udb" -> stringResource(Res.string.info_translation_type_udb, identifier)
+        else -> stringResource(Res.string.info_translation_type_regular, identifier.uppercase(Locale.getDefault()))
     }
 }
 
+@Composable
 private fun formatSourceLanguage(workbook: WorkbookDescriptor): String {
-    return try {
-        val lang = workbook.sourceLanguage
-        "${lang.anglicizedName} (${lang.slug})"
-    } catch (_: Throwable) {
-        "Unknown"
+    // Resolve the (throwing) data access outside any composable call, then pick
+    // the localized form — Compose disallows composable calls inside try/catch.
+    val lang = remember(workbook.id) { runCatching { workbook.sourceLanguage }.getOrNull() }
+    return if (lang != null) {
+        stringResource(Res.string.value_name_with_code, lang.anglicizedName, lang.slug)
+    } else {
+        stringResource(Res.string.info_value_unknown)
     }
 }

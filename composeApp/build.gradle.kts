@@ -204,6 +204,13 @@ kotlin {
 
                 implementation("org.xerial:sqlite-jdbc:3.49.0.0")
                 //sqllite("org.xerial:sqlite-jdbc:$sqliteJdbcVer")
+
+                // SLF4J console binding. Without a binding, every logger.error()
+                // in the Orature backend (export, import, audio) goes to a no-op
+                // and failures are completely invisible. slf4j-simple prints to
+                // stderr so backend errors are actually diagnosable when running
+                // from a terminal.
+                implementation("org.slf4j:slf4j-simple:2.0.13")
             }
         }
 

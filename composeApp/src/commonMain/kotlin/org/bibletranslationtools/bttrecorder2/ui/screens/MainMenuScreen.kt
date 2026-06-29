@@ -19,7 +19,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import btt_recorder2.composeapp.generated.resources.Res
+import btt_recorder2.composeapp.generated.resources.cd_files
+import btt_recorder2.composeapp.generated.resources.cd_record
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.MainMenuViewModel
+import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
 @Composable
@@ -46,7 +50,7 @@ fun MainMenuScreen(
         ) {
             Icon(
                 imageVector = Icons.Default.Folder,
-                contentDescription = "Files",
+                contentDescription = stringResource(Res.string.cd_files),
                 modifier = Modifier.size(48.dp),
                 tint = Color.White
             )
@@ -66,7 +70,7 @@ fun MainMenuScreen(
         ) {
             Icon(
                 imageVector = Icons.Filled.Mic,
-                contentDescription = "Record",
+                contentDescription = stringResource(Res.string.cd_record),
                 modifier = Modifier.size(48.dp),
                 tint = Color.White
             )

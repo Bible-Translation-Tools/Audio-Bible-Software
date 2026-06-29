@@ -20,8 +20,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import btt_recorder2.composeapp.generated.resources.Res
+import btt_recorder2.composeapp.generated.resources.cd_info
+import btt_recorder2.composeapp.generated.resources.cd_record
 import io.reactivex.Single
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
+import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun ProjectCard(
@@ -94,7 +98,7 @@ fun ProjectCard(
                 IconButton(onClick = onInfoClick) {
                     Icon(
                         imageVector = Icons.Filled.Info,
-                        contentDescription = "Info",
+                        contentDescription = stringResource(Res.string.cd_info),
                         modifier = Modifier.size(48.dp),
                         tint = Color.Gray // Set tint if needed
                     )
@@ -103,7 +107,7 @@ fun ProjectCard(
                 IconButton(onClick = onRecordClick) {
                     Icon(
                         imageVector = Icons.Filled.Mic,
-                        contentDescription = "Record",
+                        contentDescription = stringResource(Res.string.cd_record),
                         modifier = Modifier.size(48.dp),
                         tint = Color.Gray // Set tint if needed
                     )

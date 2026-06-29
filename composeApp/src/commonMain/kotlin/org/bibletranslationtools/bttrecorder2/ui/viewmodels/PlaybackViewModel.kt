@@ -85,7 +85,6 @@ class PlaybackViewModel(
         val canCutSelection: Boolean = false,
         val canUndoEdit: Boolean = false,
         val canRedoEdit: Boolean = false,
-        val hasEdits: Boolean = false,
         val isVerseMarkerMode: Boolean = false,
         val versesMarked: Int = 0,
         val error: String? = null
@@ -104,6 +103,12 @@ class PlaybackViewModel(
             val chapterNumber: Int,
             val unitNumber: Int
         ) : NavEvent()
+
+        /** Leave the editor and return to the unit list. */
+        object Exit : NavEvent()
+
+        /** Ask the view to confirm leaving while there are unsaved edits. */
+        object ConfirmExit : NavEvent()
     }
 
     private data class PlaybackTarget(
@@ -501,6 +506,40 @@ class PlaybackViewModel(
         )
     }
 
+    /**
+     * "Accept/keep" action (the check button). Decision is owned here, based on
+     * the authoritative edit session: with pending edits, save them as a new
+     * take (a successful save drives the screen back via [editedTakeSavedEvents]);
+     * otherwise the current take is already kept, so just exit to the unit list.
+     */
+    fun acceptTake() {
+        if (editSession?.hasEdits() == true) {
+            saveCurrentEditsAsNewTake()
+        } else {
+            _navEvents.tryEmit(NavEvent.Exit)
+        }
+    }
+
+    /**
+     * Back affordance (on-screen arrow + system back). The outcome is decided
+     * from model state rather than in the view:
+     *   - in verse-marker mode, leave that sub-mode and stay on the editor;
+     *   - with unsaved edits, ask the view to confirm (save/discard);
+     *   - otherwise exit to the unit list.
+     */
+    fun onBackRequested() {
+        when {
+            _uiState.value.isVerseMarkerMode -> exitVerseMarkerMode()
+            editSession?.hasEdits() == true -> _navEvents.tryEmit(NavEvent.ConfirmExit)
+            else -> _navEvents.tryEmit(NavEvent.Exit)
+        }
+    }
+
+    /** Leave the editor, abandoning any pending edits (the confirm dialog's "Discard"). */
+    fun exitWithoutSaving() {
+        _navEvents.tryEmit(NavEvent.Exit)
+    }
+
     private suspend fun persistEditedFileAsNewTake(editedAudioFile: File) {
         val wb = workbook ?: return
         val target = currentTarget() ?: return
@@ -775,8 +814,7 @@ class PlaybackViewModel(
             selectionEndProgress = endProgress,
             canCutSelection = canCut,
             canUndoEdit = editSession?.canUndo() == true,
-            canRedoEdit = editSession?.canRedo() == true,
-            hasEdits = editSession?.hasEdits() == true
+            canRedoEdit = editSession?.canRedo() == true
         )
     }
 

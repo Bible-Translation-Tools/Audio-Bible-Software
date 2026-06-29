@@ -29,6 +29,18 @@ import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterListUiState
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import org.bibletranslationtools.bttrecorder2.ui.MockData
+import org.jetbrains.compose.resources.stringResource
+import btt_recorder2.composeapp.generated.resources.Res
+import btt_recorder2.composeapp.generated.resources.chapter_compile_warning_title
+import btt_recorder2.composeapp.generated.resources.chapter_compile_warning_message
+import btt_recorder2.composeapp.generated.resources.action_ok
+import btt_recorder2.composeapp.generated.resources.action_cancel
+import btt_recorder2.composeapp.generated.resources.chapter_delete_take_title
+import btt_recorder2.composeapp.generated.resources.chapter_delete_take_message
+import btt_recorder2.composeapp.generated.resources.action_delete
+import btt_recorder2.composeapp.generated.resources.action_back
+import btt_recorder2.composeapp.generated.resources.cd_record_chapter
+import btt_recorder2.composeapp.generated.resources.cd_delete_chapter_take
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,16 +75,16 @@ fun ChapterListScreen(
     pendingCompileChapter?.let { chapter ->
         AlertDialog(
             onDismissRequest = { pendingCompileChapter = null },
-            title = { Text("Warning") },
-            text = { Text("Compile all units into one chapter audio?") },
+            title = { Text(stringResource(Res.string.chapter_compile_warning_title)) },
+            text = { Text(stringResource(Res.string.chapter_compile_warning_message)) },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.compileChapter(chapter)
                     pendingCompileChapter = null
-                }) { Text("OK") }
+                }) { Text(stringResource(Res.string.action_ok)) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingCompileChapter = null }) { Text("Cancel") }
+                TextButton(onClick = { pendingCompileChapter = null }) { Text(stringResource(Res.string.action_cancel)) }
             }
         )
     }
@@ -80,16 +92,16 @@ fun ChapterListScreen(
     pendingDeleteChapter?.let { chapter ->
         AlertDialog(
             onDismissRequest = { pendingDeleteChapter = null },
-            title = { Text("Delete chapter take?") },
-            text = { Text("This will remove the compiled audio for ${chapter.title}. The verse takes are not affected.") },
+            title = { Text(stringResource(Res.string.chapter_delete_take_title)) },
+            text = { Text(stringResource(Res.string.chapter_delete_take_message, chapter.title)) },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.deleteChapterTake(chapter)
                     pendingDeleteChapter = null
-                }) { Text("Delete") }
+                }) { Text(stringResource(Res.string.action_delete)) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDeleteChapter = null }) { Text("Cancel") }
+                TextButton(onClick = { pendingDeleteChapter = null }) { Text(stringResource(Res.string.action_cancel)) }
             }
         )
     }
@@ -117,7 +129,7 @@ fun ChapterListContent(
                 title = { Text(uiState.workbook?.target?.title ?: "Loading...") },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(Res.string.action_back))
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
@@ -300,7 +312,7 @@ fun ChapterItem(
             ) {
                 Icon(
                     Icons.Default.Mic,
-                    contentDescription = "Record Chapter",
+                    contentDescription = stringResource(Res.string.cd_record_chapter),
                     tint = MaterialTheme.colorScheme.onSurface
                 )
             }
@@ -387,7 +399,7 @@ private fun ChapterTakePlaybackRow(
             IconButton(onClick = onDelete) {
                 Icon(
                     Icons.Default.Delete,
-                    contentDescription = "Delete chapter take",
+                    contentDescription = stringResource(Res.string.cd_delete_chapter_take),
                     tint = MaterialTheme.colorScheme.onSurface
                 )
             }

@@ -34,6 +34,20 @@ import org.bibletranslationtools.bttrecorder2.ui.viewmodels.UnitListViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.UnitListUiState
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import org.bibletranslationtools.bttrecorder2.ui.MockData
+import org.jetbrains.compose.resources.stringResource
+import btt_recorder2.composeapp.generated.resources.Res
+import btt_recorder2.composeapp.generated.resources.unit_delete_take_title
+import btt_recorder2.composeapp.generated.resources.action_yes
+import btt_recorder2.composeapp.generated.resources.action_no
+import btt_recorder2.composeapp.generated.resources.unit_chapter_title
+import btt_recorder2.composeapp.generated.resources.action_back
+import btt_recorder2.composeapp.generated.resources.cd_record_chapter
+import btt_recorder2.composeapp.generated.resources.cd_record
+import btt_recorder2.composeapp.generated.resources.cd_delete_take
+import btt_recorder2.composeapp.generated.resources.cd_open_in_playback
+import btt_recorder2.composeapp.generated.resources.cd_select_take
+import btt_recorder2.composeapp.generated.resources.cd_previous_take
+import btt_recorder2.composeapp.generated.resources.cd_next_take
 
 private val GreenPlay = Color(0xFF4CAF50)
 
@@ -85,15 +99,15 @@ fun UnitListContent(
     if (pendingDelete != null) {
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
-            title = { Text("Delete take?") },
+            title = { Text(stringResource(Res.string.unit_delete_take_title)) },
             confirmButton = {
                 TextButton(onClick = { pendingDelete?.invoke(); pendingDelete = null }) {
-                    Text("Yes")
+                    Text(stringResource(Res.string.action_yes))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { pendingDelete = null }) {
-                    Text("No")
+                    Text(stringResource(Res.string.action_no))
                 }
             }
         )
@@ -103,16 +117,16 @@ fun UnitListContent(
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
-                    Text("${uiState.workbook?.target?.title ?: ""} - Chapter ${uiState.chapter?.sort ?: ""}")
+                    Text(stringResource(Res.string.unit_chapter_title, uiState.workbook?.target?.title ?: "", (uiState.chapter?.sort?.toString() ?: "")))
                 },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(Res.string.action_back))
                     }
                 },
                 actions = {
                     IconButton(onClick = onRecordChapter) {
-                        Icon(Icons.Default.Mic, contentDescription = "Record Chapter")
+                        Icon(Icons.Default.Mic, contentDescription = stringResource(Res.string.cd_record_chapter))
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
@@ -255,7 +269,7 @@ fun UnitCard(
                 onClick = onRecord,
                 modifier = Modifier.size(40.dp)
             ) {
-                Icon(Icons.Default.Mic, contentDescription = "Record")
+                Icon(Icons.Default.Mic, contentDescription = stringResource(Res.string.cd_record))
             }
 
             if (hasTakes) {
@@ -317,7 +331,7 @@ fun UnitCard(
                 IconButton(onClick = onDelete) {
                     Icon(
                         Icons.Default.Delete,
-                        contentDescription = "Delete Take",
+                        contentDescription = stringResource(Res.string.cd_delete_take),
                         tint = MaterialTheme.colorScheme.onSurface
                     )
                 }
@@ -325,7 +339,7 @@ fun UnitCard(
                 IconButton(onClick = onOpenPlayback) {
                     Icon(
                         Icons.Default.GraphicEq,
-                        contentDescription = "Open in Playback",
+                        contentDescription = stringResource(Res.string.cd_open_in_playback),
                         tint = MaterialTheme.colorScheme.onSurface
                     )
                 }
@@ -346,7 +360,7 @@ fun UnitCard(
                 IconButton(onClick = onSelectTake) {
                     Icon(
                         Icons.Default.Check,
-                        contentDescription = "Select Take",
+                        contentDescription = stringResource(Res.string.cd_select_take),
                         tint = if (currentTake == selectedTake)
                             MaterialTheme.colorScheme.primary
                         else
@@ -365,7 +379,7 @@ fun UnitCard(
                     .padding(vertical = 2.dp)
             ) {
                 IconButton(onClick = { onCycle(-1) }) {
-                    Icon(Icons.Default.KeyboardArrowLeft, contentDescription = "Previous Take")
+                    Icon(Icons.Default.KeyboardArrowLeft, contentDescription = stringResource(Res.string.cd_previous_take))
                 }
 
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -392,7 +406,7 @@ fun UnitCard(
                 }
 
                 IconButton(onClick = { onCycle(1) }) {
-                    Icon(Icons.Default.KeyboardArrowRight, contentDescription = "Next Take")
+                    Icon(Icons.Default.KeyboardArrowRight, contentDescription = stringResource(Res.string.cd_next_take))
                 }
             }
         }

@@ -22,6 +22,13 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import btt_recorder2.composeapp.generated.resources.Res
+import btt_recorder2.composeapp.generated.resources.action_back
+import btt_recorder2.composeapp.generated.resources.wizard_new_project_title
+import btt_recorder2.composeapp.generated.resources.wizard_search_book
+import btt_recorder2.composeapp.generated.resources.wizard_search_language
+import btt_recorder2.composeapp.generated.resources.wizard_search_source
+import org.jetbrains.compose.resources.stringResource
 import org.bibletranslationtools.bttrecorder2.ui.screens.wizard.BookSelectionScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.wizard.SourceSelectionScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.wizard.TargetLanguageSelectionScreen
@@ -71,13 +78,13 @@ fun ProjectWizardScreen(
                             onQueryChange = { searchQuery = it },
                             focusRequester = searchFocus,
                             placeholder = when (uiState.currentStep) {
-                                WizardStep.SOURCE -> "Search source"
-                                WizardStep.TARGET_LANGUAGE -> "Search language"
-                                WizardStep.BOOK -> "Search book"
+                                WizardStep.SOURCE -> stringResource(Res.string.wizard_search_source)
+                                WizardStep.TARGET_LANGUAGE -> stringResource(Res.string.wizard_search_language)
+                                WizardStep.BOOK -> stringResource(Res.string.wizard_search_book)
                             }
                         )
                     } else {
-                        Text("New Project")
+                        Text(stringResource(Res.string.wizard_new_project_title))
                     }
                 },
                 navigationIcon = {
@@ -93,7 +100,7 @@ fun ProjectWizardScreen(
                     }) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
+                            contentDescription = stringResource(Res.string.action_back)
                         )
                     }
                 },

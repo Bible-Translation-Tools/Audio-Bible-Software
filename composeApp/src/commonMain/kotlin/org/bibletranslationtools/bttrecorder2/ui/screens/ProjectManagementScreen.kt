@@ -35,21 +35,52 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import btt_recorder2.composeapp.generated.resources.Res
+import btt_recorder2.composeapp.generated.resources.cd_book_sort
+import btt_recorder2.composeapp.generated.resources.cd_language_sort
+import btt_recorder2.composeapp.generated.resources.cd_new_project
+import btt_recorder2.composeapp.generated.resources.cd_progress_sort
+import btt_recorder2.composeapp.generated.resources.pm_sort_book
+import btt_recorder2.composeapp.generated.resources.pm_sort_language
+import btt_recorder2.composeapp.generated.resources.pm_sort_progress
+import io.github.vinceglb.filekit.FileKit
+import io.github.vinceglb.filekit.dialogs.openFileSaver
+import org.jetbrains.compose.resources.stringResource
+import kotlinx.coroutines.launch
+import org.bibletranslationtools.bttrecorder2.ui.components.ExportOptionsDialog
+import org.bibletranslationtools.bttrecorder2.ui.components.ExportProgressDialog
 import org.bibletranslationtools.bttrecorder2.ui.components.ProjectCard
 import org.bibletranslationtools.bttrecorder2.ui.components.ProjectInfoDialog
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportOptionsState
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportProjectViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementUiState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementViewModel
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
+import org.koin.mp.KoinPlatform.getKoin
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProjectManagementScreen(
     viewModel: ProjectManagementViewModel,
     onNewProjectClick: () -> Unit,
-    onProjectClick: (WorkbookDescriptor) -> Unit
+    onProjectClick: (WorkbookDescriptor) -> Unit,
+    onRecordClick: (WorkbookDescriptor) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
+
+    // Export VM is resolved as a Koin singleton — process-lifetime — so it
+    // outlives both this screen's recomposition and any other route's
+    // ViewModelStore (the Recorder route reads the same singleton to block
+    // entry on an actively-exporting workbook). Surviving Android config
+    // changes is automatic because the Koin singleton outlives the Activity
+    // rebuild.
+    val exportViewModel = remember { getKoin().get<ExportProjectViewModel>() }
+    val exportState by exportViewModel.state.collectAsState()
+    val exportOptionsState by exportViewModel.options.collectAsState()
+    val exportingWorkbookId by exportViewModel.exportingWorkbookId.collectAsState()
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         viewModel.loadWorkbooks()
@@ -59,7 +90,43 @@ fun ProjectManagementScreen(
         uiState = uiState,
         onNewProjectClick = onNewProjectClick,
         onProjectClick = onProjectClick,
-        onDeleteWorkbook = viewModel::deleteWorkbook
+        onRecordClick = onRecordClick,
+        onDeleteWorkbook = viewModel::deleteWorkbook,
+        exportingWorkbookId = exportingWorkbookId,
+        onBackupRequest = exportViewModel::openOptions
+    )
+
+    ExportOptionsDialog(
+        state = exportOptionsState,
+        onDismiss = exportViewModel::closeOptions,
+        onSetType = exportViewModel::setExportType,
+        onToggleChapter = exportViewModel::toggleChapter,
+        onSelectAll = exportViewModel::selectAllChapters,
+        onDeselectAll = exportViewModel::deselectAllChapters,
+        onExport = {
+            // The options dialog has all the user input we need. Now prompt
+            // for a save destination — this is what triggers Android SAF /
+            // the native Desktop save dialog. Once the user picks (or
+            // cancels), we hand off to the VM's beginExport.
+            val ready = exportOptionsState as? ExportOptionsState.Ready ?: return@ExportOptionsDialog
+            scope.launch {
+                val destination = FileKit.openFileSaver(
+                    suggestedName = exportViewModel.suggestedExportName(ready.descriptor),
+                    extension = exportViewModel.fileExtensionForType(ready.type)
+                )
+                if (destination != null) {
+                    exportViewModel.beginExport(destination)
+                }
+                // If the user cancelled the saver, leave the options dialog
+                // open so they can adjust selections or try again.
+            }
+        }
+    )
+
+    ExportProgressDialog(
+        state = exportState,
+        onCancel = exportViewModel::cancel,
+        onAcknowledge = exportViewModel::acknowledge
     )
 }
 
@@ -69,7 +136,10 @@ fun ProjectManagementContent(
     uiState: ProjectManagementUiState,
     onNewProjectClick: () -> Unit,
     onProjectClick: (WorkbookDescriptor) -> Unit,
-    onDeleteWorkbook: (WorkbookDescriptor) -> Unit = {}
+    onRecordClick: (WorkbookDescriptor) -> Unit = {},
+    onDeleteWorkbook: (WorkbookDescriptor) -> Unit = {},
+    exportingWorkbookId: Int? = null,
+    onBackupRequest: (WorkbookDescriptor) -> Unit = {}
 ) {
     // Currently-displayed info dialog target. Null = no dialog.
     var infoDialogTarget by remember { mutableStateOf<WorkbookDescriptor?>(null) }
@@ -81,7 +151,15 @@ fun ProjectManagementContent(
             onDelete = {
                 onDeleteWorkbook(target)
                 infoDialogTarget = null
-            }
+            },
+            onBackup = {
+                // Hand off to the screen-level export VM, which opens the
+                // ExportOptionsDialog. Close the info dialog so it doesn't
+                // overlap the options UI.
+                onBackupRequest(target)
+                infoDialogTarget = null
+            },
+            isExportingThisWorkbook = exportingWorkbookId == target.id
         )
     }
 
@@ -113,7 +191,7 @@ fun ProjectManagementContent(
                 containerColor = fabColor,
                 contentColor = Color.White
             ) {
-                Icon(imageVector = Icons.Filled.Add, contentDescription = "New Project")
+                Icon(imageVector = Icons.Filled.Add, contentDescription = stringResource(Res.string.cd_new_project))
             }
         }
     ) { padding ->
@@ -141,10 +219,10 @@ fun ProjectManagementContent(
                 ) {
                     Icon(
                         imageVector = Icons.Filled.RecordVoiceOver,
-                        contentDescription = "Language Sort",
+                        contentDescription = stringResource(Res.string.cd_language_sort),
                         modifier = Modifier.padding(end = 8.dp)
                     )
-                    Text("Language")
+                    Text(stringResource(Res.string.pm_sort_language))
                 }
 
                 // Book Sort
@@ -155,10 +233,10 @@ fun ProjectManagementContent(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.LibraryBooks,
-                        contentDescription = "Book Sort",
+                        contentDescription = stringResource(Res.string.cd_book_sort),
                         modifier = Modifier.padding(end = 8.dp)
                     )
-                    Text("Book")
+                    Text(stringResource(Res.string.pm_sort_book))
                 }
 
                 Row(
@@ -168,10 +246,10 @@ fun ProjectManagementContent(
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Book,
-                        contentDescription = "Progress Sort",
+                        contentDescription = stringResource(Res.string.cd_progress_sort),
                         modifier = Modifier.padding(end = 8.dp)
                     )
-                    Text("Progress")
+                    Text(stringResource(Res.string.pm_sort_progress))
                 }
             }
 
@@ -188,7 +266,7 @@ fun ProjectManagementContent(
                                 workbook = workbook,
                                 onWorkbookClick = { onProjectClick(workbook) },
                                 onInfoClick = { infoDialogTarget = workbook },
-                                onRecordClick = { /* TODO */ }
+                                onRecordClick = { onRecordClick(workbook) }
                             )
                         }
                     }

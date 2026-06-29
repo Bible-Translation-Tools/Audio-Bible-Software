@@ -19,6 +19,7 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.Z
 import org.bibletranslationtools.bttrecorder2.domain.SourceAudioImporter
 import org.bibletranslationtools.bttrecorder2.preferences.DataStoreAppPreferences
 import org.bibletranslationtools.bttrecorder2.preferences.IAppPreferences
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportProjectViewModel
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.koin.core.module.dsl.bind
 import org.koin.core.module.dsl.singleOf
@@ -63,6 +64,11 @@ val appPreferencesModule = module {
         DataStoreAppPreferences(dir.absolutePath)
     }
     single { SourceAudioImporter(get(), get()) }
+    // Singleton so the Recorder route can share the same instance the
+    // ProjectManagementScreen owns — both need to read isCurrentlyExporting
+    // to gate UI affordances. Process-lifetime is what we want here; the VM
+    // already auto-cleans temp dirs on init for crash recovery.
+    single { ExportProjectViewModel() }
 }
 
 val appRepositoriesModule = module {

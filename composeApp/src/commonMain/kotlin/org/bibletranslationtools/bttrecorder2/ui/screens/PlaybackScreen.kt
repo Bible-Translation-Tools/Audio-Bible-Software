@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -40,6 +41,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.text.font.FontFamily
+import org.bibletranslationtools.bttrecorder2.ui.platform.PlatformBackHandler
 import org.bibletranslationtools.bttrecorder2.ui.playback.SourceAudioPlayerController
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -66,6 +68,31 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.bibletranslationtools.bttrecorder2.ui.theme.TranslationRecorderTheme
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.PlaybackViewModel
+import org.jetbrains.compose.resources.stringResource
+import btt_recorder2.composeapp.generated.resources.Res
+import btt_recorder2.composeapp.generated.resources.playback_unsaved_title
+import btt_recorder2.composeapp.generated.resources.playback_unsaved_message
+import btt_recorder2.composeapp.generated.resources.action_save
+import btt_recorder2.composeapp.generated.resources.action_discard
+import btt_recorder2.composeapp.generated.resources.action_cancel
+import btt_recorder2.composeapp.generated.resources.action_back
+import btt_recorder2.composeapp.generated.resources.cd_verse_marker_mode
+import btt_recorder2.composeapp.generated.resources.cd_rerecord
+import btt_recorder2.composeapp.generated.resources.cd_insert_recording
+import btt_recorder2.composeapp.generated.resources.cd_minimap
+import btt_recorder2.composeapp.generated.resources.cd_source_audio
+import btt_recorder2.composeapp.generated.resources.cd_skip_backward
+import btt_recorder2.composeapp.generated.resources.cd_skip_forward
+import btt_recorder2.composeapp.generated.resources.cd_play_pause
+import btt_recorder2.composeapp.generated.resources.cd_save_as_new_take
+import btt_recorder2.composeapp.generated.resources.cd_exit_verse_marker_mode
+import btt_recorder2.composeapp.generated.resources.cd_place_verse_marker
+import btt_recorder2.composeapp.generated.resources.cd_done_save_markers
+import btt_recorder2.composeapp.generated.resources.edit_undo
+import btt_recorder2.composeapp.generated.resources.edit_clear
+import btt_recorder2.composeapp.generated.resources.edit_in
+import btt_recorder2.composeapp.generated.resources.edit_out
+import btt_recorder2.composeapp.generated.resources.edit_cut
 
 @Composable
 fun PlaybackScreen(
@@ -75,18 +102,23 @@ fun PlaybackScreen(
 ) {
     val ui by viewModel.uiState.collectAsState()
     var waveformWidth by remember { mutableStateOf(0) }
-    var saveMessage by remember { mutableStateOf<String?>(null) }
+    var showExitConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(waveformWidth) {
         if (waveformWidth > 0) viewModel.setWaveformWidth(waveformWidth)
     }
 
+    // A successfully saved take is terminal for this screen: return to the unit
+    // list (matching the original PlaybackActivity, which finishes after a save).
     LaunchedEffect(viewModel) {
-        viewModel.editedTakeSavedEvents.collectLatest { takeNumber ->
-            saveMessage = "Saved as take $takeNumber"
+        viewModel.editedTakeSavedEvents.collectLatest {
+            onBackClick()
         }
     }
 
+    // The VM owns the back/accept decisions (it consults the edit session and
+    // mode); the view only maps the resulting navigation intents to concrete
+    // navigation or to the confirm dialog.
     LaunchedEffect(viewModel) {
         viewModel.navEvents.collect { event ->
             when (event) {
@@ -94,8 +126,39 @@ fun PlaybackScreen(
                     onNavigateToRecorder(event.sourceId, event.targetId, event.chapterNumber, event.unitNumber)
                 is PlaybackViewModel.NavEvent.Insert ->
                     onNavigateToRecorder(event.sourceId, event.targetId, event.chapterNumber, event.unitNumber)
+                is PlaybackViewModel.NavEvent.Exit -> onBackClick()
+                is PlaybackViewModel.NavEvent.ConfirmExit -> showExitConfirm = true
             }
         }
+    }
+
+    // Route system/hardware back (Android) through the VM's decision, same as the
+    // on-screen back affordance. No-op on platforms without a system back gesture.
+    PlatformBackHandler(enabled = true, onBack = viewModel::onBackRequested)
+
+    if (showExitConfirm) {
+        AlertDialog(
+            onDismissRequest = { showExitConfirm = false },
+            title = { Text(stringResource(Res.string.playback_unsaved_title)) },
+            text = { Text(stringResource(Res.string.playback_unsaved_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showExitConfirm = false
+                    // Save emits editedTakeSavedEvents, which navigates back.
+                    viewModel.saveCurrentEditsAsNewTake()
+                }) { Text(stringResource(Res.string.action_save)) }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = {
+                        showExitConfirm = false
+                        viewModel.exitWithoutSaving()
+                    }) { Text(stringResource(Res.string.action_discard)) }
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(onClick = { showExitConfirm = false }) { Text(stringResource(Res.string.action_cancel)) }
+                }
+            }
+        )
     }
 
     DisposableEffect(Unit) {
@@ -114,7 +177,7 @@ fun PlaybackScreen(
             PlaybackFileBar(
                 targetUi = ui.targetUi,
                 currentTakeLabel = ui.currentTakeLabel,
-                onBackClick = onBackClick,
+                onBackClick = viewModel::onBackRequested,
                 onVerseMarkerMode = viewModel::enterVerseMarkerMode,
                 onRerecord = viewModel::onRerecord,
                 onInsert = viewModel::onInsert,
@@ -144,14 +207,6 @@ fun PlaybackScreen(
                 onSeekToFrame = viewModel::seekToFrame,
                 modifier = Modifier.fillMaxSize()
             )
-            if (saveMessage != null && ui.error == null) {
-                Text(
-                    text = saveMessage ?: "",
-                    color = Color(0xFF6CF4C5),
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
-                )
-            }
             if (ui.error != null) {
                 Text(
                     text = ui.error ?: "",
@@ -201,7 +256,10 @@ fun PlaybackScreen(
                 hasEnd = ui.selectionEndProgress != null,
                 hasCuts = ui.canUndoEdit,
                 canCut = ui.canCutSelection,
-                canSave = ui.hasEdits,
+                // The accept/check button is always available, matching the
+                // original's save button. The VM decides what it does (save edits
+                // as a new take, or just accept and exit).
+                canSave = true,
                 onSeekBackward = viewModel::seekBackward,
                 onPlayPause = viewModel::togglePlayPause,
                 onSeekForward = viewModel::seekForward,
@@ -210,7 +268,7 @@ fun PlaybackScreen(
                 onCut = viewModel::cutSelection,
                 onClear = viewModel::clearSelection,
                 onUndo = viewModel::undoEdit,
-                onSave = viewModel::saveCurrentEditsAsNewTake
+                onSave = viewModel::acceptTake
             )
         }
     }
@@ -239,7 +297,7 @@ private fun PlaybackFileBar(
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(onClick = onBackClick, modifier = Modifier.size(40.dp)) {
-            Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+            Icon(Icons.Default.ArrowBack, contentDescription = stringResource(Res.string.action_back), tint = Color.White)
         }
 
         if (targetUi.languageLabel.isNotEmpty()) {
@@ -303,13 +361,13 @@ private fun PlaybackFileBar(
             enabled = hasTake,
             modifier = Modifier.size(40.dp)
         ) {
-            Icon(Icons.Default.BookmarkBorder, contentDescription = "Verse marker mode", tint = Color.White)
+            Icon(Icons.Default.BookmarkBorder, contentDescription = stringResource(Res.string.cd_verse_marker_mode), tint = Color.White)
         }
         IconButton(onClick = onRerecord, enabled = hasTake, modifier = Modifier.size(40.dp)) {
-            Icon(Icons.Default.Refresh, contentDescription = "Re-record", tint = Color.White)
+            Icon(Icons.Default.Refresh, contentDescription = stringResource(Res.string.cd_rerecord), tint = Color.White)
         }
         IconButton(onClick = onInsert, enabled = hasTake, modifier = Modifier.size(40.dp)) {
-            Icon(Icons.Default.Mic, contentDescription = "Insert recording", tint = Color.White)
+            Icon(Icons.Default.Mic, contentDescription = stringResource(Res.string.cd_insert_recording), tint = Color.White)
         }
     }
 }
@@ -513,14 +571,14 @@ private fun MinimapWidget(
             IconButton(onClick = onShowMinimap, modifier = Modifier.size(36.dp)) {
                 Icon(
                     Icons.Default.SkipPrevious, // placeholder; represents "overview/minimap"
-                    contentDescription = "Minimap",
+                    contentDescription = stringResource(Res.string.cd_minimap),
                     tint = if (showMinimap) Color.White else Color(0xFF888888)
                 )
             }
             IconButton(onClick = onShowSource, modifier = Modifier.size(36.dp)) {
                 Icon(
                     Icons.Default.Headset,
-                    contentDescription = "Source audio",
+                    contentDescription = stringResource(Res.string.cd_source_audio),
                     tint = if (!showMinimap) Color.White else Color(0xFF888888)
                 )
             }
@@ -709,18 +767,18 @@ private fun PlaybackTools(
         // Transport controls
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onSeekBackward, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Default.SkipPrevious, contentDescription = "Skip backward", tint = Color.White)
+                Icon(Icons.Default.SkipPrevious, contentDescription = stringResource(Res.string.cd_skip_backward), tint = Color.White)
             }
             IconButton(onClick = onPlayPause, modifier = Modifier.size(40.dp)) {
                 Icon(
                     if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = "Play/Pause",
+                    contentDescription = stringResource(Res.string.cd_play_pause),
                     tint = Color.White,
                     modifier = Modifier.size(32.dp)
                 )
             }
             IconButton(onClick = onSeekForward, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Default.SkipNext, contentDescription = "Skip forward", tint = Color.White)
+                Icon(Icons.Default.SkipNext, contentDescription = stringResource(Res.string.cd_skip_forward), tint = Color.White)
             }
         }
 
@@ -729,29 +787,29 @@ private fun PlaybackTools(
         // Edit state machine controls
         // Undo — visible after any cut has been made
         if (hasCuts) {
-            EditToolButton(label = "UNDO", onClick = onUndo)
+            EditToolButton(label = stringResource(Res.string.edit_undo), onClick = onUndo)
         }
         // Clear — visible when start is set but end is not yet set
         if (hasStart && !hasEnd) {
-            EditToolButton(label = "CLEAR", onClick = onClear)
+            EditToolButton(label = stringResource(Res.string.edit_clear), onClick = onClear)
         }
         // Start mark — visible when no selection is pending
         if (!hasStart) {
-            EditToolButton(label = "[ IN", onClick = onMarkStart)
+            EditToolButton(label = stringResource(Res.string.edit_in), onClick = onMarkStart)
         }
         // End mark — visible after start is set
         if (hasStart && !hasEnd) {
-            EditToolButton(label = "OUT ]", onClick = onMarkEnd)
+            EditToolButton(label = stringResource(Res.string.edit_out), onClick = onMarkEnd)
         }
         // Cut — visible when both start and end are set
         if (hasStart && hasEnd) {
-            EditToolButton(label = "CUT", onClick = onCut, enabled = canCut)
+            EditToolButton(label = stringResource(Res.string.edit_cut), onClick = onCut, enabled = canCut)
         }
         // Save — always visible
         IconButton(onClick = onSave, enabled = canSave, modifier = Modifier.size(40.dp)) {
             Icon(
                 Icons.Default.Check,
-                contentDescription = "Save as new take",
+                contentDescription = stringResource(Res.string.cd_save_as_new_take),
                 tint = if (canSave) Color.White else Color(0x88FFFFFF)
             )
         }
@@ -795,7 +853,7 @@ private fun MarkerCounterBar(
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(onClick = onExit, modifier = Modifier.size(40.dp)) {
-            Icon(Icons.Default.Close, contentDescription = "Exit verse marker mode", tint = Color.White)
+            Icon(Icons.Default.Close, contentDescription = stringResource(Res.string.cd_exit_verse_marker_mode), tint = Color.White)
         }
         Spacer(Modifier.width(8.dp))
         Text(
@@ -850,18 +908,18 @@ private fun MarkerToolbar(
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onSeekBackward, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Default.SkipPrevious, contentDescription = "Skip backward", tint = Color.White)
+                Icon(Icons.Default.SkipPrevious, contentDescription = stringResource(Res.string.cd_skip_backward), tint = Color.White)
             }
             IconButton(onClick = onPlayPause, modifier = Modifier.size(40.dp)) {
                 Icon(
                     if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = "Play/Pause",
+                    contentDescription = stringResource(Res.string.cd_play_pause),
                     tint = Color.White,
                     modifier = Modifier.size(32.dp)
                 )
             }
             IconButton(onClick = onSeekForward, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Default.SkipNext, contentDescription = "Skip forward", tint = Color.White)
+                Icon(Icons.Default.SkipNext, contentDescription = stringResource(Res.string.cd_skip_forward), tint = Color.White)
             }
         }
 
@@ -869,11 +927,11 @@ private fun MarkerToolbar(
 
         // Drop verse marker
         IconButton(onClick = onDropMarker, modifier = Modifier.size(44.dp)) {
-            Icon(Icons.Default.Bookmark, contentDescription = "Place verse marker", tint = Color(0xFFFFDD00))
+            Icon(Icons.Default.Bookmark, contentDescription = stringResource(Res.string.cd_place_verse_marker), tint = Color(0xFFFFDD00))
         }
         // Done
         IconButton(onClick = onDone, modifier = Modifier.size(44.dp)) {
-            Icon(Icons.Default.Check, contentDescription = "Done — save markers", tint = Color.White)
+            Icon(Icons.Default.Check, contentDescription = stringResource(Res.string.cd_done_save_markers), tint = Color.White)
         }
     }
 }
