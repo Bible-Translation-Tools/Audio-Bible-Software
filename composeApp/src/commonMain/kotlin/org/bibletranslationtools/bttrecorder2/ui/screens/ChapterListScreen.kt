@@ -41,6 +41,15 @@ import btt_recorder2.composeapp.generated.resources.action_delete
 import btt_recorder2.composeapp.generated.resources.action_back
 import btt_recorder2.composeapp.generated.resources.cd_record_chapter
 import btt_recorder2.composeapp.generated.resources.cd_delete_chapter_take
+import btt_recorder2.composeapp.generated.resources.action_loading
+import btt_recorder2.composeapp.generated.resources.error_prefix
+import btt_recorder2.composeapp.generated.resources.cd_chapter_compiled
+import btt_recorder2.composeapp.generated.resources.cd_compile_chapter
+import btt_recorder2.composeapp.generated.resources.cd_compile_chapter_not_ready
+import btt_recorder2.composeapp.generated.resources.action_collapse
+import btt_recorder2.composeapp.generated.resources.cd_expand_chapter_take
+import btt_recorder2.composeapp.generated.resources.action_pause
+import btt_recorder2.composeapp.generated.resources.action_play
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -126,7 +135,7 @@ fun ChapterListContent(
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text(uiState.workbook?.target?.title ?: "Loading...") },
+                title = { Text(uiState.workbook?.target?.title ?: stringResource(Res.string.action_loading)) },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(Res.string.action_back))
@@ -152,7 +161,7 @@ fun ChapterListContent(
                 }
                 uiState.error != null -> {
                     Text(
-                        text = "Error: ${uiState.error}",
+                        text = stringResource(Res.string.error_prefix, uiState.error ?: ""),
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.align(Alignment.Center)
                     )
@@ -296,9 +305,9 @@ fun ChapterItem(
                     Icon(
                         Icons.Default.Layers,
                         contentDescription = when {
-                            uiModel.hasChapterTake -> "Chapter compiled"
-                            uiModel.canCompile -> "Compile chapter"
-                            else -> "Compile chapter (not ready)"
+                            uiModel.hasChapterTake -> stringResource(Res.string.cd_chapter_compiled)
+                            uiModel.canCompile -> stringResource(Res.string.cd_compile_chapter)
+                            else -> stringResource(Res.string.cd_compile_chapter_not_ready)
                         },
                         tint = MaterialTheme.colorScheme.onSurface.copy(alpha = layersAlpha)
                     )
@@ -332,7 +341,7 @@ fun ChapterItem(
                         } else {
                             Icons.AutoMirrored.Filled.KeyboardArrowRight
                         },
-                        contentDescription = if (isExpanded) "Collapse" else "Expand chapter take",
+                        contentDescription = if (isExpanded) stringResource(Res.string.action_collapse) else stringResource(Res.string.cd_expand_chapter_take),
                         tint = MaterialTheme.colorScheme.onSurface
                     )
                 }
@@ -407,7 +416,7 @@ private fun ChapterTakePlaybackRow(
             FilledIconButton(onClick = onPlayPause) {
                 Icon(
                     imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (isPlaying) "Pause" else "Play"
+                    contentDescription = if (isPlaying) stringResource(Res.string.action_pause) else stringResource(Res.string.action_play)
                 )
             }
             Spacer(modifier = Modifier.weight(1f))

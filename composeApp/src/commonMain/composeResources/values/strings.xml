@@ -13,6 +13,17 @@
     <string name="action_all">All</string>
     <string name="action_none">None</string>
     <string name="action_export">Export</string>
+    <string name="action_loading">Loading…</string>
+    <string name="action_collapse">Collapse</string>
+    <string name="action_expand">Expand</string>
+    <string name="action_pause">Pause</string>
+    <string name="action_play">Play</string>
+    <string name="error_prefix">Error: %1$s</string>
+
+    <!-- Shared source-audio row (recorder + playback) -->
+    <string name="source_audio_none">No source audio</string>
+    <string name="cd_play_source">Play source</string>
+    <string name="cd_pause_source">Pause source</string>
 
     <!-- Reusable value format: "Name (code)" -->
     <string name="value_name_with_code">%1$s (%2$s)</string>
@@ -70,6 +81,10 @@
     <string name="chapter_delete_take_message">This will remove the compiled audio for %1$s. The verse takes are not affected.</string>
     <string name="cd_record_chapter">Record Chapter</string>
     <string name="cd_delete_chapter_take">Delete chapter take</string>
+    <string name="cd_chapter_compiled">Chapter compiled</string>
+    <string name="cd_compile_chapter">Compile chapter</string>
+    <string name="cd_compile_chapter_not_ready">Compile chapter (not ready)</string>
+    <string name="cd_expand_chapter_take">Expand chapter take</string>
 
     <!-- ───────────── Unit list ───────────── -->
     <string name="unit_delete_take_title">Delete take?</string>
@@ -79,6 +94,8 @@
     <string name="cd_select_take">Select Take</string>
     <string name="cd_previous_take">Previous Take</string>
     <string name="cd_next_take">Next Take</string>
+    <string name="unit_verse_label">Verse %1$s</string>
+    <string name="unit_take_position">Take %1$d of %2$d</string>
 
     <!-- ───────────── Recorder ───────────── -->
     <string name="recorder_label_chapter">Chapter</string>
@@ -108,6 +125,9 @@
     <string name="edit_in">[ IN</string>
     <string name="edit_out">OUT ]</string>
     <string name="edit_cut">CUT</string>
+    <string name="playback_chapter_short">ch. %1$s</string>
+    <string name="playback_verse_short">v. %1$s</string>
+    <string name="playback_markers_placed_label">verse markers placed</string>
 
     <!-- ───────────── Export options dialog ───────────── -->
     <string name="export_options_title">Export %1$s</string>
@@ -116,6 +136,8 @@
     <string name="export_type_backup_subtitle">Full project archive (.orature) — restores everything, including in-progress takes.</string>
     <string name="export_type_source_audio_title">Source Audio</string>
     <string name="export_type_source_audio_subtitle">MP3 audio + source text packaged as a source RC. Only complete chapters can be exported.</string>
+    <string name="export_type_label">Export type</string>
+    <string name="export_chapters_count">Chapters (%1$d of %2$d)</string>
 
     <!-- ───────────── Export progress dialog ───────────── -->
     <string name="export_backing_up_title">Backing up project</string>
@@ -127,6 +149,30 @@
     <string name="export_status_preparing">Preparing…</string>
     <string name="export_status_finishing">Finishing…</string>
     <string name="export_status_working">Working…</string>
+
+    <!-- ───────────── ViewModel-surfaced labels + errors ───────────── -->
+    <string name="main_chapter_label">Chapter %1$s</string>
+    <string name="main_verse_label">Verse %1$s</string>
+    <string name="take_label">Take %1$s</string>
+    <string name="err_unknown">Unknown error</string>
+    <string name="err_no_active_project">No active project</string>
+    <string name="err_project_not_found">Project not found</string>
+    <string name="err_workbook_not_found">Workbook not found</string>
+    <string name="err_no_active_chapter">No active chapter</string>
+    <string name="err_chapter_not_found">Chapter not found</string>
+    <string name="err_compile_failed">Compile failed: %1$s</string>
+    <string name="err_load_chapter_audio">Failed to load chapter audio: %1$s</string>
+    <string name="err_play_chapter_audio">Failed to play chapter audio: %1$s</string>
+    <string name="err_play_audio">Failed to play audio: %1$s</string>
+    <string name="err_no_edits_to_save">No edits to save</string>
+    <string name="err_save_edited_take">Failed to save edited take</string>
+    <string name="err_save_verse_markers">Failed to save verse markers</string>
+    <string name="err_load_take">Failed to load take</string>
+    <string name="err_source_collection_not_found">Source collection not found</string>
+    <string name="err_delete_project">Failed to delete project</string>
+    <string name="err_record_device_start">Unable to start recording device.</string>
+    <string name="err_record_device_resume">Unable to resume recording device.</string>
+    <string name="err_save_recording">Unable to save recording.</string>
 
     <!-- ───────────── Export errors (ViewModel) ───────────── -->
     <string name="export_error_project_not_found">Project not found.</string>

@@ -60,6 +60,9 @@ import btt_recorder2.composeapp.generated.resources.recorder_label_chapter
 import btt_recorder2.composeapp.generated.resources.recorder_label_verse
 import btt_recorder2.composeapp.generated.resources.recorder_saving
 import btt_recorder2.composeapp.generated.resources.recorder_stop
+import btt_recorder2.composeapp.generated.resources.source_audio_none
+import btt_recorder2.composeapp.generated.resources.cd_pause_source
+import btt_recorder2.composeapp.generated.resources.cd_play_source
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -359,7 +362,7 @@ private fun SourceAudioRow(
             ) {
                 Icon(
                     imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (state.isPlaying) "Pause source" else "Play source",
+                    contentDescription = if (state.isPlaying) stringResource(Res.string.cd_pause_source) else stringResource(Res.string.cd_play_source),
                     tint = Color(0xFF4CAF50),
                     modifier = Modifier.size(32.dp)
                 )
@@ -395,7 +398,7 @@ private fun SourceAudioRow(
             )
         } else {
             Text(
-                "No source audio",
+                stringResource(Res.string.source_audio_none),
                 color = TranslationRecorderTheme.gray0,
                 style = MaterialTheme.typography.titleMedium
             )

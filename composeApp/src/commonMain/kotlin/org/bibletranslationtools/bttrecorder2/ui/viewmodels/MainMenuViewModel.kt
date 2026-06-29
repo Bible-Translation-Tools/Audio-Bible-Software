@@ -13,6 +13,10 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IColl
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
+import org.jetbrains.compose.resources.getString
+import btt_recorder2.composeapp.generated.resources.Res
+import btt_recorder2.composeapp.generated.resources.main_chapter_label
+import btt_recorder2.composeapp.generated.resources.main_verse_label
 
 data class MainMenuUiState(
     val languageDisplay: String = "",
@@ -55,8 +59,8 @@ class MainMenuViewModel : ViewModel(), KoinComponent {
                 hasActiveProject = true,
                 languageDisplay = workbook.target.language.name,
                 bookDisplay = workbook.target.title,
-                chapterDisplay = if (state.chapterSort != -1) "Chapter ${state.chapterSort}" else "",
-                unitDisplay = if (state.unitSort != -1) "Verse ${state.unitSort}" else ""
+                chapterDisplay = if (state.chapterSort != -1) getString(Res.string.main_chapter_label, state.chapterSort.toString()) else "",
+                unitDisplay = if (state.unitSort != -1) getString(Res.string.main_verse_label, state.unitSort.toString()) else ""
             )
         } catch (e: CancellationException) {
             throw e

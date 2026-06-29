@@ -2,6 +2,11 @@ package org.bibletranslationtools.bttrecorder2.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import org.jetbrains.compose.resources.getString
+import btt_recorder2.composeapp.generated.resources.Res
+import btt_recorder2.composeapp.generated.resources.err_record_device_start
+import btt_recorder2.composeapp.generated.resources.err_record_device_resume
+import btt_recorder2.composeapp.generated.resources.err_save_recording
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -355,7 +360,7 @@ class RecorderViewModel(
                     recorderInitialized = true
                     _audioError.value = null
                 } catch (e: Exception) {
-                    _audioError.value = e.message ?: "Unable to start recording device."
+                    _audioError.value = e.message ?: getString(Res.string.err_record_device_start)
                 }
             }
         }
@@ -407,7 +412,7 @@ class RecorderViewModel(
             } catch (e: Exception) {
                 wavFileWriter?.pause()
                 withContext(Dispatchers.Main) {
-                    _audioError.value = e.message ?: "Unable to start recording device."
+                    _audioError.value = e.message ?: getString(Res.string.err_record_device_start)
                 }
             }
         }
@@ -441,7 +446,7 @@ class RecorderViewModel(
             } catch (e: Exception) {
                 wavFileWriter?.pause()
                 withContext(Dispatchers.Main) {
-                    _audioError.value = e.message ?: "Unable to resume recording device."
+                    _audioError.value = e.message ?: getString(Res.string.err_record_device_resume)
                 }
             }
         }
@@ -510,7 +515,7 @@ class RecorderViewModel(
             } catch (e: Exception) {
                 e.printStackTrace()
                 withContext(Dispatchers.Main) {
-                    _audioError.value = e.message ?: "Unable to save recording."
+                    _audioError.value = e.message ?: getString(Res.string.err_save_recording)
                     // Don't leave the recorder stuck in the committing state; reset
                     // to a fresh idle session so the user can re-record.
                     resetSessionForTarget()

@@ -39,6 +39,12 @@ import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.content.Recordable
 import org.bibletranslationtools.otter.common.domain.content.TakeCreator
 import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
+import org.jetbrains.compose.resources.getString
+import btt_recorder2.composeapp.generated.resources.Res
+import btt_recorder2.composeapp.generated.resources.err_no_edits_to_save
+import btt_recorder2.composeapp.generated.resources.err_save_edited_take
+import btt_recorder2.composeapp.generated.resources.err_save_verse_markers
+import btt_recorder2.composeapp.generated.resources.err_load_take
 import java.io.File
 import kotlin.math.abs
 import kotlin.math.max
@@ -64,7 +70,8 @@ class PlaybackViewModel(
         val targetUi: TargetUiState = TargetUiState(),
         val takes: List<Take> = emptyList(),
         val selectedTake: Take? = null,
-        val currentTakeLabel: String = "",
+        // Raw take number; the view formats the localized "Take N" label.
+        val currentTakeNumber: Int? = null,
         val isPlaying: Boolean = false,
         val progress: Float = 0f,
         val currentFrame: Int = 0,
@@ -404,7 +411,11 @@ class PlaybackViewModel(
         val take = activeTake ?: return
         val session = editSession ?: return
         if (!session.hasEdits()) {
-            _uiState.value = _uiState.value.copy(error = "No edits to save")
+            // getString is suspend; resolve in a coroutine (this guard sits in a
+            // synchronous function body before the IO launch below).
+            viewModelScope.launch {
+                _uiState.value = _uiState.value.copy(error = getString(Res.string.err_no_edits_to_save))
+            }
             return
         }
 
@@ -418,7 +429,7 @@ class PlaybackViewModel(
                 tempEditedWav.delete()
             }.onFailure { e ->
                 _uiState.value = _uiState.value.copy(
-                    error = e.message ?: "Failed to save edited take"
+                    error = e.message ?: getString(Res.string.err_save_edited_take)
                 )
             }
         }
@@ -473,7 +484,7 @@ class PlaybackViewModel(
                 tempWav.delete()
             }.onFailure { e ->
                 _uiState.value = _uiState.value.copy(
-                    error = e.message ?: "Failed to save verse markers"
+                    error = e.message ?: getString(Res.string.err_save_verse_markers)
                 )
             }
         }
@@ -600,7 +611,7 @@ class PlaybackViewModel(
         _uiState.value = _uiState.value.copy(
             selectedTake = null,
             takes = emptyList(),
-            currentTakeLabel = "",
+            currentTakeNumber = null,
             waveformSamples = floatArrayOf(),
             minimapSamples = floatArrayOf(),
             progress = 0f,
@@ -699,7 +710,11 @@ class PlaybackViewModel(
             selectionEndFrame = null
             reloadCurrentTakePlayback(0)
         }.onFailure { e ->
-            _uiState.value = _uiState.value.copy(error = e.message ?: "Failed to load take")
+            // loadTakeForPlayback is synchronous; getString is suspend, so resolve
+            // the fallback in a coroutine.
+            viewModelScope.launch {
+                _uiState.value = _uiState.value.copy(error = e.message ?: getString(Res.string.err_load_take))
+            }
         }
     }
 
@@ -894,7 +909,7 @@ class PlaybackViewModel(
             durationMs = durationMs,
             elapsedText = formatTime(positionMs),
             durationText = formatTime(durationMs),
-            currentTakeLabel = take?.let { "Take ${it.number}" } ?: ""
+            currentTakeNumber = take?.number
         )
         updateEditUi()
     }
@@ -952,7 +967,7 @@ class PlaybackViewModel(
             durationMs = durationMs,
             elapsedText = formatTime(positionMs),
             durationText = formatTime(durationMs),
-            currentTakeLabel = take?.let { "Take ${it.number}" } ?: ""
+            currentTakeNumber = take?.number
         )
         updateEditUi()
     }

@@ -48,6 +48,13 @@ import btt_recorder2.composeapp.generated.resources.cd_open_in_playback
 import btt_recorder2.composeapp.generated.resources.cd_select_take
 import btt_recorder2.composeapp.generated.resources.cd_previous_take
 import btt_recorder2.composeapp.generated.resources.cd_next_take
+import btt_recorder2.composeapp.generated.resources.error_prefix
+import btt_recorder2.composeapp.generated.resources.unit_verse_label
+import btt_recorder2.composeapp.generated.resources.action_collapse
+import btt_recorder2.composeapp.generated.resources.action_expand
+import btt_recorder2.composeapp.generated.resources.action_pause
+import btt_recorder2.composeapp.generated.resources.action_play
+import btt_recorder2.composeapp.generated.resources.unit_take_position
 
 private val GreenPlay = Color(0xFF4CAF50)
 
@@ -148,7 +155,7 @@ fun UnitListContent(
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             } else if (uiState.error != null) {
                 Text(
-                    text = "Error: ${uiState.error}",
+                    text = stringResource(Res.string.error_prefix, uiState.error ?: ""),
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.align(Alignment.Center)
                 )
@@ -246,7 +253,7 @@ fun UnitCard(
                 .padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp)
         ) {
             Text(
-                text = "Verse ${unit.title}",
+                text = stringResource(Res.string.unit_verse_label, unit.title),
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = if (hasTakes) FontWeight.Bold else FontWeight.Normal,
                 color = if (hasTakes)
@@ -275,7 +282,7 @@ fun UnitCard(
             if (hasTakes) {
                 Icon(
                     imageVector = if (isExpanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight,
-                    contentDescription = if (isExpanded) "Collapse" else "Expand",
+                    contentDescription = if (isExpanded) stringResource(Res.string.action_collapse) else stringResource(Res.string.action_expand),
                     modifier = Modifier.size(24.dp)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
@@ -351,7 +358,7 @@ fun UnitCard(
                 ) {
                     Icon(
                         imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play",
+                        contentDescription = if (isPlaying) stringResource(Res.string.action_pause) else stringResource(Res.string.action_play),
                         tint = GreenPlay,
                         modifier = Modifier.size(36.dp)
                     )
@@ -384,7 +391,7 @@ fun UnitCard(
 
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "Take ${currentIndex + 1} of ${takes.size}",
+                        text = stringResource(Res.string.unit_take_position, currentIndex + 1, takes.size),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Normal
                     )

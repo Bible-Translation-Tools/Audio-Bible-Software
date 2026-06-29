@@ -29,6 +29,15 @@ import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerEvent
 import org.bibletranslationtools.otter.common.device.newaudio.IAudioPlayer
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.content.ChapterTranslationBuilder
+import org.jetbrains.compose.resources.getString
+import btt_recorder2.composeapp.generated.resources.Res
+import btt_recorder2.composeapp.generated.resources.err_no_active_project
+import btt_recorder2.composeapp.generated.resources.err_project_not_found
+import btt_recorder2.composeapp.generated.resources.err_workbook_not_found
+import btt_recorder2.composeapp.generated.resources.err_unknown
+import btt_recorder2.composeapp.generated.resources.err_compile_failed
+import btt_recorder2.composeapp.generated.resources.err_load_chapter_audio
+import btt_recorder2.composeapp.generated.resources.err_play_chapter_audio
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -113,7 +122,7 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
             try {
                 val nav = appPreferences.navState.first()
                 if (!nav.hasActiveWorkbook) {
-                    _uiState.update { it.copy(isLoading = false, error = "No active project") }
+                    _uiState.update { it.copy(isLoading = false, error = getString(Res.string.err_no_active_project)) }
                     return@launch
                 }
 
@@ -121,13 +130,13 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
                 val targetC = collectionRepository.getProjectSuspend(nav.workbookTargetId)
 
                 if (sourceC == null || targetC == null) {
-                    _uiState.update { it.copy(isLoading = false, error = "Project not found") }
+                    _uiState.update { it.copy(isLoading = false, error = getString(Res.string.err_project_not_found)) }
                     return@launch
                 }
 
                 val workbook = workbookRepository.get(sourceC, targetC)
                 if (workbook == null) {
-                    _uiState.update { it.copy(isLoading = false, error = "Workbook not found") }
+                    _uiState.update { it.copy(isLoading = false, error = getString(Res.string.err_workbook_not_found)) }
                     return@launch
                 }
 
@@ -178,7 +187,7 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = e.message ?: "Unknown error") }
+                _uiState.update { it.copy(isLoading = false, error = e.message ?: getString(Res.string.err_unknown)) }
             }
         }
     }
@@ -235,7 +244,7 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = "Compile failed: ${e.message ?: "unknown error"}") }
+                _uiState.update { it.copy(error = getString(Res.string.err_compile_failed, e.message ?: getString(Res.string.err_unknown))) }
             } finally {
                 _uiState.update { it.copy(compilingChapterSort = null) }
             }
@@ -276,7 +285,7 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
                     )
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = "Failed to load chapter audio: ${e.message}") }
+                _uiState.update { it.copy(error = getString(Res.string.err_load_chapter_audio, e.message ?: "")) }
             }
         }
     }
@@ -312,7 +321,7 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
                     startProgressTicker()
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = "Failed to play chapter audio: ${e.message}") }
+                _uiState.update { it.copy(error = getString(Res.string.err_play_chapter_audio, e.message ?: "")) }
             }
         }
     }

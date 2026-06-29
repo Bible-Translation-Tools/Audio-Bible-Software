@@ -31,6 +31,13 @@ import org.koin.core.component.inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.first
+import org.jetbrains.compose.resources.getString
+import btt_recorder2.composeapp.generated.resources.Res
+import btt_recorder2.composeapp.generated.resources.err_no_active_chapter
+import btt_recorder2.composeapp.generated.resources.err_project_not_found
+import btt_recorder2.composeapp.generated.resources.err_chapter_not_found
+import btt_recorder2.composeapp.generated.resources.err_unknown
+import btt_recorder2.composeapp.generated.resources.err_play_audio
 
 data class UnitUiModel(
     val unit: Chunk,
@@ -161,7 +168,7 @@ class UnitListViewModel(
             try {
                 val nav = appPreferences.navState.first()
                 if (!nav.hasActiveChapter) {
-                    _uiState.update { it.copy(isLoading = false, error = "No active chapter") }
+                    _uiState.update { it.copy(isLoading = false, error = getString(Res.string.err_no_active_chapter)) }
                     return@launch
                 }
 
@@ -169,7 +176,7 @@ class UnitListViewModel(
                 val targetC = collectionRepository.getProjectSuspend(nav.workbookTargetId)
 
                 if (sourceC == null || targetC == null) {
-                    _uiState.update { it.copy(isLoading = false, error = "Project not found") }
+                    _uiState.update { it.copy(isLoading = false, error = getString(Res.string.err_project_not_found)) }
                     return@launch
                 }
 
@@ -177,7 +184,7 @@ class UnitListViewModel(
                 val chapter = workbook.target.chaptersFlow.firstOrNull { it.sort == nav.chapterSort }
 
                 if (chapter == null) {
-                    _uiState.update { it.copy(isLoading = false, error = "Chapter not found", workbook = workbook) }
+                    _uiState.update { it.copy(isLoading = false, error = getString(Res.string.err_chapter_not_found), workbook = workbook) }
                     return@launch
                 }
 
@@ -245,7 +252,7 @@ class UnitListViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = e.message ?: "Unknown error") }
+                _uiState.update { it.copy(isLoading = false, error = e.message ?: getString(Res.string.err_unknown)) }
             }
         }
     }
@@ -314,7 +321,7 @@ class UnitListViewModel(
                     startProgressTicker()
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = "Failed to play audio: ${e.message}") }
+                _uiState.update { it.copy(error = getString(Res.string.err_play_audio, e.message ?: "")) }
             }
         }
     }

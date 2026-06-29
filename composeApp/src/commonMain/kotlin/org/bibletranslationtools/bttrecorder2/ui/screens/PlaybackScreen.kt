@@ -93,6 +93,13 @@ import btt_recorder2.composeapp.generated.resources.edit_clear
 import btt_recorder2.composeapp.generated.resources.edit_in
 import btt_recorder2.composeapp.generated.resources.edit_out
 import btt_recorder2.composeapp.generated.resources.edit_cut
+import btt_recorder2.composeapp.generated.resources.take_label
+import btt_recorder2.composeapp.generated.resources.playback_chapter_short
+import btt_recorder2.composeapp.generated.resources.playback_verse_short
+import btt_recorder2.composeapp.generated.resources.source_audio_none
+import btt_recorder2.composeapp.generated.resources.cd_pause_source
+import btt_recorder2.composeapp.generated.resources.cd_play_source
+import btt_recorder2.composeapp.generated.resources.playback_markers_placed_label
 
 @Composable
 fun PlaybackScreen(
@@ -176,7 +183,7 @@ fun PlaybackScreen(
         } else {
             PlaybackFileBar(
                 targetUi = ui.targetUi,
-                currentTakeLabel = ui.currentTakeLabel,
+                currentTakeLabel = ui.currentTakeNumber?.let { stringResource(Res.string.take_label, it) } ?: "",
                 onBackClick = viewModel::onBackRequested,
                 onVerseMarkerMode = viewModel::enterVerseMarkerMode,
                 onRerecord = viewModel::onRerecord,
@@ -330,7 +337,7 @@ private fun PlaybackFileBar(
         }
         if (targetUi.chapterValue.isNotEmpty()) {
             Text(
-                text = "ch. ${targetUi.chapterValue}",
+                text = stringResource(Res.string.playback_chapter_short, targetUi.chapterValue),
                 color = Color.White,
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 1
@@ -339,7 +346,7 @@ private fun PlaybackFileBar(
         }
         if (targetUi.unitValue.isNotEmpty() && targetUi.unitValue != "0") {
             Text(
-                text = "v. ${targetUi.unitValue}",
+                text = stringResource(Res.string.playback_verse_short, targetUi.unitValue),
                 color = Color.White,
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 1
@@ -602,7 +609,7 @@ private fun SourceAudioPanel(
     if (!state.available) {
         Box(modifier = modifier, contentAlignment = Alignment.Center) {
             Text(
-                text = "No source audio",
+                text = stringResource(Res.string.source_audio_none),
                 color = TranslationRecorderTheme.gray0,
                 style = MaterialTheme.typography.bodySmall
             )
@@ -617,7 +624,7 @@ private fun SourceAudioPanel(
         IconButton(onClick = onTogglePlayPause, modifier = Modifier.size(36.dp)) {
             Icon(
                 imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                contentDescription = if (state.isPlaying) "Pause source" else "Play source",
+                contentDescription = if (state.isPlaying) stringResource(Res.string.cd_pause_source) else stringResource(Res.string.cd_play_source),
                 tint = Color(0xFF4CAF50),
                 modifier = Modifier.size(28.dp)
             )
@@ -863,7 +870,7 @@ private fun MarkerCounterBar(
         )
         Spacer(Modifier.width(6.dp))
         Text(
-            text = "verse markers placed",
+            text = stringResource(Res.string.playback_markers_placed_label),
             color = Color.White,
             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
         )

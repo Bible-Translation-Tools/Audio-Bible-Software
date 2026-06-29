@@ -47,6 +47,8 @@ import btt_recorder2.composeapp.generated.resources.export_type_backup_subtitle
 import btt_recorder2.composeapp.generated.resources.export_type_backup_title
 import btt_recorder2.composeapp.generated.resources.export_type_source_audio_subtitle
 import btt_recorder2.composeapp.generated.resources.export_type_source_audio_title
+import btt_recorder2.composeapp.generated.resources.export_type_label
+import btt_recorder2.composeapp.generated.resources.export_chapters_count
 import org.jetbrains.compose.resources.stringResource
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportChapter
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportOptionsState
@@ -153,7 +155,7 @@ private fun ReadyDialog(
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "Export type",
+                    text = stringResource(Res.string.export_type_label),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -184,7 +186,7 @@ private fun ReadyDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Chapters (${state.selectedChapterSorts.size} of ${state.chapters.size})",
+                        text = stringResource(Res.string.export_chapters_count, state.selectedChapterSorts.size, state.chapters.size),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(1f)

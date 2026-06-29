@@ -14,6 +14,10 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IWork
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
+import org.jetbrains.compose.resources.getString
+import btt_recorder2.composeapp.generated.resources.Res
+import btt_recorder2.composeapp.generated.resources.err_unknown
+import btt_recorder2.composeapp.generated.resources.err_delete_project
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -37,7 +41,7 @@ class ProjectManagementViewModel(
                 val workbooks = workbookDescriptorRepository.getAll().blockingGet()
                 _uiState.value = ProjectManagementUiState.Success(workbooks)
             } catch (e: Exception) {
-                _uiState.value = ProjectManagementUiState.Error(e.message ?: "Unknown error")
+                _uiState.value = ProjectManagementUiState.Error(e.message ?: getString(Res.string.err_unknown))
             }
         }
     }
@@ -60,7 +64,7 @@ class ProjectManagementViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _uiState.value = ProjectManagementUiState.Error(e.message ?: "Failed to delete project")
+                _uiState.value = ProjectManagementUiState.Error(e.message ?: getString(Res.string.err_delete_project))
             }
         }
     }
