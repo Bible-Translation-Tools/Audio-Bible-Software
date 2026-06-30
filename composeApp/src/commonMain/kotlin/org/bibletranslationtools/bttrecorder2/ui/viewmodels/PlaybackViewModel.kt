@@ -652,7 +652,7 @@ class PlaybackViewModel(
             targetUi = TargetUiState(
                 languageLabel = wb.target.language.name,
                 projectLabel = wb.target.resourceMetadata.identifier.uppercase(),
-                bookLabel = wb.target.label,
+                bookLabel = wb.target.title,
                 chapterValue = target.chapter.sort.toString(),
                 unitValue = (target.chunk?.sort ?: 0).toString()
             )

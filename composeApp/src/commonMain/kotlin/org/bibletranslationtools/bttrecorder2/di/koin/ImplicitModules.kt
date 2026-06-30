@@ -155,10 +155,10 @@ val implicitCommonModule = module {
 val implicitViewModelModule = module {
 //    factoryOf(::RootViewModel)
     //single<SplashScreenViewModel> { SplashScreenViewModel(get()) }
-    singleOf(::ProjectManagementViewModel)
-    singleOf(::ProjectCreationViewModel)
-    singleOf(::ChapterListViewModel)
-    singleOf(::UnitListViewModel)
+    single { ProjectManagementViewModel() }
+    single { ProjectCreationViewModel() }
+    single { ChapterListViewModel() }
+    single { UnitListViewModel() }
     factoryOf(::RecorderViewModel)
     factoryOf(::PlaybackViewModel)
 //    factoryOf(::HomePageViewModel2)

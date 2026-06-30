@@ -67,14 +67,19 @@
     <string name="cd_record">Record</string>
 
     <!-- ───────────── Project management ───────────── -->
+    <string name="pm_title">Project Management</string>
     <string name="cd_new_project">New Project</string>
     <string name="cd_info">Info</string>
-    <string name="cd_language_sort">Language Sort</string>
-    <string name="cd_book_sort">Book Sort</string>
-    <string name="cd_progress_sort">Progress Sort</string>
+    <string name="cd_language_sort">Sort by language</string>
+    <string name="cd_book_sort">Sort by book</string>
+    <string name="cd_progress_sort">Sort by progress</string>
     <string name="pm_sort_language">Language</string>
     <string name="pm_sort_book">Book</string>
     <string name="pm_sort_progress">Progress</string>
+    <string name="pm_group_books_count">%1$d books</string>
+    <string name="pm_group_from_source">from %1$s</string>
+    <string name="pm_sort_asc">Ascending</string>
+    <string name="pm_sort_desc">Descending</string>
 
     <!-- ───────────── Project wizard ───────────── -->
     <string name="wizard_new_project_title">New Project</string>
@@ -155,12 +160,11 @@
     <string name="cd_place_verse_marker">Place verse marker</string>
     <string name="cd_done_save_markers">Done — save markers</string>
     <string name="edit_undo">UNDO</string>
+    <string name="edit_redo">REDO</string>
     <string name="edit_clear">CLEAR</string>
     <string name="edit_in">[ IN</string>
     <string name="edit_out">OUT ]</string>
     <string name="edit_cut">CUT</string>
-    <string name="playback_chapter_short">ch. %1$s</string>
-    <string name="playback_verse_short">v. %1$s</string>
     <string name="playback_markers_placed_label">verse markers placed</string>
 
     <!-- ───────────── Export options dialog ───────────── -->

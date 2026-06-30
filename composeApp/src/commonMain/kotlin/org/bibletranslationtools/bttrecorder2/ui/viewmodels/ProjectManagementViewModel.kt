@@ -9,11 +9,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.bibletranslationtools.bttrecorder2.ui.navigation.ProjectWizardRoute
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
-import org.bibletranslationtools.otter.common.data.workbook.Workbook
+import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
@@ -30,13 +29,30 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.io.File
 
-class ProjectManagementViewModel(
-) : ViewModel(), KoinComponent {
+enum class SortField { LANGUAGE, BOOK, PROGRESS }
+enum class SortDirection { ASC, DESC }
+
+data class SortState(
+    val field: SortField = SortField.LANGUAGE,
+    val direction: SortDirection = SortDirection.ASC
+)
+
+data class ProjectGroup(
+    val id: String,
+    val sourceLanguage: Language,
+    val targetLanguage: Language,
+    val books: List<WorkbookDescriptor>
+)
+
+class ProjectManagementViewModel : ViewModel(), KoinComponent {
 
     private val workbookRepository: IWorkbookRepository by inject()
     private val workbookDescriptorRepository: IWorkbookDescriptorRepository by inject()
     private val importProjectUseCase: ImportProjectUseCase by inject()
     private val directoryProvider: IDirectoryProvider by inject()
+
+    private val _rawWorkbooks = MutableStateFlow<List<WorkbookDescriptor>?>(null)
+    private val _sortState = MutableStateFlow(SortState())
 
     private val _uiState = MutableStateFlow<ProjectManagementUiState>(ProjectManagementUiState.Loading)
     val uiState: StateFlow<ProjectManagementUiState> = _uiState.asStateFlow()
@@ -53,27 +69,75 @@ class ProjectManagementViewModel(
             _uiState.value = ProjectManagementUiState.Loading
             try {
                 val workbooks = workbookDescriptorRepository.getAll().blockingGet()
-                _uiState.value = ProjectManagementUiState.Success(workbooks)
+                _rawWorkbooks.value = workbooks
+                _uiState.value = ProjectManagementUiState.Success(
+                    groups = groupAndSort(workbooks, _sortState.value),
+                    sortState = _sortState.value
+                )
             } catch (e: Exception) {
                 _uiState.value = ProjectManagementUiState.Error(e.message ?: getString(Res.string.err_unknown))
             }
         }
     }
 
-    fun onProjectClick() {
-
+    fun toggleSort(field: SortField) {
+        val current = _sortState.value
+        _sortState.value = if (current.field == field) {
+            current.copy(
+                direction = if (current.direction == SortDirection.ASC) SortDirection.DESC else SortDirection.ASC
+            )
+        } else {
+            SortState(field = field, direction = SortDirection.ASC)
+        }
+        val workbooks = _rawWorkbooks.value ?: return
+        _uiState.value = ProjectManagementUiState.Success(
+            groups = groupAndSort(workbooks, _sortState.value),
+            sortState = _sortState.value
+        )
     }
 
-    fun onNewProjectClick() {
-        // TODO: Handle new project click (navigation to Project Wizard)
+    private fun groupAndSort(
+        workbooks: List<WorkbookDescriptor>,
+        sort: SortState
+    ): List<ProjectGroup> {
+        val groups = workbooks
+            .groupBy { "${it.sourceLanguage.slug}_${it.targetLanguage.slug}" }
+            .map { (id, books) ->
+                val first = books.first()
+                ProjectGroup(
+                    id = id,
+                    sourceLanguage = first.sourceLanguage,
+                    targetLanguage = first.targetLanguage,
+                    books = sortBooks(books, sort)
+                )
+            }
+
+        return when (sort.field) {
+            SortField.LANGUAGE -> {
+                val sorted = groups.sortedBy { it.targetLanguage.anglicizedName }
+                if (sort.direction == SortDirection.DESC) sorted.reversed() else sorted
+            }
+            // BOOK and PROGRESS sort within groups — groups stay in language order
+            SortField.BOOK, SortField.PROGRESS ->
+                groups.sortedBy { it.targetLanguage.anglicizedName }
+        }
     }
 
-    /**
-     * Imports a project archive (.orature / .zip resource container / .tstudio)
-     * chosen by the user via [importProjectUseCase], which auto-detects the
-     * format. FileKit hands us bytes, so we stage to a temp file the use case can
-     * open, then refresh the project list on success.
-     */
+    private fun sortBooks(books: List<WorkbookDescriptor>, sort: SortState): List<WorkbookDescriptor> {
+        return when (sort.field) {
+            SortField.LANGUAGE -> books.sortedBy { it.sort }
+            SortField.BOOK -> {
+                val sorted = books.sortedBy { it.sort }
+                if (sort.direction == SortDirection.DESC) sorted.reversed() else sorted
+            }
+            SortField.PROGRESS -> books.sortedBy { it.sort }
+        }
+    }
+
+    fun onProjectClick() {}
+
+    fun onNewProjectClick() {}
+
     fun importProject(platformFile: PlatformFile) {
         if (_importState.value is ProjectImportState.InProgress) return
         _importState.value = ProjectImportState.InProgress
@@ -122,7 +186,9 @@ class ProjectManagementViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _uiState.value = ProjectManagementUiState.Error(e.message ?: getString(Res.string.err_delete_project))
+                _uiState.value = ProjectManagementUiState.Error(
+                    e.message ?: getString(Res.string.err_delete_project)
+                )
             }
         }
     }
@@ -130,7 +196,10 @@ class ProjectManagementViewModel(
 
 sealed interface ProjectManagementUiState {
     data object Loading : ProjectManagementUiState
-    data class Success(val projects: List<WorkbookDescriptor>) : ProjectManagementUiState
+    data class Success(
+        val groups: List<ProjectGroup>,
+        val sortState: SortState = SortState()
+    ) : ProjectManagementUiState
     data class Error(val message: String) : ProjectManagementUiState
 }
 

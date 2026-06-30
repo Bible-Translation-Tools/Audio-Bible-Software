@@ -19,9 +19,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -88,14 +90,20 @@ import btt_recorder2.composeapp.generated.resources.cd_save_as_new_take
 import btt_recorder2.composeapp.generated.resources.cd_exit_verse_marker_mode
 import btt_recorder2.composeapp.generated.resources.cd_place_verse_marker
 import btt_recorder2.composeapp.generated.resources.cd_done_save_markers
+import btt_recorder2.composeapp.generated.resources.edit_redo
 import btt_recorder2.composeapp.generated.resources.edit_undo
 import btt_recorder2.composeapp.generated.resources.edit_clear
 import btt_recorder2.composeapp.generated.resources.edit_in
 import btt_recorder2.composeapp.generated.resources.edit_out
 import btt_recorder2.composeapp.generated.resources.edit_cut
+import btt_recorder2.composeapp.generated.resources.ic_start_marker
+import btt_recorder2.composeapp.generated.resources.ic_out_marker
+import btt_recorder2.composeapp.generated.resources.ic_clear_markers
+import btt_recorder2.composeapp.generated.resources.ic_cut
+import org.jetbrains.compose.resources.painterResource
 import btt_recorder2.composeapp.generated.resources.take_label
-import btt_recorder2.composeapp.generated.resources.playback_chapter_short
-import btt_recorder2.composeapp.generated.resources.playback_verse_short
+import btt_recorder2.composeapp.generated.resources.main_chapter_label
+import btt_recorder2.composeapp.generated.resources.main_verse_label
 import btt_recorder2.composeapp.generated.resources.source_audio_none
 import btt_recorder2.composeapp.generated.resources.cd_pause_source
 import btt_recorder2.composeapp.generated.resources.cd_play_source
@@ -274,7 +282,9 @@ fun PlaybackScreen(
                 onMarkEnd = viewModel::markSelectionEndAtCurrent,
                 onCut = viewModel::cutSelection,
                 onClear = viewModel::clearSelection,
+                canRedo = ui.canRedoEdit,
                 onUndo = viewModel::undoEdit,
+                onRedo = viewModel::redoEdit,
                 onSave = viewModel::acceptTake
             )
         }
@@ -303,58 +313,63 @@ private fun PlaybackFileBar(
             .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = onBackClick, modifier = Modifier.size(40.dp)) {
-            Icon(Icons.Default.ArrowBack, contentDescription = stringResource(Res.string.action_back), tint = Color.White)
+        // Left: back button + breadcrumb labels — takes all remaining width so
+        // the action icons are pushed flush to the right edge.
+        Row(
+            modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBackClick, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Default.ArrowBack, contentDescription = stringResource(Res.string.action_back), tint = Color.White)
+            }
+            if (targetUi.languageLabel.isNotEmpty()) {
+                Text(
+                    text = targetUi.languageLabel,
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
+                    maxLines = 1
+                )
+                Spacer(Modifier.width(8.dp))
+            }
+            if (targetUi.projectLabel.isNotEmpty()) {
+                Text(
+                    text = targetUi.projectLabel,
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
+                    maxLines = 1
+                )
+                Spacer(Modifier.width(8.dp))
+            }
+            if (targetUi.bookLabel.isNotEmpty()) {
+                Text(
+                    text = targetUi.bookLabel,
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.width(8.dp))
+            }
+            if (targetUi.chapterValue.isNotEmpty()) {
+                Text(
+                    text = stringResource(Res.string.main_chapter_label, targetUi.chapterValue),
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1
+                )
+                Spacer(Modifier.width(8.dp))
+            }
+            if (targetUi.unitValue.isNotEmpty() && targetUi.unitValue != "0") {
+                Text(
+                    text = stringResource(Res.string.main_verse_label, targetUi.unitValue),
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1
+                )
+            }
         }
 
-        if (targetUi.languageLabel.isNotEmpty()) {
-            Text(
-                text = targetUi.languageLabel,
-                color = Color.White,
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
-                maxLines = 1
-            )
-            Spacer(Modifier.width(8.dp))
-        }
-        if (targetUi.projectLabel.isNotEmpty()) {
-            Text(
-                text = targetUi.projectLabel,
-                color = Color.White,
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
-                maxLines = 1
-            )
-            Spacer(Modifier.width(8.dp))
-        }
-        if (targetUi.bookLabel.isNotEmpty()) {
-            Text(
-                text = targetUi.bookLabel,
-                color = Color.White,
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
-                maxLines = 1,
-                modifier = Modifier.weight(1f, fill = false)
-            )
-            Spacer(Modifier.width(8.dp))
-        }
-        if (targetUi.chapterValue.isNotEmpty()) {
-            Text(
-                text = stringResource(Res.string.playback_chapter_short, targetUi.chapterValue),
-                color = Color.White,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1
-            )
-            Spacer(Modifier.width(8.dp))
-        }
-        if (targetUi.unitValue.isNotEmpty() && targetUi.unitValue != "0") {
-            Text(
-                text = stringResource(Res.string.playback_verse_short, targetUi.unitValue),
-                color = Color.White,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1
-            )
-        }
-
-        Spacer(Modifier.weight(1f))
-
+        // Right: take label + action icons — no weight, so they sit at the end.
         if (currentTakeLabel.isNotEmpty()) {
             Text(
                 text = currentTakeLabel,
@@ -737,6 +752,7 @@ private fun PlaybackTools(
     hasStart: Boolean,
     hasEnd: Boolean,
     hasCuts: Boolean,
+    canRedo: Boolean,
     canCut: Boolean,
     canSave: Boolean,
     onSeekBackward: () -> Unit,
@@ -747,32 +763,29 @@ private fun PlaybackTools(
     onCut: () -> Unit,
     onClear: () -> Unit,
     onUndo: () -> Unit,
+    onRedo: () -> Unit,
     onSave: () -> Unit
 ) {
-    Row(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(72.dp)
             .background(TranslationRecorderTheme.blue)
-            .padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 8.dp)
     ) {
-        // Time display
-        Column(modifier = Modifier.padding(end = 8.dp)) {
-            Text(
-                text = elapsedText,
-                color = Color.White,
-                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-            )
-            Text(
-                text = durationText,
-                color = Color(0xFFCCCCCC),
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
+        // Timestamp — left-aligned, single line
+        Text(
+            text = "$elapsedText / $durationText",
+            color = Color.White,
+            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
+            modifier = Modifier.align(Alignment.CenterStart)
+        )
 
-        // Transport controls
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // Transport controls — absolutely centered
+        Row(
+            modifier = Modifier.align(Alignment.Center),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             IconButton(onClick = onSeekBackward, modifier = Modifier.size(40.dp)) {
                 Icon(Icons.Default.SkipPrevious, contentDescription = stringResource(Res.string.cd_skip_backward), tint = Color.White)
             }
@@ -789,55 +802,63 @@ private fun PlaybackTools(
             }
         }
 
-        Spacer(Modifier.weight(1f))
-
-        // Edit state machine controls
-        // Undo — visible after any cut has been made
-        if (hasCuts) {
-            EditToolButton(label = stringResource(Res.string.edit_undo), onClick = onUndo)
-        }
-        // Clear — visible when start is set but end is not yet set
-        if (hasStart && !hasEnd) {
-            EditToolButton(label = stringResource(Res.string.edit_clear), onClick = onClear)
-        }
-        // Start mark — visible when no selection is pending
-        if (!hasStart) {
-            EditToolButton(label = stringResource(Res.string.edit_in), onClick = onMarkStart)
-        }
-        // End mark — visible after start is set
-        if (hasStart && !hasEnd) {
-            EditToolButton(label = stringResource(Res.string.edit_out), onClick = onMarkEnd)
-        }
-        // Cut — visible when both start and end are set
-        if (hasStart && hasEnd) {
-            EditToolButton(label = stringResource(Res.string.edit_cut), onClick = onCut, enabled = canCut)
-        }
-        // Save — always visible
-        IconButton(onClick = onSave, enabled = canSave, modifier = Modifier.size(40.dp)) {
-            Icon(
-                Icons.Default.Check,
-                contentDescription = stringResource(Res.string.cd_save_as_new_take),
-                tint = if (canSave) Color.White else Color(0x88FFFFFF)
-            )
+        // Edit state machine controls + save — right-aligned
+        Row(
+            modifier = Modifier.align(Alignment.CenterEnd),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Undo/Redo — visible after cuts have been made
+            if (hasCuts) {
+                IconButton(onClick = onUndo, modifier = Modifier.size(44.dp)) {
+                    Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = stringResource(Res.string.edit_undo), tint = Color.White, modifier = Modifier.size(32.dp))
+                }
+            }
+            if (canRedo) {
+                IconButton(onClick = onRedo, modifier = Modifier.size(44.dp)) {
+                    Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = stringResource(Res.string.edit_redo), tint = Color.White, modifier = Modifier.size(32.dp))
+                }
+            }
+            // Clear — visible when start is set but end is not yet set
+            if (hasStart && !hasEnd) {
+                EditIconButton(painter = painterResource(Res.drawable.ic_clear_markers), contentDescription = stringResource(Res.string.edit_clear), onClick = onClear)
+            }
+            // Start mark — visible when no selection is pending
+            if (!hasStart) {
+                EditIconButton(painter = painterResource(Res.drawable.ic_start_marker), contentDescription = stringResource(Res.string.edit_in), onClick = onMarkStart)
+            }
+            // End mark — visible after start is set
+            if (hasStart && !hasEnd) {
+                EditIconButton(painter = painterResource(Res.drawable.ic_out_marker), contentDescription = stringResource(Res.string.edit_out), onClick = onMarkEnd)
+            }
+            // Cut — visible when both start and end are set
+            if (hasStart && hasEnd) {
+                EditIconButton(painter = painterResource(Res.drawable.ic_cut), contentDescription = stringResource(Res.string.edit_cut), onClick = onCut, enabled = canCut)
+            }
+            // Save — always visible
+            IconButton(onClick = onSave, enabled = canSave, modifier = Modifier.size(40.dp)) {
+                Icon(
+                    Icons.Default.Check,
+                    contentDescription = stringResource(Res.string.cd_save_as_new_take),
+                    tint = if (canSave) Color.White else Color(0x88FFFFFF)
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun EditToolButton(
-    label: String,
+private fun EditIconButton(
+    painter: androidx.compose.ui.graphics.painter.Painter,
+    contentDescription: String,
     onClick: () -> Unit,
     enabled: Boolean = true
 ) {
-    TextButton(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = Modifier.height(40.dp)
-    ) {
-        Text(
-            text = label,
-            color = if (enabled) Color.White else Color(0x88FFFFFF),
-            style = MaterialTheme.typography.labelSmall
+    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(44.dp)) {
+        Icon(
+            painter = painter,
+            contentDescription = contentDescription,
+            tint = if (enabled) Color.White else Color(0x88FFFFFF),
+            modifier = Modifier.size(32.dp)
         )
     }
 }
@@ -892,28 +913,26 @@ private fun MarkerToolbar(
     onDropMarker: () -> Unit,
     onDone: () -> Unit
 ) {
-    Row(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(72.dp)
             .background(TranslationRecorderTheme.blue)
-            .padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 8.dp)
     ) {
-        Column(modifier = Modifier.padding(end = 8.dp)) {
-            Text(
-                text = elapsedText,
-                color = Color.White,
-                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-            )
-            Text(
-                text = durationText,
-                color = Color(0xFFCCCCCC),
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
+        // Timestamp — left-aligned, single line
+        Text(
+            text = "$elapsedText / $durationText",
+            color = Color.White,
+            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
+            modifier = Modifier.align(Alignment.CenterStart)
+        )
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // Transport controls — absolutely centered
+        Row(
+            modifier = Modifier.align(Alignment.Center),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             IconButton(onClick = onSeekBackward, modifier = Modifier.size(40.dp)) {
                 Icon(Icons.Default.SkipPrevious, contentDescription = stringResource(Res.string.cd_skip_backward), tint = Color.White)
             }
@@ -930,15 +949,17 @@ private fun MarkerToolbar(
             }
         }
 
-        Spacer(Modifier.weight(1f))
-
-        // Drop verse marker
-        IconButton(onClick = onDropMarker, modifier = Modifier.size(44.dp)) {
-            Icon(Icons.Default.Bookmark, contentDescription = stringResource(Res.string.cd_place_verse_marker), tint = Color(0xFFFFDD00))
-        }
-        // Done
-        IconButton(onClick = onDone, modifier = Modifier.size(44.dp)) {
-            Icon(Icons.Default.Check, contentDescription = stringResource(Res.string.cd_done_save_markers), tint = Color.White)
+        // Drop marker + done — right-aligned
+        Row(
+            modifier = Modifier.align(Alignment.CenterEnd),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onDropMarker, modifier = Modifier.size(44.dp)) {
+                Icon(Icons.Default.BookmarkAdd, contentDescription = stringResource(Res.string.cd_place_verse_marker), tint = Color(0xFFFFDD00))
+            }
+            IconButton(onClick = onDone, modifier = Modifier.size(44.dp)) {
+                Icon(Icons.Default.Check, contentDescription = stringResource(Res.string.cd_done_save_markers), tint = Color.White)
+            }
         }
     }
 }

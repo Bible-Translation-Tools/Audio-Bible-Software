@@ -47,10 +47,12 @@ import org.bibletranslationtools.bttrecorder2.ui.recorder.WaveformView
 import org.bibletranslationtools.bttrecorder2.ui.theme.TranslationRecorderTheme
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.RecorderViewModel
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Stop
 import btt_recorder2.composeapp.generated.resources.Res
 import btt_recorder2.composeapp.generated.resources.action_back
@@ -232,11 +234,14 @@ private fun StepperControl(
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(label, color = Color.White, style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.width(8.dp))
-        OutlinedButton(onClick = onMinus, enabled = minusEnabled, modifier = Modifier.size(width = 36.dp, height = 36.dp)) {
-            Text("-")
-        }
         Spacer(Modifier.width(4.dp))
+        IconButton(onClick = onMinus, enabled = minusEnabled, modifier = Modifier.size(36.dp)) {
+            Icon(
+                Icons.Default.Remove,
+                contentDescription = null,
+                tint = if (minusEnabled) Color.White else Color.White.copy(alpha = 0.38f)
+            )
+        }
         Box(
             modifier = Modifier
                 .height(36.dp)
@@ -246,9 +251,12 @@ private fun StepperControl(
         ) {
             Text(value, color = Color.White)
         }
-        Spacer(Modifier.width(4.dp))
-        OutlinedButton(onClick = onPlus, enabled = plusEnabled, modifier = Modifier.size(width = 36.dp, height = 36.dp)) {
-            Text("+")
+        IconButton(onClick = onPlus, enabled = plusEnabled, modifier = Modifier.size(36.dp)) {
+            Icon(
+                Icons.Default.Add,
+                contentDescription = null,
+                tint = if (plusEnabled) Color.White else Color.White.copy(alpha = 0.38f)
+            )
         }
     }
 }

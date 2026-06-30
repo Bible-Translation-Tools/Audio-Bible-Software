@@ -1,7 +1,8 @@
 package org.bibletranslationtools.bttrecorder2.ui.screens
- 
+
 import org.bibletranslationtools.bttrecorder2.ui.MockData
 import org.jetbrains.compose.ui.tooling.preview.Preview
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -12,6 +13,12 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,9 +36,11 @@ import androidx.compose.material3.*
 import androidx.compose.material.icons.automirrored.filled.LibraryBooks
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -39,15 +48,22 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import btt_recorder2.composeapp.generated.resources.Res
 import btt_recorder2.composeapp.generated.resources.cd_book_sort
+import btt_recorder2.composeapp.generated.resources.cd_info
 import btt_recorder2.composeapp.generated.resources.cd_language_sort
 import btt_recorder2.composeapp.generated.resources.cd_new_project
 import btt_recorder2.composeapp.generated.resources.cd_progress_sort
+import btt_recorder2.composeapp.generated.resources.cd_record
 import btt_recorder2.composeapp.generated.resources.pm_sort_book
 import btt_recorder2.composeapp.generated.resources.pm_sort_language
 import btt_recorder2.composeapp.generated.resources.pm_sort_progress
+import btt_recorder2.composeapp.generated.resources.action_collapse
 import btt_recorder2.composeapp.generated.resources.action_dismiss
+import btt_recorder2.composeapp.generated.resources.action_expand
 import btt_recorder2.composeapp.generated.resources.action_import
 import btt_recorder2.composeapp.generated.resources.action_ok
 import btt_recorder2.composeapp.generated.resources.action_settings
@@ -55,6 +71,11 @@ import btt_recorder2.composeapp.generated.resources.cd_more_options
 import btt_recorder2.composeapp.generated.resources.import_in_progress
 import btt_recorder2.composeapp.generated.resources.import_success
 import btt_recorder2.composeapp.generated.resources.import_title
+import btt_recorder2.composeapp.generated.resources.pm_group_books_count
+import btt_recorder2.composeapp.generated.resources.pm_group_from_source
+import btt_recorder2.composeapp.generated.resources.pm_title
+import btt_recorder2.composeapp.generated.resources.pm_sort_asc
+import btt_recorder2.composeapp.generated.resources.pm_sort_desc
 import io.github.vinceglb.filekit.FileKit
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitMode
@@ -65,13 +86,18 @@ import org.jetbrains.compose.resources.stringResource
 import kotlinx.coroutines.launch
 import org.bibletranslationtools.bttrecorder2.ui.components.ExportOptionsDialog
 import org.bibletranslationtools.bttrecorder2.ui.components.ExportProgressDialog
-import org.bibletranslationtools.bttrecorder2.ui.components.ProjectCard
-import org.bibletranslationtools.bttrecorder2.ui.components.ProjectInfoDialog
+import org.bibletranslationtools.bttrecorder2.ui.components.ProgressPieView
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportOptionsState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportProjectViewModel
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectGroup
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectImportState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementUiState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementViewModel
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SortDirection
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SortField
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SortState
+import org.bibletranslationtools.bttrecorder2.ui.components.ProjectInfoDialog
+import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.koin.mp.KoinPlatform.getKoin
 
@@ -86,12 +112,6 @@ fun ProjectManagementScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    // Export VM is resolved as a Koin singleton — process-lifetime — so it
-    // outlives both this screen's recomposition and any other route's
-    // ViewModelStore (the Recorder route reads the same singleton to block
-    // entry on an actively-exporting workbook). Surviving Android config
-    // changes is automatic because the Koin singleton outlives the Activity
-    // rebuild.
     val exportViewModel = remember { getKoin().get<ExportProjectViewModel>() }
     val exportState by exportViewModel.state.collectAsState()
     val exportOptionsState by exportViewModel.options.collectAsState()
@@ -111,7 +131,8 @@ fun ProjectManagementScreen(
         exportingWorkbookId = exportingWorkbookId,
         onBackupRequest = exportViewModel::openOptions,
         onSettingsClick = onSettingsClick,
-        onImportProject = viewModel::importProject
+        onImportProject = viewModel::importProject,
+        onSort = viewModel::toggleSort
     )
 
     ExportOptionsDialog(
@@ -122,10 +143,6 @@ fun ProjectManagementScreen(
         onSelectAll = exportViewModel::selectAllChapters,
         onDeselectAll = exportViewModel::deselectAllChapters,
         onExport = {
-            // The options dialog has all the user input we need. Now prompt
-            // for a save destination — this is what triggers Android SAF /
-            // the native Desktop save dialog. Once the user picks (or
-            // cancels), we hand off to the VM's beginExport.
             val ready = exportOptionsState as? ExportOptionsState.Ready ?: return@ExportOptionsDialog
             scope.launch {
                 val destination = FileKit.openFileSaver(
@@ -135,8 +152,6 @@ fun ProjectManagementScreen(
                 if (destination != null) {
                     exportViewModel.beginExport(destination)
                 }
-                // If the user cancelled the saver, leave the options dialog
-                // open so they can adjust selections or try again.
             }
         }
     )
@@ -197,14 +212,14 @@ fun ProjectManagementContent(
     exportingWorkbookId: Int? = null,
     onBackupRequest: (WorkbookDescriptor) -> Unit = {},
     onSettingsClick: () -> Unit = {},
-    onImportProject: (PlatformFile) -> Unit = {}
+    onImportProject: (PlatformFile) -> Unit = {},
+    onSort: (SortField) -> Unit = {}
 ) {
-    // Currently-displayed info dialog target. Null = no dialog.
     var infoDialogTarget by remember { mutableStateOf<WorkbookDescriptor?>(null) }
-
-    // Overflow (kebab) menu open state, and the project-archive file picker the
-    // "Import" item launches.
     var menuExpanded by remember { mutableStateOf(false) }
+    // Set of group IDs that are currently collapsed.
+    var collapsedGroups by remember { mutableStateOf(emptySet<String>()) }
+
     val importPicker = rememberFilePickerLauncher(
         type = FileKitType.File(extensions = listOf("orature", "zip", "tstudio")),
         mode = FileKitMode.Single,
@@ -220,9 +235,6 @@ fun ProjectManagementContent(
                 infoDialogTarget = null
             },
             onBackup = {
-                // Hand off to the screen-level export VM, which opens the
-                // ExportOptionsDialog. Close the info dialog so it doesn't
-                // overlap the options UI.
                 onBackupRequest(target)
                 infoDialogTarget = null
             },
@@ -230,23 +242,17 @@ fun ProjectManagementContent(
         )
     }
 
-    //val context = LocalContext.current
-    val toolbarColor = MaterialTheme.colorScheme.primary // Example color
-    val backgroundColor = MaterialTheme.colorScheme.background // Example color
-    val fabColor = MaterialTheme.colorScheme.secondary // Example color
-    val textColor = MaterialTheme.colorScheme.onPrimary // Example color
-    val buttonColor = MaterialTheme.colorScheme.primary
-    val buttonTextColor = MaterialTheme.colorScheme.onPrimary
+    val toolbarColor = MaterialTheme.colorScheme.primary
+    val backgroundColor = MaterialTheme.colorScheme.background
+    val fabColor = MaterialTheme.colorScheme.secondary
+    val textColor = MaterialTheme.colorScheme.onPrimary
+
+    val sortState = (uiState as? ProjectManagementUiState.Success)?.sortState ?: SortState()
 
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        "Project Management",
-                        color = textColor
-                    )
-                }, // Replace with your title
+                title = { Text(stringResource(Res.string.pm_title), color = textColor) },
                 actions = {
                     IconButton(onClick = { menuExpanded = true }) {
                         Icon(
@@ -296,57 +302,10 @@ fun ProjectManagementContent(
                 .padding(padding)
                 .background(backgroundColor)
         ) {
+            // ── Sort header ───────────────────────────────────────────────
+            SortHeader(sortState = sortState, onSort = onSort)
 
-            // Header Row
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Start
-            ) {
-
-                // Language Sort
-                Row(
-                    modifier = Modifier.weight(0.4f),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Start
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.RecordVoiceOver,
-                        contentDescription = stringResource(Res.string.cd_language_sort),
-                        modifier = Modifier.padding(end = 8.dp)
-                    )
-                    Text(stringResource(Res.string.pm_sort_language))
-                }
-
-                // Book Sort
-                Row(
-                    modifier = Modifier.weight(0.3f),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Start
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.LibraryBooks,
-                        contentDescription = stringResource(Res.string.cd_book_sort),
-                        modifier = Modifier.padding(end = 8.dp)
-                    )
-                    Text(stringResource(Res.string.pm_sort_book))
-                }
-
-                Row(
-                    modifier = Modifier.weight(0.3f),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Start
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Book,
-                        contentDescription = stringResource(Res.string.cd_progress_sort),
-                        modifier = Modifier.padding(end = 8.dp)
-                    )
-                    Text(stringResource(Res.string.pm_sort_progress))
-                }
-            }
+            HorizontalDivider()
 
             when (val state = uiState) {
                 is ProjectManagementUiState.Loading -> {
@@ -355,31 +314,258 @@ fun ProjectManagementContent(
                     }
                 }
                 is ProjectManagementUiState.Success -> {
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(state.projects) { workbook ->
-                            ProjectCard(
-                                workbook = workbook,
-                                onWorkbookClick = { onProjectClick(workbook) },
-                                onInfoClick = { infoDialogTarget = workbook },
-                                onRecordClick = { onRecordClick(workbook) }
-                            )
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(state.groups, key = { it.id }) { group ->
+                            val isCollapsed = group.id in collapsedGroups
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                                shape = MaterialTheme.shapes.medium
+                            ) {
+                                Column {
+                                    ProjectGroupHeader(
+                                        group = group,
+                                        isCollapsed = isCollapsed,
+                                        onToggle = {
+                                            collapsedGroups = if (isCollapsed) {
+                                                collapsedGroups - group.id
+                                            } else {
+                                                collapsedGroups + group.id
+                                            }
+                                        }
+                                    )
+                                    if (!isCollapsed) {
+                                        group.books.forEachIndexed { index, workbook ->
+                                            BookRow(
+                                                workbook = workbook,
+                                                isExporting = exportingWorkbookId == workbook.id,
+                                                onClick = { onProjectClick(workbook) },
+                                                onInfoClick = { infoDialogTarget = workbook },
+                                                onRecordClick = { onRecordClick(workbook) }
+                                            )
+                                            if (index < group.books.lastIndex) {
+                                                HorizontalDivider(
+                                                    modifier = Modifier.padding(start = 16.dp),
+                                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
                 is ProjectManagementUiState.Error -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(text = "Error: ${state.message}", color = MaterialTheme.colorScheme.error)
+                        Text(text = state.message, color = MaterialTheme.colorScheme.error)
                     }
                 }
             }
         }
     }
 }
+
+@Composable
+private fun SortHeader(sortState: SortState, onSort: (SortField) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SortColumnHeader(
+            label = stringResource(Res.string.pm_sort_language),
+            icon = { Icon(Icons.Filled.RecordVoiceOver, contentDescription = null, modifier = Modifier.size(18.dp)) },
+            field = SortField.LANGUAGE,
+            sortState = sortState,
+            modifier = Modifier.weight(0.4f),
+            onSort = onSort
+        )
+        SortColumnHeader(
+            label = stringResource(Res.string.pm_sort_book),
+            icon = { Icon(Icons.AutoMirrored.Filled.LibraryBooks, contentDescription = null, modifier = Modifier.size(18.dp)) },
+            field = SortField.BOOK,
+            sortState = sortState,
+            modifier = Modifier.weight(0.35f),
+            onSort = onSort
+        )
+        SortColumnHeader(
+            label = stringResource(Res.string.pm_sort_progress),
+            icon = { Icon(Icons.Filled.Book, contentDescription = null, modifier = Modifier.size(18.dp)) },
+            field = SortField.PROGRESS,
+            sortState = sortState,
+            modifier = Modifier.weight(0.25f),
+            onSort = onSort
+        )
+    }
+}
+
+@Composable
+private fun SortColumnHeader(
+    label: String,
+    icon: @Composable () -> Unit,
+    field: SortField,
+    sortState: SortState,
+    modifier: Modifier,
+    onSort: (SortField) -> Unit
+) {
+    val isActive = sortState.field == field
+    val contentColor = if (isActive) MaterialTheme.colorScheme.primary
+                       else MaterialTheme.colorScheme.onSurfaceVariant
+
+    val directionCd = if (sortState.direction == SortDirection.ASC) {
+        stringResource(Res.string.pm_sort_asc)
+    } else {
+        stringResource(Res.string.pm_sort_desc)
+    }
+
+    Row(
+        modifier = modifier
+            .clickable { onSort(field) }
+            .padding(vertical = 4.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        CompositionLocalProvider(LocalContentColor provides contentColor) {
+            icon()
+            Spacer(Modifier.width(4.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal
+            )
+            if (isActive) {
+                Spacer(Modifier.width(2.dp))
+                Icon(
+                    imageVector = if (sortState.direction == SortDirection.ASC) {
+                        Icons.Default.ArrowUpward
+                    } else {
+                        Icons.Default.ArrowDownward
+                    },
+                    contentDescription = directionCd,
+                    modifier = Modifier.size(14.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProjectGroupHeader(
+    group: ProjectGroup,
+    isCollapsed: Boolean,
+    onToggle: () -> Unit
+) {
+    val bgColor = MaterialTheme.colorScheme.surfaceVariant
+    val onBgColor = MaterialTheme.colorScheme.onSurfaceVariant
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(bgColor)
+            .clickable(onClick = onToggle)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = if (isCollapsed) Icons.Default.ExpandMore else Icons.Default.ExpandLess,
+            contentDescription = stringResource(
+                if (isCollapsed) Res.string.action_expand else Res.string.action_collapse
+            ),
+            tint = onBgColor,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(Modifier.width(8.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = group.targetLanguage.anglicizedName,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = stringResource(Res.string.pm_group_from_source, group.sourceLanguage.anglicizedName),
+                style = MaterialTheme.typography.bodySmall,
+                color = onBgColor
+            )
+        }
+        Text(
+            text = stringResource(Res.string.pm_group_books_count, group.books.size),
+            style = MaterialTheme.typography.labelSmall,
+            color = onBgColor
+        )
+    }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+}
+
+@Composable
+private fun BookRow(
+    workbook: WorkbookDescriptor,
+    isExporting: Boolean,
+    onClick: () -> Unit,
+    onInfoClick: () -> Unit,
+    onRecordClick: () -> Unit
+) {
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val disabledColor = MaterialTheme.colorScheme.outlineVariant
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .clickable(onClick = onClick)
+            .padding(start = 32.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = workbook.title,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        ProgressPieView(
+            progress = 0,
+            modifier = Modifier.size(36.dp),
+            strokeWidth = 0f,
+            strokeColor = Color.Transparent,
+            progressColor = primaryColor,
+            backgroundColor = disabledColor
+        )
+        Spacer(Modifier.width(4.dp))
+        IconButton(onClick = onInfoClick, enabled = !isExporting) {
+            Icon(
+                imageVector = Icons.Default.Info,
+                contentDescription = stringResource(Res.string.cd_info),
+                tint = if (isExporting) MaterialTheme.colorScheme.outlineVariant
+                       else Color.Gray
+            )
+        }
+        IconButton(onClick = onRecordClick, enabled = !isExporting) {
+            Icon(
+                imageVector = Icons.Default.Mic,
+                contentDescription = stringResource(Res.string.cd_record),
+                tint = if (isExporting) MaterialTheme.colorScheme.outlineVariant
+                       else Color.Gray
+            )
+        }
+    }
+}
+
 @Preview
 @Composable
 fun ProjectManagementPreview() {
+    val mockGroup = ProjectGroup(
+        id = "en_aaa",
+        sourceLanguage = MockData.mockWorkbooks.first().sourceLanguage,
+        targetLanguage = MockData.mockWorkbooks.first().targetLanguage,
+        books = MockData.mockWorkbooks
+    )
     ProjectManagementContent(
-        uiState = ProjectManagementUiState.Success(MockData.mockWorkbooks),
+        uiState = ProjectManagementUiState.Success(listOf(mockGroup)),
         onNewProjectClick = {},
         onProjectClick = {}
     )
