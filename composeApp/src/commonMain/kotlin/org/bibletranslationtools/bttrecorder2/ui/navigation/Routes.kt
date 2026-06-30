@@ -15,6 +15,9 @@ object ProjectManagementRoute
 object ProjectWizardRoute
 
 @Serializable
+object SettingsRoute
+
+@Serializable
 object ChapterListRoute
 
 @Serializable

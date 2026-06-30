@@ -258,11 +258,37 @@ compose.desktop {
          mainClass = "org.bibletranslationtools.recorder2.MainKt"
         //mainClass = "org.bibletranslationtools.bttrecorder2.demo.MainKt"
 
+        jvmArgs += listOf(
+            "-Xdock:name=BTT-Recorder",
+            "-Dapple.awt.application.name=BTT-Recorder"
+        )
+
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
-            packageName = "org.bibletranslationtools.recorder2"
+            packageName = "BTT-Recorder"
             packageVersion = "1.0.0"
+
+            // sqlite-jdbc and JOOQ require java.sql; jackson-dataformat-yaml needs java.naming.
+            // jpackage trims the JRE to declared modules only, so these must be explicit.
+            modules("java.sql", "java.naming", "java.xml", "jdk.unsupported")
+
+            macOS {
+                iconFile.set(project.file("src/desktopMain/resources/icons/ic_launcher.icns"))
+            }
+            windows {
+                iconFile.set(project.file("src/desktopMain/resources/icons/ic_launcher.ico"))
+            }
+            linux {
+                iconFile.set(project.file("src/desktopMain/resources/icons/ic_launcher.png"))
+            }
         }
+    }
+}
+
+// Ensure -Xdock:name reaches the dev run task (compose.desktop jvmArgs targets packaging only).
+tasks.withType<JavaExec>().configureEach {
+    if (name == "run") {
+        jvmArgs("-Xdock:name=BTT-Recorder")
     }
 }
 

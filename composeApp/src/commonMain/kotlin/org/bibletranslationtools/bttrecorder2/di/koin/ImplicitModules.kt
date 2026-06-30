@@ -28,6 +28,7 @@ import org.bibletranslationtools.otter.common.domain.narration.AudioFileUtils
 import org.bibletranslationtools.otter.common.domain.narration.NarrationHistory
 import org.bibletranslationtools.otter.common.domain.narration.PcmTakeTransformer
 import org.bibletranslationtools.otter.common.domain.narration.SplitAudioOnCues
+import org.bibletranslationtools.otter.common.domain.languages.ImportLanguages
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
 import org.bibletranslationtools.otter.common.domain.project.ProjectCompletionStatus
 import org.bibletranslationtools.otter.common.domain.project.exporter.AudioProjectExporter
@@ -71,24 +72,31 @@ val implicitCommonModule = module {
     // Collections
     factoryOf(::DeleteTranslation)
     factoryOf(::CreateTranslation)
-    factoryOf(::CreateProject)
+    // CreateProject injects collectionRepo + resourceMetadataRepo via its
+    // constructor, but `translationCreation` is a Dagger field-injected
+    // `@Inject lateinit var` that Koin's constructor DSL won't populate. Set it
+    // explicitly, otherwise importing a project throws
+    // UninitializedPropertyAccessException in createAllBooks().
+    factory { CreateProject(get(), get()).apply { translationCreation = get() } }
     factoryOf(::UpdateTranslation)
     factoryOf(::UpdateProject)
     factoryOf(::DeleteProject)
 
     // Audio
-    factoryOf(::AudioExporter)
+    // AudioExporter has @Inject lateinit var audioConverter — factoryOf won't set it.
+    factory { AudioExporter().apply { audioConverter = get() } }
     factoryOf(::AudioBouncer)
     factoryOf(::AudioConverter)
 
     // Project
     factoryOf(::ImportProjectUseCase)
+    factoryOf(::ImportLanguages)
 //    factoryOf(::ProjectFormatIdentifier)
 
-    // Exporters
-    factoryOf(::AudioProjectExporter)
-    factoryOf(::BackupProjectExporter)
-    factoryOf(::SourceProjectExporter)
+    // Exporters — each has @Inject lateinit var fields that factoryOf won't populate.
+    factory { AudioProjectExporter(get()).apply { audioExporter = get() } }
+    factory { BackupProjectExporter(get(), get()).apply { concatenateAudio = get() } }
+    factory { SourceProjectExporter(get(), get()).apply { concatenateAudio = get(); audioExporter = get() } }
 
     // Importers
     factoryOf(::NewSourceImporter)

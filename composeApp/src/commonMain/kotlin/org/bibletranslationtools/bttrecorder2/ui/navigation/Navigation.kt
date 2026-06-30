@@ -140,7 +140,14 @@ fun Navigation(
                             )
                         )
                     }
-                }
+                },
+                onSettingsClick = { navController.navigate(SettingsRoute) }
+            )
+        }
+
+        composable<SettingsRoute> {
+            org.bibletranslationtools.bttrecorder2.ui.screens.SettingsScreen(
+                onBackClick = { navController.popBackStack() }
             )
         }
 

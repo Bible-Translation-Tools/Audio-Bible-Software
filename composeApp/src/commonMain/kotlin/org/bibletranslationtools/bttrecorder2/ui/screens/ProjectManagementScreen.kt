@@ -11,12 +11,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -45,8 +47,20 @@ import btt_recorder2.composeapp.generated.resources.cd_progress_sort
 import btt_recorder2.composeapp.generated.resources.pm_sort_book
 import btt_recorder2.composeapp.generated.resources.pm_sort_language
 import btt_recorder2.composeapp.generated.resources.pm_sort_progress
+import btt_recorder2.composeapp.generated.resources.action_dismiss
+import btt_recorder2.composeapp.generated.resources.action_import
+import btt_recorder2.composeapp.generated.resources.action_ok
+import btt_recorder2.composeapp.generated.resources.action_settings
+import btt_recorder2.composeapp.generated.resources.cd_more_options
+import btt_recorder2.composeapp.generated.resources.import_in_progress
+import btt_recorder2.composeapp.generated.resources.import_success
+import btt_recorder2.composeapp.generated.resources.import_title
 import io.github.vinceglb.filekit.FileKit
+import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.dialogs.FileKitMode
+import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.openFileSaver
+import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import org.jetbrains.compose.resources.stringResource
 import kotlinx.coroutines.launch
 import org.bibletranslationtools.bttrecorder2.ui.components.ExportOptionsDialog
@@ -55,6 +69,7 @@ import org.bibletranslationtools.bttrecorder2.ui.components.ProjectCard
 import org.bibletranslationtools.bttrecorder2.ui.components.ProjectInfoDialog
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportOptionsState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportProjectViewModel
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectImportState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementUiState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementViewModel
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
@@ -66,7 +81,8 @@ fun ProjectManagementScreen(
     viewModel: ProjectManagementViewModel,
     onNewProjectClick: () -> Unit,
     onProjectClick: (WorkbookDescriptor) -> Unit,
-    onRecordClick: (WorkbookDescriptor) -> Unit = {}
+    onRecordClick: (WorkbookDescriptor) -> Unit = {},
+    onSettingsClick: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
@@ -93,7 +109,9 @@ fun ProjectManagementScreen(
         onRecordClick = onRecordClick,
         onDeleteWorkbook = viewModel::deleteWorkbook,
         exportingWorkbookId = exportingWorkbookId,
-        onBackupRequest = exportViewModel::openOptions
+        onBackupRequest = exportViewModel::openOptions,
+        onSettingsClick = onSettingsClick,
+        onImportProject = viewModel::importProject
     )
 
     ExportOptionsDialog(
@@ -128,6 +146,44 @@ fun ProjectManagementScreen(
         onCancel = exportViewModel::cancel,
         onAcknowledge = exportViewModel::acknowledge
     )
+
+    val importState by viewModel.importState.collectAsState()
+    ProjectImportDialog(state = importState, onAcknowledge = viewModel::acknowledgeImport)
+}
+
+@Composable
+private fun ProjectImportDialog(
+    state: ProjectImportState,
+    onAcknowledge: () -> Unit
+) {
+    when (state) {
+        is ProjectImportState.Idle -> Unit
+        is ProjectImportState.InProgress -> AlertDialog(
+            onDismissRequest = { /* non-dismissible while importing */ },
+            properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
+            title = { Text(stringResource(Res.string.import_title)) },
+            text = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Text(stringResource(Res.string.import_in_progress))
+                }
+            },
+            confirmButton = {}
+        )
+        is ProjectImportState.Success -> AlertDialog(
+            onDismissRequest = onAcknowledge,
+            title = { Text(stringResource(Res.string.import_title)) },
+            text = { Text(stringResource(Res.string.import_success)) },
+            confirmButton = { TextButton(onClick = onAcknowledge) { Text(stringResource(Res.string.action_ok)) } }
+        )
+        is ProjectImportState.Error -> AlertDialog(
+            onDismissRequest = onAcknowledge,
+            title = { Text(stringResource(Res.string.import_title)) },
+            text = { Text(state.message, color = MaterialTheme.colorScheme.error) },
+            confirmButton = { TextButton(onClick = onAcknowledge) { Text(stringResource(Res.string.action_dismiss)) } }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -139,10 +195,21 @@ fun ProjectManagementContent(
     onRecordClick: (WorkbookDescriptor) -> Unit = {},
     onDeleteWorkbook: (WorkbookDescriptor) -> Unit = {},
     exportingWorkbookId: Int? = null,
-    onBackupRequest: (WorkbookDescriptor) -> Unit = {}
+    onBackupRequest: (WorkbookDescriptor) -> Unit = {},
+    onSettingsClick: () -> Unit = {},
+    onImportProject: (PlatformFile) -> Unit = {}
 ) {
     // Currently-displayed info dialog target. Null = no dialog.
     var infoDialogTarget by remember { mutableStateOf<WorkbookDescriptor?>(null) }
+
+    // Overflow (kebab) menu open state, and the project-archive file picker the
+    // "Import" item launches.
+    var menuExpanded by remember { mutableStateOf(false) }
+    val importPicker = rememberFilePickerLauncher(
+        type = FileKitType.File(extensions = listOf("orature", "zip", "tstudio")),
+        mode = FileKitMode.Single,
+        title = stringResource(Res.string.import_title)
+    ) { file: PlatformFile? -> file?.let(onImportProject) }
 
     infoDialogTarget?.let { target ->
         ProjectInfoDialog(
@@ -180,6 +247,34 @@ fun ProjectManagementContent(
                         color = textColor
                     )
                 }, // Replace with your title
+                actions = {
+                    IconButton(onClick = { menuExpanded = true }) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = stringResource(Res.string.cd_more_options),
+                            tint = textColor
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(Res.string.action_import)) },
+                            onClick = {
+                                menuExpanded = false
+                                importPicker.launch()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(Res.string.action_settings)) },
+                            onClick = {
+                                menuExpanded = false
+                                onSettingsClick()
+                            }
+                        )
+                    }
+                },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = toolbarColor
                 )

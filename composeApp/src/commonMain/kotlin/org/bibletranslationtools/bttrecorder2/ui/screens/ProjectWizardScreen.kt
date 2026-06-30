@@ -24,6 +24,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import btt_recorder2.composeapp.generated.resources.Res
 import btt_recorder2.composeapp.generated.resources.action_back
+import btt_recorder2.composeapp.generated.resources.cd_close_search
+import btt_recorder2.composeapp.generated.resources.cd_search
 import btt_recorder2.composeapp.generated.resources.wizard_new_project_title
 import btt_recorder2.composeapp.generated.resources.wizard_search_book
 import btt_recorder2.composeapp.generated.resources.wizard_search_language
@@ -117,7 +119,11 @@ fun ProjectWizardScreen(
                         }) {
                             Icon(
                                 imageVector = if (isSearchActive) Icons.Default.Close else Icons.Default.Search,
-                                contentDescription = if (isSearchActive) "Close search" else "Search"
+                                contentDescription = if (isSearchActive) {
+                                    stringResource(Res.string.cd_close_search)
+                                } else {
+                                    stringResource(Res.string.cd_search)
+                                }
                             )
                         }
                     }

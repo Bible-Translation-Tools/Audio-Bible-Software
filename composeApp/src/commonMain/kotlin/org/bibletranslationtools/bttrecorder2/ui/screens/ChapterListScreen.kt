@@ -50,6 +50,7 @@ import btt_recorder2.composeapp.generated.resources.action_collapse
 import btt_recorder2.composeapp.generated.resources.cd_expand_chapter_take
 import btt_recorder2.composeapp.generated.resources.action_pause
 import btt_recorder2.composeapp.generated.resources.action_play
+import btt_recorder2.composeapp.generated.resources.main_chapter_label
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -272,7 +273,7 @@ fun ChapterItem(
                 .padding(start = 16.dp, end = 4.dp, top = 10.dp, bottom = 10.dp)
         ) {
             Text(
-                text = uiModel.chapter.title,
+                text = stringResource(Res.string.main_chapter_label, uiModel.chapter.title),
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = if (hasContent) FontWeight.Bold else FontWeight.Normal,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = rowAlpha),
