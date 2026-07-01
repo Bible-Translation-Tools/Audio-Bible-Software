@@ -374,6 +374,61 @@ class PlaybackViewModel(
         }
     }
 
+    fun setSelectionStartAtProgress(progress: Float) {
+        val dur = editSession?.editedTotalFrames ?: return
+        selectionStartFrame = (progress * dur).toInt().coerceIn(0, dur)
+        val end = selectionEndFrame
+        if (end != null && end <= selectionStartFrame!!) selectionEndFrame = null
+        updateEditUi()
+    }
+
+    fun setSelectionEndAtProgress(progress: Float) {
+        val dur = editSession?.editedTotalFrames ?: return
+        val start = selectionStartFrame ?: return
+        val frame = (progress * dur).toInt().coerceIn(0, dur)
+        if (frame != start) { selectionEndFrame = frame; updateEditUi() }
+    }
+
+    // ── Verse marker drag ─────────────────────────────────────────────────────
+    // Three-phase API: startVerseMarkerDrag captures the index once into the
+    // UNSORTED internal list; updateVerseMarkerDrag moves that same slot on
+    // every pointer-move event (no re-sort during drag = no index drift);
+    // endVerseMarkerDrag re-sorts to prepare for the next gesture.
+    private var draggingVerseMarkerIndex: Int = -1
+
+    fun startVerseMarkerDrag(sortedIndex: Int) {
+        // Ensure the internal list matches the sorted display order before we
+        // capture an index from the UI.
+        markerFrames = markerFrames.sorted()
+        draggingVerseMarkerIndex = sortedIndex
+    }
+
+    fun updateVerseMarkerDrag(progress: Float) {
+        val idx = draggingVerseMarkerIndex
+        if (idx < 0) return
+        val dur = editSession?.editedTotalFrames
+            ?: _uiState.value.durationFrames.takeIf { it > 0 }
+            ?: return
+        val newFrame = (progress * dur).toInt().coerceIn(0, dur)
+        val mutable = markerFrames.toMutableList()
+        if (idx !in mutable.indices) return
+        mutable[idx] = newFrame
+        markerFrames = mutable                   // keep UNsorted so idx stays stable
+        val sorted = mutable.sorted()
+        markerLabels = buildMarkerLabelsForFrames(sorted)
+        _uiState.value = _uiState.value.copy(
+            markerFrames = sorted,
+            markerLabels = markerLabels
+        )
+    }
+
+    fun endVerseMarkerDrag() {
+        if (draggingVerseMarkerIndex < 0) return
+        markerFrames = markerFrames.sorted()     // finalize order for next gesture
+        draggingVerseMarkerIndex = -1
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     fun clearSelection() {
         selectionStartFrame = null
         selectionEndFrame = null

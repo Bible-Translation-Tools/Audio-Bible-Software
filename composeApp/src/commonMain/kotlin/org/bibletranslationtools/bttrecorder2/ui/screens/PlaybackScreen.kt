@@ -4,7 +4,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitHorizontalTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.horizontalDrag
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -60,6 +61,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -100,6 +102,8 @@ import btt_recorder2.composeapp.generated.resources.ic_start_marker
 import btt_recorder2.composeapp.generated.resources.ic_out_marker
 import btt_recorder2.composeapp.generated.resources.ic_clear_markers
 import btt_recorder2.composeapp.generated.resources.ic_cut
+import btt_recorder2.composeapp.generated.resources.ic_startmarker_cyan
+import btt_recorder2.composeapp.generated.resources.ic_endmarker_cyan
 import org.jetbrains.compose.resources.painterResource
 import btt_recorder2.composeapp.generated.resources.take_label
 import btt_recorder2.composeapp.generated.resources.main_chapter_label
@@ -220,6 +224,11 @@ fun PlaybackScreen(
                 durationFrames = ui.durationFrames,
                 textMeasurer = textMeasurer,
                 onSeekToFrame = viewModel::seekToFrame,
+                onSelectionStartMoved = viewModel::setSelectionStartAtProgress,
+                onSelectionEndMoved = viewModel::setSelectionEndAtProgress,
+                onVerseMarkerDragStart = viewModel::startVerseMarkerDrag,
+                onVerseMarkerDragUpdate = viewModel::updateVerseMarkerDrag,
+                onVerseMarkerDragEnd = viewModel::endVerseMarkerDrag,
                 modifier = Modifier.fillMaxSize()
             )
             if (ui.error != null) {
@@ -410,42 +419,107 @@ private fun PlaybackWaveform(
     durationFrames: Int,
     textMeasurer: androidx.compose.ui.text.TextMeasurer,
     onSeekToFrame: (Int) -> Unit = {},
+    onSelectionStartMoved: (Float) -> Unit = {},
+    onSelectionEndMoved: (Float) -> Unit = {},
+    onVerseMarkerDragStart: (index: Int) -> Unit = {},
+    onVerseMarkerDragUpdate: (progress: Float) -> Unit = {},
+    onVerseMarkerDragEnd: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    // framesOnScreen is used both for drawing and for the drag-to-seek conversion.
     val framesOnScreen = (sampleRate.coerceAtLeast(1) * 10).toFloat()
 
-    // rememberUpdatedState lets the pointerInput coroutine always read the latest currentFrame
-    // even though pointerInput only reinitializes when framesOnScreen changes.
     val currentFrameState = rememberUpdatedState(currentFrame)
+    val selStartProgressState = rememberUpdatedState(selectionStartProgress)
+    val selEndProgressState = rememberUpdatedState(selectionEndProgress)
+    val durationFramesState = rememberUpdatedState(durationFrames)
+    val markerFramesState = rememberUpdatedState(markerFrames)
+    val onSelectionStartMovedState = rememberUpdatedState(onSelectionStartMoved)
+    val onSelectionEndMovedState = rememberUpdatedState(onSelectionEndMoved)
+    val onVerseMarkerDragStartState = rememberUpdatedState(onVerseMarkerDragStart)
+    val onVerseMarkerDragUpdateState = rememberUpdatedState(onVerseMarkerDragUpdate)
+    val onVerseMarkerDragEndState = rememberUpdatedState(onVerseMarkerDragEnd)
+    val onSeekToFrameState = rememberUpdatedState(onSeekToFrame)
 
-    // Accumulates pixel delta during drag for visual-only canvas translation.
-    // The actual seek fires once on drag end to the absolute target frame.
     var dragAccumPx by remember { mutableStateOf(0f) }
 
+    val startMarkerPainter = painterResource(Res.drawable.ic_startmarker_cyan)
+    val endMarkerPainter = painterResource(Res.drawable.ic_endmarker_cyan)
+
     val dragModifier = modifier.pointerInput(framesOnScreen) {
-        // dragStartFrame captured at the moment the drag begins — not subject to
-        // playback-ticker updates that would shift the target during a slow drag.
         var dragStartFrame = 0
-        detectHorizontalDragGestures(
-            onDragStart = {
-                dragStartFrame = currentFrameState.value
-                dragAccumPx = 0f
-            },
-            onDragEnd = {
-                val framesPerPixel = framesOnScreen / size.width.toFloat().coerceAtLeast(1f)
-                // Seek to where the visual showed: dragStartFrame shifted by drag pixels.
-                // Dragging right (positive px) = shift toward earlier audio = negative frames.
-                val targetFrame = (dragStartFrame - (dragAccumPx * framesPerPixel)).toInt()
-                onSeekToFrame(targetFrame)
-                dragAccumPx = 0f
-            },
-            onDragCancel = { dragAccumPx = 0f },
-            onHorizontalDrag = { change, dragAmount ->
-                change.consume()
-                dragAccumPx += dragAmount
+        var dragAccumLocal = 0f
+        var activeMarker: String? = null  // "start", "end", "verse:N", or null = waveform scroll
+
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            val touchX = down.position.x
+            val curFrame = currentFrameState.value
+            val w = size.width.toFloat().coerceAtLeast(1f)
+            val leftFrame = curFrame - (framesOnScreen / 2f)
+
+            fun fToX(frame: Float) = ((frame - leftFrame) / framesOnScreen) * w
+
+            val dur = durationFramesState.value
+            val startX = selStartProgressState.value?.takeIf { dur > 0 }?.let { fToX(it * dur) }
+            val endX = selEndProgressState.value?.takeIf { dur > 0 }?.let { fToX(it * dur) }
+            val verseXs = markerFramesState.value.map { fToX(it.toFloat()) }
+
+            // 48px touch target around each marker; start/end take priority over verse
+            activeMarker = when {
+                startX != null && kotlin.math.abs(touchX - startX) < 48f -> "start"
+                endX != null && kotlin.math.abs(touchX - endX) < 48f -> "end"
+                else -> {
+                    val vIdx = verseXs.indexOfFirst { kotlin.math.abs(touchX - it) < 48f }
+                    if (vIdx >= 0) "verse:$vIdx" else null
+                }
             }
-        )
+
+            dragStartFrame = curFrame
+            dragAccumLocal = 0f
+            dragAccumPx = 0f
+
+            if (activeMarker != null) {
+                // Marker drag — no touch slop, respond immediately
+                down.consume()
+
+                // For verse markers: notify start once so the VM captures the
+                // stable index before any re-sorting happens.
+                val verseIdx = activeMarker?.removePrefix("verse:")?.toIntOrNull()
+                if (verseIdx != null) onVerseMarkerDragStartState.value(verseIdx)
+
+                while (true) {
+                    val event = awaitPointerEvent()
+                    val ch = event.changes.firstOrNull { it.id == down.id } ?: break
+                    ch.consume()
+                    if (!ch.pressed) break
+                    val newX = ch.position.x
+                    val newFrame = leftFrame + (newX / w) * framesOnScreen
+                    val progress = if (dur > 0) (newFrame / dur.toFloat()).coerceIn(0f, 1f) else 0f
+                    when {
+                        activeMarker == "start" -> onSelectionStartMovedState.value(progress)
+                        activeMarker == "end" -> onSelectionEndMovedState.value(progress)
+                        verseIdx != null -> onVerseMarkerDragUpdateState.value(progress)
+                    }
+                }
+
+                if (verseIdx != null) onVerseMarkerDragEndState.value()
+            } else {
+                // Waveform scroll — wait for touch slop before tracking
+                val firstDrag = awaitHorizontalTouchSlopOrCancellation(down.id) { ch, _ -> ch.consume() }
+                    ?: return@awaitEachGesture
+                dragAccumLocal = firstDrag.position.x - down.position.x
+                dragAccumPx = dragAccumLocal
+                horizontalDrag(firstDrag.id) { ch ->
+                    ch.consume()
+                    dragAccumLocal += (ch.position - ch.previousPosition).x
+                    dragAccumPx = dragAccumLocal
+                }
+                val framesPerPixel = framesOnScreen / w
+                val targetFrame = (dragStartFrame - (dragAccumLocal * framesPerPixel)).toInt()
+                onSeekToFrameState.value(targetFrame)
+                dragAccumPx = 0f
+            }
+        }
     }
 
     Canvas(modifier = dragModifier) {
@@ -456,11 +530,12 @@ private fun PlaybackWaveform(
         val maxX = minOf(size.width.toInt().coerceAtLeast(1), samples.size / 2)
         val leftFrame = currentFrame.toFloat() - (framesOnScreen / 2f)
 
-        fun frameToX(frame: Float): Float {
-            return ((frame - leftFrame) / framesOnScreen) * widthF
-        }
+        fun frameToX(frame: Float): Float = ((frame - leftFrame) / framesOnScreen) * widthF
 
-        // Shift waveform content during drag — visual-only, no seek until drag ends
+        val markerIconPx = 32.dp.toPx()
+        val pennantW = 20.dp.toPx()
+        val pennantH = 24.dp.toPx()
+
         withTransform({ translate(left = dragAccumPx) }) {
             // Waveform
             for (x in 0 until maxX) {
@@ -471,58 +546,66 @@ private fun PlaybackWaveform(
             }
 
             // Baseline
-            drawLine(
-                color = Color(0xFF13C4C3),
-                start = Offset(0f, midY),
-                end = Offset(size.width, midY)
-            )
+            drawLine(color = Color(0xFF13C4C3), start = Offset(0f, midY), end = Offset(size.width, midY))
 
-            // Teal section selection markers and fill
+            // Selection fill
             val selStartFrame = selectionStartProgress
                 ?.let { if (durationFrames > 0) it.coerceIn(0f, 1f) * durationFrames else null }
             val selEndFrame = selectionEndProgress
                 ?.let { if (durationFrames > 0) it.coerceIn(0f, 1f) * durationFrames else null }
 
-            if (selStartFrame != null) {
-                val x = frameToX(selStartFrame)
-                if (x in -widthF..widthF * 2) {
-                    drawLine(Color(0xFF13C4C3), Offset(x, 0f), Offset(x, size.height))
-                }
-            }
-            if (selEndFrame != null) {
-                val x = frameToX(selEndFrame)
-                if (x in -widthF..widthF * 2) {
-                    drawLine(Color(0xFF13C4C3), Offset(x, 0f), Offset(x, size.height))
-                }
-            }
             if (selStartFrame != null && selEndFrame != null) {
                 val left = frameToX(minOf(selStartFrame, selEndFrame))
                 val right = frameToX(maxOf(selStartFrame, selEndFrame))
                 if (right > left) {
                     drawRect(
-                        color = Color(0x3313C4C3),
+                        color = Color(0x3345818E),
                         topLeft = Offset(left, 0f),
                         size = Size(right - left, size.height)
                     )
                 }
             }
 
-            // Yellow verse markers with labels
-            val labelStyle = TextStyle(fontSize = 10.sp, color = Color(0xFFFFDD00))
-            markerFrames.forEachIndexed { idx, frame ->
+            // Yellow verse markers — pole (full-height line) + flag extending right from top
+            markerFrames.forEach { frame ->
                 val x = frameToX(frame.toFloat())
                 if (x in -widthF..widthF * 2) {
-                    drawLine(Color(0xFFFFDD00), Offset(x, 0f), Offset(x, size.height))
-                    val label = markerLabels.getOrNull(idx) ?: ""
-                    if (label.isNotEmpty()) {
-                        val measured = textMeasurer.measure(label, style = labelStyle)
-                        drawText(measured, topLeft = Offset((x + 3f).coerceAtMost(widthF - measured.size.width), 4f))
+                    val pennantPath = Path().apply {
+                        moveTo(x, 0f)
+                        lineTo(x + pennantW, 0f)
+                        lineTo(x + pennantW, pennantH)
+                        lineTo(x + pennantW / 2f, pennantH * 0.82f)
+                        lineTo(x, pennantH)
+                        close()
                     }
+                    drawLine(Color(0xFFFFDD00), Offset(x, 0f), Offset(x, size.height))
+                    drawPath(pennantPath, color = Color(0xFFFFDD00))
+                }
+            }
+
+            // Start marker — icon top-anchored, right edge at x; line runs from icon bottom to canvas bottom
+            if (selStartFrame != null) {
+                val x = frameToX(selStartFrame)
+                if (x in -widthF..widthF * 2) {
+                    withTransform({ translate(left = x - markerIconPx, top = 0f) }) {
+                        with(startMarkerPainter) { draw(Size(markerIconPx, markerIconPx)) }
+                    }
+                    drawLine(Color(0xFF45818E), Offset(x, markerIconPx), Offset(x, size.height))
+                }
+            }
+            // End marker — icon bottom-anchored, left edge at x; line runs from canvas top to icon top
+            if (selEndFrame != null) {
+                val x = frameToX(selEndFrame)
+                if (x in -widthF..widthF * 2) {
+                    withTransform({ translate(left = x, top = size.height - markerIconPx) }) {
+                        with(endMarkerPainter) { draw(Size(markerIconPx, markerIconPx)) }
+                    }
+                    drawLine(Color(0xFF45818E), Offset(x, 0f), Offset(x, size.height - markerIconPx))
                 }
             }
         }
 
-        // Blue playback cursor stays fixed at center — outside the drag transform
+        // Playback cursor — fixed at center, outside drag transform
         drawLine(
             color = Color(0xFF1EA7FD),
             start = Offset(size.width / 2f, 0f),
