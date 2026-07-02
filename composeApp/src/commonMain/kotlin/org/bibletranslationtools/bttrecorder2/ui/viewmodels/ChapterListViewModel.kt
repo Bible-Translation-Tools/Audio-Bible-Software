@@ -116,7 +116,12 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
     private var tickerJob: Job? = null
 
     fun loadChapters() {
-        loadingJob?.cancel()
+        // Load once per ViewModel. The per-chapter flows below keep collecting for
+        // the ViewModel's lifetime (which spans the back-stack entry), so the rows
+        // stay current even while the user is in the verse list. Skipping the reload
+        // on re-entry (returning from verses) keeps the list populated so the
+        // LazyColumn can restore its scroll position instead of resetting to the top.
+        if (loadingJob?.isActive == true) return
         loadingJob = viewModelScope.launch(Dispatchers.IO) {
             _uiState.update { it.copy(isLoading = true, chapters = emptyList()) }
             try {
@@ -235,11 +240,14 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    val newTake = chapterTranslationBuilder.getOrCompile(workbook, chapter).await()
-                    // getOrCompile already selects the new take inside the chapter's audio
-                    // store, but be explicit so the selectedFlow we observe definitely
-                    // emits the latest holder.
-                    chapter.audio.selectTake(newTake)
+                    // getOrCompile inserts the compiled take, and inserting AUTO-selects
+                    // it — but only inside the insert's success callback, after the DB
+                    // has assigned the take's id and committed the row (see
+                    // WorkbookRepository.constructAssociatedAudio). Do NOT selectTake here:
+                    // an extra select races the async insert and points the chapter
+                    // content's selected_take_fk at an uncommitted take id, which fails the
+                    // SQLite foreign-key constraint. The auto-select drives selectedFlow.
+                    chapterTranslationBuilder.getOrCompile(workbook, chapter).await()
                 }
             } catch (e: CancellationException) {
                 throw e

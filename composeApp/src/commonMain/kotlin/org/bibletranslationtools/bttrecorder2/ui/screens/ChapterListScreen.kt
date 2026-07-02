@@ -156,6 +156,10 @@ fun ChapterListContent(
                 .padding(padding)
                 .background(MaterialTheme.colorScheme.surface)
         ) {
+            // Hoisted above the `when` so the scroll position is retained across
+            // load-state transitions and back-navigation (rememberLazyListState is
+            // rememberSaveable-backed and restored per nav back-stack entry).
+            val listState = rememberLazyListState()
             when {
                 uiState.isLoading -> {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
@@ -168,7 +172,6 @@ fun ChapterListContent(
                     )
                 }
                 else -> {
-                    val listState = rememberLazyListState()
                     LazyColumnWithScrollbar(
                         state = listState,
                         modifier = Modifier.fillMaxSize()
@@ -202,12 +205,9 @@ fun ChapterListContent(
                                 },
                                 onRecordChapter = { onRecordChapter(uiModel.chapter.sort) },
                                 onCompileClick = {
-                                    // Layers icon is compile-only. Once a chapter take exists,
-                                    // it's purely informational; the chevron drives expand.
-                                    if (uiModel.canCompile &&
-                                        !uiModel.hasChapterTake &&
-                                        !isCompilingThis
-                                    ) {
+                                    // Compile only when every verse has a take; the chevron
+                                    // (not this icon) drives expand of an existing take.
+                                    if (uiModel.canCompile && !isCompilingThis) {
                                         onCompileClick(uiModel.chapter)
                                     }
                                 },
@@ -254,15 +254,16 @@ fun ChapterItem(
     val hasContent = uiModel.hasContent
     val rowAlpha = if (hasContent) 1f else 0.38f
 
-    // The layers icon is purely about *compile* state:
-    //   - solid + active: ready-to-compile (every verse has a selected take). Tap to compile.
-    //   - solid + inactive: a chapter take already exists — informational only.
-    //   - dimmed + inactive: chapter not ready to compile and no chapter take yet.
-    // Expand/collapse lives on a separate chevron that only appears once a
-    // chapter take exists.
-    val layersActive = uiModel.hasChapterTake || uiModel.canCompile
+    // The layers icon is a *compile* action, available ONLY when every verse has a
+    // selected take (canCompile). The existence of a chapter take is irrelevant to
+    // whether compile is offered — you can't compile a chapter without all its
+    // verses, and a chapter take alone must not make it look available.
+    //   - solid + enabled: every verse recorded → tap to (re)compile.
+    //   - dimmed + disabled: some verse is missing a take.
+    // Expand/collapse of an existing chapter take lives on the separate chevron.
+    val layersActive = uiModel.canCompile
     val layersAlpha = if (layersActive) 1f else 0.38f
-    val layersEnabled = uiModel.canCompile && !uiModel.hasChapterTake
+    val layersEnabled = uiModel.canCompile
 
     Column {
         Row(
@@ -306,8 +307,8 @@ fun ChapterItem(
                     Icon(
                         Icons.Default.Layers,
                         contentDescription = when {
-                            uiModel.hasChapterTake -> stringResource(Res.string.cd_chapter_compiled)
                             uiModel.canCompile -> stringResource(Res.string.cd_compile_chapter)
+                            uiModel.hasChapterTake -> stringResource(Res.string.cd_chapter_compiled)
                             else -> stringResource(Res.string.cd_compile_chapter_not_ready)
                         },
                         tint = MaterialTheme.colorScheme.onSurface.copy(alpha = layersAlpha)

@@ -151,6 +151,10 @@ fun UnitListContent(
                 .padding(padding)
                 .background(MaterialTheme.colorScheme.surface)
         ) {
+            // Hoisted above the load-state branches so the scroll position is
+            // retained across load transitions and back-navigation (e.g. returning
+            // from recording a verse) instead of resetting to the top.
+            val listState = rememberLazyListState()
             if (uiState.isLoading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             } else if (uiState.error != null) {
@@ -160,7 +164,6 @@ fun UnitListContent(
                     modifier = Modifier.align(Alignment.Center)
                 )
             } else {
-                val listState = rememberLazyListState()
                 LazyColumnWithScrollbar(
                     state = listState,
                     modifier = Modifier.fillMaxSize()

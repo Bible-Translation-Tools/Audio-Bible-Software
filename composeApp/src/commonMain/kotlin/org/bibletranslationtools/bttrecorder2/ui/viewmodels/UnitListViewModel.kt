@@ -78,6 +78,7 @@ class UnitListViewModel(
 
     private val playerId = kotlin.random.Random.nextInt()
     private var playbackJob: Job? = null
+    private var loadingJob: Job? = null
 
     init {
         audioPlayer = AudioPlayerConnection(
@@ -163,7 +164,13 @@ class UnitListViewModel(
     }
 
     fun loadUnits() {
-        viewModelScope.launch(ioDispatcher) {
+        // Load once per ViewModel. The chunk flow below keeps collecting for the
+        // ViewModel's lifetime (the back-stack entry), so the verse rows stay current
+        // even while recording. Skipping the reload on re-entry avoids a spinner flash
+        // and a leaked duplicate collection, and keeps the list populated so the
+        // LazyColumn restores its scroll position (e.g. after recording a verse).
+        if (loadingJob?.isActive == true) return
+        loadingJob = viewModelScope.launch(ioDispatcher) {
             _uiState.update { it.copy(isLoading = true) }
             try {
                 val nav = appPreferences.navState.first()
