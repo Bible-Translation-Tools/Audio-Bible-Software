@@ -24,7 +24,11 @@ import org.bibletranslationtools.bttrecorder2.ui.playback.WaveEditSession
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
+import org.bibletranslationtools.otter.common.data.audio.BookMarker
+import org.bibletranslationtools.otter.common.data.audio.ChapterMarker
 import org.bibletranslationtools.otter.common.data.audio.VerseMarker
+import org.bibletranslationtools.otter.common.data.primitives.BOOK_TITLE_SORT
+import org.bibletranslationtools.otter.common.data.primitives.CHAPTER_TITLE_SORT
 import org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
@@ -51,6 +55,9 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.random.Random
+
+/** Kind of a waveform marker, so the UI can render each type distinctly. */
+enum class MarkerKind { BOOK, CHAPTER, VERSE }
 
 class PlaybackViewModel(
     private val workbookRepository: IWorkbookRepository,
@@ -85,6 +92,7 @@ class PlaybackViewModel(
         val waveformSamples: FloatArray = floatArrayOf(),
         val markerFrames: List<Int> = emptyList(),
         val markerLabels: List<String> = emptyList(),
+        val markerKinds: List<MarkerKind> = emptyList(),
         val minimapSamples: FloatArray = floatArrayOf(),
         val showMinimap: Boolean = true,
         val sourceAudioAvailable: Boolean = false,
@@ -94,7 +102,9 @@ class PlaybackViewModel(
         val canUndoEdit: Boolean = false,
         val canRedoEdit: Boolean = false,
         val isVerseMarkerMode: Boolean = false,
-        val versesMarked: Int = 0,
+        // Number of verse markers still to place in verse-marker mode
+        // (totalVerses − placed), mirroring the original app's "N Left" counter.
+        val versesRemaining: Int = 0,
         val error: String? = null
     )
 
@@ -188,14 +198,23 @@ class PlaybackViewModel(
     private var selectionStartFrame: Int? = null
     private var selectionEndFrame: Int? = null
 
-    private val droppedVerseMarkerFrames = mutableListOf<Int>()
+    /** A marker being displayed/edited: its frame plus its kind + label. */
+    private data class EditMarker(val frame: Int, val label: String, val kind: MarkerKind)
 
-    // Authoritative, mutable list of verse-marker frame positions for the loaded
-    // take. Drag operations mutate this in place; it is mirrored into
-    // uiState.markerFrames. Kept separate from `markerFrames` (the last-rendered
-    // snapshot) so a drag has a stable index to work against.
-    private val editedVerseMarkers = mutableListOf<Int>()
+    /** Ordered spec for verse-marker mode: what each successive marker should be. */
+    private data class MarkerSpec(val label: String, val kind: MarkerKind)
+
+    // THE single authoritative list of markers (book/chapter/verse). Used for
+    // display, dragging, dropping (verse-marker mode), and saving alike, so the
+    // gesture's hit-test index always matches what's drawn.
+    private val editedMarkers = mutableListOf<EditMarker>()
     private var draggingVerseMarkerIndex: Int = -1
+
+    // Verse-marker mode: one marker per chunk the take covers. markerSpecs holds the
+    // ordered (label, kind) for each — Book (chapter 1 only) → Chapter → Verses —
+    // and totalVerses is how many markers to place.
+    private var totalVerses: Int = 0
+    private var markerSpecs: List<MarkerSpec> = emptyList()
 
     // Live-scrub state for waveform drag. While scrubbing we stop the UI
     // auto-follow ticker (audio keeps playing) and re-render on each move; on
@@ -400,16 +419,13 @@ class PlaybackViewModel(
     fun setSelectionStartAtProgress(progress: Float) {
         val dur = editSession?.editedTotalFrames ?: return
         selectionStartFrame = (progress * dur).toInt().coerceIn(0, dur)
-        val end = selectionEndFrame
-        if (end != null && end <= selectionStartFrame!!) selectionEndFrame = null
         updateEditUi()
     }
 
     fun setSelectionEndAtProgress(progress: Float) {
         val dur = editSession?.editedTotalFrames ?: return
-        val start = selectionStartFrame ?: return
-        val frame = (progress * dur).toInt().coerceIn(0, dur)
-        if (frame != start) { selectionEndFrame = frame; updateEditUi() }
+        selectionEndFrame = (progress * dur).toInt().coerceIn(0, dur)
+        updateEditUi()
     }
 
     // ── Playback-follow freeze (shared by every waveform drag) ─────────────────
@@ -452,61 +468,83 @@ class PlaybackViewModel(
         resumePlaybackFollow()
     }
 
-    // ── Verse marker drag ─────────────────────────────────────────────────────
-    // Mirrors the start/end selection-marker path: a per-move progress callback
-    // updates a single slot in `editedVerseMarkers` (no re-sort during the drag so
-    // the captured index stays valid) and mirrors it into the UI. On release the
-    // list is sorted and written back into `baseMarkers` so the moved location
-    // survives later re-renders and edit/save.
+    // ── Marker drag ───────────────────────────────────────────────────────────
+    // Per-move progress callback updates a single slot in `editedMarkers` (no
+    // re-sort mid-drag so the captured index stays valid); on release the list is
+    // sorted, re-labeled (marker mode) or committed to baseMarkers (normal mode).
 
     fun beginVerseMarkerDrag(index: Int) {
-        draggingVerseMarkerIndex = if (index in editedVerseMarkers.indices) index else -1
+        draggingVerseMarkerIndex = if (index in editedMarkers.indices) index else -1
     }
 
     fun moveVerseMarker(progress: Float) {
         val idx = draggingVerseMarkerIndex
-        if (idx !in editedVerseMarkers.indices) return
+        if (idx !in editedMarkers.indices) return
         val dur = _uiState.value.durationFrames.takeIf { it > 0 } ?: return
-        editedVerseMarkers[idx] = (progress * dur).toInt().coerceIn(0, dur)
-        publishVerseMarkers()
+        val frame = (progress * dur).toInt().coerceIn(0, dur)
+        editedMarkers[idx] = editedMarkers[idx].copy(frame = frame)
+        publishMarkers()
     }
 
     fun endVerseMarkerDrag() {
         if (draggingVerseMarkerIndex < 0) return
         draggingVerseMarkerIndex = -1
-        editedVerseMarkers.sort()
-        commitVerseMarkersToBase()
-        publishVerseMarkers()
+        if (_uiState.value.isVerseMarkerMode) {
+            resortAndRelabelForMarkerMode()
+        } else {
+            editedMarkers.sortBy { it.frame }
+            commitMarkersToBase()
+        }
+        publishMarkers()
     }
 
-    // Push the current edited verse-marker frames + labels into the UI state.
-    private fun publishVerseMarkers() {
-        markerFrames = editedVerseMarkers.toList()
-        markerLabels = buildMarkerLabelsForFrames(markerFrames)
+    // In verse-marker mode, the leftmost marker is spec 0 (Book/Chapter), the next
+    // is spec 1, etc. Re-derive each marker's label/kind from its sorted position so
+    // the numbering stays correct regardless of the order they were dropped/dragged.
+    private fun resortAndRelabelForMarkerMode() {
+        editedMarkers.sortBy { it.frame }
+        for (i in editedMarkers.indices) {
+            markerSpecs.getOrNull(i)?.let { spec ->
+                editedMarkers[i] = editedMarkers[i].copy(label = spec.label, kind = spec.kind)
+            }
+        }
+    }
+
+    // Push the current markers (frame + label + kind) into the UI state.
+    private fun publishMarkers() {
+        markerFrames = editedMarkers.map { it.frame }
+        markerLabels = editedMarkers.map { it.label }
+        val kinds = editedMarkers.map { it.kind }
         _uiState.update { it.copy(
             markerFrames = markerFrames,
-            markerLabels = markerLabels
+            markerLabels = markerLabels,
+            markerKinds = kinds
         ) }
     }
 
-    // Replace the VerseMarker entries in baseMarkers with the edited locations so
-    // refreshMarkerFrames / save reflect the moved positions. Preserves any
-    // non-verse markers (book/chapter) untouched.
-    //
-    // Only safe when there are no pending edits: baseMarkers are in absolute
-    // (original-file) frames, whereas editedVerseMarkers are in edited/relative
-    // frames once a cut exists. Writing relative frames back into the absolute base
-    // would corrupt them (mapEditedMarkers would map them a second time). With edits
-    // active we leave baseMarkers alone; the moved positions remain visible via
-    // editedVerseMarkers until the next reload.
-    private fun commitVerseMarkersToBase() {
+    // Write the edited markers (all types) back into baseMarkers so a re-render /
+    // save reflects moved positions. Only in normal (editor) mode without pending
+    // cuts — in verse-marker mode the set is a fresh in-progress list, and with an
+    // active cut the edited frames are relative and would corrupt the absolute base.
+    private fun commitMarkersToBase() {
+        if (_uiState.value.isVerseMarkerMode) return
         if (editSession?.hasEdits() == true) return
-        val nonVerse = baseMarkers.filter { it !is VerseMarker }
-        val oldVerses = baseMarkers.filterIsInstance<VerseMarker>().sortedBy { it.location }
-        val movedVerses = editedVerseMarkers.sorted().mapIndexed { i, frame ->
-            oldVerses.getOrNull(i)?.clone(frame) ?: VerseMarker(start = i + 1, end = i + 1, location = frame)
+        val nonContent = baseMarkers.filter {
+            it !is VerseMarker && it !is BookMarker && it !is ChapterMarker
         }
-        baseMarkers = (nonVerse + movedVerses).sortedBy { it.location }
+        val rebuilt = editedMarkers.map { it.toAudioMarker() }
+        baseMarkers = (nonContent + rebuilt).sortedBy { it.location }
+    }
+
+    private fun EditMarker.toAudioMarker(): AudioMarker = when (kind) {
+        MarkerKind.BOOK -> BookMarker(label, frame)
+        MarkerKind.CHAPTER -> ChapterMarker(label.toIntOrNull() ?: 0, frame)
+        MarkerKind.VERSE -> {
+            val parts = label.split("-")
+            val start = parts.getOrNull(0)?.toIntOrNull() ?: 1
+            val end = parts.getOrNull(1)?.toIntOrNull() ?: start
+            VerseMarker(start, end, frame)
+        }
     }
 
     fun clearSelection() {
@@ -516,11 +554,14 @@ class PlaybackViewModel(
     }
 
     fun cutSelection() {
-        val start = selectionStartFrame ?: return
-        val end = selectionEndFrame ?: return
+        val a = selectionStartFrame ?: return
+        val b = selectionEndFrame ?: return
         val session = editSession ?: return
-        if (abs(end - start) < 2) return
-        val seekTo = min(start, end)
+        if (abs(b - a) < 2) return
+        // The handles may be dragged in either order; cut the ordered range.
+        val start = min(a, b)
+        val end = max(a, b)
+        val seekTo = start
         if (session.cutRelative(start, end)) {
             selectionStartFrame = null
             selectionEndFrame = null
@@ -570,60 +611,106 @@ class PlaybackViewModel(
         }
     }
 
+    // The ordered marker specs the CURRENT TAKE covers. One marker per chunk, each
+    // carrying its kind + label. Depends on the take's scope:
+    //  - a single verse/chunk take (target.chunk != null) → exactly ONE marker;
+    //  - a whole-chapter take (target.chunk == null) → Book (chapter 1) → Chapter →
+    //    one Verse per verse chunk, in BCV order (chunk.sort: -2 book, -1 chapter).
+    private fun markerSpecsForCurrentTake(): List<MarkerSpec> {
+        val target = currentTarget() ?: return emptyList()
+        target.chunk?.let { return listOf(specForChunk(it, target.chapter.sort)) }
+        return targets
+            .filter { it.chapter.sort == target.chapter.sort }
+            .mapNotNull { it.chunk }
+            .sortedBy { it.sort }
+            .map { specForChunk(it, target.chapter.sort) }
+    }
+
+    private fun specForChunk(chunk: Chunk, chapterSort: Int): MarkerSpec = when (chunk.sort) {
+        BOOK_TITLE_SORT -> MarkerSpec(workbook?.target?.slug ?: "book", MarkerKind.BOOK)
+        CHAPTER_TITLE_SORT -> MarkerSpec("$chapterSort", MarkerKind.CHAPTER)
+        else -> MarkerSpec(chunk.title, MarkerKind.VERSE)
+    }
+
     fun enterVerseMarkerMode() {
         if (_uiState.value.selectedTake == null) return
-        droppedVerseMarkerFrames.clear()
+        // Start fresh (like the original): one marker per spec this take covers,
+        // counting down from that total. The first marker (book/chapter/verse 1) is
+        // auto-placed at frame 0.
+        markerSpecs = markerSpecsForCurrentTake()
+        totalVerses = markerSpecs.size
+        editedMarkers.clear()
+        markerSpecs.firstOrNull()?.let { editedMarkers.add(EditMarker(0, it.label, it.kind)) }
         _uiState.value = _uiState.value.copy(
             isVerseMarkerMode = true,
-            versesMarked = 0
+            versesRemaining = (totalVerses - editedMarkers.size).coerceAtLeast(0)
         )
+        publishMarkers()
     }
 
     fun exitVerseMarkerMode() {
-        droppedVerseMarkerFrames.clear()
+        editedMarkers.clear()
         _uiState.value = _uiState.value.copy(
             isVerseMarkerMode = false,
-            versesMarked = 0
+            versesRemaining = 0
         )
+        // Restore the take's real markers for the normal (editor) view.
+        refreshMarkerFrames()
     }
 
     fun dropVerseMarkerAtCurrentPosition() {
-        val frame = audioPlayer.getLocationInFrames()
-        droppedVerseMarkerFrames.add(frame)
-        val allMarkerFrames = (markerFrames + droppedVerseMarkerFrames).distinct().sorted()
-        val allMarkerLabels = buildMarkerLabelsForFrames(allMarkerFrames)
-        _uiState.value = _uiState.value.copy(
-            versesMarked = droppedVerseMarkerFrames.size,
-            markerFrames = allMarkerFrames,
-            markerLabels = allMarkerLabels
-        )
+        // Cap at the take's marker count when known; if unknown (0), don't block.
+        if (totalVerses > 0 && editedMarkers.size >= totalVerses) return
+        val frame = _uiState.value.currentFrame               // the visible playhead position
+        if (editedMarkers.any { abs(it.frame - frame) < 2 }) return  // ignore a duplicate at the same spot
+        val spec = markerSpecs.getOrNull(editedMarkers.size)
+            ?: MarkerSpec("${editedMarkers.size + 1}", MarkerKind.VERSE)
+        editedMarkers.add(EditMarker(frame, spec.label, spec.kind))
+        resortAndRelabelForMarkerMode()
+        publishMarkers()
+        _uiState.update {
+            it.copy(versesRemaining = (totalVerses - editedMarkers.size).coerceAtLeast(0))
+        }
     }
 
-    fun saveVerseMarkersAsNewTake() {
-        if (droppedVerseMarkerFrames.isEmpty()) {
+    fun saveVerseMarkers() {
+        val take = activeTake ?: run { exitVerseMarkerMode(); return }
+        if (editedMarkers.isEmpty()) {
             exitVerseMarkerMode()
             return
         }
-        val take = activeTake ?: return
+        val toWrite = editedMarkers.sortedBy { it.frame }
+
+        // Markers are metadata, not audio — write them as WAV cue chunks into the
+        // EXISTING take file (Orature does exactly this; the PCM is unchanged). No
+        // re-encode, no new take. Pause first so we're not writing while reading.
+        audioPlayer.pause()
+        stopTicker()
 
         viewModelScope.launch(Dispatchers.IO) {
             runCatching {
-                val tempWav = File.createTempFile("marked_", ".wav")
-                val reader = buildReaderForTake(take)
-                val allMarkerFrames = (markerFrames + droppedVerseMarkerFrames).distinct().sorted()
-                val newMarkers = allMarkerFrames.mapIndexed { idx, frame ->
-                    VerseMarker(start = idx + 1, end = idx + 1, location = frame)
+                val oaf = OratureAudioFile(take.file)
+                oaf.clearMarkers()
+                toWrite.forEach { m ->
+                    when (m.kind) {
+                        MarkerKind.BOOK -> oaf.addMarker<BookMarker>(BookMarker(m.label, m.frame))
+                        MarkerKind.CHAPTER -> oaf.addMarker<ChapterMarker>(
+                            ChapterMarker(m.label.toIntOrNull() ?: 0, m.frame)
+                        )
+                        MarkerKind.VERSE -> oaf.addVerseMarker(m.frame, m.label)
+                    }
                 }
-                audioBouncer.bounceAudio(tempWav, reader, newMarkers)
-                persistEditedFileAsNewTake(tempWav)
-                tempWav.delete()
+                oaf.update()
+                // Re-read so the normal view shows the just-written markers.
+                baseMarkers = OratureAudioFile(take.file).getMarkers().sortedBy { it.location }
             }.onFailure { e ->
                 _uiState.value = _uiState.value.copy(
                     error = e.message ?: getString(Res.string.err_save_verse_markers)
                 )
             }
+            _uiState.update { it.copy(isVerseMarkerMode = false, versesRemaining = 0) }
+            refreshMarkerFrames()
         }
-        exitVerseMarkerMode()
     }
 
     fun onRerecord() {
@@ -741,7 +828,7 @@ class PlaybackViewModel(
         editSession = null
         selectionStartFrame = null
         selectionEndFrame = null
-        droppedVerseMarkerFrames.clear()
+        editedMarkers.clear()
 
         _uiState.value = _uiState.value.copy(
             selectedTake = null,
@@ -758,7 +845,7 @@ class PlaybackViewModel(
             elapsedText = "00:00:00",
             durationText = "00:00:00",
             isVerseMarkerMode = false,
-            versesMarked = 0,
+            versesRemaining = 0,
             error = null
         )
 
@@ -838,13 +925,10 @@ class PlaybackViewModel(
             createFreshEditSession(take)
             val originalAudio = OratureAudioFile(take.file)
             baseMarkers = originalAudio.getMarkers().sortedBy { it.location }
-            markerFrames = baseMarkers.filterIsInstance<VerseMarker>().map { it.location }
-            markerLabels = baseMarkers.filterIsInstance<VerseMarker>().map { it.label }
-            editedVerseMarkers.clear()
-            editedVerseMarkers.addAll(markerFrames)
-            droppedVerseMarkerFrames.clear()
             selectionStartFrame = null
             selectionEndFrame = null
+            // reloadCurrentTakePlayback → refreshMarkerFrames populates editedMarkers
+            // (all kinds) and the UI marker lists from baseMarkers.
             reloadCurrentTakePlayback(0)
         }.onFailure { e ->
             // loadTakeForPlayback is synchronous; getString is suspend, so resolve
@@ -891,15 +975,20 @@ class PlaybackViewModel(
     }
 
     private fun refreshMarkerFrames() {
-        val editedMarkers = mapEditedMarkers(baseMarkers).filterIsInstance<VerseMarker>()
-        markerFrames = editedMarkers.map { it.location }.sorted()
-        markerLabels = editedMarkers.sortedBy { it.location }.map { it.label }
-        editedVerseMarkers.clear()
-        editedVerseMarkers.addAll(markerFrames)
-        _uiState.update { it.copy(
-            markerFrames = markerFrames,
-            markerLabels = markerLabels
-        ) }
+        // Show all marker kinds the take carries (book/chapter/verse), remapped
+        // through any active edit session, in BCV/frame order.
+        val mapped = mapEditedMarkers(baseMarkers)
+            .filter { it is BookMarker || it is ChapterMarker || it is VerseMarker }
+            .sortedBy { it.location }
+        editedMarkers.clear()
+        mapped.forEach { editedMarkers.add(EditMarker(it.location, it.label, kindOf(it))) }
+        publishMarkers()
+    }
+
+    private fun kindOf(marker: AudioMarker): MarkerKind = when (marker) {
+        is BookMarker -> MarkerKind.BOOK
+        is ChapterMarker -> MarkerKind.CHAPTER
+        else -> MarkerKind.VERSE
     }
 
     private fun reloadCurrentTakePlayback(seekFrame: Int) {
@@ -956,12 +1045,15 @@ class PlaybackViewModel(
 
     private fun updateEditUi() {
         val duration = audioPlayer.getDurationInFrames().coerceAtLeast(1)
-        val startProgress = selectionStartFrame
-            ?.coerceIn(0, duration)
-            ?.let { it.toFloat() / duration.toFloat() }
-        val endProgress = selectionEndFrame
-            ?.coerceIn(0, duration)
-            ?.let { it.toFloat() / duration.toFloat() }
+        val s = selectionStartFrame?.coerceIn(0, duration)
+        val e = selectionEndFrame?.coerceIn(0, duration)
+        // Present the selection ordered (start = the left/earlier handle, end = the
+        // right/later one) so dragging one handle past the other visibly re-sorts
+        // instead of the markers crossing or one vanishing.
+        val lo = if (s != null && e != null) minOf(s, e) else s
+        val hi = if (s != null && e != null) maxOf(s, e) else e
+        val startProgress = lo?.let { it.toFloat() / duration.toFloat() }
+        val endProgress = hi?.let { it.toFloat() / duration.toFloat() }
         val canCut = selectionStartFrame != null &&
             selectionEndFrame != null &&
             abs((selectionStartFrame ?: 0) - (selectionEndFrame ?: 0)) >= 2

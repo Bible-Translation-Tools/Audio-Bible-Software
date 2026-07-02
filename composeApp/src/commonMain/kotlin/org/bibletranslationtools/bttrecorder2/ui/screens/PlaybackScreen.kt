@@ -71,6 +71,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.bibletranslationtools.bttrecorder2.ui.theme.TranslationRecorderTheme
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.MarkerKind
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.PlaybackViewModel
 import org.jetbrains.compose.resources.stringResource
 import btt_recorder2.composeapp.generated.resources.Res
@@ -111,7 +112,7 @@ import btt_recorder2.composeapp.generated.resources.main_verse_label
 import btt_recorder2.composeapp.generated.resources.source_audio_none
 import btt_recorder2.composeapp.generated.resources.cd_pause_source
 import btt_recorder2.composeapp.generated.resources.cd_play_source
-import btt_recorder2.composeapp.generated.resources.playback_markers_placed_label
+import btt_recorder2.composeapp.generated.resources.playback_markers_remaining_label
 
 @Composable
 fun PlaybackScreen(
@@ -189,7 +190,7 @@ fun PlaybackScreen(
         // ── Top bar ──────────────────────────────────────────────────────────
         if (ui.isVerseMarkerMode) {
             MarkerCounterBar(
-                versesMarked = ui.versesMarked,
+                versesRemaining = ui.versesRemaining,
                 onExit = viewModel::exitVerseMarkerMode
             )
         } else {
@@ -217,6 +218,7 @@ fun PlaybackScreen(
                 samples = ui.waveformSamples,
                 markerFrames = ui.markerFrames,
                 markerLabels = ui.markerLabels,
+                markerKinds = ui.markerKinds,
                 currentFrame = ui.currentFrame,
                 sampleRate = ui.sampleRate,
                 selectionStartProgress = ui.selectionStartProgress,
@@ -272,7 +274,7 @@ fun PlaybackScreen(
                 onPlayPause = viewModel::togglePlayPause,
                 onSeekForward = viewModel::seekForward,
                 onDropMarker = viewModel::dropVerseMarkerAtCurrentPosition,
-                onDone = viewModel::saveVerseMarkersAsNewTake
+                onDone = viewModel::saveVerseMarkers
             )
         } else {
             PlaybackTools(
@@ -415,6 +417,7 @@ private fun PlaybackWaveform(
     samples: FloatArray,
     markerFrames: List<Int>,
     markerLabels: List<String>,
+    markerKinds: List<MarkerKind> = emptyList(),
     currentFrame: Int,
     sampleRate: Int,
     selectionStartProgress: Float?,
@@ -591,20 +594,66 @@ private fun PlaybackWaveform(
                 }
             }
 
-            // Yellow verse markers — pole (full-height line) + flag extending right from top
-            markerFrames.forEach { frame ->
+            // Markers — pole (full-height line) + flag (extending right from the top)
+            // carrying the label. Color-coded and shaped by kind so book/chapter/verse
+            // are visually distinct:
+            //   VERSE   = yellow  pennant (V-notch bottom), label "5" / "1-2"
+            //   CHAPTER = orange  flat banner,              label = chapter number
+            //   BOOK    = magenta down-pointing tag,        label = book slug
+            markerFrames.forEachIndexed { i, frame ->
                 val x = frameToX(frame.toFloat())
                 if (x in -widthF..widthF * 2) {
-                    val pennantPath = Path().apply {
-                        moveTo(x, 0f)
-                        lineTo(x + pennantW, 0f)
-                        lineTo(x + pennantW, pennantH)
-                        lineTo(x + pennantW / 2f, pennantH * 0.82f)
-                        lineTo(x, pennantH)
-                        close()
+                    val kind = markerKinds.getOrNull(i) ?: MarkerKind.VERSE
+                    val fillColor = when (kind) {
+                        MarkerKind.VERSE -> Color(0xFFFFDD00)
+                        MarkerKind.CHAPTER -> Color(0xFFFF9100)
+                        MarkerKind.BOOK -> Color(0xFFE040FB)
                     }
-                    drawLine(Color(0xFFFFDD00), Offset(x, 0f), Offset(x, size.height))
-                    drawPath(pennantPath, color = Color(0xFFFFDD00))
+                    val textColor = if (kind == MarkerKind.BOOK) Color.White else Color(0xFF1A1A1A)
+                    val label = markerLabels.getOrNull(i).orEmpty()
+                    val measured = if (label.isNotEmpty()) {
+                        textMeasurer.measure(
+                            label,
+                            style = TextStyle(
+                                fontSize = 11.sp,
+                                color = textColor,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                            )
+                        )
+                    } else null
+                    // Widen the flag to fit the label (bridges/book slugs are wider).
+                    val labelPadX = 6.dp.toPx()
+                    val flagW = maxOf(pennantW, (measured?.size?.width?.toFloat() ?: 0f) + labelPadX * 2)
+                    val bodyBottom = pennantH * 0.72f
+                    val path = Path().apply {
+                        when (kind) {
+                            MarkerKind.VERSE -> {
+                                moveTo(x, 0f); lineTo(x + flagW, 0f)
+                                lineTo(x + flagW, pennantH)
+                                lineTo(x + flagW / 2f, pennantH * 0.82f)   // V-notch
+                                lineTo(x, pennantH); close()
+                            }
+                            MarkerKind.CHAPTER -> {
+                                moveTo(x, 0f); lineTo(x + flagW, 0f)       // flat banner
+                                lineTo(x + flagW, pennantH)
+                                lineTo(x, pennantH); close()
+                            }
+                            MarkerKind.BOOK -> {
+                                moveTo(x, 0f); lineTo(x + flagW, 0f)       // tag w/ down tip
+                                lineTo(x + flagW, bodyBottom)
+                                lineTo(x + flagW / 2f, pennantH)
+                                lineTo(x, bodyBottom); close()
+                            }
+                        }
+                    }
+                    drawLine(fillColor, Offset(x, 0f), Offset(x, size.height))
+                    drawPath(path, color = fillColor)
+                    if (measured != null) {
+                        drawText(
+                            measured,
+                            topLeft = Offset(x + labelPadX, (bodyBottom - measured.size.height) / 2f)
+                        )
+                    }
                 }
             }
 
@@ -980,7 +1029,7 @@ private fun EditIconButton(
 
 @Composable
 private fun MarkerCounterBar(
-    versesMarked: Int,
+    versesRemaining: Int,
     onExit: () -> Unit
 ) {
     Row(
@@ -996,13 +1045,13 @@ private fun MarkerCounterBar(
         }
         Spacer(Modifier.width(8.dp))
         Text(
-            text = versesMarked.toString(),
+            text = versesRemaining.toString(),
             color = Color.White,
             style = MaterialTheme.typography.titleLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
         )
         Spacer(Modifier.width(6.dp))
         Text(
-            text = stringResource(Res.string.playback_markers_placed_label),
+            text = stringResource(Res.string.playback_markers_remaining_label),
             color = Color.White,
             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
         )
@@ -1024,17 +1073,22 @@ private fun MarkerToolbar(
     onDropMarker: () -> Unit,
     onDone: () -> Unit
 ) {
+    // Verse-marker mode uses the original's bright-yellow toolbar (#FDD835) to
+    // distinguish it from the blue playback transport; icons/text are dark for
+    // contrast on yellow.
+    val markerBarColor = Color(0xFFFDD835)
+    val onMarkerBar = Color(0xFF1A1A1A)
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(72.dp)
-            .background(TranslationRecorderTheme.blue)
+            .background(markerBarColor)
             .padding(horizontal = 8.dp)
     ) {
         // Timestamp — left-aligned, single line
         Text(
             text = "$elapsedText / $durationText",
-            color = Color.White,
+            color = onMarkerBar,
             style = MaterialTheme.typography.bodyLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
             modifier = Modifier.align(Alignment.CenterStart)
         )
@@ -1045,18 +1099,18 @@ private fun MarkerToolbar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onSeekBackward, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Default.SkipPrevious, contentDescription = stringResource(Res.string.cd_skip_backward), tint = Color.White)
+                Icon(Icons.Default.SkipPrevious, contentDescription = stringResource(Res.string.cd_skip_backward), tint = onMarkerBar)
             }
             IconButton(onClick = onPlayPause, modifier = Modifier.size(40.dp)) {
                 Icon(
                     if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                     contentDescription = stringResource(Res.string.cd_play_pause),
-                    tint = Color.White,
+                    tint = onMarkerBar,
                     modifier = Modifier.size(32.dp)
                 )
             }
             IconButton(onClick = onSeekForward, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Default.SkipNext, contentDescription = stringResource(Res.string.cd_skip_forward), tint = Color.White)
+                Icon(Icons.Default.SkipNext, contentDescription = stringResource(Res.string.cd_skip_forward), tint = onMarkerBar)
             }
         }
 
@@ -1066,10 +1120,10 @@ private fun MarkerToolbar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onDropMarker, modifier = Modifier.size(44.dp)) {
-                Icon(Icons.Default.BookmarkAdd, contentDescription = stringResource(Res.string.cd_place_verse_marker), tint = Color(0xFFFFDD00))
+                Icon(Icons.Default.BookmarkAdd, contentDescription = stringResource(Res.string.cd_place_verse_marker), tint = onMarkerBar)
             }
             IconButton(onClick = onDone, modifier = Modifier.size(44.dp)) {
-                Icon(Icons.Default.Check, contentDescription = stringResource(Res.string.cd_done_save_markers), tint = Color.White)
+                Icon(Icons.Default.Check, contentDescription = stringResource(Res.string.cd_done_save_markers), tint = onMarkerBar)
             }
         }
     }
