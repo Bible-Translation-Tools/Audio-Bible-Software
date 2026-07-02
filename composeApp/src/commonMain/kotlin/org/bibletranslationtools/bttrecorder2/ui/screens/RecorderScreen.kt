@@ -320,7 +320,9 @@ private fun RecordTransportButton(
     val (icon, action) = when (state) {
         RecorderViewModel.RecordingUiState.Idle -> Icons.Default.Mic to onRecord
         RecorderViewModel.RecordingUiState.Recording -> Icons.Default.Pause to onPause
-        RecorderViewModel.RecordingUiState.Paused -> Icons.Default.PlayArrow to onResume
+        // Resuming from pause continues RECORDING (not audio playback), so show the
+        // record (mic) icon rather than a play triangle.
+        RecorderViewModel.RecordingUiState.Paused -> Icons.Default.Mic to onResume
         RecorderViewModel.RecordingUiState.Review -> Icons.Default.Stop to onStop
     }
 

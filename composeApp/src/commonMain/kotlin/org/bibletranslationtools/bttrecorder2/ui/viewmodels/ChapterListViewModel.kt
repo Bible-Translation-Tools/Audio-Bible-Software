@@ -49,6 +49,8 @@ data class ChapterUiModel(
     val progress: Float = 0f,
     /** True when [ChapterTranslationBuilder] has produced a compiled chapter take. */
     val hasChapterTake: Boolean = false,
+    /** The selected chapter take's number, when one exists (for opening in playback). */
+    val chapterTakeNumber: Int? = null,
     /** True only when every verse has a selected take, i.e., compile is allowed. */
     val canCompile: Boolean = false
 )
@@ -116,12 +118,15 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
     private var tickerJob: Job? = null
 
     fun loadChapters() {
-        // Load once per ViewModel. The per-chapter flows below keep collecting for
-        // the ViewModel's lifetime (which spans the back-stack entry), so the rows
-        // stay current even while the user is in the verse list. Skipping the reload
-        // on re-entry (returning from verses) keeps the list populated so the
-        // LazyColumn can restore its scroll position instead of resetting to the top.
-        if (loadingJob?.isActive == true) return
+        // Load once per ViewModel. The chunk-LIST flow below only re-emits when the
+        // set of chunks changes, not when a verse's take changes, so instead of a
+        // full reload on re-entry (which would reset scroll) we refresh each row's
+        // verse-level progress in place — this picks up takes recorded while the user
+        // was in the verse list without clearing the list.
+        if (loadingJob?.isActive == true) {
+            refreshProgress()
+            return
+        }
         loadingJob = viewModelScope.launch(Dispatchers.IO) {
             _uiState.update { it.copy(isLoading = true, chapters = emptyList()) }
             try {
@@ -183,7 +188,10 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
                                 val take = holder.value
                                 val hasChapterTake = take != null && !take.isDeleted()
                                 updateChapterRow(chapter) { existing ->
-                                    existing.copy(hasChapterTake = hasChapterTake)
+                                    existing.copy(
+                                        hasChapterTake = hasChapterTake,
+                                        chapterTakeNumber = if (hasChapterTake) take?.number else null
+                                    )
                                 }
                             }
                         }
@@ -193,6 +201,32 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
                 throw e
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, error = e.message ?: getString(Res.string.err_unknown)) }
+            }
+        }
+    }
+
+    /**
+     * Recomputes each existing chapter row's verse-level state (hasContent,
+     * progress, canCompile) from the current chunk selections, updating rows in
+     * place (no list clear, so the LazyColumn scroll position is preserved). Called
+     * on screen re-entry to reflect verse takes recorded while away, which the
+     * chunk-list flow doesn't surface on its own.
+     */
+    private fun refreshProgress() {
+        val rows = _uiState.value.chapters
+        if (rows.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            rows.forEach { row ->
+                val verses = row.chapter.chunksSuspend().filter { it.contentType == ContentType.TEXT }
+                val total = verses.size
+                val started = verses.count { it.hasSelectedAudio() }
+                updateChapterRow(row.chapter) { existing ->
+                    existing.copy(
+                        hasContent = started > 0,
+                        progress = if (total > 0) started.toFloat() / total else 0f,
+                        canCompile = total > 0 && started == total
+                    )
+                }
             }
         }
     }
@@ -355,7 +389,7 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
         // reference itself doesn't change). Update the row directly so the
         // layers icon switches back from "view chapter take" to "ready to
         // compile" without requiring an external refresh.
-        updateChapterRow(chapter) { it.copy(hasChapterTake = false) }
+        updateChapterRow(chapter) { it.copy(hasChapterTake = false, chapterTakeNumber = null) }
     }
 
     /**

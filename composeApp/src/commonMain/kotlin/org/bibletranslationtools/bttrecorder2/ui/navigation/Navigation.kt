@@ -168,6 +168,20 @@ fun Navigation(
                             RecorderRoute(nav.workbookSourceId, nav.workbookTargetId, chapterSort, -1)
                         )
                     }
+                },
+                onOpenChapterPlayback = { chapterSort, takeNumber ->
+                    scope.launch {
+                        val nav = appPreferences.navState.first()
+                        navController.navigate(
+                            PlaybackRoute(
+                                sourceId = nav.workbookSourceId,
+                                targetId = nav.workbookTargetId,
+                                chapterNumber = chapterSort,
+                                unitNumber = -1,       // chapter target (loadTarget maps -1 → whole chapter)
+                                takeNumber = takeNumber
+                            )
+                        )
+                    }
                 }
             )
         }

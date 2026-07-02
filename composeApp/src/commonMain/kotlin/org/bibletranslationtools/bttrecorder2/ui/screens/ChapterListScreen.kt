@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Mic
@@ -41,6 +42,7 @@ import btt_recorder2.composeapp.generated.resources.action_delete
 import btt_recorder2.composeapp.generated.resources.action_back
 import btt_recorder2.composeapp.generated.resources.cd_record_chapter
 import btt_recorder2.composeapp.generated.resources.cd_delete_chapter_take
+import btt_recorder2.composeapp.generated.resources.cd_open_in_playback
 import btt_recorder2.composeapp.generated.resources.action_loading
 import btt_recorder2.composeapp.generated.resources.error_prefix
 import btt_recorder2.composeapp.generated.resources.cd_chapter_compiled
@@ -58,7 +60,8 @@ fun ChapterListScreen(
     viewModel: ChapterListViewModel = viewModel { ChapterListViewModel() },
     onBackClick: () -> Unit,
     onChapterClick: (Int) -> Unit,
-    onRecordChapter: (Int) -> Unit = {}
+    onRecordChapter: (Int) -> Unit = {},
+    onOpenChapterPlayback: (chapterSort: Int, takeNumber: Int) -> Unit = { _, _ -> }
 ) {
     LaunchedEffect(Unit) {
         viewModel.loadChapters()
@@ -79,7 +82,8 @@ fun ChapterListScreen(
         onCompileClick = { chapter -> pendingCompileChapter = chapter },
         onChapterExpand = viewModel::prepareChapterPlayback,
         onChapterPlayPause = viewModel::toggleChapterPlayback,
-        onChapterDeleteRequest = { chapter -> pendingDeleteChapter = chapter }
+        onChapterDeleteRequest = { chapter -> pendingDeleteChapter = chapter },
+        onOpenChapterPlayback = onOpenChapterPlayback
     )
 
     pendingCompileChapter?.let { chapter ->
@@ -127,7 +131,8 @@ fun ChapterListContent(
     onCompileClick: (Chapter) -> Unit = {},
     onChapterExpand: (Chapter) -> Unit = {},
     onChapterPlayPause: (Chapter) -> Unit = {},
-    onChapterDeleteRequest: (Chapter) -> Unit = {}
+    onChapterDeleteRequest: (Chapter) -> Unit = {},
+    onOpenChapterPlayback: (chapterSort: Int, takeNumber: Int) -> Unit = { _, _ -> }
 ) {
     // The row a user taps to expand. Only one expanded at a time, mirroring
     // the original Recorder behaviour.
@@ -224,7 +229,12 @@ fun ChapterListContent(
                                     }
                                 },
                                 onPlayPause = { onChapterPlayPause(uiModel.chapter) },
-                                onDelete = { onChapterDeleteRequest(uiModel.chapter) }
+                                onDelete = { onChapterDeleteRequest(uiModel.chapter) },
+                                onOpenPlayback = {
+                                    uiModel.chapterTakeNumber?.let { takeNumber ->
+                                        onOpenChapterPlayback(uiModel.chapter.sort, takeNumber)
+                                    }
+                                }
                             )
                             HorizontalDivider()
                         }
@@ -249,10 +259,13 @@ fun ChapterItem(
     onCompileClick: () -> Unit,
     onExpandToggle: () -> Unit,
     onPlayPause: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onOpenPlayback: () -> Unit = {}
 ) {
-    val hasContent = uiModel.hasContent
-    val rowAlpha = if (hasContent) 1f else 0.38f
+    // Un-gray the chapter when it has any recorded audio — either a compiled/recorded
+    // chapter take or at least one verse take.
+    val hasAnyTake = uiModel.hasContent || uiModel.hasChapterTake
+    val rowAlpha = if (hasAnyTake) 1f else 0.38f
 
     // The layers icon is a *compile* action, available ONLY when every verse has a
     // selected take (canCompile). The existence of a chapter take is irrelevant to
@@ -276,7 +289,7 @@ fun ChapterItem(
             Text(
                 text = stringResource(Res.string.main_chapter_label, uiModel.chapter.title),
                 style = MaterialTheme.typography.bodyLarge,
-                fontWeight = if (hasContent) FontWeight.Bold else FontWeight.Normal,
+                fontWeight = if (hasAnyTake) FontWeight.Bold else FontWeight.Normal,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = rowAlpha),
                 modifier = Modifier.weight(1f)
             )
@@ -363,7 +376,8 @@ fun ChapterItem(
                 elapsedText = elapsedText,
                 durationText = durationText,
                 onPlayPause = onPlayPause,
-                onDelete = onDelete
+                onDelete = onDelete,
+                onOpenPlayback = onOpenPlayback
             )
         }
     }
@@ -376,7 +390,8 @@ private fun ChapterTakePlaybackRow(
     elapsedText: String,
     durationText: String,
     onPlayPause: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onOpenPlayback: () -> Unit = {}
 ) {
     Column(
         modifier = Modifier
@@ -411,6 +426,13 @@ private fun ChapterTakePlaybackRow(
                 Icon(
                     Icons.Default.Delete,
                     contentDescription = stringResource(Res.string.cd_delete_chapter_take),
+                    tint = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            IconButton(onClick = onOpenPlayback) {
+                Icon(
+                    Icons.Default.GraphicEq,
+                    contentDescription = stringResource(Res.string.cd_open_in_playback),
                     tint = MaterialTheme.colorScheme.onSurface
                 )
             }
