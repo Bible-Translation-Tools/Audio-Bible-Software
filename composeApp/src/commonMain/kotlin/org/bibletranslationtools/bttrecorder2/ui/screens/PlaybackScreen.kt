@@ -253,6 +253,8 @@ fun PlaybackScreen(
             progress = ui.progress,
             markerFrames = ui.markerFrames,
             durationFrames = ui.durationFrames,
+            sampleRate = ui.sampleRate,
+            textMeasurer = textMeasurer,
             selectionStartProgress = ui.selectionStartProgress,
             selectionEndProgress = ui.selectionEndProgress,
             onSeek = viewModel::seekToProgress,
@@ -699,6 +701,8 @@ private fun MinimapWidget(
     progress: Float,
     markerFrames: List<Int>,
     durationFrames: Int,
+    sampleRate: Int,
+    textMeasurer: androidx.compose.ui.text.TextMeasurer,
     selectionStartProgress: Float?,
     selectionEndProgress: Float?,
     onSeek: (Float) -> Unit,
@@ -728,6 +732,8 @@ private fun MinimapWidget(
                     progress = progress,
                     markerFrames = markerFrames,
                     durationFrames = durationFrames,
+                    sampleRate = sampleRate,
+                    textMeasurer = textMeasurer,
                     selectionStartProgress = selectionStartProgress,
                     selectionEndProgress = selectionEndProgress,
                     onSeek = onSeek,
@@ -839,6 +845,8 @@ private fun MinimapCanvas(
     progress: Float,
     markerFrames: List<Int>,
     durationFrames: Int,
+    sampleRate: Int,
+    textMeasurer: androidx.compose.ui.text.TextMeasurer,
     selectionStartProgress: Float?,
     selectionEndProgress: Float?,
     onSeek: (Float) -> Unit,
@@ -877,6 +885,33 @@ private fun MinimapCanvas(
         // exactly where you click (progress = x/width) with no gap, at any width.
         if (durationFrames > 0) {
             fun frameToX(frame: Float): Float = (frame / durationFrames) * widthF
+
+            // Timecode ruler — MM:SS labels + faint gridlines at a fitted interval
+            // (~50px spacing, stepping in 5s), matching the original recorder minimap.
+            val durationSec = durationFrames.toDouble() / sampleRate.coerceAtLeast(1)
+            if (durationSec > 0.0) {
+                val pxPerSec = widthF / durationSec
+                var intervalSec = 1.0
+                if (pxPerSec < 50.0) {
+                    intervalSec = 0.0
+                    while (intervalSec * pxPerSec < 50.0) intervalSec += 5.0
+                }
+                val gridColor = Color(0x33FFFFFF)
+                val labelStyle = TextStyle(fontSize = 9.sp, color = Color(0xFFAAAAAA))
+                var t = intervalSec
+                while (intervalSec > 0.0 && t < durationSec) {
+                    val x = ((t / durationSec) * widthF).toFloat()
+                    drawLine(gridColor, Offset(x, 0f), Offset(x, size.height))
+                    val total = t.toInt()
+                    val mm = total / 60
+                    val ss = total % 60
+                    val label = "${if (mm < 10) "0" else ""}$mm:${if (ss < 10) "0" else ""}$ss"
+                    val measured = textMeasurer.measure(label, style = labelStyle)
+                    val lx = (x - measured.size.width - 2.dp.toPx()).coerceAtLeast(0f)
+                    drawText(measured, topLeft = Offset(lx, 1.dp.toPx()))
+                    t += intervalSec
+                }
+            }
 
             markerFrames.forEach { frame ->
                 val x = frameToX(frame.toFloat())
