@@ -223,12 +223,15 @@ fun PlaybackScreen(
                 selectionEndProgress = ui.selectionEndProgress,
                 durationFrames = ui.durationFrames,
                 textMeasurer = textMeasurer,
-                onSeekToFrame = viewModel::seekToFrame,
                 onSelectionStartMoved = viewModel::setSelectionStartAtProgress,
                 onSelectionEndMoved = viewModel::setSelectionEndAtProgress,
-                onVerseMarkerDragStart = viewModel::startVerseMarkerDrag,
-                onVerseMarkerDragUpdate = viewModel::updateVerseMarkerDrag,
+                onVerseMarkerDragStart = viewModel::beginVerseMarkerDrag,
+                onVerseMarkerMove = viewModel::moveVerseMarker,
                 onVerseMarkerDragEnd = viewModel::endVerseMarkerDrag,
+                onFreezeFollow = viewModel::freezePlaybackFollow,
+                onResumeFollow = viewModel::resumePlaybackFollow,
+                onScrubMove = viewModel::scrubToFrame,
+                onScrubEnd = viewModel::endWaveformScrub,
                 modifier = Modifier.fillMaxSize()
             )
             if (ui.error != null) {
@@ -418,12 +421,15 @@ private fun PlaybackWaveform(
     selectionEndProgress: Float?,
     durationFrames: Int,
     textMeasurer: androidx.compose.ui.text.TextMeasurer,
-    onSeekToFrame: (Int) -> Unit = {},
     onSelectionStartMoved: (Float) -> Unit = {},
     onSelectionEndMoved: (Float) -> Unit = {},
     onVerseMarkerDragStart: (index: Int) -> Unit = {},
-    onVerseMarkerDragUpdate: (progress: Float) -> Unit = {},
+    onVerseMarkerMove: (progress: Float) -> Unit = {},
     onVerseMarkerDragEnd: () -> Unit = {},
+    onFreezeFollow: () -> Unit = {},
+    onResumeFollow: () -> Unit = {},
+    onScrubMove: (frame: Int) -> Unit = {},
+    onScrubEnd: (frame: Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val framesOnScreen = (sampleRate.coerceAtLeast(1) * 10).toFloat()
@@ -436,28 +442,32 @@ private fun PlaybackWaveform(
     val onSelectionStartMovedState = rememberUpdatedState(onSelectionStartMoved)
     val onSelectionEndMovedState = rememberUpdatedState(onSelectionEndMoved)
     val onVerseMarkerDragStartState = rememberUpdatedState(onVerseMarkerDragStart)
-    val onVerseMarkerDragUpdateState = rememberUpdatedState(onVerseMarkerDragUpdate)
+    val onVerseMarkerMoveState = rememberUpdatedState(onVerseMarkerMove)
     val onVerseMarkerDragEndState = rememberUpdatedState(onVerseMarkerDragEnd)
-    val onSeekToFrameState = rememberUpdatedState(onSeekToFrame)
-
-    var dragAccumPx by remember { mutableStateOf(0f) }
+    val onFreezeFollowState = rememberUpdatedState(onFreezeFollow)
+    val onResumeFollowState = rememberUpdatedState(onResumeFollow)
+    val onScrubMoveState = rememberUpdatedState(onScrubMove)
+    val onScrubEndState = rememberUpdatedState(onScrubEnd)
 
     val startMarkerPainter = painterResource(Res.drawable.ic_startmarker_cyan)
     val endMarkerPainter = painterResource(Res.drawable.ic_endmarker_cyan)
 
     val dragModifier = modifier.pointerInput(framesOnScreen) {
-        var dragStartFrame = 0
-        var dragAccumLocal = 0f
         var activeMarker: String? = null  // "start", "end", "verse:N", or null = waveform scroll
 
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
             val touchX = down.position.x
-            val curFrame = currentFrameState.value
             val w = size.width.toFloat().coerceAtLeast(1f)
-            val leftFrame = curFrame - (framesOnScreen / 2f)
+            // Integer frames-per-pixel matching the renderer + Canvas, centered on
+            // the playhead, so marker hit-testing and scrubbing use the exact same
+            // frame↔pixel mapping as what's drawn.
+            val framesPerPixelI = ((sampleRate.coerceAtLeast(1) * 10) / w.toInt().coerceAtLeast(1)).coerceAtLeast(1)
+            // Center frame captured at grab; the drag scrolls relative to this
+            // anchor so playback advancing mid-drag can't shift the target.
+            val anchorFrame = currentFrameState.value
 
-            fun fToX(frame: Float) = ((frame - leftFrame) / framesOnScreen) * w
+            fun fToX(frame: Float) = w / 2f + (frame - anchorFrame) / framesPerPixelI
 
             val dur = durationFramesState.value
             val startX = selStartProgressState.value?.takeIf { dur > 0 }?.let { fToX(it * dur) }
@@ -474,16 +484,14 @@ private fun PlaybackWaveform(
                 }
             }
 
-            dragStartFrame = curFrame
-            dragAccumLocal = 0f
-            dragAccumPx = 0f
-
             if (activeMarker != null) {
-                // Marker drag — no touch slop, respond immediately
+                // Marker drag — no touch slop, respond immediately. Freeze the
+                // playback follow first so the waveform (and its leftFrame) stays
+                // put under the finger while dragging during playback; otherwise
+                // the ticker keeps re-centering and the marker drifts away.
                 down.consume()
+                onFreezeFollowState.value()
 
-                // For verse markers: notify start once so the VM captures the
-                // stable index before any re-sorting happens.
                 val verseIdx = activeMarker?.removePrefix("verse:")?.toIntOrNull()
                 if (verseIdx != null) onVerseMarkerDragStartState.value(verseIdx)
 
@@ -492,32 +500,40 @@ private fun PlaybackWaveform(
                     val ch = event.changes.firstOrNull { it.id == down.id } ?: break
                     ch.consume()
                     if (!ch.pressed) break
-                    val newX = ch.position.x
-                    val newFrame = leftFrame + (newX / w) * framesOnScreen
+                    // Inverse of fToX: frame under the finger, centered on the playhead.
+                    val newFrame = anchorFrame + (ch.position.x - w / 2f) * framesPerPixelI
                     val progress = if (dur > 0) (newFrame / dur.toFloat()).coerceIn(0f, 1f) else 0f
                     when {
                         activeMarker == "start" -> onSelectionStartMovedState.value(progress)
                         activeMarker == "end" -> onSelectionEndMovedState.value(progress)
-                        verseIdx != null -> onVerseMarkerDragUpdateState.value(progress)
+                        verseIdx != null -> onVerseMarkerMoveState.value(progress)
                     }
                 }
 
                 if (verseIdx != null) onVerseMarkerDragEndState.value()
+                onResumeFollowState.value()
             } else {
-                // Waveform scroll — wait for touch slop before tracking
+                // Waveform scroll — live scrub. Wait for touch slop, then re-center
+                // (and re-render) on every move so the waveform scrolls smoothly
+                // under the fixed playhead. Audio keeps playing; the seek commits
+                // on release.
                 val firstDrag = awaitHorizontalTouchSlopOrCancellation(down.id) { ch, _ -> ch.consume() }
                     ?: return@awaitEachGesture
-                dragAccumLocal = firstDrag.position.x - down.position.x
-                dragAccumPx = dragAccumLocal
+                onFreezeFollowState.value()
+                // Re-read the center AFTER freezing: while playing, the ticker
+                // advanced currentFrame between the touch-down and the slop
+                // threshold, so the down-time anchor would jump the waveform back.
+                val scrubAnchor = currentFrameState.value
+                var accumPx = firstDrag.position.x - down.position.x
+                var scrubFrame = (scrubAnchor - accumPx * framesPerPixelI).toInt()
+                onScrubMoveState.value(scrubFrame)
                 horizontalDrag(firstDrag.id) { ch ->
                     ch.consume()
-                    dragAccumLocal += (ch.position - ch.previousPosition).x
-                    dragAccumPx = dragAccumLocal
+                    accumPx += (ch.position - ch.previousPosition).x
+                    scrubFrame = (scrubAnchor - accumPx * framesPerPixelI).toInt()
+                    onScrubMoveState.value(scrubFrame)
                 }
-                val framesPerPixel = framesOnScreen / w
-                val targetFrame = (dragStartFrame - (dragAccumLocal * framesPerPixel)).toInt()
-                onSeekToFrameState.value(targetFrame)
-                dragAccumPx = 0f
+                onScrubEndState.value(scrubFrame)
             }
         }
     }
@@ -527,16 +543,25 @@ private fun PlaybackWaveform(
         val widthF = size.width.coerceAtLeast(1f)
         val midY = size.height / 2f
         val scale = size.height / 2f / 32768f
-        val maxX = minOf(size.width.toInt().coerceAtLeast(1), samples.size / 2)
-        val leftFrame = currentFrame.toFloat() - (framesOnScreen / 2f)
+        val pairCount = samples.size / 2                 // real column count (0 if not rendered yet)
+        val pairs = pairCount.coerceAtLeast(1)           // guard for the division below only
+        val maxX = minOf(size.width.toInt().coerceAtLeast(1), pairCount)
 
-        fun frameToX(frame: Float): Float = ((frame - leftFrame) / framesOnScreen) * widthF
+        // Use the SAME integer frames-per-pixel the renderer used (framesOnScreen /
+        // pixel-count), and center on the playhead. renderCentered() places
+        // currentFrame on the middle pixel, so this keeps markers/selection exactly
+        // over the drawn audio at any window width.
+        val framesPerPixelI = ((sampleRate.coerceAtLeast(1) * 10) / pairs).coerceAtLeast(1)
+        fun frameToX(frame: Float): Float = widthF / 2f + (frame - currentFrame) / framesPerPixelI
 
         val markerIconPx = 32.dp.toPx()
         val pennantW = 20.dp.toPx()
         val pennantH = 24.dp.toPx()
 
-        withTransform({ translate(left = dragAccumPx) }) {
+        // Content is centered on `currentFrame` via frameToX; during a scrub the
+        // VM updates currentFrame on every move so the waveform re-renders and
+        // re-centers live (no manual canvas translate).
+        run {
             // Waveform
             for (x in 0 until maxX) {
                 val idx = x * 2
@@ -605,7 +630,7 @@ private fun PlaybackWaveform(
             }
         }
 
-        // Playback cursor — fixed at center, outside drag transform
+        // Playback cursor — fixed at canvas center
         drawLine(
             color = Color(0xFF1EA7FD),
             start = Offset(size.width / 2f, 0f),
@@ -777,7 +802,6 @@ private fun MinimapCanvas(
                 down.consume()
                 if (size.width > 0) {
                     val progress = (down.position.x / size.width.toFloat()).coerceIn(0f, 1f)
-                    println("MinimapCanvas tap: x=${down.position.x}, width=${size.width}, seekProgress=$progress")
                     onSeek(progress)
                 }
                 waitForUpOrCancellation()?.consume()
@@ -787,7 +811,8 @@ private fun MinimapCanvas(
         val widthF = size.width.coerceAtLeast(1f)
         val midY = size.height / 2f
         val scale = size.height / 2f / 32768f
-        val maxX = minOf(size.width.toInt().coerceAtLeast(1), samples.size / 2)
+        val pairCount = samples.size / 2                 // real column count (0 if not rendered yet)
+        val maxX = minOf(size.width.toInt().coerceAtLeast(1), pairCount)
 
         // Draw waveform
         for (x in 0 until maxX) {
@@ -797,10 +822,15 @@ private fun MinimapCanvas(
             drawLine(Color(0xFFCCCCCC), Offset(x.toFloat(), y1), Offset(x.toFloat(), y2))
         }
 
-        // Yellow verse marker lines
+        // The minimap renderer bins frames with the EXACT ratio frame/totalFrames,
+        // so frame f is drawn at pixel f/durationFrames * width. Position the
+        // playhead and markers with that same exact ratio — the playhead then lands
+        // exactly where you click (progress = x/width) with no gap, at any width.
         if (durationFrames > 0) {
+            fun frameToX(frame: Float): Float = (frame / durationFrames) * widthF
+
             markerFrames.forEach { frame ->
-                val x = (frame.toFloat() / durationFrames) * widthF
+                val x = frameToX(frame.toFloat())
                 if (x in 0f..widthF) {
                     drawLine(Color(0xFFFFDD00), Offset(x, 0f), Offset(x, size.height))
                 }
@@ -808,18 +838,16 @@ private fun MinimapCanvas(
 
             // Teal section markers
             selectionStartProgress?.let { p ->
-                val x = p * widthF
-                drawLine(Color(0xFF13C4C3), Offset(x, 0f), Offset(x, size.height))
+                drawLine(Color(0xFF13C4C3), Offset(p * widthF, 0f), Offset(p * widthF, size.height))
             }
             selectionEndProgress?.let { p ->
-                val x = p * widthF
-                drawLine(Color(0xFF13C4C3), Offset(x, 0f), Offset(x, size.height))
+                drawLine(Color(0xFF13C4C3), Offset(p * widthF, 0f), Offset(p * widthF, size.height))
             }
-        }
 
-        // Blue playback position
-        val posX = progress * widthF
-        drawLine(Color(0xFF1EA7FD), Offset(posX, 0f), Offset(posX, size.height))
+            // Blue playback position
+            val posX = progress * widthF
+            drawLine(Color(0xFF1EA7FD), Offset(posX, 0f), Offset(posX, size.height))
+        }
     }
 }
 

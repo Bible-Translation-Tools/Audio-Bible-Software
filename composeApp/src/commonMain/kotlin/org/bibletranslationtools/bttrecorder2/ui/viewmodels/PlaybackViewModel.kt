@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -161,10 +162,17 @@ class PlaybackViewModel(
     private var tickerJob: Job? = null
     private var minimapRenderJob: Job? = null
 
-    // Desired waveform center frame. The init-block collector serializes renders
-    // and uses `conflate()` so the latest desired frame always wins, dropping
-    // intermediate values when a render is in flight.
-    private val _desiredWaveformFrame = MutableStateFlow(0)
+    // Render requests for the waveform, keyed by desired center frame. A CONFLATED
+    // channel keeps latest-wins semantics (intermediate frames dropped while a
+    // render is in flight) but, unlike a StateFlow, never dedups equal values — so
+    // the initial frame-0 render and same-frame re-renders (e.g. re-centering after
+    // a stop at frame 0) always fire. A StateFlow here silently swallowed the first
+    // render because refreshWaveform() set it to 0 while it already held 0.
+    private val renderRequests = Channel<Int>(Channel.CONFLATED)
+
+    private fun requestRender(frame: Int) {
+        renderRequests.trySend(frame)
+    }
 
     private var waveformWidth: Int = 0
     private var minimapWidth: Int = 0
@@ -182,11 +190,17 @@ class PlaybackViewModel(
 
     private val droppedVerseMarkerFrames = mutableListOf<Int>()
 
-    // Diagnostic state for waveform-scroll stutter investigation.
-    private var diagPrevTickNs: Long = 0L
-    private var diagPrevWriteFrame: Int = -1
-    private var diagPrevPlayFrame: Long = -1L
-    private var diagTickIndex: Int = 0
+    // Authoritative, mutable list of verse-marker frame positions for the loaded
+    // take. Drag operations mutate this in place; it is mirrored into
+    // uiState.markerFrames. Kept separate from `markerFrames` (the last-rendered
+    // snapshot) so a drag has a stable index to work against.
+    private val editedVerseMarkers = mutableListOf<Int>()
+    private var draggingVerseMarkerIndex: Int = -1
+
+    // Live-scrub state for waveform drag. While scrubbing we stop the UI
+    // auto-follow ticker (audio keeps playing) and re-render on each move; on
+    // release we commit the seek and, if it was playing, resume following.
+    private var scrubWasPlaying: Boolean = false
 
     init {
         // Serialize waveform renders to a single worker. `collectLatest` would
@@ -198,12 +212,9 @@ class PlaybackViewModel(
         // flight, intermediate desired-frame values are dropped and the next
         // render picks up whatever the latest value is when the worker frees.
         viewModelScope.launch(Dispatchers.Default.limitedParallelism(1)) {
-            _desiredWaveformFrame.collect { frame ->
-                val renderer = waveformRenderer ?: return@collect
-                val startNs = System.nanoTime()
+            for (frame in renderRequests) {
+                val renderer = waveformRenderer ?: continue
                 val samples = renderer.renderCentered(frame)
-                val elapsedMicros = (System.nanoTime() - startNs) / 1_000L
-                println("[WAVE-DIAG] renderCentered frame=$frame tookMicros=$elapsedMicros")
                 _uiState.update { it.copy(waveformSamples = samples) }
             }
         }
@@ -216,7 +227,16 @@ class PlaybackViewModel(
                         startTicker()
                     }
 
-                    AudioPlayerEvent.Pause,
+                    AudioPlayerEvent.Pause -> {
+                        // Do NOT refreshTransport() here. Once the sink stops, the
+                        // player reports the WRITTEN position (ahead of what was
+                        // actually heard by the whole audio buffer, ~200 ms), so
+                        // snapping to it jumps the cursor forward. togglePlayPause
+                        // already set currentFrame to the played position.
+                        _uiState.value = _uiState.value.copy(isPlaying = false)
+                        stopTicker()
+                    }
+
                     AudioPlayerEvent.Stop,
                     AudioPlayerEvent.Complete -> {
                         _uiState.value = _uiState.value.copy(isPlaying = false)
@@ -295,9 +315,15 @@ class PlaybackViewModel(
     fun togglePlayPause() {
         if (_uiState.value.selectedTake == null) return
         if (_uiState.value.isPlaying) {
+            // Capture the PLAYED position while the sink is still running. After
+            // pause the player reports the WRITTEN position (ahead by the audio
+            // buffer), so reading it post-pause is what jumped the cursor forward.
+            val playedFrame = audioPlayer.getLocationInFrames()
             _uiState.value = _uiState.value.copy(isPlaying = false)
             stopTicker()
             audioPlayer.pause()
+            applyTransportForFrame(playedFrame)
+            requestRender(playedFrame)
         } else {
             _uiState.value = _uiState.value.copy(isPlaying = true, error = null)
             startTicker()
@@ -308,28 +334,20 @@ class PlaybackViewModel(
     fun seekToProgress(progress: Float) {
         val duration = audioPlayer.getDurationInFrames()
         if (duration <= 0) return
-        val frame = (duration * progress.coerceIn(0f, 1f)).toInt()
-        println("seekToProgress: progress=$progress, targetFrame=$frame, duration=$duration")
-        audioPlayer.seek(frame)
-        refreshTransport()
-        refreshWaveform()
+        // Route through seekToFrame so the waveform centers on the exact requested
+        // frame (not the player's chunk-rounded read-back), fixing imprecise
+        // minimap taps.
+        seekToFrame((duration * progress.coerceIn(0f, 1f)).toInt())
     }
 
     fun seekBackward() {
-        val current = audioPlayer.getLocationInFrames()
-        val target = max(current - (5 * waveformSampleRate), 0)
-        audioPlayer.seek(target)
-        refreshTransport()
-        refreshWaveform()
+        // Base the delta on the authoritative UI frame, not the player's async
+        // (possibly stale) position, then let seekToFrame own the state update.
+        seekToFrame(_uiState.value.currentFrame - 5 * waveformSampleRate)
     }
 
     fun seekForward() {
-        val current = audioPlayer.getLocationInFrames()
-        val duration = audioPlayer.getDurationInFrames()
-        val target = min(current + (5 * waveformSampleRate), duration)
-        audioPlayer.seek(target)
-        refreshTransport()
-        refreshWaveform()
+        seekToFrame(_uiState.value.currentFrame + 5 * waveformSampleRate)
     }
 
     fun seekToFrame(absoluteFrame: Int) {
@@ -337,18 +355,23 @@ class PlaybackViewModel(
         if (duration <= 0) return
         val target = absoluteFrame.coerceIn(0, duration)
         audioPlayer.seek(target)
-        // Update currentFrame synchronously so the Canvas uses the correct center immediately
-        // when dragAccumPx resets on drag-end, before the async waveform render completes.
-        _uiState.update { it.copy(
-            currentFrame = target,
-            progress = target.toFloat() / duration.toFloat()
-        ) }
-        refreshTransport()
-        _desiredWaveformFrame.value = target
+        // Derive all transport state from `target` directly. audioPlayer.seek() is
+        // asynchronous, so reading back getLocationInFrames() here (as
+        // refreshTransport does) would return the PRE-seek position and clobber the
+        // playhead back to where it started — which made seeks land short of the
+        // target and drags never reach the end.
+        applyTransportForFrame(target)
+        requestRender(target)
+        // Re-anchor the interpolated playback clock at the new position so the
+        // cursor snaps immediately instead of waiting for the ~500 ms drift check.
+        if (_uiState.value.isPlaying) {
+            stopTicker()
+            startTicker()
+        }
     }
 
     fun seekByFrameDelta(deltaFrames: Int) {
-        seekToFrame(audioPlayer.getLocationInFrames() + deltaFrames)
+        seekToFrame(_uiState.value.currentFrame + deltaFrames)
     }
 
     fun showMinimap(show: Boolean) {
@@ -389,45 +412,102 @@ class PlaybackViewModel(
         if (frame != start) { selectionEndFrame = frame; updateEditUi() }
     }
 
-    // ── Verse marker drag ─────────────────────────────────────────────────────
-    // Three-phase API: startVerseMarkerDrag captures the index once into the
-    // UNSORTED internal list; updateVerseMarkerDrag moves that same slot on
-    // every pointer-move event (no re-sort during drag = no index drift);
-    // endVerseMarkerDrag re-sorts to prepare for the next gesture.
-    private var draggingVerseMarkerIndex: Int = -1
+    // ── Playback-follow freeze (shared by every waveform drag) ─────────────────
+    // While dragging (scrub OR a marker) the auto-follow ticker must not keep
+    // re-centering the waveform, or the drawn content shifts out from under the
+    // finger. Freezing stops the ticker (audio keeps playing); resuming re-anchors
+    // and follows again if it was playing. Idempotent when paused (no-ops).
 
-    fun startVerseMarkerDrag(sortedIndex: Int) {
-        // Ensure the internal list matches the sorted display order before we
-        // capture an index from the UI.
-        markerFrames = markerFrames.sorted()
-        draggingVerseMarkerIndex = sortedIndex
+    fun freezePlaybackFollow() {
+        scrubWasPlaying = _uiState.value.isPlaying
+        stopTicker()
     }
 
-    fun updateVerseMarkerDrag(progress: Float) {
+    fun resumePlaybackFollow() {
+        if (scrubWasPlaying) startTicker()
+        scrubWasPlaying = false
+    }
+
+    // ── Waveform live scrub (drag) ─────────────────────────────────────────────
+    // Keeps audio playing while dragging. scrubToFrame re-renders and updates the
+    // readout to the dragged position without seeking; on release endWaveformScrub
+    // commits the seek and resumes following if it was playing.
+
+    fun scrubToFrame(frame: Int) {
+        if (audioPlayer.getDurationInFrames() <= 0) return
+        // No audioPlayer.seek during the drag — audio keeps playing; we only move
+        // the displayed position and re-render.
+        applyTransportForFrame(frame)
+        requestRender(frame.coerceIn(0, audioPlayer.getDurationInFrames()))
+    }
+
+    fun endWaveformScrub(finalFrame: Int) {
+        val duration = audioPlayer.getDurationInFrames()
+        if (duration <= 0) return
+        val target = finalFrame.coerceIn(0, duration)
+        audioPlayer.seek(target)
+        // Derive from `target`, not the async-stale player position (see seekToFrame).
+        applyTransportForFrame(target)
+        requestRender(target)
+        resumePlaybackFollow()
+    }
+
+    // ── Verse marker drag ─────────────────────────────────────────────────────
+    // Mirrors the start/end selection-marker path: a per-move progress callback
+    // updates a single slot in `editedVerseMarkers` (no re-sort during the drag so
+    // the captured index stays valid) and mirrors it into the UI. On release the
+    // list is sorted and written back into `baseMarkers` so the moved location
+    // survives later re-renders and edit/save.
+
+    fun beginVerseMarkerDrag(index: Int) {
+        draggingVerseMarkerIndex = if (index in editedVerseMarkers.indices) index else -1
+    }
+
+    fun moveVerseMarker(progress: Float) {
         val idx = draggingVerseMarkerIndex
-        if (idx < 0) return
-        val dur = editSession?.editedTotalFrames
-            ?: _uiState.value.durationFrames.takeIf { it > 0 }
-            ?: return
-        val newFrame = (progress * dur).toInt().coerceIn(0, dur)
-        val mutable = markerFrames.toMutableList()
-        if (idx !in mutable.indices) return
-        mutable[idx] = newFrame
-        markerFrames = mutable                   // keep UNsorted so idx stays stable
-        val sorted = mutable.sorted()
-        markerLabels = buildMarkerLabelsForFrames(sorted)
-        _uiState.value = _uiState.value.copy(
-            markerFrames = sorted,
-            markerLabels = markerLabels
-        )
+        if (idx !in editedVerseMarkers.indices) return
+        val dur = _uiState.value.durationFrames.takeIf { it > 0 } ?: return
+        editedVerseMarkers[idx] = (progress * dur).toInt().coerceIn(0, dur)
+        publishVerseMarkers()
     }
 
     fun endVerseMarkerDrag() {
         if (draggingVerseMarkerIndex < 0) return
-        markerFrames = markerFrames.sorted()     // finalize order for next gesture
         draggingVerseMarkerIndex = -1
+        editedVerseMarkers.sort()
+        commitVerseMarkersToBase()
+        publishVerseMarkers()
     }
-    // ─────────────────────────────────────────────────────────────────────────
+
+    // Push the current edited verse-marker frames + labels into the UI state.
+    private fun publishVerseMarkers() {
+        markerFrames = editedVerseMarkers.toList()
+        markerLabels = buildMarkerLabelsForFrames(markerFrames)
+        _uiState.update { it.copy(
+            markerFrames = markerFrames,
+            markerLabels = markerLabels
+        ) }
+    }
+
+    // Replace the VerseMarker entries in baseMarkers with the edited locations so
+    // refreshMarkerFrames / save reflect the moved positions. Preserves any
+    // non-verse markers (book/chapter) untouched.
+    //
+    // Only safe when there are no pending edits: baseMarkers are in absolute
+    // (original-file) frames, whereas editedVerseMarkers are in edited/relative
+    // frames once a cut exists. Writing relative frames back into the absolute base
+    // would corrupt them (mapEditedMarkers would map them a second time). With edits
+    // active we leave baseMarkers alone; the moved positions remain visible via
+    // editedVerseMarkers until the next reload.
+    private fun commitVerseMarkersToBase() {
+        if (editSession?.hasEdits() == true) return
+        val nonVerse = baseMarkers.filter { it !is VerseMarker }
+        val oldVerses = baseMarkers.filterIsInstance<VerseMarker>().sortedBy { it.location }
+        val movedVerses = editedVerseMarkers.sorted().mapIndexed { i, frame ->
+            oldVerses.getOrNull(i)?.clone(frame) ?: VerseMarker(start = i + 1, end = i + 1, location = frame)
+        }
+        baseMarkers = (nonVerse + movedVerses).sortedBy { it.location }
+    }
 
     fun clearSelection() {
         selectionStartFrame = null
@@ -760,6 +840,8 @@ class PlaybackViewModel(
             baseMarkers = originalAudio.getMarkers().sortedBy { it.location }
             markerFrames = baseMarkers.filterIsInstance<VerseMarker>().map { it.location }
             markerLabels = baseMarkers.filterIsInstance<VerseMarker>().map { it.label }
+            editedVerseMarkers.clear()
+            editedVerseMarkers.addAll(markerFrames)
             droppedVerseMarkerFrames.clear()
             selectionStartFrame = null
             selectionEndFrame = null
@@ -812,10 +894,12 @@ class PlaybackViewModel(
         val editedMarkers = mapEditedMarkers(baseMarkers).filterIsInstance<VerseMarker>()
         markerFrames = editedMarkers.map { it.location }.sorted()
         markerLabels = editedMarkers.sortedBy { it.location }.map { it.label }
-        _uiState.value = _uiState.value.copy(
+        editedVerseMarkers.clear()
+        editedVerseMarkers.addAll(markerFrames)
+        _uiState.update { it.copy(
             markerFrames = markerFrames,
             markerLabels = markerLabels
-        )
+        ) }
     }
 
     private fun reloadCurrentTakePlayback(seekFrame: Int) {
@@ -834,8 +918,11 @@ class PlaybackViewModel(
         setupWaveformRenderer(take)
         loadMinimapSamples(take)
         refreshMarkerFrames()
-        refreshTransport()
-        refreshWaveform()
+        // Derive transport + waveform center from the known seek target, not the
+        // async-stale player position (matters when reloading with a non-zero seek
+        // after a cut/undo/redo).
+        applyTransportForFrame(clampedSeek)
+        requestRender(clampedSeek)
         updateEditUi()
     }
 
@@ -879,63 +966,58 @@ class PlaybackViewModel(
             selectionEndFrame != null &&
             abs((selectionStartFrame ?: 0) - (selectionEndFrame ?: 0)) >= 2
 
-        _uiState.value = _uiState.value.copy(
+        // Atomic update: this runs on the Main-thread ticker path while the
+        // waveform render worker concurrently updates waveformSamples on a
+        // background thread. A blind `.value =` here would clobber a just-finished
+        // samples update; `.update {}` CAS-retries so neither write is lost.
+        _uiState.update { it.copy(
             selectionStartProgress = startProgress,
             selectionEndProgress = endProgress,
             canCutSelection = canCut,
             canUndoEdit = editSession?.canUndo() == true,
             canRedoEdit = editSession?.canRedo() == true
-        )
+        ) }
     }
 
     private fun refreshWaveform() {
-        _desiredWaveformFrame.value = audioPlayer.getLocationInFrames()
+        // Center on the authoritative displayed frame. Callers first sync
+        // currentFrame (refreshTransport at pause, etc.), so this avoids depending
+        // on the player's async/pollable position.
+        requestRender(_uiState.value.currentFrame)
     }
 
     private fun startTicker() {
         if (tickerJob?.isActive == true) return
-        diagPrevTickNs = 0L
-        diagPrevWriteFrame = -1
-        diagPrevPlayFrame = -1L
-        diagTickIndex = 0
         tickerJob = viewModelScope.launch {
-            // Interpolated playback clock. AudioTrack.playbackHeadPosition only
-            // updates at the HAL's chunk granularity (~10 ms), so polling it on
-            // every tick would still produce micro-stalls between updates. We
-            // anchor once at play start and let the wall clock drive the cursor
-            // forward at the audio sample rate, validating periodically against
-            // the observed cursor and snapping only on large drifts (seek /
-            // pause-resume / stall). 60 Hz polling matches typical display
-            // refresh and keeps state-update churn moderate; interpolation
-            // makes the cursor smooth between samples regardless of the
-            // source's chunky updates.
+            // Playback clock that stays LOCKED to the real played position while
+            // smoothing its coarse updates. getLocationInFrames() advances on the
+            // audio HAL's chunk boundary (~10 ms), so we re-anchor to it whenever it
+            // moves forward and use the wall clock only to fill the gap up to the
+            // next 16 ms display tick. The old approach anchored once and let
+            // wall-clock free-run, which drifted ~200 ms from the true position and
+            // produced a visible jump when pause snapped the cursor back to reality.
+            // Anchoring on the real position keeps display ≈ audible position, so
+            // pausing has (essentially) nothing to snap.
             val sampleRate = waveformSampleRate.coerceAtLeast(1).toLong()
-            var anchorFrame = audioPlayer.getLocationInFrames().toLong()
+            var anchorFrame = _uiState.value.currentFrame.toLong()
             var anchorNs = System.nanoTime()
-            var lastValidationNs = anchorNs
 
             while (_uiState.value.isPlaying) {
                 delay(16)
                 val nowNs = System.nanoTime()
 
-                // Every ~500 ms, check whether the interpolated cursor has
-                // diverged from the real one. Snap if drift exceeds 250 ms
-                // (seek / glitch); ignore smaller drifts to avoid visible
-                // micro-jumps from the chunky source.
-                if (nowNs - lastValidationNs > 500_000_000L) {
-                    lastValidationNs = nowNs
-                    val observed = audioPlayer.getLocationInFrames().toLong()
-                    val interpolated = anchorFrame + (nowNs - anchorNs) * sampleRate / 1_000_000_000L
-                    val drift = observed - interpolated
-                    if (kotlin.math.abs(drift) > sampleRate / 4L) {
-                        anchorFrame = observed
-                        anchorNs = nowNs
-                    }
+                val observed = audioPlayer.getLocationInFrames().toLong()
+                // Lock onto the real position whenever it has advanced past our
+                // anchor. Only moves forward, so a momentarily-behind reading can't
+                // yank the cursor backward (which would read as stutter).
+                if (observed > anchorFrame) {
+                    anchorFrame = observed
+                    anchorNs = nowNs
                 }
 
                 val displayFrameLong = anchorFrame + (nowNs - anchorNs) * sampleRate / 1_000_000_000L
                 refreshTransportInterpolated(displayFrameLong, sampleRate.toInt())
-                _desiredWaveformFrame.value = _uiState.value.currentFrame
+                requestRender(_uiState.value.currentFrame)
             }
         }
     }
@@ -951,11 +1033,10 @@ class PlaybackViewModel(
         val clampedFrame = displayFrameLong.coerceIn(0L, durationFrames.toLong()).toInt()
         val positionMs = (clampedFrame.toLong() * 1000L / sr).toInt().coerceIn(0, durationMs)
         val progress = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f
-        val take = _uiState.value.selectedTake
 
-        logTickPositionDiagnostics(clampedFrame)
-
-        _uiState.value = _uiState.value.copy(
+        // Atomic: runs 60 Hz on the ticker thread alongside the background render
+        // worker's samples update — CAS-retry so neither clobbers the other.
+        _uiState.update { it.copy(
             progress = progress,
             currentFrame = clampedFrame,
             durationFrames = durationFrames,
@@ -964,43 +1045,40 @@ class PlaybackViewModel(
             durationMs = durationMs,
             elapsedText = formatTime(positionMs),
             durationText = formatTime(durationMs),
-            currentTakeNumber = take?.number
-        )
+            currentTakeNumber = it.selectedTake?.number
+        ) }
         updateEditUi()
-    }
-
-    // Logs per-frame playback-position diagnostics so we can verify smoothness.
-    // After the vsync-interpolation refactor, `writeFrame` is the displayed
-    // (interpolated) frame and should advance ~sampleRate/displayHz per tick;
-    // `playFrame` is the raw AudioTrack.playbackHeadPosition and will still
-    // step in chunks. `leadFrames` shows how far the interpolated cursor leads
-    // (or lags) the observed one.
-    private fun logTickPositionDiagnostics(writeFrame: Int) {
-        val nowNs = System.nanoTime()
-        val playFrame = runCatching { audioPlayerFactory.getPlayerWorker().debugSinkFramePosition() }
-            .getOrDefault(-1L)
-        val deltaWrite = if (diagPrevWriteFrame < 0) 0 else writeFrame - diagPrevWriteFrame
-        val deltaPlay = if (diagPrevPlayFrame < 0) 0L else playFrame - diagPrevPlayFrame
-        val deltaMs = if (diagPrevTickNs == 0L) 0L else (nowNs - diagPrevTickNs) / 1_000_000L
-        val lead = if (playFrame >= 0) writeFrame.toLong() - playFrame else -1L
-        println(
-            "[WAVE-DIAG] tick=" + diagTickIndex +
-                " dtMs=" + deltaMs +
-                " writeFrame=" + writeFrame +
-                " dWrite=" + deltaWrite +
-                " playFrame=" + playFrame +
-                " dPlay=" + deltaPlay +
-                " leadFrames=" + lead
-        )
-        diagTickIndex += 1
-        diagPrevTickNs = nowNs
-        diagPrevWriteFrame = writeFrame
-        diagPrevPlayFrame = playFrame
     }
 
     private fun stopTicker() {
         tickerJob?.cancel()
         tickerJob = null
+    }
+
+    // Sets the transport UI (position, progress, time readout) from an EXPLICIT
+    // frame rather than polling the player. Use after audioPlayer.seek(), whose
+    // async nature means getLocationInFrames() would still report the old position.
+    // Duration is safe to read from the player (it reflects the loaded reader, not
+    // the play head).
+    private fun applyTransportForFrame(frame: Int) {
+        val durationFrames = audioPlayer.getDurationInFrames().coerceAtLeast(0)
+        val durationMs = audioPlayer.getDurationMs().coerceAtLeast(0)
+        val sr = waveformSampleRate.coerceAtLeast(1)
+        val clamped = frame.coerceIn(0, durationFrames)
+        val positionMs = (clamped.toLong() * 1000L / sr).toInt().coerceIn(0, durationMs)
+        val progress = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f
+        _uiState.update { it.copy(
+            progress = progress,
+            currentFrame = clamped,
+            durationFrames = durationFrames,
+            sampleRate = sr,
+            elapsedMs = positionMs,
+            durationMs = durationMs,
+            elapsedText = formatTime(positionMs),
+            durationText = formatTime(durationMs),
+            currentTakeNumber = it.selectedTake?.number
+        ) }
+        updateEditUi()
     }
 
     private fun refreshTransport() {
@@ -1009,11 +1087,8 @@ class PlaybackViewModel(
         val durationFrames = audioPlayer.getDurationInFrames().coerceAtLeast(0)
         val currentFrame = audioPlayer.getLocationInFrames().coerceIn(0, durationFrames)
         val progress = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f
-        val take = _uiState.value.selectedTake
 
-        logTickPositionDiagnostics(currentFrame)
-
-        _uiState.value = _uiState.value.copy(
+        _uiState.update { it.copy(
             progress = progress,
             currentFrame = currentFrame,
             durationFrames = durationFrames,
@@ -1022,8 +1097,8 @@ class PlaybackViewModel(
             durationMs = durationMs,
             elapsedText = formatTime(positionMs),
             durationText = formatTime(durationMs),
-            currentTakeNumber = take?.number
-        )
+            currentTakeNumber = it.selectedTake?.number
+        ) }
         updateEditUi()
     }
 
