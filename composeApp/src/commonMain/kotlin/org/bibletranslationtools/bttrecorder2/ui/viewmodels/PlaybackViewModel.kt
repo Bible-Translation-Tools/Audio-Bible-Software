@@ -144,8 +144,9 @@ class PlaybackViewModel(
     private val _uiState = MutableStateFlow(PlaybackUiState())
     val uiState: StateFlow<PlaybackUiState> = _uiState.asStateFlow()
 
-    // PERF: temporary Phase-0 instrumentation — remove after playback rework validation.
-    // Every uiState emission funnels through here so PlaybackPerfStats can count them.
+    // Every uiState emission funnels through here so PlaybackPerfStats can count them
+    // (see PLAYBACK_PERF_STATS). Steady-state playback should emit nothing — position
+    // flows through the display clock, not uiState.
     private inline fun updateState(block: (PlaybackUiState) -> PlaybackUiState) {
         PlaybackPerfStats.onEmission()
         _uiState.update(block)
@@ -259,8 +260,7 @@ class PlaybackViewModel(
     )
 
     init {
-        // PERF: temporary Phase-0 instrumentation — remove after playback rework
-        // validation. Prints one baseline summary line per second.
+        // No-op unless PLAYBACK_PERF_STATS is enabled (see PlaybackPerfStats).
         PlaybackPerfStats.startLogging(viewModelScope)
 
         // The disk-render worker that used to live here is gone: the waveform is now

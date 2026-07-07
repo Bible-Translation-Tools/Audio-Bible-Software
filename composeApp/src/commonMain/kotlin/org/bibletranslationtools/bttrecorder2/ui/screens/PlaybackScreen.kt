@@ -134,14 +134,16 @@ fun PlaybackScreen(
     onBackClick: () -> Unit,
     onNavigateToRecorder: (sourceId: Int, targetId: Int, chapterNumber: Int, unitNumber: Int) -> Unit = { _, _, _, _ -> }
 ) {
-    // PERF: temporary Phase-0 instrumentation — remove after playback rework validation.
+    // PERF counter (no-op unless PLAYBACK_PERF_STATS): steady playback should not
+    // recompose this screen at all — position flows through the display clock, read
+    // only in draw scopes.
     SideEffect { PlaybackPerfStats.onRecomposition() }
 
     // The display frame loop: drives the playback display clock once per frame
     // (rate-locked, slew-corrected — see PlaybackDisplayClock). Runs unconditionally
     // while the screen is composed; the clock no-ops when not advancing, and
     // unchanged-value state writes don't invalidate anything (free when paused).
-    // Also feeds the temporary Phase-0 frame-pacing instrumentation.
+    // Also feeds the frame-pacing PERF counter (no-op unless PLAYBACK_PERF_STATS).
     LaunchedEffect(viewModel) {
         var last = -1L
         while (isActive) withFrameNanos { t ->

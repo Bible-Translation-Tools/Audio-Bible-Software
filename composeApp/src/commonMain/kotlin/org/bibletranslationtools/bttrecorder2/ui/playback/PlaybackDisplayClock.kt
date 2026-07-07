@@ -55,11 +55,6 @@ class PlaybackDisplayClock(
     /** True while the clock should follow playback (= playing && !follow-frozen). */
     var advancing: Boolean = false
 
-    // PERF: debug-only counter (read by PlaybackPerfStats logging); a non-zero rate
-    // during continuous playback means the slew band is being exceeded.
-    var hardSnaps: Int = 0
-        private set
-
     fun onFrame(frameTimeNanos: Long) {
         if (!advancing) {
             lastNanos = frameTimeNanos
@@ -78,7 +73,6 @@ class PlaybackDisplayClock(
         // sink is spinning up (or a seek is settling) we free-run at exactly 1.0×.
         if (positionReliable()) {
             val error = positionSource().toDouble() - posF
-            val errorMs = (error * 1000.0 / sampleRate).toInt()
             val inBand = kotlin.math.abs(error) <= sampleRate * 0.25
 
             if (!sourceSettled) {
@@ -86,7 +80,6 @@ class PlaybackDisplayClock(
                     sourceSettled = true
                     unsettledSinceNanos = -1L
                     errAvg = 0.0
-                    PlaybackPerfStats.onClockEvent("settled errMs=$errorMs")
                 } else {
                     // Source still reporting a stale/lying position after a snap —
                     // free-run. Safety valve: if it never converges (a genuinely
@@ -94,10 +87,8 @@ class PlaybackDisplayClock(
                     // than drift forever.
                     if (unsettledSinceNanos < 0) unsettledSinceNanos = frameTimeNanos
                     if (frameTimeNanos - unsettledSinceNanos > 2_000_000_000L) {
-                        PlaybackPerfStats.onClockEvent("FALLBACK snap errMs=$errorMs (never settled)")
                         posF += error
                         errAvg = 0.0
-                        hardSnaps++
                         sourceSettled = true
                         unsettledSinceNanos = -1L
                     }
@@ -111,15 +102,10 @@ class PlaybackDisplayClock(
                     errAvg += (error - errAvg) * (1 - kotlin.math.exp(-dt / 0.3))
                     posF += errAvg * (1 - kotlin.math.exp(-dt / 0.5))
                 } else {
-                    PlaybackPerfStats.onClockEvent("HARD snap errMs=$errorMs")
                     posF += error                                     // >250 ms: seek-sized
                     errAvg = 0.0
-                    hardSnaps++
                 }
             }
-            PlaybackPerfStats.onClockFrame(errorMs, sourceSettled)
-        } else {
-            PlaybackPerfStats.onClockFrame(null, sourceSettled)
         }
         posF = posF.coerceIn(0.0, durationFrames.toDouble())
         displayFrameState.longValue = posF.toLong()
@@ -133,6 +119,5 @@ class PlaybackDisplayClock(
         unsettledSinceNanos = -1L
         errAvg = 0.0
         displayFrameState.longValue = posF.toLong()
-        PlaybackPerfStats.onClockEvent("snapTo frame=${posF.toLong()}")
     }
 }
