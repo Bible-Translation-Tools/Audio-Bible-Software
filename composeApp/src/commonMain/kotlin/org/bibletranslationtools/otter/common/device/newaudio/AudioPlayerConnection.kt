@@ -107,6 +107,11 @@ class AudioPlayerConnection(
         return factory.isActiveConnection(id) && factory.getPlayerWorker().isSinkRunning
     }
 
+    override fun isPositionReliable(): Boolean {
+        // Lock-free (called per display frame by the playback display clock).
+        return factory.isActiveConnection(id) && factory.getPlayerWorker().isPositionReliable
+    }
+
     override fun getAudioReader(): AudioFileReader? = _reader
 
     override fun getDurationInFrames(): Int = _reader?.totalFrames ?: 0

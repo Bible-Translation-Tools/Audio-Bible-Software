@@ -29,4 +29,12 @@ interface IAudioPlayer {
     fun getDurationMs(): Int
     fun getLocationInFrames(): Int
     fun getLocationMs(): Int
+
+    /**
+     * True when [getLocationInFrames] reflects the audible position. During playback
+     * start / seek transients the underlying sink may not be running yet, in which
+     * case the reported position is the WRITE cursor (ahead of what's heard) and
+     * consumers smoothing the position (the display clock) should skip corrections.
+     */
+    fun isPositionReliable(): Boolean = true
 }

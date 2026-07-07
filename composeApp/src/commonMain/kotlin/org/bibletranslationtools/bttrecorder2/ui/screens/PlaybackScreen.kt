@@ -45,16 +45,30 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.text.font.FontFamily
 import org.bibletranslationtools.bttrecorder2.ui.platform.PlatformBackHandler
+import org.bibletranslationtools.bttrecorder2.ui.playback.AudioTimeline
+import org.bibletranslationtools.bttrecorder2.ui.playback.PcmSource
+import org.bibletranslationtools.bttrecorder2.ui.playback.PlaybackDisplayClock
+import org.bibletranslationtools.bttrecorder2.ui.playback.PlaybackPerfStats
 import org.bibletranslationtools.bttrecorder2.ui.playback.SourceAudioPlayerController
+import org.bibletranslationtools.bttrecorder2.ui.playback.WaveformPeakCache
+import org.bibletranslationtools.bttrecorder2.ui.playback.aggregate
+import org.bibletranslationtools.bttrecorder2.ui.playback.fillWindow
+import org.bibletranslationtools.bttrecorder2.ui.playback.formatPlaybackTime
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.IntState
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.graphics.drawscope.Stroke
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.isActive
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -120,6 +134,23 @@ fun PlaybackScreen(
     onBackClick: () -> Unit,
     onNavigateToRecorder: (sourceId: Int, targetId: Int, chapterNumber: Int, unitNumber: Int) -> Unit = { _, _, _, _ -> }
 ) {
+    // PERF: temporary Phase-0 instrumentation — remove after playback rework validation.
+    SideEffect { PlaybackPerfStats.onRecomposition() }
+
+    // The display frame loop: drives the playback display clock once per frame
+    // (rate-locked, slew-corrected — see PlaybackDisplayClock). Runs unconditionally
+    // while the screen is composed; the clock no-ops when not advancing, and
+    // unchanged-value state writes don't invalidate anything (free when paused).
+    // Also feeds the temporary Phase-0 frame-pacing instrumentation.
+    LaunchedEffect(viewModel) {
+        var last = -1L
+        while (isActive) withFrameNanos { t ->
+            if (last > 0) PlaybackPerfStats.onFrame(t - last)
+            last = t
+            viewModel.clock.onFrame(t)
+        }
+    }
+
     val ui by viewModel.uiState.collectAsState()
     var waveformWidth by remember { mutableStateOf(0) }
     var showExitConfirm by remember { mutableStateOf(false) }
@@ -215,11 +246,13 @@ fun PlaybackScreen(
                 .onSizeChanged { waveformWidth = it.width }
         ) {
             PlaybackWaveform(
-                samples = ui.waveformSamples,
+                timeline = viewModel::renderTimeline,
+                peakCacheFor = viewModel::peakCacheFor,
+                timelineGeneration = viewModel.timelineGeneration,
+                clock = viewModel.clock,
                 markerFrames = ui.markerFrames,
                 markerLabels = ui.markerLabels,
                 markerKinds = ui.markerKinds,
-                currentFrame = ui.currentFrame,
                 sampleRate = ui.sampleRate,
                 selectionStartProgress = ui.selectionStartProgress,
                 selectionEndProgress = ui.selectionEndProgress,
@@ -249,8 +282,10 @@ fun PlaybackScreen(
         val sourceAudioState by viewModel.sourceAudioState.collectAsState()
         MinimapWidget(
             showMinimap = ui.showMinimap,
-            minimapSamples = ui.minimapSamples,
-            progress = ui.progress,
+            timeline = viewModel::renderTimeline,
+            peakCacheFor = viewModel::peakCacheFor,
+            timelineGeneration = viewModel.timelineGeneration,
+            clock = viewModel.clock,
             markerFrames = ui.markerFrames,
             durationFrames = ui.durationFrames,
             sampleRate = ui.sampleRate,
@@ -270,7 +305,7 @@ fun PlaybackScreen(
         if (ui.isVerseMarkerMode) {
             MarkerToolbar(
                 isPlaying = ui.isPlaying,
-                elapsedText = ui.elapsedText,
+                clock = viewModel.clock,
                 durationText = ui.durationText,
                 onSeekBackward = viewModel::seekBackward,
                 onPlayPause = viewModel::togglePlayPause,
@@ -281,7 +316,7 @@ fun PlaybackScreen(
         } else {
             PlaybackTools(
                 isPlaying = ui.isPlaying,
-                elapsedText = ui.elapsedText,
+                clock = viewModel.clock,
                 durationText = ui.durationText,
                 hasStart = ui.selectionStartProgress != null,
                 hasEnd = ui.selectionEndProgress != null,
@@ -416,11 +451,13 @@ private fun PlaybackFileBar(
 
 @Composable
 private fun PlaybackWaveform(
-    samples: FloatArray,
+    timeline: () -> AudioTimeline?,
+    peakCacheFor: (PcmSource) -> WaveformPeakCache?,
+    timelineGeneration: IntState,
+    clock: PlaybackDisplayClock,
     markerFrames: List<Int>,
     markerLabels: List<String>,
     markerKinds: List<MarkerKind> = emptyList(),
-    currentFrame: Int,
     sampleRate: Int,
     selectionStartProgress: Float?,
     selectionEndProgress: Float?,
@@ -437,9 +474,7 @@ private fun PlaybackWaveform(
     onScrubEnd: (frame: Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val framesOnScreen = (sampleRate.coerceAtLeast(1) * 10).toFloat()
-
-    val currentFrameState = rememberUpdatedState(currentFrame)
+    val sampleRateState = rememberUpdatedState(sampleRate.coerceAtLeast(1))
     val selStartProgressState = rememberUpdatedState(selectionStartProgress)
     val selEndProgressState = rememberUpdatedState(selectionEndProgress)
     val durationFramesState = rememberUpdatedState(durationFrames)
@@ -457,22 +492,41 @@ private fun PlaybackWaveform(
     val startMarkerPainter = painterResource(Res.drawable.ic_startmarker_cyan)
     val endMarkerPainter = painterResource(Res.drawable.ic_endmarker_cyan)
 
-    val dragModifier = modifier.pointerInput(framesOnScreen) {
+    // Text layout is the most expensive operation in the draw path — measure marker
+    // labels ONCE per marker-list change here in composition, never per frame.
+    val markerLayouts = remember(markerLabels, markerKinds, textMeasurer) {
+        markerLabels.mapIndexed { i, label ->
+            if (label.isEmpty()) null
+            else textMeasurer.measure(
+                label,
+                style = TextStyle(
+                    fontSize = 11.sp,
+                    color = if ((markerKinds.getOrNull(i) ?: MarkerKind.VERSE) == MarkerKind.BOOK) {
+                        Color.White
+                    } else {
+                        Color(0xFF1A1A1A)
+                    },
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                )
+            )
+        }
+    }
+
+    val dragModifier = modifier.pointerInput(Unit) {
         var activeMarker: String? = null  // "start", "end", "verse:N", or null = waveform scroll
 
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
             val touchX = down.position.x
             val w = size.width.toFloat().coerceAtLeast(1f)
-            // Integer frames-per-pixel matching the renderer + Canvas, centered on
-            // the playhead, so marker hit-testing and scrubbing use the exact same
-            // frame↔pixel mapping as what's drawn.
-            val framesPerPixelI = ((sampleRate.coerceAtLeast(1) * 10) / w.toInt().coerceAtLeast(1)).coerceAtLeast(1)
+            // ONE frames-per-pixel definition, shared with the draw path (float —
+            // the old integer truncation drifted markers at wide windows).
+            val fppF = sampleRateState.value * 10f / w
             // Center frame captured at grab; the drag scrolls relative to this
             // anchor so playback advancing mid-drag can't shift the target.
-            val anchorFrame = currentFrameState.value
+            val anchorFrame = clock.displayFrame.toInt()
 
-            fun fToX(frame: Float) = w / 2f + (frame - anchorFrame) / framesPerPixelI
+            fun fToX(frame: Float) = w / 2f + (frame - anchorFrame) / fppF
 
             val dur = durationFramesState.value
             val startX = selStartProgressState.value?.takeIf { dur > 0 }?.let { fToX(it * dur) }
@@ -506,7 +560,7 @@ private fun PlaybackWaveform(
                     ch.consume()
                     if (!ch.pressed) break
                     // Inverse of fToX: frame under the finger, centered on the playhead.
-                    val newFrame = anchorFrame + (ch.position.x - w / 2f) * framesPerPixelI
+                    val newFrame = anchorFrame + (ch.position.x - w / 2f) * fppF
                     val progress = if (dur > 0) (newFrame / dur.toFloat()).coerceIn(0f, 1f) else 0f
                     when {
                         activeMarker == "start" -> onSelectionStartMovedState.value(progress)
@@ -519,23 +573,22 @@ private fun PlaybackWaveform(
                 onResumeFollowState.value()
             } else {
                 // Waveform scroll — live scrub. Wait for touch slop, then re-center
-                // (and re-render) on every move so the waveform scrolls smoothly
-                // under the fixed playhead. Audio keeps playing; the seek commits
-                // on release.
+                // on every move; the waveform redraws live from the peak cache.
+                // Audio keeps playing; the seek commits on release.
                 val firstDrag = awaitHorizontalTouchSlopOrCancellation(down.id) { ch, _ -> ch.consume() }
                     ?: return@awaitEachGesture
                 onFreezeFollowState.value()
                 // Re-read the center AFTER freezing: while playing, the ticker
                 // advanced currentFrame between the touch-down and the slop
                 // threshold, so the down-time anchor would jump the waveform back.
-                val scrubAnchor = currentFrameState.value
+                val scrubAnchor = clock.displayFrame.toInt()
                 var accumPx = firstDrag.position.x - down.position.x
-                var scrubFrame = (scrubAnchor - accumPx * framesPerPixelI).toInt()
+                var scrubFrame = (scrubAnchor - accumPx * fppF).toInt()
                 onScrubMoveState.value(scrubFrame)
                 horizontalDrag(firstDrag.id) { ch ->
                     ch.consume()
                     accumPx += (ch.position - ch.previousPosition).x
-                    scrubFrame = (scrubAnchor - accumPx * framesPerPixelI).toInt()
+                    scrubFrame = (scrubAnchor - accumPx * fppF).toInt()
                     onScrubMoveState.value(scrubFrame)
                 }
                 onScrubEndState.value(scrubFrame)
@@ -543,36 +596,73 @@ private fun PlaybackWaveform(
         }
     }
 
-    Canvas(modifier = dragModifier) {
-        drawRect(Color.Black)
-        val widthF = size.width.coerceAtLeast(1f)
-        val midY = size.height / 2f
-        val scale = size.height / 2f / 32768f
-        val pairCount = samples.size / 2                 // real column count (0 if not rendered yet)
-        val pairs = pairCount.coerceAtLeast(1)           // guard for the division below only
-        val maxX = minOf(size.width.toInt().coerceAtLeast(1), pairCount)
+    Spacer(dragModifier.drawWithCache {
+        // CACHE SCOPE — snapshot-observed. Reads ONLY the timeline generation (and
+        // implicit size); rebuilds the timeline snapshot + scratch buffers when the
+        // timeline shape or canvas size changes. NEVER read the playhead position or
+        // builtBuckets here (that would rebuild the cache every frame).
+        @Suppress("UNUSED_EXPRESSION")
+        timelineGeneration.intValue
+        val tl = timeline()
+        val widthPx = size.width.toInt().coerceAtLeast(1)
+        // Scratch reused across frames (reallocated only on resize / timeline change):
+        // the per-frame fill must stay allocation-free.
+        val colCount = widthPx + 1
+        val colMins = FloatArray(colCount)
+        val colMaxs = FloatArray(colCount)
+        // Reused for marker flags: a fresh Path per marker per frame allocates a
+        // native Skia object each time (Cleaner-tracked → periodic GC stalls).
+        val markerPath = Path()
 
-        // Use the SAME integer frames-per-pixel the renderer used (framesOnScreen /
-        // pixel-count), and center on the playhead. renderCentered() places
-        // currentFrame on the middle pixel, so this keeps markers/selection exactly
-        // over the drawn audio at any window width.
-        val framesPerPixelI = ((sampleRate.coerceAtLeast(1) * 10) / pairs).coerceAtLeast(1)
-        fun frameToX(frame: Float): Float = widthF / 2f + (frame - currentFrame) / framesPerPixelI
+        onDrawBehind {
+            // DRAW SCOPE — runs per frame. Position/build-progress reads here
+            // invalidate DRAW ONLY (the whole point of the live renderer).
+            drawRect(Color.Black)
+            val widthF = size.width.coerceAtLeast(1f)
+            val midY = size.height / 2f
+            val scale = size.height / 2f / 32768f
+            val curFrame = clock.displayFrame.toFloat()
+            val fppF = sampleRateState.value * 10f / widthF
 
-        val markerIconPx = 32.dp.toPx()
-        val pennantW = 20.dp.toPx()
-        val pennantH = 24.dp.toPx()
+            fun frameToX(frame: Float): Float = widthF / 2f + (frame - curFrame) / fppF
 
-        // Content is centered on `currentFrame` via frameToX; during a scrub the
-        // VM updates currentFrame on every move so the waveform re-renders and
-        // re-centers live (no manual canvas translate).
-        run {
-            // Waveform
-            for (x in 0 until maxX) {
-                val idx = x * 2
-                val y1 = midY - (samples[idx] * scale)
-                val y2 = midY - (samples[idx + 1] * scale)
-                drawLine(Color.White, start = Offset(x.toFloat(), y1), end = Offset(x.toFloat(), y2))
+            val markerIconPx = 32.dp.toPx()
+            val pennantW = 20.dp.toPx()
+            val pennantH = 24.dp.toPx()
+
+            // Live waveform: columns anchored to the ABSOLUTE grid — column k always
+            // covers timeline frames [floor(k*fpp), floor((k+1)*fpp)), independent of
+            // the playhead, so column contents never re-bin as we scroll. Grid math in
+            // Double (Float loses frame precision past ~6 min of audio). fillWindow is
+            // the allocation-free hot path.
+            if (tl != null && tl.totalFrames > 0) {
+                val fppD = sampleRateState.value * 10.0 / widthF
+                val leftFrame = clock.displayFrame.toDouble() - sampleRateState.value * 5.0
+                val firstCol = kotlin.math.floor(leftFrame / fppD).toLong()
+                // Fractional shift for sub-pixel-smooth motion. Snapping to whole
+                // pixels killed AA flicker but quantized motion into an alternating
+                // 1-1-2px step pattern (~40 Hz judder at this scroll speed).
+                // Snap the whole window to physical pixels (+0.5 = crisp hairline
+                // centers). Rendering experiments, for the record: fractional-x 1px
+                // primitives shimmer under sRGB blending (split AA coverage reads
+                // dimmer — a per-column "glow" pulse); a filled envelope polygon
+                // fixes shimmer but collapses Skia to ~16 fps (thousands-of-vertex
+                // AA fill); a single stroked path halves the frame rate (stroke→fill
+                // tessellation). Pixel-snapped per-column drawLine holds 120 fps
+                // with zero flicker; its cost is whole-pixel motion steps (~160/s),
+                // which is the least perceptible artifact of the four.
+                val xShift = kotlin.math.round((firstCol * fppD - leftFrame) / fppD).toFloat() + 0.5f
+                tl.fillWindow(firstCol, colCount, fppD, peakCacheFor, colMins, colMaxs)
+                for (i in 0 until colCount) {
+                    val mn = colMins[i]
+                    if (mn.isNaN()) continue
+                    val x = i + xShift
+                    drawLine(
+                        Color.White,
+                        start = Offset(x, midY - colMaxs[i] * scale),
+                        end = Offset(x, midY - mn * scale)
+                    )
+                }
             }
 
             // Baseline
@@ -602,7 +692,8 @@ private fun PlaybackWaveform(
             //   VERSE   = yellow  pennant (V-notch bottom), label "5" / "1-2"
             //   CHAPTER = orange  flat banner,              label = chapter number
             //   BOOK    = magenta down-pointing tag,        label = book slug
-            markerFrames.forEachIndexed { i, frame ->
+            for (i in markerFrames.indices) {   // index loop: no iterator alloc per frame
+                val frame = markerFrames[i]
                 val x = frameToX(frame.toFloat())
                 if (x in -widthF..widthF * 2) {
                     val kind = markerKinds.getOrNull(i) ?: MarkerKind.VERSE
@@ -611,23 +702,13 @@ private fun PlaybackWaveform(
                         MarkerKind.CHAPTER -> Color(0xFFFF9100)
                         MarkerKind.BOOK -> Color(0xFFE040FB)
                     }
-                    val textColor = if (kind == MarkerKind.BOOK) Color.White else Color(0xFF1A1A1A)
-                    val label = markerLabels.getOrNull(i).orEmpty()
-                    val measured = if (label.isNotEmpty()) {
-                        textMeasurer.measure(
-                            label,
-                            style = TextStyle(
-                                fontSize = 11.sp,
-                                color = textColor,
-                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                            )
-                        )
-                    } else null
+                    val measured = markerLayouts.getOrNull(i)   // cached in composition
                     // Widen the flag to fit the label (bridges/book slugs are wider).
                     val labelPadX = 6.dp.toPx()
                     val flagW = maxOf(pennantW, (measured?.size?.width?.toFloat() ?: 0f) + labelPadX * 2)
                     val bodyBottom = pennantH * 0.72f
-                    val path = Path().apply {
+                    markerPath.rewind()
+                    markerPath.apply {
                         when (kind) {
                             MarkerKind.VERSE -> {
                                 moveTo(x, 0f); lineTo(x + flagW, 0f)
@@ -649,7 +730,7 @@ private fun PlaybackWaveform(
                         }
                     }
                     drawLine(fillColor, Offset(x, 0f), Offset(x, size.height))
-                    drawPath(path, color = fillColor)
+                    drawPath(markerPath, color = fillColor)
                     if (measured != null) {
                         drawText(
                             measured,
@@ -679,15 +760,15 @@ private fun PlaybackWaveform(
                     drawLine(Color(0xFF45818E), Offset(x, 0f), Offset(x, size.height - markerIconPx))
                 }
             }
-        }
 
-        // Playback cursor — fixed at canvas center
-        drawLine(
-            color = Color(0xFF1EA7FD),
-            start = Offset(size.width / 2f, 0f),
-            end = Offset(size.width / 2f, size.height)
-        )
-    }
+            // Playback cursor — fixed at canvas center
+            drawLine(
+                color = Color(0xFF1EA7FD),
+                start = Offset(size.width / 2f, 0f),
+                end = Offset(size.width / 2f, size.height)
+            )
+        }
+    })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -697,8 +778,10 @@ private fun PlaybackWaveform(
 @Composable
 private fun MinimapWidget(
     showMinimap: Boolean,
-    minimapSamples: FloatArray,
-    progress: Float,
+    timeline: () -> AudioTimeline?,
+    peakCacheFor: (PcmSource) -> WaveformPeakCache?,
+    timelineGeneration: IntState,
+    clock: PlaybackDisplayClock,
     markerFrames: List<Int>,
     durationFrames: Int,
     sampleRate: Int,
@@ -713,6 +796,38 @@ private fun MinimapWidget(
     onSourceSeek: (Float) -> Unit,
     onWidthChanged: (Int) -> Unit
 ) {
+    var minimapWidthPx by remember { mutableStateOf(0) }
+
+    // Whole-file overview columns from the SAME peak cache as the main waveform —
+    // no disk. Recomputed only when the timeline shape, width, or (coarsely) the
+    // progressive build advances; NOT per frame.
+    val minimapSamples = remember(
+        minimapWidthPx,
+        timelineGeneration.intValue,
+        // Coarse build progress: refresh the overview a few times while the peak
+        // cache builds, then settle. (builtBuckets is snapshot state, so this
+        // recomposes the widget only when the bucket count crosses a 16k boundary.)
+        timeline()?.segments?.firstOrNull()?.source?.let { peakCacheFor(it)?.builtBuckets?.intValue?.div(16384) } ?: 0
+    ) {
+        val tl = timeline()
+        val w = minimapWidthPx
+        if (tl == null || tl.totalFrames <= 0 || w <= 0) {
+            FloatArray(0)
+        } else {
+            val out = FloatArray(w * 2)
+            val agg = FloatArray(2)
+            for (x in 0 until w) {
+                val fromF = (x.toLong() * tl.totalFrames / w).toInt()
+                val toF = ((x + 1).toLong() * tl.totalFrames / w).toInt().coerceAtLeast(fromF + 1)
+                if (tl.aggregate(fromF, toF, peakCacheFor, agg)) {
+                    out[x * 2] = agg[0]
+                    out[x * 2 + 1] = agg[1]
+                }
+            }
+            out
+        }
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -724,12 +839,15 @@ private fun MinimapWidget(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
-                .onSizeChanged { onWidthChanged(it.width) }
+                .onSizeChanged {
+                    minimapWidthPx = it.width
+                    onWidthChanged(it.width)
+                }
         ) {
             if (showMinimap) {
                 MinimapCanvas(
                     samples = minimapSamples,
-                    progress = progress,
+                    clock = clock,
                     markerFrames = markerFrames,
                     durationFrames = durationFrames,
                     sampleRate = sampleRate,
@@ -842,7 +960,7 @@ private fun SourceAudioPanel(
 @Composable
 private fun MinimapCanvas(
     samples: FloatArray,
-    progress: Float,
+    clock: PlaybackDisplayClock,
     markerFrames: List<Int>,
     durationFrames: Int,
     sampleRate: Int,
@@ -852,8 +970,43 @@ private fun MinimapCanvas(
     onSeek: (Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Timecode ruler — MM:SS labels + faint gridlines at a fitted interval (~50px
+    // spacing, stepping in 5s), matching the original recorder minimap. Positions
+    // (as width fractions) and text layouts are computed ONCE per duration/width
+    // change here in composition: this canvas redraws every frame for its playhead,
+    // and per-frame text measurement was a measured frame-budget breaker.
+    var minimapWidthForRuler by remember { mutableStateOf(0f) }
+    val rulerTicks = remember(durationFrames, sampleRate, minimapWidthForRuler, textMeasurer) {
+        val durationSec = durationFrames.toDouble() / sampleRate.coerceAtLeast(1)
+        val widthF = minimapWidthForRuler
+        if (durationSec <= 0.0 || widthF <= 0f) {
+            emptyList()
+        } else {
+            val pxPerSec = widthF / durationSec
+            var intervalSec = 1.0
+            if (pxPerSec < 50.0) {
+                intervalSec = 0.0
+                while (intervalSec * pxPerSec < 50.0) intervalSec += 5.0
+            }
+            val labelStyle = TextStyle(fontSize = 9.sp, color = Color(0xFFAAAAAA))
+            buildList {
+                var t = intervalSec
+                while (intervalSec > 0.0 && t < durationSec) {
+                    val total = t.toInt()
+                    val mm = total / 60
+                    val ss = total % 60
+                    val label = "${if (mm < 10) "0" else ""}$mm:${if (ss < 10) "0" else ""}$ss"
+                    add((t / durationSec).toFloat() to textMeasurer.measure(label, style = labelStyle))
+                    t += intervalSec
+                }
+            }
+        }
+    }
+
     Canvas(
-        modifier = modifier.pointerInput(Unit) {
+        modifier = modifier
+            .onSizeChanged { minimapWidthForRuler = it.width.toFloat() }
+            .pointerInput(Unit) {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
                 down.consume()
@@ -886,31 +1039,13 @@ private fun MinimapCanvas(
         if (durationFrames > 0) {
             fun frameToX(frame: Float): Float = (frame / durationFrames) * widthF
 
-            // Timecode ruler — MM:SS labels + faint gridlines at a fitted interval
-            // (~50px spacing, stepping in 5s), matching the original recorder minimap.
-            val durationSec = durationFrames.toDouble() / sampleRate.coerceAtLeast(1)
-            if (durationSec > 0.0) {
-                val pxPerSec = widthF / durationSec
-                var intervalSec = 1.0
-                if (pxPerSec < 50.0) {
-                    intervalSec = 0.0
-                    while (intervalSec * pxPerSec < 50.0) intervalSec += 5.0
-                }
-                val gridColor = Color(0x33FFFFFF)
-                val labelStyle = TextStyle(fontSize = 9.sp, color = Color(0xFFAAAAAA))
-                var t = intervalSec
-                while (intervalSec > 0.0 && t < durationSec) {
-                    val x = ((t / durationSec) * widthF).toFloat()
-                    drawLine(gridColor, Offset(x, 0f), Offset(x, size.height))
-                    val total = t.toInt()
-                    val mm = total / 60
-                    val ss = total % 60
-                    val label = "${if (mm < 10) "0" else ""}$mm:${if (ss < 10) "0" else ""}$ss"
-                    val measured = textMeasurer.measure(label, style = labelStyle)
-                    val lx = (x - measured.size.width - 2.dp.toPx()).coerceAtLeast(0f)
-                    drawText(measured, topLeft = Offset(lx, 1.dp.toPx()))
-                    t += intervalSec
-                }
+            val gridColor = Color(0x33FFFFFF)
+            for (t in rulerTicks.indices) {   // index loop: no iterator alloc per frame
+                val x = rulerTicks[t].first * widthF
+                val layout = rulerTicks[t].second
+                drawLine(gridColor, Offset(x, 0f), Offset(x, size.height))
+                val lx = (x - layout.size.width - 2.dp.toPx()).coerceAtLeast(0f)
+                drawText(layout, topLeft = Offset(lx, 1.dp.toPx()))
             }
 
             markerFrames.forEach { frame ->
@@ -928,8 +1063,9 @@ private fun MinimapCanvas(
                 drawLine(Color(0xFF13C4C3), Offset(p * widthF, 0f), Offset(p * widthF, size.height))
             }
 
-            // Blue playback position
-            val posX = progress * widthF
+            // Blue playback position — reads the display clock inside the draw
+            // lambda, so playhead motion invalidates DRAW only (no recomposition).
+            val posX = (clock.displayFrame.toFloat() / durationFrames) * widthF
             drawLine(Color(0xFF1EA7FD), Offset(posX, 0f), Offset(posX, size.height))
         }
     }
@@ -939,10 +1075,38 @@ private fun MinimapCanvas(
 // Playback Tools (transport + edit state machine)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Elapsed/duration readout as a LEAF composable: only this Text recomposes as time
+ * advances (250 ms poll of the display clock) — the toolbars and screen around it
+ * stay untouched during playback.
+ */
+@Composable
+private fun TimeReadout(
+    clock: PlaybackDisplayClock,
+    durationText: String,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    var elapsed by remember { mutableStateOf("00:00:00") }
+    LaunchedEffect(clock) {
+        while (isActive) {
+            val sr = clock.sampleRate.coerceAtLeast(1)
+            elapsed = formatPlaybackTime((clock.displayFrame * 1000L / sr).toInt())
+            kotlinx.coroutines.delay(250)
+        }
+    }
+    Text(
+        text = "$elapsed / $durationText",
+        color = color,
+        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
+        modifier = modifier
+    )
+}
+
 @Composable
 private fun PlaybackTools(
     isPlaying: Boolean,
-    elapsedText: String,
+    clock: PlaybackDisplayClock,
     durationText: String,
     hasStart: Boolean,
     hasEnd: Boolean,
@@ -968,11 +1132,11 @@ private fun PlaybackTools(
             .background(TranslationRecorderTheme.blue)
             .padding(horizontal = 8.dp)
     ) {
-        // Timestamp — left-aligned, single line
-        Text(
-            text = "$elapsedText / $durationText",
+        // Timestamp — left-aligned, single line, leaf-recomposing
+        TimeReadout(
+            clock = clock,
+            durationText = durationText,
             color = Color.White,
-            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
             modifier = Modifier.align(Alignment.CenterStart)
         )
 
@@ -1100,7 +1264,7 @@ private fun MarkerCounterBar(
 @Composable
 private fun MarkerToolbar(
     isPlaying: Boolean,
-    elapsedText: String,
+    clock: PlaybackDisplayClock,
     durationText: String,
     onSeekBackward: () -> Unit,
     onPlayPause: () -> Unit,
@@ -1120,11 +1284,11 @@ private fun MarkerToolbar(
             .background(markerBarColor)
             .padding(horizontal = 8.dp)
     ) {
-        // Timestamp — left-aligned, single line
-        Text(
-            text = "$elapsedText / $durationText",
+        // Timestamp — left-aligned, single line, leaf-recomposing
+        TimeReadout(
+            clock = clock,
+            durationText = durationText,
             color = onMarkerBar,
-            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
             modifier = Modifier.align(Alignment.CenterStart)
         )
 

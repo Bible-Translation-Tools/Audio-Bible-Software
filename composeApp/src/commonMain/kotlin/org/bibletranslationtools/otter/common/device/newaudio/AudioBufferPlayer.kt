@@ -44,6 +44,16 @@ class AudioBufferPlayer(
     val isSinkRunning: Boolean
         get() = runBlocking { mutex.withLock { _sink.isRunning } }
 
+    /**
+     * Lock-free variant for high-frequency callers (the display clock reads this per
+     * display frame). While the sink is NOT running, [getLocationInFrames] falls back
+     * to the WRITE cursor — ahead of the audible position — so position readings are
+     * only reliable when this is true. A momentarily stale read here is harmless (the
+     * clock just skips one correction); taking the mutex at 120 Hz is not.
+     */
+    val isPositionReliable: Boolean
+        get() = _sink.isRunning
+
     suspend fun load(reader: AudioFileReader) = mutex.withLock {
         this.reader?.release()
         this.reader = reader.apply {
