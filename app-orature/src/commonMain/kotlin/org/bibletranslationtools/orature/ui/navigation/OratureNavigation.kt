@@ -11,7 +11,9 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
 import org.bibletranslationtools.orature.ui.screens.OratureHomeScreen
 import org.bibletranslationtools.orature.ui.screens.OratureSplashScreen
+import org.bibletranslationtools.orature.ui.viewmodels.OratureHomeViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureSplashViewModel
+import org.koin.mp.KoinPlatform.getKoin
 
 @Composable
 fun OratureNavigation(navController: NavHostController) {
@@ -39,14 +41,37 @@ fun OratureNavigation(navController: NavHostController) {
         }
 
         composable<OratureHomeRoute> {
+            val vm = viewModel { getKoin().get<OratureHomeViewModel>() }
             OratureHomeScreen(
-                onSettingsClick = { navController.navigate(OratureSettingsRoute) }
+                viewModel = vm,
+                onBookClick = { book ->
+                    // Phase 4 opens the project's chapter/verse view. Stub for now —
+                    // the VM already logs the tap; nav wiring is a no-op until then.
+                },
+                onNewProjectClick = {
+                    // Phase 3 wires up the project creation wizard. Stub for now.
+                },
+                onImportClick = {
+                    // Phase 9 wires up project import. Stub for now.
+                },
+                onSettingsClick = { navController.navigate(OratureSettingsRoute) },
+                onInfoClick = {
+                    // Info drawer/dialog stub for now.
+                }
             )
         }
 
         composable<OratureSettingsRoute> {
             // Phase 2 replaces this with the real settings screen.
-            OratureHomeScreen(onSettingsClick = {})
+            val vm = viewModel { getKoin().get<OratureHomeViewModel>() }
+            OratureHomeScreen(
+                viewModel = vm,
+                onBookClick = {},
+                onNewProjectClick = {},
+                onImportClick = {},
+                onSettingsClick = {},
+                onInfoClick = {}
+            )
         }
     }
 }

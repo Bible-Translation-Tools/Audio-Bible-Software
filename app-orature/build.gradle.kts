@@ -32,6 +32,16 @@ kotlin {
             }
         }
 
+        val commonTest by getting {
+            dependencies {
+                implementation(libs.kotlin.test)
+                implementation(libs.kotlin.test.junit)
+                implementation(libs.kotlinx.coroutines.test)
+                implementation(libs.koin.test)
+                implementation(libs.mockk)
+            }
+        }
+
         val commonMain by getting {
             dependencies {
                 // Backend + playback engine + shared resources come via :shared (api).

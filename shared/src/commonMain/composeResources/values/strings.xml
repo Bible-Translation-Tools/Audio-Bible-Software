@@ -221,4 +221,37 @@
     <string name="export_error_no_audio">Export failed: no recorded audio was found on disk for this project.</string>
     <string name="export_error_no_takes_selected">Export failed: no takes are selected. Select a take in each verse you want to include, then try again.</string>
     <string name="export_error_packaging">Export failed while packaging the project (found %1$d audio file(s), %2$d selected take(s)). Run the desktop app from a terminal to see the detailed error.</string>
+
+    <!-- ───────────── Orature: nav rail ───────────── -->
+    <string name="orature_nav_home">Home</string>
+    <string name="orature_nav_settings">Settings</string>
+    <string name="orature_nav_info">Info</string>
+
+    <!-- ───────────── Orature: home / projects pane ───────────── -->
+    <string name="orature_projects_title">Projects</string>
+    <string name="orature_new_project">New Project</string>
+    <string name="orature_import">Import</string>
+    <string name="orature_source_language_label">Source Language: %1$s</string>
+    <string name="orature_target_language_label">Target Language: %1$s</string>
+
+    <!-- ───────────── Orature: book section header ───────────── -->
+    <string name="orature_cd_more_options">More options</string>
+    <string name="orature_search">Search</string>
+    <string name="orature_project_group_title">%1$s %2$s</string>
+
+    <!-- ───────────── Orature: project modes ───────────── -->
+    <string name="orature_mode_translation">Translation</string>
+    <string name="orature_mode_narration">Narration</string>
+    <string name="orature_mode_dialect">Dialect</string>
+
+    <!-- ───────────── Orature: book table ───────────── -->
+    <string name="orature_column_book">Book</string>
+    <string name="orature_column_code">Code</string>
+    <string name="orature_column_anthology">Anthology</string>
+    <string name="orature_column_progress">Progress</string>
+    <string name="orature_cd_row_options">Row options</string>
+    <string name="orature_old_testament">Old Testament</string>
+    <string name="orature_new_testament">New Testament</string>
+    <string name="orature_empty_books">No books in this project group.</string>
+    <string name="orature_empty_groups">No projects yet. Tap New Project to get started.</string>
 </resources>

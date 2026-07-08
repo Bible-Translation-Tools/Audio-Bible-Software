@@ -2,6 +2,7 @@ package org.bibletranslationtools.orature
 
 import android.app.Application
 import org.bibletranslationtools.orature.di.oratureDirectoryProviderModule
+import org.bibletranslationtools.orature.di.oratureViewModelModule
 import org.bibletranslationtools.shared.di.koin.sharedAndroidModules
 import org.bibletranslationtools.shared.di.koin.sharedCommonModules
 import org.koin.android.ext.koin.androidContext
@@ -14,7 +15,10 @@ class OratureApplication : Application() {
         startKoin {
             androidLogger()
             androidContext(this@OratureApplication)
-            modules(sharedCommonModules + sharedAndroidModules + oratureDirectoryProviderModule)
+            modules(
+                sharedCommonModules + sharedAndroidModules + oratureDirectoryProviderModule +
+                    oratureViewModelModule
+            )
         }
     }
 }
