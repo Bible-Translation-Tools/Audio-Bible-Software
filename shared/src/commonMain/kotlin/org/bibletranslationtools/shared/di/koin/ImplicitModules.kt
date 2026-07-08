@@ -1,12 +1,5 @@
-package org.bibletranslationtools.bttrecorder2.di.koin
+package org.bibletranslationtools.shared.di.koin
 
-import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterListViewModel
-import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectCreationViewModel
-import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementViewModel
-import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SplashScreenViewModel
-import org.bibletranslationtools.bttrecorder2.ui.viewmodels.UnitListViewModel
-import org.bibletranslationtools.bttrecorder2.ui.viewmodels.RecorderViewModel
-import org.bibletranslationtools.bttrecorder2.ui.viewmodels.PlaybackViewModel
 import org.bibletranslationtools.otter.common.audio.wav.IWaveFileCreator
 import org.bibletranslationtools.otter.common.audio.wav.WaveFileCreator
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
@@ -150,42 +143,6 @@ val implicitCommonModule = module {
     factoryOf(::InitializeTranslations)
 }
 
-val implicitViewModelModule = module {
-//    factoryOf(::RootViewModel)
-    //single<SplashScreenViewModel> { SplashScreenViewModel(get()) }
-    single { ProjectManagementViewModel() }
-    single { ProjectCreationViewModel() }
-    single { ChapterListViewModel() }
-    single { UnitListViewModel() }
-    factoryOf(::RecorderViewModel)
-    factoryOf(::PlaybackViewModel)
-//    factoryOf(::HomePageViewModel2)
-//    factoryOf(::AddPluginViewModel)
-//
-//    singleOf(::AudioDataStore)
-//    singleOf(::AppPreferencesStore)
-//
-//    factoryOf(::AudioPluginViewModel)
-//    factoryOf(::SettingsViewModel)
-//    factoryOf(::ImportProjectViewModel)
-//    factoryOf(::ImportAudioViewModel)
-//    factoryOf(::TranslationViewModel2)
-//    factoryOf(::ProjectWizardViewModel)
-//    factoryOf(::AppInfoViewModel)
-//    factoryOf(::ConsumeViewModel)
-//    factoryOf(::ChunkingViewModel)
-//    factoryOf(::BlindDraftViewModel)
-//    factoryOf(::PeerEditViewModel)
-//    factoryOf(::ChapterReviewViewModel)
-//    factoryOf(::RecorderViewModel)
-//    factoryOf(::ExportProjectViewModel)
-//    factoryOf(::AudioWorkspaceViewModel)
-//    factoryOf(::NarrationViewModel)
-//    factoryOf(::NarrationHeaderViewModel)
-}
-
-val implicitModules = listOf(
-    implicitCommonModule,
-    implicitViewModelModule
-)
+// implicitViewModelModule (recorder ViewModels) lives in :app-recorder — each app owns
+// its own ViewModels. :shared exposes only implicitCommonModule (backend use-cases).
 

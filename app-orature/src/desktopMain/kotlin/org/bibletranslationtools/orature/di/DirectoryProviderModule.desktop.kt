@@ -1,16 +1,14 @@
-package org.bibletranslationtools.di.koin
+package org.bibletranslationtools.orature.di
 
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.persistence.DesktopDirectoryProvider
 import org.koin.dsl.module
 
-// App-specific: the appName determines the desktop data directory, so each app supplies
-// its own. (Orature supplies its own with appName "Orature".) The DB + audio modules are
-// shared — see :shared sharedDesktopModules.
-val directoryProviderModule = module {
+// Orature's own data directory (appName "Orature") — separate from the recorder's.
+val oratureDirectoryProviderModule = module {
     single<IDirectoryProvider> {
         DesktopDirectoryProvider(
-            appName = "BTT Recorder",
+            appName = "Orature",
             pathSeparator = System.getProperty("file.separator"),
             userHome = System.getProperty("user.home"),
             windowsAppData = System.getenv("APPDATA"),

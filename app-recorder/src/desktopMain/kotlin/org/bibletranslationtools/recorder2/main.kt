@@ -6,18 +6,18 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import java.awt.Taskbar
 import java.awt.Toolkit
-import org.bibletranslationtools.bttrecorder2.di.koin.commonAudioModule
-import org.bibletranslationtools.bttrecorder2.di.koin.commonModules
+import org.bibletranslationtools.bttrecorder2.di.koin.recorderViewModelModule
 import org.bibletranslationtools.bttrecorder2.ui.App
 import org.bibletranslationtools.bttrecorder2.ui.demo.AudioDashboard
 
-import org.bibletranslationtools.di.koin.appModules
+import org.bibletranslationtools.di.koin.directoryProviderModule
+import org.bibletranslationtools.shared.di.koin.sharedCommonModules
+import org.bibletranslationtools.shared.di.koin.sharedDesktopModules
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.device.newaudio.AudioDeviceSelector
 import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
 import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
 import org.bibletranslationtools.otter.common.device.newaudio.AudioSystemConfig
-import org.bibletranslationtools.recorder2.di.jvmAudioModule
 import org.koin.core.context.startKoin
 
 fun main() {
@@ -39,7 +39,10 @@ fun main() {
     application {
 
     val koin = startKoin {
-        modules(*appModules.toTypedArray(), commonAudioModule, jvmAudioModule)
+        modules(
+            sharedCommonModules + sharedDesktopModules +
+                directoryProviderModule + recorderViewModelModule
+        )
     }.koin
 
     // Initialize audio routing at startup so recorder/player factories are not left on dummy hardware.

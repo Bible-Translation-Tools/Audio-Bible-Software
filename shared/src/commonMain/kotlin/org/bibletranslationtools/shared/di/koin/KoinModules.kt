@@ -1,4 +1,4 @@
-package org.bibletranslationtools.bttrecorder2.di.koin
+package org.bibletranslationtools.shared.di.koin
 
 import org.bibletranslationtools.otter.common.api.persistence.ILanguageDataSource
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
@@ -19,7 +19,6 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.Z
 import org.bibletranslationtools.shared.domain.SourceAudioImporter
 import org.bibletranslationtools.shared.preferences.DataStoreAppPreferences
 import org.bibletranslationtools.shared.preferences.IAppPreferences
-import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportProjectViewModel
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.koin.core.module.dsl.bind
 import org.koin.core.module.dsl.singleOf
@@ -34,9 +33,6 @@ import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.Res
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.TakeRepository
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.VersificationRepository
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.WorkbookDescriptorRepository
-
-// commonMain - Wrapper interface
-interface AppContext
 
 val audioModule = module {
 //    single { AudioConnectionFactory() }
@@ -64,11 +60,6 @@ val appPreferencesModule = module {
         DataStoreAppPreferences(dir.absolutePath)
     }
     single { SourceAudioImporter(get(), get()) }
-    // Singleton so the Recorder route can share the same instance the
-    // ProjectManagementScreen owns — both need to read isCurrentlyExporting
-    // to gate UI affordances. Process-lifetime is what we want here; the VM
-    // already auto-cleans temp dirs on init for crash recovery.
-    single { ExportProjectViewModel() }
 }
 
 val appRepositoriesModule = module {
@@ -121,12 +112,13 @@ val authModule = module {
 //    single<AuthProvider> { WacsIdAuthority() }
 }
 
-val commonModules = listOf(
-    *implicitModules.toTypedArray(),
+// The shared, platform-agnostic Koin modules both apps compose. Backend use-cases +
+// audio + prefs + repositories only — NO ViewModels (each app owns its own) and NO
+// platform pieces (directory provider / DB / device audio live in the platform lists).
+val sharedCommonModules = listOf(
+    implicitCommonModule,
     commonAudioModule,
-//    appDatabaseModule,
     appPreferencesModule,
-//    directoryProviderModule,
     appRepositoriesModule,
     zipEntryTreeBuilderModule,
     metadataModule,

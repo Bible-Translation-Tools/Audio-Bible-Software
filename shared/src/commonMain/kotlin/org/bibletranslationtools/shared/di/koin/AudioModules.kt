@@ -1,4 +1,4 @@
-package org.bibletranslationtools.bttrecorder2.di.koin
+package org.bibletranslationtools.shared.di.koin
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

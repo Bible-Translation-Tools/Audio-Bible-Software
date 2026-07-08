@@ -64,3 +64,4 @@ dependencyResolutionManagement {
 
 include(":shared")
 include(":app-recorder")
+include(":app-orature")

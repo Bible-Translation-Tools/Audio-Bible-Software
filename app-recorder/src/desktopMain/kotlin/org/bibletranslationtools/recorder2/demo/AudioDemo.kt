@@ -3,8 +3,8 @@ package org.bibletranslationtools.recorder2.demo
 import androidx.compose.material.MaterialTheme
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
-import org.bibletranslationtools.recorder2.di.jvmAudioModule
-import org.bibletranslationtools.bttrecorder2.di.koin.commonAudioModule
+import org.bibletranslationtools.shared.di.koin.jvmAudioModule
+import org.bibletranslationtools.shared.di.koin.commonAudioModule
 import org.bibletranslationtools.bttrecorder2.ui.demo.AudioDashboard
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.device.newaudio.AudioDeviceSelector
