@@ -63,4 +63,4 @@ dependencyResolutionManagement {
 }
 
 include(":shared")
-include(":composeApp")
+include(":app-recorder")

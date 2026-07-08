@@ -26,7 +26,7 @@ kotlin {
 
     jvm("desktop")
 
-    // Backend library versions (moved verbatim from composeApp during the split).
+    // Backend library versions (moved verbatim from the recorder app during the split).
     val rxkotlinVer = "2.4.0"
     val rxkotlinfxVer = "2.2.2"
     val rxrelayVer = "2.1.0"
