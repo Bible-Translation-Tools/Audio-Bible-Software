@@ -10,7 +10,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import org.bibletranslationtools.bttrecorder2.preferences.IAppPreferences
+import org.bibletranslationtools.shared.preferences.IAppPreferences
 import org.bibletranslationtools.bttrecorder2.ui.screens.ChapterListScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.MainMenuScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.PlaybackScreen

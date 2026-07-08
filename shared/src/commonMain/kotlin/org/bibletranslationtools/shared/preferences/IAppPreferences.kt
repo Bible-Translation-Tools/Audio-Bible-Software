@@ -1,4 +1,4 @@
-package org.bibletranslationtools.bttrecorder2.preferences
+package org.bibletranslationtools.shared.preferences
 
 import kotlinx.coroutines.flow.Flow
 

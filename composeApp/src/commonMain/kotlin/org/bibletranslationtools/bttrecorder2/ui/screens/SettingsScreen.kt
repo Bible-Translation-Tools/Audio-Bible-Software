@@ -49,8 +49,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import org.bibletranslationtools.bttrecorder2.preferences.AppSettings
-import org.bibletranslationtools.bttrecorder2.preferences.ThemeMode
+import org.bibletranslationtools.shared.preferences.AppSettings
+import org.bibletranslationtools.shared.preferences.ThemeMode
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.LangNamesUpdateState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SettingsViewModel
 import org.jetbrains.compose.resources.stringResource

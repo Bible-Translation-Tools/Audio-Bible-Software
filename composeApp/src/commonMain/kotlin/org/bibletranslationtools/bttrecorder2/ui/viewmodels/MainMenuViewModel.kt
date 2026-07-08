@@ -7,8 +7,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.bibletranslationtools.bttrecorder2.preferences.ActiveNavState
-import org.bibletranslationtools.bttrecorder2.preferences.IAppPreferences
+import org.bibletranslationtools.shared.preferences.ActiveNavState
+import org.bibletranslationtools.shared.preferences.IAppPreferences
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.koin.core.component.KoinComponent

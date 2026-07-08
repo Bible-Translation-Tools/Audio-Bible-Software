@@ -1,4 +1,4 @@
-package org.bibletranslationtools.bttrecorder2.ui.playback
+package org.bibletranslationtools.shared.ui.playback
 
 /** Formats a playback position as HH:MM:SS (shared by the VM and leaf composables). */
 fun formatPlaybackTime(ms: Int): String {

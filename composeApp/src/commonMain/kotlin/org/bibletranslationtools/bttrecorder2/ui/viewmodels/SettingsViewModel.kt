@@ -10,10 +10,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.rx2.await
-import org.bibletranslationtools.bttrecorder2.preferences.AppSettings
-import org.bibletranslationtools.bttrecorder2.preferences.AppSettings.Companion.DEFAULT_LANG_NAMES_URL
-import org.bibletranslationtools.bttrecorder2.preferences.IAppPreferences
-import org.bibletranslationtools.bttrecorder2.preferences.ThemeMode
+import org.bibletranslationtools.shared.preferences.AppSettings
+import org.bibletranslationtools.shared.preferences.AppSettings.Companion.DEFAULT_LANG_NAMES_URL
+import org.bibletranslationtools.shared.preferences.IAppPreferences
+import org.bibletranslationtools.shared.preferences.ThemeMode
 import org.bibletranslationtools.otter.common.device.newaudio.AudioDevice
 import org.bibletranslationtools.otter.common.device.newaudio.AudioDeviceSelector
 import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec

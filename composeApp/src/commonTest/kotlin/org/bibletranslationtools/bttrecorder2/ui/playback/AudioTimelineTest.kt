@@ -1,4 +1,4 @@
-package org.bibletranslationtools.bttrecorder2.ui.playback
+package org.bibletranslationtools.shared.ui.playback
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

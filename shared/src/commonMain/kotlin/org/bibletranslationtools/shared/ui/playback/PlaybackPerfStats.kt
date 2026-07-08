@@ -1,4 +1,4 @@
-package org.bibletranslationtools.bttrecorder2.ui.playback
+package org.bibletranslationtools.shared.ui.playback
 
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger

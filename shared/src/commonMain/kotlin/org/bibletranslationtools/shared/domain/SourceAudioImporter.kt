@@ -1,4 +1,4 @@
-package org.bibletranslationtools.bttrecorder2.domain
+package org.bibletranslationtools.shared.domain
 
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.name

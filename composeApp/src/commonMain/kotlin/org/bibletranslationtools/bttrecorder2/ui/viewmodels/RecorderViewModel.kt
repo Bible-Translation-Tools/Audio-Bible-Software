@@ -27,7 +27,7 @@ import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.bttrecorder2.ui.playback.SourceAudioPlayerController
+import org.bibletranslationtools.shared.ui.playback.SourceAudioPlayerController
 import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
 import org.bibletranslationtools.otter.common.device.newaudio.AudioRecorderConnectionFactory
 import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec

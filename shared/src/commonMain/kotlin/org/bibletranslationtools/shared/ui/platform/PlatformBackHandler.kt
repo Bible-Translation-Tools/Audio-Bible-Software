@@ -1,4 +1,4 @@
-package org.bibletranslationtools.bttrecorder2.ui.platform
+package org.bibletranslationtools.shared.ui.platform
 
 import androidx.compose.runtime.Composable
 

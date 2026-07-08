@@ -1,4 +1,4 @@
-package org.bibletranslationtools.bttrecorder2.preferences
+package org.bibletranslationtools.shared.preferences
 
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*

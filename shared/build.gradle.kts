@@ -56,10 +56,15 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             dependencies {
-                // Compose runtime + resources: the backend reads bundled files/ via
-                // Res.readBytes (InitializeUlb/InitializeLanguages), and the apps read
-                // shared string/drawable IDs transitively — so `api`.
-                implementation(compose.runtime)
+                // :shared holds ENGINES + infrastructure, NOT UI pages/themes (each app
+                // owns its full UI + ViewModels + branding). So only the minimal Compose
+                // surface: `runtime` for the engine's snapshot-state holders
+                // (mutable*StateOf in the playback clock / peak cache) and the
+                // PlatformBackHandler primitive, plus `resources` because the backend
+                // reads bundled files/ via Res.readBytes (Initialize{Ulb,Languages}).
+                // `api` so the apps see them transitively.
+                api(compose.runtime)
+                api(compose.foundation)
                 api(compose.components.resources)
 
                 api(libs.kotlinx.coroutines.core)
@@ -128,6 +133,8 @@ kotlin {
                 api(libs.sqldroid)
                 api("com.readystatesoftware.sqliteasset:sqliteassethelper:2.0.1")
                 api(libs.koin.android)
+                // BackHandler for the android PlatformBackHandler actual.
+                implementation(libs.androidx.activity.compose)
             }
         }
 

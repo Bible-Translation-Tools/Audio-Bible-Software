@@ -1,4 +1,4 @@
-package org.bibletranslationtools.bttrecorder2.ui.playback
+package org.bibletranslationtools.shared.ui.playback
 
 import androidx.compose.runtime.mutableIntStateOf
 import kotlinx.coroutines.Dispatchers

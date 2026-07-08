@@ -23,7 +23,7 @@ import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.bibletranslationtools.bttrecorder2.domain.SourceAudioImporter
+import org.bibletranslationtools.shared.domain.SourceAudioImporter
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.koin.mp.KoinPlatform.getKoin
 import org.jetbrains.compose.resources.stringResource

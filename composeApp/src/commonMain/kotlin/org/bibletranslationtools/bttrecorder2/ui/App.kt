@@ -14,9 +14,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.flow.first
-import org.bibletranslationtools.bttrecorder2.preferences.AppSettings
-import org.bibletranslationtools.bttrecorder2.preferences.IAppPreferences
-import org.bibletranslationtools.bttrecorder2.preferences.ThemeMode
+import org.bibletranslationtools.shared.preferences.AppSettings
+import org.bibletranslationtools.shared.preferences.IAppPreferences
+import org.bibletranslationtools.shared.preferences.ThemeMode
 import org.bibletranslationtools.bttrecorder2.ui.navigation.Navigation
 import org.bibletranslationtools.bttrecorder2.ui.theme.TranslationRecorderTheme
 import org.bibletranslationtools.otter.common.device.newaudio.AudioDeviceSelector

@@ -1,4 +1,4 @@
-package org.bibletranslationtools.bttrecorder2.ui.platform
+package org.bibletranslationtools.shared.ui.platform
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
