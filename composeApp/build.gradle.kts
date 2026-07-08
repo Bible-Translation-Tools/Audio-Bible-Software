@@ -102,6 +102,11 @@ kotlin {
             // apply("fetchAssets.gradle")
 
             dependencies {
+                // The shared module (backend + reusable render/UI). `api` so app screens
+                // see shared types + shared Compose resources transitively during the
+                // incremental split; can tighten to `implementation` once stable.
+                api(projects.shared)
+
                 implementation(compose.runtime)
                 implementation(compose.foundation)
                 implementation(compose.material)
