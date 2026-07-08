@@ -35,26 +35,26 @@ import org.bibletranslationtools.bttrecorder2.ui.viewmodels.UnitListUiState
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import org.bibletranslationtools.bttrecorder2.ui.MockData
 import org.jetbrains.compose.resources.stringResource
-import btt_recorder2.composeapp.generated.resources.Res
-import btt_recorder2.composeapp.generated.resources.unit_delete_take_title
-import btt_recorder2.composeapp.generated.resources.action_yes
-import btt_recorder2.composeapp.generated.resources.action_no
-import btt_recorder2.composeapp.generated.resources.unit_chapter_title
-import btt_recorder2.composeapp.generated.resources.action_back
-import btt_recorder2.composeapp.generated.resources.cd_record_chapter
-import btt_recorder2.composeapp.generated.resources.cd_record
-import btt_recorder2.composeapp.generated.resources.cd_delete_take
-import btt_recorder2.composeapp.generated.resources.cd_open_in_playback
-import btt_recorder2.composeapp.generated.resources.cd_select_take
-import btt_recorder2.composeapp.generated.resources.cd_previous_take
-import btt_recorder2.composeapp.generated.resources.cd_next_take
-import btt_recorder2.composeapp.generated.resources.error_prefix
-import btt_recorder2.composeapp.generated.resources.unit_verse_label
-import btt_recorder2.composeapp.generated.resources.action_collapse
-import btt_recorder2.composeapp.generated.resources.action_expand
-import btt_recorder2.composeapp.generated.resources.action_pause
-import btt_recorder2.composeapp.generated.resources.action_play
-import btt_recorder2.composeapp.generated.resources.unit_take_position
+import org.bibletranslationtools.shared.resources.Res
+import org.bibletranslationtools.shared.resources.unit_delete_take_title
+import org.bibletranslationtools.shared.resources.action_yes
+import org.bibletranslationtools.shared.resources.action_no
+import org.bibletranslationtools.shared.resources.unit_chapter_title
+import org.bibletranslationtools.shared.resources.action_back
+import org.bibletranslationtools.shared.resources.cd_record_chapter
+import org.bibletranslationtools.shared.resources.cd_record
+import org.bibletranslationtools.shared.resources.cd_delete_take
+import org.bibletranslationtools.shared.resources.cd_open_in_playback
+import org.bibletranslationtools.shared.resources.cd_select_take
+import org.bibletranslationtools.shared.resources.cd_previous_take
+import org.bibletranslationtools.shared.resources.cd_next_take
+import org.bibletranslationtools.shared.resources.error_prefix
+import org.bibletranslationtools.shared.resources.unit_verse_label
+import org.bibletranslationtools.shared.resources.action_collapse
+import org.bibletranslationtools.shared.resources.action_expand
+import org.bibletranslationtools.shared.resources.action_pause
+import org.bibletranslationtools.shared.resources.action_play
+import org.bibletranslationtools.shared.resources.unit_take_position
 
 private val GreenPlay = Color(0xFF4CAF50)
 

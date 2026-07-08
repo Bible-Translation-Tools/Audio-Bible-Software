@@ -30,14 +30,14 @@ import org.bibletranslationtools.otter.common.device.newaudio.IAudioPlayer
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.content.ChapterTranslationBuilder
 import org.jetbrains.compose.resources.getString
-import btt_recorder2.composeapp.generated.resources.Res
-import btt_recorder2.composeapp.generated.resources.err_no_active_project
-import btt_recorder2.composeapp.generated.resources.err_project_not_found
-import btt_recorder2.composeapp.generated.resources.err_workbook_not_found
-import btt_recorder2.composeapp.generated.resources.err_unknown
-import btt_recorder2.composeapp.generated.resources.err_compile_failed
-import btt_recorder2.composeapp.generated.resources.err_load_chapter_audio
-import btt_recorder2.composeapp.generated.resources.err_play_chapter_audio
+import org.bibletranslationtools.shared.resources.Res
+import org.bibletranslationtools.shared.resources.err_no_active_project
+import org.bibletranslationtools.shared.resources.err_project_not_found
+import org.bibletranslationtools.shared.resources.err_workbook_not_found
+import org.bibletranslationtools.shared.resources.err_unknown
+import org.bibletranslationtools.shared.resources.err_compile_failed
+import org.bibletranslationtools.shared.resources.err_load_chapter_audio
+import org.bibletranslationtools.shared.resources.err_play_chapter_audio
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 

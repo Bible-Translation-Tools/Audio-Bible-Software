@@ -16,8 +16,8 @@ import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.domain.collections.CreateProject
 import org.jetbrains.compose.resources.getString
-import btt_recorder2.composeapp.generated.resources.Res
-import btt_recorder2.composeapp.generated.resources.err_source_collection_not_found
+import org.bibletranslationtools.shared.resources.Res
+import org.bibletranslationtools.shared.resources.err_source_collection_not_found
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 

@@ -32,12 +32,12 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.first
 import org.jetbrains.compose.resources.getString
-import btt_recorder2.composeapp.generated.resources.Res
-import btt_recorder2.composeapp.generated.resources.err_no_active_chapter
-import btt_recorder2.composeapp.generated.resources.err_project_not_found
-import btt_recorder2.composeapp.generated.resources.err_chapter_not_found
-import btt_recorder2.composeapp.generated.resources.err_unknown
-import btt_recorder2.composeapp.generated.resources.err_play_audio
+import org.bibletranslationtools.shared.resources.Res
+import org.bibletranslationtools.shared.resources.err_no_active_chapter
+import org.bibletranslationtools.shared.resources.err_project_not_found
+import org.bibletranslationtools.shared.resources.err_chapter_not_found
+import org.bibletranslationtools.shared.resources.err_unknown
+import org.bibletranslationtools.shared.resources.err_play_audio
 
 data class UnitUiModel(
     val unit: Chunk,

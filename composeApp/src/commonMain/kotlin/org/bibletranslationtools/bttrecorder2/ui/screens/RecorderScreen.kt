@@ -54,17 +54,17 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Stop
-import btt_recorder2.composeapp.generated.resources.Res
-import btt_recorder2.composeapp.generated.resources.action_back
-import btt_recorder2.composeapp.generated.resources.cd_record_transport
-import btt_recorder2.composeapp.generated.resources.recorder_initializing_audio
-import btt_recorder2.composeapp.generated.resources.recorder_label_chapter
-import btt_recorder2.composeapp.generated.resources.recorder_label_verse
-import btt_recorder2.composeapp.generated.resources.recorder_saving
-import btt_recorder2.composeapp.generated.resources.recorder_stop
-import btt_recorder2.composeapp.generated.resources.source_audio_none
-import btt_recorder2.composeapp.generated.resources.cd_pause_source
-import btt_recorder2.composeapp.generated.resources.cd_play_source
+import org.bibletranslationtools.shared.resources.Res
+import org.bibletranslationtools.shared.resources.action_back
+import org.bibletranslationtools.shared.resources.cd_record_transport
+import org.bibletranslationtools.shared.resources.recorder_initializing_audio
+import org.bibletranslationtools.shared.resources.recorder_label_chapter
+import org.bibletranslationtools.shared.resources.recorder_label_verse
+import org.bibletranslationtools.shared.resources.recorder_saving
+import org.bibletranslationtools.shared.resources.recorder_stop
+import org.bibletranslationtools.shared.resources.source_audio_none
+import org.bibletranslationtools.shared.resources.cd_pause_source
+import org.bibletranslationtools.shared.resources.cd_play_source
 import org.jetbrains.compose.resources.stringResource
 
 @Composable

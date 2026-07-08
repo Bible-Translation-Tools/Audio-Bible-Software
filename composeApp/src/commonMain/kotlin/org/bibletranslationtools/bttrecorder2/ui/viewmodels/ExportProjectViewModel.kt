@@ -33,15 +33,15 @@ import org.bibletranslationtools.otter.common.domain.project.exporter.resourceco
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import org.jetbrains.compose.resources.getString
-import btt_recorder2.composeapp.generated.resources.Res
-import btt_recorder2.composeapp.generated.resources.export_error_project_not_found
-import btt_recorder2.composeapp.generated.resources.export_error_load_chapters_failed
-import btt_recorder2.composeapp.generated.resources.export_error_no_file
-import btt_recorder2.composeapp.generated.resources.export_error_generic
-import btt_recorder2.composeapp.generated.resources.export_error_not_initialized
-import btt_recorder2.composeapp.generated.resources.export_error_no_audio
-import btt_recorder2.composeapp.generated.resources.export_error_no_takes_selected
-import btt_recorder2.composeapp.generated.resources.export_error_packaging
+import org.bibletranslationtools.shared.resources.Res
+import org.bibletranslationtools.shared.resources.export_error_project_not_found
+import org.bibletranslationtools.shared.resources.export_error_load_chapters_failed
+import org.bibletranslationtools.shared.resources.export_error_no_file
+import org.bibletranslationtools.shared.resources.export_error_generic
+import org.bibletranslationtools.shared.resources.export_error_not_initialized
+import org.bibletranslationtools.shared.resources.export_error_no_audio
+import org.bibletranslationtools.shared.resources.export_error_no_takes_selected
+import org.bibletranslationtools.shared.resources.export_error_packaging
 import java.io.File
 import java.util.UUID
 

@@ -21,10 +21,10 @@ import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.readBytes
 import kotlinx.coroutines.rx2.await
 import org.jetbrains.compose.resources.getString
-import btt_recorder2.composeapp.generated.resources.Res
-import btt_recorder2.composeapp.generated.resources.err_unknown
-import btt_recorder2.composeapp.generated.resources.err_delete_project
-import btt_recorder2.composeapp.generated.resources.import_failed
+import org.bibletranslationtools.shared.resources.Res
+import org.bibletranslationtools.shared.resources.err_unknown
+import org.bibletranslationtools.shared.resources.err_delete_project
+import org.bibletranslationtools.shared.resources.import_failed
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.io.File

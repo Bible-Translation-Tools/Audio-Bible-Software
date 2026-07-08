@@ -3,10 +3,10 @@ package org.bibletranslationtools.bttrecorder2.ui.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import org.jetbrains.compose.resources.getString
-import btt_recorder2.composeapp.generated.resources.Res
-import btt_recorder2.composeapp.generated.resources.err_record_device_start
-import btt_recorder2.composeapp.generated.resources.err_record_device_resume
-import btt_recorder2.composeapp.generated.resources.err_save_recording
+import org.bibletranslationtools.shared.resources.Res
+import org.bibletranslationtools.shared.resources.err_record_device_start
+import org.bibletranslationtools.shared.resources.err_record_device_resume
+import org.bibletranslationtools.shared.resources.err_save_recording
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay

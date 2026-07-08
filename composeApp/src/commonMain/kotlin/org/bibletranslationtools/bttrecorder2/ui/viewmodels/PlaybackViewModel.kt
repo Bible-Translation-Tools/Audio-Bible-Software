@@ -52,11 +52,11 @@ import org.bibletranslationtools.otter.common.domain.content.Recordable
 import org.bibletranslationtools.otter.common.domain.content.TakeCreator
 import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
 import org.jetbrains.compose.resources.getString
-import btt_recorder2.composeapp.generated.resources.Res
-import btt_recorder2.composeapp.generated.resources.err_no_edits_to_save
-import btt_recorder2.composeapp.generated.resources.err_save_edited_take
-import btt_recorder2.composeapp.generated.resources.err_save_verse_markers
-import btt_recorder2.composeapp.generated.resources.err_load_take
+import org.bibletranslationtools.shared.resources.Res
+import org.bibletranslationtools.shared.resources.err_no_edits_to_save
+import org.bibletranslationtools.shared.resources.err_save_edited_take
+import org.bibletranslationtools.shared.resources.err_save_verse_markers
+import org.bibletranslationtools.shared.resources.err_load_take
 import java.io.File
 import kotlin.math.abs
 import kotlin.math.max

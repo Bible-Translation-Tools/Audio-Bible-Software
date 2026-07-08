@@ -18,7 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.initialization
 
-import btt_recorder2.composeapp.generated.resources.Res
+import org.bibletranslationtools.shared.resources.Res
 import io.reactivex.Completable
 import io.reactivex.ObservableEmitter
 import kotlinx.coroutines.runBlocking

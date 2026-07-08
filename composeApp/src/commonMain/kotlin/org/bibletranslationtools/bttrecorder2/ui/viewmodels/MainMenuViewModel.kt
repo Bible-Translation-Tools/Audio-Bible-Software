@@ -14,9 +14,9 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IWork
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import org.jetbrains.compose.resources.getString
-import btt_recorder2.composeapp.generated.resources.Res
-import btt_recorder2.composeapp.generated.resources.main_chapter_label
-import btt_recorder2.composeapp.generated.resources.main_verse_label
+import org.bibletranslationtools.shared.resources.Res
+import org.bibletranslationtools.shared.resources.main_chapter_label
+import org.bibletranslationtools.shared.resources.main_verse_label
 
 data class MainMenuUiState(
     val languageDisplay: String = "",

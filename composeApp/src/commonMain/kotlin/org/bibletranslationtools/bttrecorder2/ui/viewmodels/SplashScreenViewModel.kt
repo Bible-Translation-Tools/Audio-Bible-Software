@@ -7,7 +7,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import io.reactivex.Completable
-import org.bibletranslationtools.otter.common.di.DependencyProvider
 import org.bibletranslationtools.otter.common.initialization.InitializeApp
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject

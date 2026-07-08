@@ -19,9 +19,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import btt_recorder2.composeapp.generated.resources.Res
-import btt_recorder2.composeapp.generated.resources.cd_files
-import btt_recorder2.composeapp.generated.resources.cd_record
+import org.bibletranslationtools.shared.resources.Res
+import org.bibletranslationtools.shared.resources.cd_files
+import org.bibletranslationtools.shared.resources.cd_record
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.MainMenuViewModel
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.ui.tooling.preview.Preview

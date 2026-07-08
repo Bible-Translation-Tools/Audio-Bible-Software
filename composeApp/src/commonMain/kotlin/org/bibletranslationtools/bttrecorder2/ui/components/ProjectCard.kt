@@ -20,9 +20,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import btt_recorder2.composeapp.generated.resources.Res
-import btt_recorder2.composeapp.generated.resources.cd_info
-import btt_recorder2.composeapp.generated.resources.cd_record
+import org.bibletranslationtools.shared.resources.Res
+import org.bibletranslationtools.shared.resources.cd_info
+import org.bibletranslationtools.shared.resources.cd_record
 import io.reactivex.Single
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.jetbrains.compose.resources.stringResource

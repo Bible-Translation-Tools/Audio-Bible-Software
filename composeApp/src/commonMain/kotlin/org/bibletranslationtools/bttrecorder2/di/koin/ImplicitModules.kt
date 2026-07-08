@@ -25,7 +25,6 @@ import org.bibletranslationtools.otter.common.domain.content.CreateChunks
 import org.bibletranslationtools.otter.common.domain.content.ResetChunks
 import org.bibletranslationtools.otter.common.domain.content.TakeCreator
 import org.bibletranslationtools.otter.common.domain.narration.AudioFileUtils
-import org.bibletranslationtools.otter.common.domain.narration.NarrationHistory
 import org.bibletranslationtools.otter.common.domain.narration.PcmTakeTransformer
 import org.bibletranslationtools.otter.common.domain.narration.SplitAudioOnCues
 import org.bibletranslationtools.otter.common.domain.languages.ImportLanguages
@@ -136,7 +135,6 @@ val implicitCommonModule = module {
 
     // Other Implicit Dependencies
     factoryOf(::ProjectCompletionStatus)
-    factoryOf(::NarrationHistory)
 
     // Narration
     factoryOf(::PcmTakeTransformer)
