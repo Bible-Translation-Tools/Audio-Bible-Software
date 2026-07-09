@@ -29,10 +29,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.bibletranslationtools.orature.ui.OratureColors
 import org.jetbrains.compose.resources.stringResource
-import org.bibletranslationtools.shared.resources.Res
-import org.bibletranslationtools.shared.resources.orature_nav_home
-import org.bibletranslationtools.shared.resources.orature_nav_info
-import org.bibletranslationtools.shared.resources.orature_nav_settings
+import org.bibletranslationtools.orature.resources.Res
+import org.bibletranslationtools.orature.resources.home
+import org.bibletranslationtools.orature.resources.info
+import org.bibletranslationtools.orature.resources.settings
 
 /** Which nav-rail destination is currently active, so the rail can highlight it. */
 enum class OratureNavDestination {
@@ -63,7 +63,7 @@ fun OratureNavRail(
     ) {
         OratureNavRailItem(
             icon = Icons.Filled.Home,
-            label = stringResource(Res.string.orature_nav_home),
+            label = stringResource(Res.string.home),
             selected = selected == OratureNavDestination.HOME,
             onClick = onHomeClick
         )
@@ -72,13 +72,13 @@ fun OratureNavRail(
 
         OratureNavRailItem(
             icon = Icons.Filled.Settings,
-            label = stringResource(Res.string.orature_nav_settings),
+            label = stringResource(Res.string.settings),
             selected = selected == OratureNavDestination.SETTINGS,
             onClick = onSettingsClick
         )
         OratureNavRailItem(
             icon = Icons.Filled.Info,
-            label = stringResource(Res.string.orature_nav_info),
+            label = stringResource(Res.string.info),
             selected = selected == OratureNavDestination.INFO,
             onClick = onInfoClick
         )

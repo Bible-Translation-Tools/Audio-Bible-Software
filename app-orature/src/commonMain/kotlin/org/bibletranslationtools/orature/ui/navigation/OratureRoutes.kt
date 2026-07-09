@@ -9,6 +9,3 @@ object OratureSplashRoute
 
 @Serializable
 object OratureHomeRoute
-
-@Serializable
-object OratureSettingsRoute

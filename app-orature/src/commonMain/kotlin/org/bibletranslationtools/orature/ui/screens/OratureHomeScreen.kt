@@ -25,6 +25,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -33,13 +35,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.bibletranslationtools.orature.ui.OratureColors
 import org.bibletranslationtools.orature.ui.components.OratureBookTable
 import org.bibletranslationtools.orature.ui.components.OratureImportButton
+import org.bibletranslationtools.orature.ui.components.OratureInfoDrawer
 import org.bibletranslationtools.orature.ui.components.OratureNavDestination
 import org.bibletranslationtools.orature.ui.components.OratureNavRail
+import org.bibletranslationtools.orature.ui.components.OratureSettingsDrawer
 import org.bibletranslationtools.orature.ui.components.OratureNewProjectCard
 import org.bibletranslationtools.orature.ui.components.OratureProjectGroupCard
 import org.bibletranslationtools.orature.ui.components.projectModeLabel
@@ -49,13 +54,13 @@ import org.bibletranslationtools.orature.ui.viewmodels.OratureHomeViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureProjectGroupKey
 import org.bibletranslationtools.orature.ui.viewmodels.OratureProjectGroupUiModel
 import org.jetbrains.compose.resources.stringResource
-import org.bibletranslationtools.shared.resources.Res
-import org.bibletranslationtools.shared.resources.orature_cd_more_options
-import org.bibletranslationtools.shared.resources.orature_empty_books
-import org.bibletranslationtools.shared.resources.orature_empty_groups
-import org.bibletranslationtools.shared.resources.orature_project_group_title
-import org.bibletranslationtools.shared.resources.orature_projects_title
-import org.bibletranslationtools.shared.resources.orature_search
+import org.bibletranslationtools.orature.resources.Res
+import org.bibletranslationtools.orature.resources.createProjectMessageBody
+import org.bibletranslationtools.orature.resources.createProjectMessageTitle
+import org.bibletranslationtools.orature.resources.options
+import org.bibletranslationtools.orature.resources.projectGroupTitle
+import org.bibletranslationtools.orature.resources.projects
+import org.bibletranslationtools.orature.resources.search
 
 /**
  * Orature's real home: a persistent nav rail, a 320dp Projects pane of project-group
@@ -67,9 +72,7 @@ fun OratureHomeScreen(
     viewModel: OratureHomeViewModel,
     onBookClick: (OratureBookUiModel) -> Unit,
     onNewProjectClick: () -> Unit,
-    onImportClick: () -> Unit,
-    onSettingsClick: () -> Unit,
-    onInfoClick: () -> Unit
+    onImportClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
@@ -88,11 +91,12 @@ fun OratureHomeScreen(
         onImportClick = {
             viewModel.onImportClick()
             onImportClick()
-        },
-        onSettingsClick = onSettingsClick,
-        onInfoClick = onInfoClick
+        }
     )
 }
+
+/** Which left drawer (if any) is currently open over the home content. */
+private enum class OpenDrawer { NONE, SETTINGS, INFO }
 
 @Composable
 fun OratureHomeContent(
@@ -101,32 +105,73 @@ fun OratureHomeContent(
     onBookSearchQueryChange: (String) -> Unit,
     onBookClick: (OratureBookUiModel) -> Unit,
     onNewProjectClick: () -> Unit,
-    onImportClick: () -> Unit,
-    onSettingsClick: () -> Unit,
-    onInfoClick: () -> Unit
+    onImportClick: () -> Unit
 ) {
+    // Settings/Info are left drawers, not routes. The nav-rail buttons toggle them open
+    // over the content area (right of the rail), with a scrim + click-outside to close —
+    // mirroring the JVM app's HiddenSidesPane drawer + dimming overlay. Hosted here for
+    // now; promotable to a RootView shell later.
+    var openDrawer by remember { mutableStateOf(OpenDrawer.NONE) }
+
     Row(modifier = Modifier.fillMaxSize()) {
         OratureNavRail(
-            selected = OratureNavDestination.HOME,
-            onHomeClick = { /* no-op: already home */ },
-            onSettingsClick = onSettingsClick,
-            onInfoClick = onInfoClick
+            selected = when (openDrawer) {
+                OpenDrawer.SETTINGS -> OratureNavDestination.SETTINGS
+                OpenDrawer.INFO -> OratureNavDestination.INFO
+                OpenDrawer.NONE -> OratureNavDestination.HOME
+            },
+            onHomeClick = { openDrawer = OpenDrawer.NONE },
+            onSettingsClick = {
+                openDrawer = if (openDrawer == OpenDrawer.SETTINGS) OpenDrawer.NONE else OpenDrawer.SETTINGS
+            },
+            onInfoClick = {
+                openDrawer = if (openDrawer == OpenDrawer.INFO) OpenDrawer.NONE else OpenDrawer.INFO
+            }
         )
 
-        OratureProjectsPane(
-            uiState = uiState,
-            onSelectGroup = onSelectGroup,
-            onNewProjectClick = onNewProjectClick,
-            onImportClick = onImportClick,
-            modifier = Modifier.width(320.dp).fillMaxHeight()
-        )
+        // Content area right of the rail; drawers overlay it.
+        Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+            Row(modifier = Modifier.fillMaxSize()) {
+                OratureProjectsPane(
+                    uiState = uiState,
+                    onSelectGroup = onSelectGroup,
+                    onNewProjectClick = onNewProjectClick,
+                    onImportClick = onImportClick,
+                    modifier = Modifier.width(320.dp).fillMaxHeight()
+                )
 
-        OratureBookSection(
-            uiState = uiState,
-            onBookSearchQueryChange = onBookSearchQueryChange,
-            onBookClick = onBookClick,
-            modifier = Modifier.weight(1f).fillMaxHeight()
-        )
+                OratureBookSection(
+                    uiState = uiState,
+                    onBookSearchQueryChange = onBookSearchQueryChange,
+                    onBookClick = onBookClick,
+                    modifier = Modifier.weight(1f).fillMaxHeight()
+                )
+            }
+
+            if (openDrawer != OpenDrawer.NONE) {
+                // Dimming scrim: click outside (or the interaction) closes the drawer.
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.32f))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { openDrawer = OpenDrawer.NONE }
+                )
+                when (openDrawer) {
+                    OpenDrawer.SETTINGS -> OratureSettingsDrawer(
+                        onClose = { openDrawer = OpenDrawer.NONE },
+                        modifier = Modifier.align(Alignment.CenterStart)
+                    )
+                    OpenDrawer.INFO -> OratureInfoDrawer(
+                        onClose = { openDrawer = OpenDrawer.NONE },
+                        modifier = Modifier.align(Alignment.CenterStart)
+                    )
+                    OpenDrawer.NONE -> Unit
+                }
+            }
+        }
     }
 }
 
@@ -142,7 +187,7 @@ private fun OratureProjectsPane(
         modifier = modifier.background(MaterialTheme.colorScheme.surface).padding(16.dp)
     ) {
         Text(
-            text = stringResource(Res.string.orature_projects_title),
+            text = stringResource(Res.string.projects),
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface
@@ -163,7 +208,7 @@ private fun OratureProjectsPane(
             uiState.isEmptyGroups -> {
                 Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Text(
-                        text = stringResource(Res.string.orature_empty_groups),
+                        text = stringResource(Res.string.createProjectMessageTitle),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -214,18 +259,18 @@ private fun OratureBookSection(
                 IconButton(onClick = { menuExpanded = true }) {
                     Icon(
                         imageVector = Icons.Filled.MoreVert,
-                        contentDescription = stringResource(Res.string.orature_cd_more_options)
+                        contentDescription = stringResource(Res.string.options)
                     )
                 }
                 DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                     // Stub menu — populated with real project-group actions in a later phase.
-                    DropdownMenuItem(text = { Text(stringResource(Res.string.orature_cd_more_options)) }, onClick = { menuExpanded = false })
+                    DropdownMenuItem(text = { Text(stringResource(Res.string.options)) }, onClick = { menuExpanded = false })
                 }
             }
 
             val title = if (selectedGroup != null) {
                 stringResource(
-                    Res.string.orature_project_group_title,
+                    Res.string.projectGroupTitle,
                     selectedGroup.targetLanguageName,
                     projectModeLabel(selectedGroup.mode)
                 )
@@ -244,8 +289,8 @@ private fun OratureBookSection(
                 value = uiState.bookSearchQuery,
                 onValueChange = onBookSearchQueryChange,
                 singleLine = true,
-                placeholder = { Text(stringResource(Res.string.orature_search)) },
-                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = stringResource(Res.string.orature_search)) },
+                placeholder = { Text(stringResource(Res.string.search)) },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = stringResource(Res.string.search)) },
                 modifier = Modifier.width(240.dp)
             )
         }
@@ -270,7 +315,7 @@ private fun OratureBookSection(
             selectedGroup == null || uiState.visibleBooks.isEmpty() -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        text = stringResource(Res.string.orature_empty_books),
+                        text = stringResource(Res.string.createProjectMessageBody),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

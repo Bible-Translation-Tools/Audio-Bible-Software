@@ -53,24 +53,9 @@ fun OratureNavigation(navController: NavHostController) {
                 },
                 onImportClick = {
                     // Phase 9 wires up project import. Stub for now.
-                },
-                onSettingsClick = { navController.navigate(OratureSettingsRoute) },
-                onInfoClick = {
-                    // Info drawer/dialog stub for now.
                 }
-            )
-        }
-
-        composable<OratureSettingsRoute> {
-            // Phase 2 replaces this with the real settings screen.
-            val vm = viewModel { getKoin().get<OratureHomeViewModel>() }
-            OratureHomeScreen(
-                viewModel = vm,
-                onBookClick = {},
-                onNewProjectClick = {},
-                onImportClick = {},
-                onSettingsClick = {},
-                onInfoClick = {}
+                // Settings/Info are now left drawers hosted inside the home screen
+                // (Phase 2), toggled by the nav rail — no longer separate routes.
             )
         }
     }

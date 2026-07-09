@@ -70,6 +70,15 @@ kotlin {
     }
 }
 
+// Orature owns its UI strings: the 12-language message catalog migrated from the
+// old app's Messages_*.properties lives in this module's composeResources, generating
+// its own Res (separate from :shared's backend Res).
+compose.resources {
+    publicResClass = true
+    packageOfResClass = "org.bibletranslationtools.orature.resources"
+    generateResClass = always
+}
+
 android {
     namespace = "org.bibletranslationtools.orature"
     compileSdk = libs.versions.android.compileSdk.get().toInt()

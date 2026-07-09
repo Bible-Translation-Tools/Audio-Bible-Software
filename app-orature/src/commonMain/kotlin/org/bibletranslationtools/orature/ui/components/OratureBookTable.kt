@@ -30,20 +30,20 @@ import org.bibletranslationtools.orature.ui.OratureColors
 import org.bibletranslationtools.orature.ui.viewmodels.OratureBookUiModel
 import org.jetbrains.compose.resources.stringResource
 import org.bibletranslationtools.otter.common.data.primitives.Anthology
-import org.bibletranslationtools.shared.resources.Res
-import org.bibletranslationtools.shared.resources.orature_cd_row_options
-import org.bibletranslationtools.shared.resources.orature_column_anthology
-import org.bibletranslationtools.shared.resources.orature_column_book
-import org.bibletranslationtools.shared.resources.orature_column_code
-import org.bibletranslationtools.shared.resources.orature_column_progress
-import org.bibletranslationtools.shared.resources.orature_new_testament
-import org.bibletranslationtools.shared.resources.orature_old_testament
+import org.bibletranslationtools.orature.resources.Res
+import org.bibletranslationtools.orature.resources.anthology
+import org.bibletranslationtools.orature.resources.book
+import org.bibletranslationtools.orature.resources.code
+import org.bibletranslationtools.orature.resources.newTestament
+import org.bibletranslationtools.orature.resources.oldTestament
+import org.bibletranslationtools.orature.resources.options
+import org.bibletranslationtools.orature.resources.progress
 
 /** Localized label for an [Anthology], mirroring the JVM app's `messages[anthology.titleKey]`. */
 @Composable
 fun anthologyLabel(anthology: Anthology): String = when (anthology) {
-    Anthology.OLD_TESTAMENT -> stringResource(Res.string.orature_old_testament)
-    Anthology.NEW_TESTAMENT -> stringResource(Res.string.orature_new_testament)
+    Anthology.OLD_TESTAMENT -> stringResource(Res.string.oldTestament)
+    Anthology.NEW_TESTAMENT -> stringResource(Res.string.newTestament)
     Anthology.OTHER -> ""
 }
 
@@ -87,28 +87,28 @@ private fun OratureBookTableHeader() {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = stringResource(Res.string.orature_column_book),
+            text = stringResource(Res.string.book),
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(0.34f)
         )
         Text(
-            text = stringResource(Res.string.orature_column_code),
+            text = stringResource(Res.string.code),
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(0.16f)
         )
         Text(
-            text = stringResource(Res.string.orature_column_anthology),
+            text = stringResource(Res.string.anthology),
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(0.24f)
         )
         Text(
-            text = stringResource(Res.string.orature_column_progress),
+            text = stringResource(Res.string.progress),
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -161,7 +161,7 @@ private fun OratureBookTableRow(
         IconButton(onClick = onOptionsClick, modifier = Modifier.width(40.dp)) {
             Icon(
                 imageVector = Icons.Filled.MoreVert,
-                contentDescription = stringResource(Res.string.orature_cd_row_options),
+                contentDescription = stringResource(Res.string.options),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }

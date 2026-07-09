@@ -27,21 +27,21 @@ import org.bibletranslationtools.orature.ui.OratureColors
 import org.bibletranslationtools.orature.ui.viewmodels.OratureProjectGroupUiModel
 import org.jetbrains.compose.resources.stringResource
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
-import org.bibletranslationtools.shared.resources.Res
-import org.bibletranslationtools.shared.resources.orature_import
-import org.bibletranslationtools.shared.resources.orature_mode_dialect
-import org.bibletranslationtools.shared.resources.orature_mode_narration
-import org.bibletranslationtools.shared.resources.orature_mode_translation
-import org.bibletranslationtools.shared.resources.orature_new_project
-import org.bibletranslationtools.shared.resources.orature_source_language_label
-import org.bibletranslationtools.shared.resources.orature_target_language_label
+import org.bibletranslationtools.orature.resources.Res
+import org.bibletranslationtools.orature.resources.dialect
+import org.bibletranslationtools.orature.resources.`import`
+import org.bibletranslationtools.orature.resources.narration
+import org.bibletranslationtools.orature.resources.newProject
+import org.bibletranslationtools.orature.resources.sourceLanguage
+import org.bibletranslationtools.orature.resources.targetLanguage
+import org.bibletranslationtools.orature.resources.translation
 
 /** Localized label for a [ProjectMode], mirroring the JVM app's `messages[mode.titleKey]`. */
 @Composable
 fun projectModeLabel(mode: ProjectMode): String = when (mode) {
-    ProjectMode.TRANSLATION -> stringResource(Res.string.orature_mode_translation)
-    ProjectMode.NARRATION -> stringResource(Res.string.orature_mode_narration)
-    ProjectMode.DIALECT -> stringResource(Res.string.orature_mode_dialect)
+    ProjectMode.TRANSLATION -> stringResource(Res.string.translation)
+    ProjectMode.NARRATION -> stringResource(Res.string.narration)
+    ProjectMode.DIALECT -> stringResource(Res.string.dialect)
 }
 
 /**
@@ -79,13 +79,13 @@ fun OratureProjectGroupCard(
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = stringResource(Res.string.orature_source_language_label, group.sourceLanguageName),
+                text = "${stringResource(Res.string.sourceLanguage)}: ${group.sourceLanguageName}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 6.dp)
             )
             Text(
-                text = stringResource(Res.string.orature_target_language_label, group.targetLanguageName),
+                text = "${stringResource(Res.string.targetLanguage)}: ${group.targetLanguageName}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 2.dp)
@@ -116,7 +116,7 @@ fun OratureNewProjectCard(
         ) {
             Icon(imageVector = Icons.Filled.Add, contentDescription = null, tint = OratureColors.Primary)
             Text(
-                text = stringResource(Res.string.orature_new_project),
+                text = stringResource(Res.string.newProject),
                 color = OratureColors.Primary,
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier.padding(start = 8.dp)
@@ -136,6 +136,6 @@ fun OratureImportButton(
         modifier = modifier.fillMaxWidth()
     ) {
         Icon(imageVector = Icons.Filled.Download, contentDescription = null)
-        Text(text = stringResource(Res.string.orature_import), modifier = Modifier.padding(start = 8.dp))
+        Text(text = stringResource(Res.string.`import`), modifier = Modifier.padding(start = 8.dp))
     }
 }
