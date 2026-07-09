@@ -94,10 +94,9 @@ fun OratureTheme(content: @Composable () -> Unit) {
 }
 
 /**
- * Root composable for the Orature app: its own theme + navigation host over the shared
- * backend/engine. The persistent nav rail lives inside the home screen's own Scaffold for
- * now (Phase 1) — a fuller RootView shell that hosts the rail above the nav graph arrives
- * in a later phase.
+ * Root composable for the Orature app: its own theme + the persistent [OratureRootShell]
+ * (nav rail + Settings/Info drawers) wrapping the navigation host, over the shared
+ * backend/engine. The rail stays present on every screen (JVM: RootView's AppBar).
  */
 @Composable
 fun OratureApp() {
@@ -132,7 +131,9 @@ fun OratureApp() {
                 .background(MaterialTheme.colorScheme.background)
         ) {
             Box(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
-                OratureNavigation(navController)
+                OratureRootShell(navController) {
+                    OratureNavigation(navController)
+                }
             }
         }
     }

@@ -25,8 +25,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -36,17 +34,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.bibletranslationtools.orature.ui.OratureColors
 import org.bibletranslationtools.orature.ui.components.OratureBookTable
 import org.bibletranslationtools.orature.ui.components.OratureImportButton
-import org.bibletranslationtools.orature.ui.components.OratureInfoDrawer
-import org.bibletranslationtools.orature.ui.components.OratureNavDestination
-import org.bibletranslationtools.orature.ui.components.OratureNavRail
 import org.bibletranslationtools.orature.ui.components.OratureProjectWizardSection
-import org.bibletranslationtools.orature.ui.components.OratureSettingsDrawer
 import org.bibletranslationtools.orature.ui.components.OratureNewProjectCard
 import org.bibletranslationtools.orature.ui.components.OratureProjectGroupCard
 import org.bibletranslationtools.orature.ui.components.projectModeLabel
@@ -135,9 +128,6 @@ fun OratureHomeScreen(
     )
 }
 
-/** Which left drawer (if any) is currently open over the home content. */
-private enum class OpenDrawer { NONE, SETTINGS, INFO }
-
 /** What occupies the home center region: the book table, or the project-creation wizard. */
 enum class CenterPaneMode { BOOK_TABLE, WIZARD }
 
@@ -158,85 +148,37 @@ fun OratureHomeContent(
     onWizardSourceSearchChange: (String) -> Unit,
     onWizardTargetSearchChange: (String) -> Unit
 ) {
-    // Settings/Info are left drawers, not routes. The nav-rail buttons toggle them open
-    // over the content area (right of the rail), with a scrim + click-outside to close —
-    // mirroring the JVM app's HiddenSidesPane drawer + dimming overlay. Hosted here for
-    // now; promotable to a RootView shell later.
-    var openDrawer by remember { mutableStateOf(OpenDrawer.NONE) }
-
+    // The nav rail + Settings/Info drawers now live in the persistent OratureRootShell
+    // (present on every screen); the home content is just the projects pane + center section.
     Row(modifier = Modifier.fillMaxSize()) {
-        OratureNavRail(
-            selected = when (openDrawer) {
-                OpenDrawer.SETTINGS -> OratureNavDestination.SETTINGS
-                OpenDrawer.INFO -> OratureNavDestination.INFO
-                OpenDrawer.NONE -> OratureNavDestination.HOME
-            },
-            onHomeClick = { openDrawer = OpenDrawer.NONE },
-            onSettingsClick = {
-                openDrawer = if (openDrawer == OpenDrawer.SETTINGS) OpenDrawer.NONE else OpenDrawer.SETTINGS
-            },
-            onInfoClick = {
-                openDrawer = if (openDrawer == OpenDrawer.INFO) OpenDrawer.NONE else OpenDrawer.INFO
-            }
+        OratureProjectsPane(
+            uiState = uiState,
+            // JVM: the new-project card is hidden while the wizard is docked.
+            showNewProjectCard = centerMode == CenterPaneMode.BOOK_TABLE,
+            onSelectGroup = onSelectGroup,
+            onNewProjectClick = onNewProjectClick,
+            onImportClick = onImportClick,
+            modifier = Modifier.width(320.dp).fillMaxHeight()
         )
 
-        // Content area right of the rail; drawers overlay it.
-        Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-            Row(modifier = Modifier.fillMaxSize()) {
-                OratureProjectsPane(
-                    uiState = uiState,
-                    // JVM: the new-project card is hidden while the wizard is docked.
-                    showNewProjectCard = centerMode == CenterPaneMode.BOOK_TABLE,
-                    onSelectGroup = onSelectGroup,
-                    onNewProjectClick = onNewProjectClick,
-                    onImportClick = onImportClick,
-                    modifier = Modifier.width(320.dp).fillMaxHeight()
-                )
-
-                // Center region swaps between the book table and the wizard (JVM: mainSectionProperty).
-                when (centerMode) {
-                    CenterPaneMode.BOOK_TABLE -> OratureBookSection(
-                        uiState = uiState,
-                        onBookSearchQueryChange = onBookSearchQueryChange,
-                        onBookClick = onBookClick,
-                        modifier = Modifier.weight(1f).fillMaxHeight()
-                    )
-                    CenterPaneMode.WIZARD -> OratureProjectWizardSection(
-                        state = wizardState,
-                        onModeSelected = onWizardModeSelected,
-                        onBack = onWizardBack,
-                        onLanguageSelected = onWizardLanguageSelected,
-                        onResourceVersionSelected = onWizardResourceVersionSelected,
-                        onSourceSearchQueryChange = onWizardSourceSearchChange,
-                        onTargetSearchQueryChange = onWizardTargetSearchChange,
-                        modifier = Modifier.weight(1f).fillMaxHeight()
-                    )
-                }
-            }
-
-            if (openDrawer != OpenDrawer.NONE) {
-                // Dimming scrim: click outside (or the interaction) closes the drawer.
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.32f))
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { openDrawer = OpenDrawer.NONE }
-                )
-                when (openDrawer) {
-                    OpenDrawer.SETTINGS -> OratureSettingsDrawer(
-                        onClose = { openDrawer = OpenDrawer.NONE },
-                        modifier = Modifier.align(Alignment.CenterStart)
-                    )
-                    OpenDrawer.INFO -> OratureInfoDrawer(
-                        onClose = { openDrawer = OpenDrawer.NONE },
-                        modifier = Modifier.align(Alignment.CenterStart)
-                    )
-                    OpenDrawer.NONE -> Unit
-                }
-            }
+        // Center region swaps between the book table and the wizard (JVM: mainSectionProperty).
+        when (centerMode) {
+            CenterPaneMode.BOOK_TABLE -> OratureBookSection(
+                uiState = uiState,
+                onBookSearchQueryChange = onBookSearchQueryChange,
+                onBookClick = onBookClick,
+                modifier = Modifier.weight(1f).fillMaxHeight()
+            )
+            CenterPaneMode.WIZARD -> OratureProjectWizardSection(
+                state = wizardState,
+                onModeSelected = onWizardModeSelected,
+                onBack = onWizardBack,
+                onLanguageSelected = onWizardLanguageSelected,
+                onResourceVersionSelected = onWizardResourceVersionSelected,
+                onSourceSearchQueryChange = onWizardSourceSearchChange,
+                onTargetSearchQueryChange = onWizardTargetSearchChange,
+                modifier = Modifier.weight(1f).fillMaxHeight()
+            )
         }
     }
 }

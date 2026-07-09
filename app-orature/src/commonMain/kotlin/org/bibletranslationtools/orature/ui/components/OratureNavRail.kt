@@ -47,7 +47,9 @@ enum class OratureNavDestination {
  */
 @Composable
 fun OratureNavRail(
-    selected: OratureNavDestination,
+    // Null when no rail destination is active (e.g. inside an open project with no drawer),
+    // so nothing is highlighted — matching the JVM AppBar where Home is only "selected" on home.
+    selected: OratureNavDestination?,
     onHomeClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onInfoClick: () -> Unit,

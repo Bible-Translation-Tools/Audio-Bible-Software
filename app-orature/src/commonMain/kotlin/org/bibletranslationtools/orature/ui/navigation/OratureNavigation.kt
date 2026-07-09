@@ -7,11 +7,14 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.toRoute
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
 import org.bibletranslationtools.orature.ui.screens.OratureHomeScreen
+import org.bibletranslationtools.orature.ui.screens.OratureNarrationScreen
 import org.bibletranslationtools.orature.ui.screens.OratureSplashScreen
 import org.bibletranslationtools.orature.ui.viewmodels.OratureHomeViewModel
+import org.bibletranslationtools.orature.ui.viewmodels.OratureNarrationViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureProjectWizardViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureSplashViewModel
 import org.koin.mp.KoinPlatform.getKoin
@@ -53,14 +56,27 @@ fun OratureNavigation(navController: NavHostController) {
                 viewModel = vm,
                 wizardViewModel = wizardVm,
                 onBookClick = { book ->
-                    // Phase 4 opens the project's chapter/verse view. Stub for now —
-                    // the VM already logs the tap; nav wiring is a no-op until then.
+                    // Open the project's mode page (JVM: openWorkbook docks the mode page).
+                    // Phase 4 routes every mode to the narration shell; Phase 6 branches
+                    // translation projects to their own page.
+                    navController.navigate(OratureNarrationRoute(book.id))
                 },
                 onImportClick = {
                     // Phase 9 wires up project import. Stub for now.
                 }
                 // Settings/Info are now left drawers hosted inside the home screen
                 // (Phase 2), toggled by the nav rail — no longer separate routes.
+            )
+        }
+
+        composable<OratureNarrationRoute> { entry ->
+            val route = entry.toRoute<OratureNarrationRoute>()
+            val vm = viewModel(key = "narration-${route.workbookDescriptorId}") {
+                OratureNarrationViewModel(route.workbookDescriptorId)
+            }
+            OratureNarrationScreen(
+                viewModel = vm,
+                onBack = { navController.popBackStack() }
             )
         }
     }
