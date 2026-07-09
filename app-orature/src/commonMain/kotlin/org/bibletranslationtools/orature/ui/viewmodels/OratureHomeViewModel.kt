@@ -90,17 +90,36 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
         loadProjects()
     }
 
-    fun loadProjects() {
+    /** Reload projects, selecting the most-recently-modified group (the default landing state). */
+    fun loadProjects() = reloadProjects { groups -> groups.firstOrNull()?.key }
+
+    /**
+     * Reload projects after the wizard created (or matched) a project, then reselect THAT
+     * group — mirroring the JVM app's `bookMarkedProjectGroupProperty ?: mostRecent` logic
+     * in HomePageViewModel2.updateBookList. Falls back to the most-recent group if no group
+     * matches (e.g. the created group somehow isn't present yet).
+     */
+    fun selectCreatedProject(created: OratureCreatedProject) = reloadProjects { groups ->
+        groups.firstOrNull { group ->
+            group.key.sourceLanguageSlug == created.sourceLanguageSlug &&
+                group.key.targetLanguageSlug == created.targetLanguageSlug &&
+                group.key.mode == created.mode &&
+                (created.resourceSlug == null || group.key.resourceSlug == created.resourceSlug)
+        }?.key ?: groups.firstOrNull()?.key
+    }
+
+    private fun reloadProjects(
+        select: (List<OratureProjectGroupUiModel>) -> OratureProjectGroupKey?
+    ) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {
                 val descriptors = workbookDescriptorRepository.getAllSuspend()
                 val groups = buildProjectGroups(descriptors)
-                val defaultSelection = groups.firstOrNull()?.key
                 _uiState.value = OratureHomeUiState(
                     isLoading = false,
                     projectGroups = groups,
-                    selectedGroupKey = defaultSelection
+                    selectedGroupKey = select(groups)
                 )
             } catch (e: CancellationException) {
                 throw e

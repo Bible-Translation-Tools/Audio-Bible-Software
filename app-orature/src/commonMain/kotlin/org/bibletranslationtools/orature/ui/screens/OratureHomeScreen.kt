@@ -28,6 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,6 +45,7 @@ import org.bibletranslationtools.orature.ui.components.OratureImportButton
 import org.bibletranslationtools.orature.ui.components.OratureInfoDrawer
 import org.bibletranslationtools.orature.ui.components.OratureNavDestination
 import org.bibletranslationtools.orature.ui.components.OratureNavRail
+import org.bibletranslationtools.orature.ui.components.OratureProjectWizardSection
 import org.bibletranslationtools.orature.ui.components.OratureSettingsDrawer
 import org.bibletranslationtools.orature.ui.components.OratureNewProjectCard
 import org.bibletranslationtools.orature.ui.components.OratureProjectGroupCard
@@ -53,6 +55,7 @@ import org.bibletranslationtools.orature.ui.viewmodels.OratureHomeUiState
 import org.bibletranslationtools.orature.ui.viewmodels.OratureHomeViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureProjectGroupKey
 import org.bibletranslationtools.orature.ui.viewmodels.OratureProjectGroupUiModel
+import org.bibletranslationtools.orature.ui.viewmodels.OratureProjectWizardViewModel
 import org.jetbrains.compose.resources.stringResource
 import org.bibletranslationtools.orature.resources.Res
 import org.bibletranslationtools.orature.resources.createProjectMessageBody
@@ -70,15 +73,39 @@ import org.bibletranslationtools.orature.resources.search
 @Composable
 fun OratureHomeScreen(
     viewModel: OratureHomeViewModel,
+    wizardViewModel: OratureProjectWizardViewModel,
     onBookClick: (OratureBookUiModel) -> Unit,
-    onNewProjectClick: () -> Unit,
     onImportClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val wizardState by wizardViewModel.uiState.collectAsState()
+
+    // Center-pane mode: BOOK_TABLE by default; the new-project card swaps in the WIZARD.
+    // On cancel/complete we swap back and the wizard VM's onComplete reloads projects.
+    var centerMode by remember { mutableStateOf(CenterPaneMode.BOOK_TABLE) }
+
+    // When the wizard finishes creating (or matching) a project, close it, return to the
+    // book table, and reselect the created group — mirrors Orature's onNavigateBack
+    // (mainSection → bookFragment) + bookMarkedProjectGroupProperty selection.
+    LaunchedEffect(wizardViewModel) {
+        wizardViewModel.projectCreated.collect { created ->
+            centerMode = CenterPaneMode.BOOK_TABLE
+            viewModel.selectCreatedProject(created)
+        }
+    }
 
     OratureHomeContent(
         uiState = uiState,
-        onSelectGroup = viewModel::onSelectProjectGroup,
+        wizardState = wizardState,
+        centerMode = centerMode,
+        onSelectGroup = { key ->
+            // Selecting a project group returns to the book table (JVM: exitWizard on group tap).
+            if (centerMode == CenterPaneMode.WIZARD) {
+                wizardViewModel.reset()
+                centerMode = CenterPaneMode.BOOK_TABLE
+            }
+            viewModel.onSelectProjectGroup(key)
+        },
         onBookSearchQueryChange = viewModel::onBookSearchQueryChange,
         onBookClick = { book ->
             viewModel.onBookClick(book)
@@ -86,26 +113,50 @@ fun OratureHomeScreen(
         },
         onNewProjectClick = {
             viewModel.onNewProjectClick()
-            onNewProjectClick()
+            wizardViewModel.reset()
+            centerMode = CenterPaneMode.WIZARD
         },
         onImportClick = {
             viewModel.onImportClick()
             onImportClick()
-        }
+        },
+        onWizardModeSelected = wizardViewModel::onModeSelected,
+        onWizardBack = {
+            // Step-1 back cancels the wizard and returns to the book table.
+            if (!wizardViewModel.onBack()) {
+                wizardViewModel.reset()
+                centerMode = CenterPaneMode.BOOK_TABLE
+            }
+        },
+        onWizardLanguageSelected = wizardViewModel::onLanguageSelected,
+        onWizardResourceVersionSelected = wizardViewModel::onResourceVersionSelected,
+        onWizardSourceSearchChange = wizardViewModel::onSourceLanguageSearchQueryChange,
+        onWizardTargetSearchChange = wizardViewModel::onTargetLanguageSearchQueryChange
     )
 }
 
 /** Which left drawer (if any) is currently open over the home content. */
 private enum class OpenDrawer { NONE, SETTINGS, INFO }
 
+/** What occupies the home center region: the book table, or the project-creation wizard. */
+enum class CenterPaneMode { BOOK_TABLE, WIZARD }
+
 @Composable
 fun OratureHomeContent(
     uiState: OratureHomeUiState,
+    wizardState: org.bibletranslationtools.orature.ui.viewmodels.WizardUiState,
+    centerMode: CenterPaneMode,
     onSelectGroup: (OratureProjectGroupKey) -> Unit,
     onBookSearchQueryChange: (String) -> Unit,
     onBookClick: (OratureBookUiModel) -> Unit,
     onNewProjectClick: () -> Unit,
-    onImportClick: () -> Unit
+    onImportClick: () -> Unit,
+    onWizardModeSelected: (org.bibletranslationtools.otter.common.data.primitives.ProjectMode) -> Unit,
+    onWizardBack: () -> Unit,
+    onWizardLanguageSelected: (org.bibletranslationtools.otter.common.data.primitives.Language) -> Unit,
+    onWizardResourceVersionSelected: (org.bibletranslationtools.orature.ui.viewmodels.OratureResourceVersion) -> Unit,
+    onWizardSourceSearchChange: (String) -> Unit,
+    onWizardTargetSearchChange: (String) -> Unit
 ) {
     // Settings/Info are left drawers, not routes. The nav-rail buttons toggle them open
     // over the content area (right of the rail), with a scrim + click-outside to close —
@@ -134,18 +185,33 @@ fun OratureHomeContent(
             Row(modifier = Modifier.fillMaxSize()) {
                 OratureProjectsPane(
                     uiState = uiState,
+                    // JVM: the new-project card is hidden while the wizard is docked.
+                    showNewProjectCard = centerMode == CenterPaneMode.BOOK_TABLE,
                     onSelectGroup = onSelectGroup,
                     onNewProjectClick = onNewProjectClick,
                     onImportClick = onImportClick,
                     modifier = Modifier.width(320.dp).fillMaxHeight()
                 )
 
-                OratureBookSection(
-                    uiState = uiState,
-                    onBookSearchQueryChange = onBookSearchQueryChange,
-                    onBookClick = onBookClick,
-                    modifier = Modifier.weight(1f).fillMaxHeight()
-                )
+                // Center region swaps between the book table and the wizard (JVM: mainSectionProperty).
+                when (centerMode) {
+                    CenterPaneMode.BOOK_TABLE -> OratureBookSection(
+                        uiState = uiState,
+                        onBookSearchQueryChange = onBookSearchQueryChange,
+                        onBookClick = onBookClick,
+                        modifier = Modifier.weight(1f).fillMaxHeight()
+                    )
+                    CenterPaneMode.WIZARD -> OratureProjectWizardSection(
+                        state = wizardState,
+                        onModeSelected = onWizardModeSelected,
+                        onBack = onWizardBack,
+                        onLanguageSelected = onWizardLanguageSelected,
+                        onResourceVersionSelected = onWizardResourceVersionSelected,
+                        onSourceSearchQueryChange = onWizardSourceSearchChange,
+                        onTargetSearchQueryChange = onWizardTargetSearchChange,
+                        modifier = Modifier.weight(1f).fillMaxHeight()
+                    )
+                }
             }
 
             if (openDrawer != OpenDrawer.NONE) {
@@ -178,6 +244,7 @@ fun OratureHomeContent(
 @Composable
 private fun OratureProjectsPane(
     uiState: OratureHomeUiState,
+    showNewProjectCard: Boolean,
     onSelectGroup: (OratureProjectGroupKey) -> Unit,
     onNewProjectClick: () -> Unit,
     onImportClick: () -> Unit,
@@ -195,9 +262,10 @@ private fun OratureProjectsPane(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        OratureNewProjectCard(onClick = onNewProjectClick)
-
-        Spacer(modifier = Modifier.height(12.dp))
+        if (showNewProjectCard) {
+            OratureNewProjectCard(onClick = onNewProjectClick)
+            Spacer(modifier = Modifier.height(12.dp))
+        }
 
         when {
             uiState.isLoading -> {

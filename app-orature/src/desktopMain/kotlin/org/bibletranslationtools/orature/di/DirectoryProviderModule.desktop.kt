@@ -8,7 +8,7 @@ import org.koin.dsl.module
 val oratureDirectoryProviderModule = module {
     single<IDirectoryProvider> {
         DesktopDirectoryProvider(
-            appName = "Orature",
+            appName = "Orature2",
             pathSeparator = System.getProperty("file.separator"),
             userHome = System.getProperty("user.home"),
             windowsAppData = System.getenv("APPDATA"),

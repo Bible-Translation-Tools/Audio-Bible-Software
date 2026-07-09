@@ -163,12 +163,18 @@ class ImportProjectUseCase @Inject constructor(
 
     companion object {
         val glSources: List<ResourceInfoSerializable> by lazy {
-            javaClass.classLoader.getResource(SOURCES_JSON_FILE)!!
-                .openStream().use { stream ->
-                    val mapper = ObjectMapper(JsonFactory()).registerKotlinModule()
-                    val sources: List<ResourceInfoSerializable> = mapper.readValue(stream)
-                    sources
-                }
+            // The GL-sources manifest ships as a Compose resource
+            // (composeResources/files/gl_sources.json) in the multiplatform build, so it
+            // is NOT on the JVM classpath. Guard the lookup so a missing classpath
+            // resource degrades to "no embedded GL sources" instead of NPE-ing every
+            // caller (project wizard, sideloadSource, import). TODO(Phase 9): read the
+            // Compose resource so downloadable gateway sources are actually available.
+            val url = javaClass.classLoader.getResource(SOURCES_JSON_FILE) ?: return@lazy emptyList()
+            url.openStream().use { stream ->
+                val mapper = ObjectMapper(JsonFactory()).registerKotlinModule()
+                val sources: List<ResourceInfoSerializable> = mapper.readValue(stream)
+                sources
+            }
         }
     }
 }
