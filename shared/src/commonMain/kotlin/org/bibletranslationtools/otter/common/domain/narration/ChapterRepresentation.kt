@@ -345,7 +345,9 @@ internal class ChapterRepresentation(
         if (verses.isEmpty()) return null
 
         verses
-            .find { it.marker.label == verse.label }
+            // formattedLabel, not label: a ChapterMarker and VerseMarker can share a plain
+            // label ("1"), which would resolve verse 1 to the chapter title's range.
+            .find { it.marker.formattedLabel == verse.formattedLabel }
             ?.let { _verse ->
                 return indexToFrame(_verse.firstIndex())..indexToFrame(_verse.lastIndex())
             }
@@ -528,9 +530,12 @@ internal class ChapterRepresentation(
 
                 var bytesToRead = min(bytes.size, verse.length)
 
-                // if there is a negative frames to read or
+                // Expected transient during re-record: the verse being re-recorded holds a
+                // zero-length range until finalize(), so the render reader sees length 0 here every
+                // waveform tick. This is NOT an error (the live mic overlay draws that region), and
+                // logging it at ERROR floods stderr on the render dispatcher and causes UI lag.
                 if (bytesToRead <= 0 || position !in verse) {
-                    logger.error("Frames to read is negative: $position, $bytesToRead, ${verse.marker.formattedLabel}")
+                    logger.debug("Frames to read is negative: {}, {}, {}", position, bytesToRead, verse.marker.formattedLabel)
                     position = verse.lastIndex()
                     return 0
                 }

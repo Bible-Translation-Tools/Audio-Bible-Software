@@ -30,11 +30,20 @@ import java.util.Locale
 // deliberately distinct from the recorder's branding.
 object OratureColors {
     val Primary = Color(0xFF015AD9)
+    val PrimaryDark = Color(0xFF0040A0)
+    val PrimaryDarkest = Color(0xFF001847)
+    val PrimaryLight = Color(0xFFEEF0FF)
     val Background = Color(0xFFF4F4F4)
     val Foreground = Color(0xFFFFFFFF)
     val SurfaceSecondary = Color(0xFFF2F2F2)
+    val SurfaceTertiary = Color(0xFFE6E6E6) // also the standard border color
     val OnPrimary = Color(0xFFFFFFFF)
     val RegularText = Color(0xFF001533)
+    val RegularText80 = Color(0xFF33445C)
+    val NoteText = Color(0xB3001533) // rgba(0,21,51,0.7)
+    val Disabled = Color(0x661A1A1A) // rgba(26,26,26,0.4)
+    val StatusComplete = Color(0xFF82A93F)
+    val Accent = Color(0xFFFFB100)
 
     // Orature DARK -wa- palette.
     val DarkPrimary = Color(0xFF88A9FF)

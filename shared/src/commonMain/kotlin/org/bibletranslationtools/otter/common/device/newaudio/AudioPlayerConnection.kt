@@ -16,6 +16,12 @@ class AudioPlayerConnection(
     private var _reader: AudioFileReader? = null
     @Volatile
     private var lastPosition: Long = 0
+    // Whether WE have requested playback (play() called, not yet paused/stopped). The shared sink
+    // can report isRunning even when this connection isn't playing (e.g. the narration player during
+    // recording/re-record, where we only load+seek and never play). Position reads must trust the
+    // sink worker ONLY while this is true; otherwise a stale worker position would clobber a seek.
+    @Volatile
+    private var playRequested: Boolean = false
     private var playbackRate: Double = 1.0
 
     override val frameStart: Int
@@ -30,6 +36,7 @@ class AudioPlayerConnection(
     override fun load(reader: AudioFileReader) {
         this._reader = reader
         this.lastPosition = 0
+        this.playRequested = false
         launchControl {
             factory.connect(id, reader, 0)
         }
@@ -38,6 +45,7 @@ class AudioPlayerConnection(
     override fun loadSection(reader: AudioFileReader, frameStart: Int, frameEnd: Int) {
         this._reader = reader
         this.lastPosition = frameStart.toLong()
+        this.playRequested = false
         launchControl {
             // We assume the reader implementation handles the boundary
             // of the section internally once seeked
@@ -47,6 +55,7 @@ class AudioPlayerConnection(
 
     override fun play() {
         val reader = _reader ?: return
+        playRequested = true
         launchControl {
             factory.connect(id, reader, lastPosition)
             val worker = factory.getPlayerWorker()
@@ -60,6 +69,7 @@ class AudioPlayerConnection(
     }
 
     override fun pause() {
+        playRequested = false
         // Only pause if we are the one currently holding the hardware
         if (factory.isActiveConnection(id)) {
             launchControl {
@@ -75,6 +85,7 @@ class AudioPlayerConnection(
     }
 
     override fun stop() {
+        playRequested = false
         val shouldPause = factory.isActiveConnection(id)
         lastPosition = 0
         launchControl {
@@ -104,7 +115,7 @@ class AudioPlayerConnection(
     }
 
     override fun isPlaying(): Boolean {
-        return factory.isActiveConnection(id) && factory.getPlayerWorker().isSinkRunning
+        return playRequested && factory.isActiveConnection(id) && factory.getPlayerWorker().isSinkRunning
     }
 
     override fun isPositionReliable(): Boolean {
@@ -122,21 +133,19 @@ class AudioPlayerConnection(
     }
 
     override fun getLocationInFrames(): Int {
-        val workerPosition = factory.getPlayerWorker().getLocationInFrames().toInt()
-        val duration = _reader?.totalFrames ?: 0
-
-        if (factory.isActiveConnection(id)) {
+        // Trust the sink worker's live position ONLY while we actually hold the hardware AND it is
+        // producing frames. Otherwise (idle, paused, or seeked-while-stopped — e.g. the narration
+        // player during recording/re-record) the worker reports a stale 0, which would make the
+        // domain's getLocationInFrames() lose the seek target. In those cases return the last known
+        // logical position (the seek/pause target). This mirrors Orature's
+        // ChapterRepresentationConnection position-pointer semantics that narration relies on.
+        val worker = factory.getPlayerWorker()
+        if (playRequested && factory.isActiveConnection(id) && worker.isSinkRunning) {
+            val workerPosition = worker.getLocationInFrames().toInt()
             lastPosition = workerPosition.toLong()
             return workerPosition
         }
-
-        val plausibleWorkerPosition = workerPosition in 0..duration && workerPosition >= lastPosition.toInt()
-        return if (plausibleWorkerPosition) {
-            lastPosition = workerPosition.toLong()
-            workerPosition
-        } else {
-            lastPosition.toInt()
-        }
+        return lastPosition.toInt()
     }
 
     override fun getLocationMs(): Int {

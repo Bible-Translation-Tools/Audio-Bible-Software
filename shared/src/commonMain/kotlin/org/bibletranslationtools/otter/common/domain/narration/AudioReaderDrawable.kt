@@ -77,7 +77,9 @@ class AudioReaderDrawable(
         var retry = 0
         while (framesToRead > 0 && audioReader.hasRemaining()) {
             if (retry >= 10) {
-                logger.error("Aborted reader renderer, read returned 0 bytes several times")
+                // Transient while re-recording (the target verse is zero-length until finalized);
+                // debug, not error, to avoid flooding stderr on the render dispatcher.
+                logger.debug("Aborted reader renderer, read returned 0 bytes several times")
                 break
             }
 

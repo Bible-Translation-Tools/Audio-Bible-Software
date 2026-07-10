@@ -18,7 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.domain.narration
 
-import io.reactivex.Observable
+import kotlinx.coroutines.flow.Flow
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
 import java.util.*
@@ -27,8 +27,8 @@ import kotlin.math.roundToInt
 
 class AudioScene(
     private val existingAudioReader: AudioFileReader,
-    private val incomingAudioStream: Observable<ByteArray>,
-    private val recordingActive: Observable<Boolean>,
+    private val incomingAudioStream: Flow<ByteArray>,
+    private val recordingActive: Flow<Boolean>,
     private val width: Int,
     private val secondsOnScreen: Int,
     private val recordingSampleRate: Int,

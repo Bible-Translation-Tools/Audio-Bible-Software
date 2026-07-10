@@ -22,7 +22,7 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import io.reactivex.Completable
-import io.reactivex.Observable
+import kotlinx.coroutines.flow.Flow
 import io.reactivex.Single
 import io.reactivex.disposables.CompositeDisposable
 import io.reactivex.disposables.Disposable
@@ -35,7 +35,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.rx2.asFlow
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.audio.AudioFile
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
@@ -46,8 +45,8 @@ import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.DateHolder
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.device.IAudioPlayer
-import org.bibletranslationtools.otter.common.device.IAudioRecorder
+import org.bibletranslationtools.otter.common.device.newaudio.IAudioPlayer
+import org.bibletranslationtools.otter.common.device.newaudio.IAudioRecorder
 import org.bibletranslationtools.otter.common.domain.audio.AudioBouncer
 import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
@@ -81,6 +80,12 @@ class Narration @AssistedInject constructor(
 
     private val isRecording = AtomicBoolean(false)
     private val uncommittedRecordedFrames = AtomicInteger(0)
+    // The relative-chapter frame the write head sits at when the current recording began (the seek
+    // target set right before writer.start()). Orature's player is a synchronous position pointer,
+    // so getLocationInFrames() = seekedPosition + uncommitted naturally. The port's player is an
+    // ASYNC sink worker whose reported position is unreliable while we're recording (not playing),
+    // so during recording we anchor to this known frame instead of reading the player.
+    private var recordingAnchorFrame = 0
 
     private val disposables = CompositeDisposable()
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -149,7 +154,7 @@ class Narration @AssistedInject constructor(
         val job = scope.launch {
             combine(
                 writer.isWriting,
-                getRecorderAudioStream().asFlow()
+                getRecorderAudioStream()
             ) { isWriting, bytes ->
                 if (isWriting) {
                     uncommittedRecordedFrames.addAndGet(bytes.size / DEFAULT_FRAME_SIZE_BYTES)
@@ -218,7 +223,7 @@ class Narration @AssistedInject constructor(
         return player
     }
 
-    fun getRecorderAudioStream(): Observable<ByteArray> {
+    fun getRecorderAudioStream(): Flow<ByteArray> {
         return recorder.getAudioStream()
     }
 
@@ -278,6 +283,7 @@ class Narration @AssistedInject constructor(
         loadChapterIntoPlayer()
 
         seek(totalVerses[verseIndex].location)
+        recordingAnchorFrame = totalVerses[verseIndex].location
 
         writer?.start()
         isRecording.set(true)
@@ -291,6 +297,7 @@ class Narration @AssistedInject constructor(
         loadChapterIntoPlayer()
 
         seek(totalVerses[verseIndex].location)
+        recordingAnchorFrame = totalVerses[verseIndex].location
         writer?.start()
         isRecording.set(true)
     }
@@ -410,6 +417,7 @@ class Narration @AssistedInject constructor(
             chapterRepresentation.totalVerses[index].lastIndex() / chapterRepresentation.frameSizeInBytes
         val seekFrame = chapterRepresentation.absoluteFrameToRelativeChapterFrame(lastAbsoluteFrame)
         seek(seekFrame)
+        recordingAnchorFrame = seekFrame
 
         writer?.start()
         isRecording.set(true)
@@ -418,7 +426,9 @@ class Narration @AssistedInject constructor(
     fun resumeRecordingAgain() {
         // Seeks to the end of the scratchAudio, since the re-record has not yet been finalized.
         val lastRecordingPosition = chapterRepresentation.scratchAudio.totalFrames - 1
-        player.seek(chapterRepresentation.absoluteFrameToRelativeChapterFrame(lastRecordingPosition))
+        val relLoc = chapterRepresentation.absoluteFrameToRelativeChapterFrame(lastRecordingPosition)
+        player.seek(relLoc)
+        recordingAnchorFrame = relLoc
         writer?.start()
         isRecording.set(true)
     }
@@ -461,7 +471,13 @@ class Narration @AssistedInject constructor(
         range?.let {
             val wasPlaying = player.isPlaying()
             player.pause()
-            lockToVerse(activeVerses.indexOf(verse))
+            // Match by formattedLabel, not the whole marker and not the plain label:
+            // activeVerses carry RELATIVE locations (getActiveMarkers copies them), so
+            // `indexOf(verse)` against a marker with its ORIGINAL location returns -1 and the
+            // lock silently fails. The plain `label` is ALSO ambiguous — a ChapterMarker and a
+            // VerseMarker can both be "1" — so verse 1 would lock to the chapter title. The
+            // formattedLabel ("orature-vm-1" vs "orature-chapter-1") is unique per marker.
+            lockToVerse(activeVerses.indexOfFirst { it.formattedLabel == verse.formattedLabel })
             chapterReaderConnection.start = range.first
             chapterReaderConnection.end = range.last
             seek(0)
@@ -490,7 +506,7 @@ class Narration @AssistedInject constructor(
     }
 
     private fun initializeWavWriter(): WavFileWriter {
-        val flow = recorder.getAudioStream().asFlow()
+        val flow = recorder.getAudioStream()
         writer = WavFileWriter(
             chapterRepresentation.scratchAudio,
             flow,
@@ -498,6 +514,11 @@ class Narration @AssistedInject constructor(
             { /* no op */ },
             scope
         )
+        // Launch the collector that writes mic bytes to scratchAudio (gated by start()/pause()).
+        // The port's WavFileWriter requires an explicit listen() — the recorder calls it too;
+        // without it, start() only flips the record flag and NO audio is ever written (silent
+        // recordings → zero-length verse sectors → silent playback).
+        writer!!.listen()
         return writer!!
     }
 
@@ -705,6 +726,12 @@ class Narration @AssistedInject constructor(
     }
 
     private fun getFrameInChapter(): Int {
+        // While recording, the async sink-worker player position is unreliable (we're not playing);
+        // use the deterministic anchor captured at record start (recording always unlocks first, so
+        // the anchor is already in relative-chapter space).
+        if (isRecording.get()) {
+            return recordingAnchorFrame
+        }
         return if (lockedVerseIndex != null) {
             chapterReaderConnection
                 .frameInVerseToFrameInChapter(player.getLocationInFrames(), lockedVerseIndex!!)

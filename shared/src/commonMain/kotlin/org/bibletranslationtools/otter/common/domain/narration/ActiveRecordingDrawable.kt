@@ -18,7 +18,6 @@
  */
 package org.bibletranslationtools.otter.common.domain.narration
 
-import io.reactivex.Observable
 import org.bibletranslationtools.otter.common.recorder.ActiveRecordingRenderer
 import java.util.*
 import kotlin.math.min
@@ -26,20 +25,23 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.rx2.asFlow
+import kotlinx.coroutines.flow.Flow
 
 class ActiveRecordingDrawable(
-    private val incomingAudioStream: Observable<ByteArray>,
-    private val recordingActive: Observable<Boolean>,
+    private val incomingAudioStream: Flow<ByteArray>,
+    private val recordingActive: Flow<Boolean>,
     private val width: Int,
     private val secondsOnScreen: Int,
     private val recordingSampleRate: Int,
 ) {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
+    // Feed the mic Flow straight through — no Rx round-trip. The renderer already consumes a Flow;
+    // routing through Observable (asObservable in the VM, asFlow here) only added latency, which is
+    // why narration felt laggier than the recorder page for the same mic stream.
     private val activeRenderer = ActiveRecordingRenderer(
-        incomingAudioStream.asFlow(),
-        recordingActive.asFlow(),
+        incomingAudioStream,
+        recordingActive,
         width,
         secondsOnScreen,
         scope
