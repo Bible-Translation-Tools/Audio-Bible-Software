@@ -65,8 +65,11 @@ class WavFileWriter(
             try {
                 audioStream.collect { byteArray ->
                     if (record.get()) {
+                        // No per-packet flush: it's a syscall on every ~12ms packet, which slows the
+                        // writer enough to backpressure the mic SharedFlow and drop input samples. The
+                        // BufferedOutputStream flushes itself when full; close()/closeAndJoin() flushes
+                        // the tail before anything reads the file.
                         writer.write(byteArray)
-                        writer.flush()
                     }
                 }
             } catch (e: Exception) {

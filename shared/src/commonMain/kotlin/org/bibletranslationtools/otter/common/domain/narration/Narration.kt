@@ -33,7 +33,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.audio.AudioFile
@@ -151,15 +150,17 @@ class Narration @AssistedInject constructor(
      * Counts the number of audio frames that have been recorded since activating a recording
      */
     private fun activeRecordingFrameCounter(writer: WavFileWriter): Disposable {
+        // Count EVERY mic packet — the count drives the live-take draw position, so it must track
+        // real time exactly. `combine` conflates its faster source (drops intermediate packets when
+        // they arrive faster than the combine loop iterates), which undercounted frames by ~20% and
+        // made the waveform lag ~1s behind the voice. A plain collect gated on isWriting.value sees
+        // every packet, same as the WavFileWriter that actually captures the audio.
         val job = scope.launch {
-            combine(
-                writer.isWriting,
-                getRecorderAudioStream()
-            ) { isWriting, bytes ->
-                if (isWriting) {
+            getRecorderAudioStream().collect { bytes ->
+                if (writer.isWriting.value) {
                     uncommittedRecordedFrames.addAndGet(bytes.size / DEFAULT_FRAME_SIZE_BYTES)
                 }
-            }.collect()
+            }
         }
 
         return object : Disposable {

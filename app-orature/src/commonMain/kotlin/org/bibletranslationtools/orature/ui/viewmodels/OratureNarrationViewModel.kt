@@ -484,6 +484,15 @@ class OratureNarrationViewModel(
     private fun startWaveformTicker() {
         waveformTickerJob?.cancel()
         waveformTickerJob = viewModelScope.launch(Dispatchers.Default) {
+            // [perf-dbg] temporary: measure per-tick render cost + tick rate to locate the ~1s
+            // live-waveform lag (slow reader tick vs. ingestion). Remove once diagnosed.
+            var dbgTicks = 0
+            var dbgRenderNanos = 0L
+            var dbgMaxRenderNanos = 0L
+            var dbgWindowStart = System.nanoTime()
+            var dbgLastLocation = 0
+            var dbgLastReaderEnd = 0
+            var dbgLastCtx = "null"
             while (isActive) {
                 val scene = _audioScene.value
                 val n = narration
@@ -498,16 +507,39 @@ class OratureNarrationViewModel(
                         val ctx = stateMachine?.getNarrationContext()
                         val location = if (ctx == NarrationStateType.RECORDING) n.getTotalFrames()
                         else n.getLocationInFrames()
+                        dbgLastLocation = location
+                        dbgLastReaderEnd = sceneReader?.totalFrames ?: -1
+                        dbgLastCtx = ctx?.name ?: "null"
                         // During re-record / prepend, render the split view (old audio + new take);
                         // otherwise the normal composite (JVM: selectRenderer).
                         val (reRecordLoc, nextVerseLoc) = selectRenderer()
+                        val dbgT0 = System.nanoTime()
                         val (buffer, viewports) =
                             scene.getNarrationDrawable(location, reRecordLoc, nextVerseLoc)
+                        val dbgDt = System.nanoTime() - dbgT0
+                        dbgRenderNanos += dbgDt
+                        if (dbgDt > dbgMaxRenderNanos) dbgMaxRenderNanos = dbgDt
                         // Publish a stable snapshot (scene.frameBuffer is cleared + refilled each
                         // render; the Canvas must never read it mid-update).
                         waveformFront = buffer.copyOf()
                         lastViewports = viewports
                     }.onFailure { System.err.println("[narration] waveform render failed: $it") }
+                }
+                dbgTicks++
+                val dbgElapsed = System.nanoTime() - dbgWindowStart
+                if (dbgElapsed >= 1_000_000_000L) {
+                    // offset math mirrors AudioScene.getNarrationDrawable (width=960, framesOnScreen=441000)
+                    val vpFirst = dbgLastLocation - 220500
+                    val readerEndInVp = dbgLastReaderEnd - vpFirst
+                    val dbgOffsetPx = if (dbgLastReaderEnd in vpFirst until (dbgLastLocation + 220500))
+                        (readerEndInVp / (441000.0 / 960)).toInt() else -1
+                    System.err.println(
+                        "[perf-dbg] ticks/s=$dbgTicks avgRender=${dbgRenderNanos / 1_000_000.0 / dbgTicks}ms " +
+                        "maxRender=${dbgMaxRenderNanos / 1_000_000.0}ms ctx=$dbgLastCtx " +
+                        "loc=$dbgLastLocation readerEnd=$dbgLastReaderEnd activeStartPx=$dbgOffsetPx/480"
+                    )
+                    dbgTicks = 0; dbgRenderNanos = 0L; dbgMaxRenderNanos = 0L
+                    dbgWindowStart = System.nanoTime()
                 }
                 delay(33) // ~30 fps; the workspace redraws the published snapshot every display frame
             }
