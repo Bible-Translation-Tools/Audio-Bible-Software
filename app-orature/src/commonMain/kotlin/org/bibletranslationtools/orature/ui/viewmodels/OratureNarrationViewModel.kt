@@ -27,6 +27,7 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IWork
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
 import org.bibletranslationtools.otter.common.data.audio.MarkerType
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
+import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.domain.narration.Narration
 import org.bibletranslationtools.otter.common.domain.narration.teleprompter.NarratableItem
 import org.bibletranslationtools.otter.common.domain.narration.teleprompter.NarrationStateType
@@ -37,6 +38,9 @@ import org.koin.core.component.inject
 
 /** Pixel resolution of the live-record waveform ring buffer (drawn scaled to the workspace). */
 private const val NARRATION_WAVEFORM_WIDTH = 960
+
+/** Minimum spacing kept between adjacent verse markers when dragging (~0.1s), to avoid crossing. */
+private const val MIN_MARKER_GAP_FRAMES = 4410
 
 /** One cell in the chapter-selector grid (JVM: `ChapterGridItemData`). */
 data class OratureChapterGridItem(
@@ -87,11 +91,28 @@ data class OratureNarrationUiState(
     val highlightedVerseIndex: Int = -1,
     /** Recorded verse markers (verse index + RELATIVE chapter-frame location) for the workspace. */
     val markerInfos: List<OratureMarkerInfo> = emptyList(),
+    /** Header undo/redo enablement (JVM: hasUndo/hasRedo && not mid-record). */
+    val canUndo: Boolean = false,
+    val canRedo: Boolean = false,
+    /** Scrub/scrollbar active (JVM: isScrollEnabled) — not recording/playing/prepending. */
+    val scrollEnabled: Boolean = false,
+    /** Verse markers are draggable only in a stable (non-recording/non-playing) state. */
+    val markersEditable: Boolean = false,
+    /** Options-menu restart enabled only once recording has started (JVM: IN_PROGRESS/FINISHED). */
+    val canRestartChapter: Boolean = false,
     val error: String? = null
 )
 
-/** A recorded verse marker for the workspace: its index in totalVerses + its relative frame location. */
-data class OratureMarkerInfo(val verseIndex: Int, val location: Int)
+/**
+ * A recorded verse marker for the workspace: its index in totalVerses, relative frame location, and
+ * display label (verse number). [movable] is false for the first marker (JVM: index 0 can't move).
+ */
+data class OratureMarkerInfo(
+    val verseIndex: Int,
+    val location: Int,
+    val label: String,
+    val movable: Boolean
+)
 
 /**
  * Pure mapping of the domain's verse markers + the teleprompter state machine's per-verse
@@ -168,6 +189,10 @@ class OratureNarrationViewModel(
     private var prependRecordingVerseIndex: Int? = null
     private var playingVerseIndex: Int = -1
     private var micStarted: Boolean = false
+    // The compiled chapter take (JVM: chapterTakeProperty). Created once every verse is recorded,
+    // deleted if the chapter drops back to incomplete. Persisted+selected by the workbook repo, so
+    // reopening restores it via chapter.getSelectedTake().
+    private var chapterTake: Take? = null
     private var positionTickerJob: Job? = null
     private var playerEventsJob: Job? = null
 
@@ -210,6 +235,13 @@ class OratureNarrationViewModel(
 
     /** The latest mic level 0..1 (0 unless recording). */
     fun currentVolume(): Float = volumeLevel
+
+    // Playhead frame + total chapter frames, republished each waveform tick, for the scrollbar +
+    // scrub-drag (JVM: audioPositionProperty / totalAudioSizeProperty).
+    private var audioPositionFrames: Int = 0
+    private var totalAudioFrames: Int = 0
+    fun currentAudioPosition(): Int = audioPositionFrames
+    fun currentTotalFrames(): Int = totalAudioFrames
 
     init {
         load()
@@ -342,6 +374,7 @@ class OratureNarrationViewModel(
         recordAgainVerseIndex = null
         prependRecordingVerseIndex = null
         micStarted = false
+        chapterTake = null
         _uiState.value = _uiState.value.copy(
             actionsEnabled = false, isPlaying = false, highlightedVerseIndex = -1,
             markerInfos = emptyList()
@@ -365,6 +398,7 @@ class OratureNarrationViewModel(
                 Prepared(n, byLabel, byIndex)
             }
             narration = prepared.narration
+            chapterTake = chapter.getSelectedTake()
             verseTextByLabel = prepared.textByLabel
             sourceTextByIndex = prepared.textByIndex
 
@@ -414,7 +448,7 @@ class OratureNarrationViewModel(
             // The domain re-emits active verses after a record/finalize; refresh markers + verses
             // (the record transitions already advanced the state machine).
             activeVersesDisposable = prepared.narration.onActiveVersesUpdated
-                .subscribe({ viewModelScope.launch { refreshVerses(); updateMarkers() } }, { })
+                .subscribe({ viewModelScope.launch { refreshVerses(); updateMarkers(); syncChapterTake() } }, { })
 
             _uiState.value = _uiState.value.copy(actionsEnabled = true)
             refreshVerses()
@@ -460,9 +494,33 @@ class OratureNarrationViewModel(
         // Gate the live-record waveform: it accumulates mic input only while recording.
         _isRecordingActive.value =
             ctx == NarrationStateType.RECORDING || ctx == NarrationStateType.RECORDING_AGAIN
+        // Undo/redo enabled only when the history is non-empty AND we're not mid-record
+        // (JVM: hasUndo/hasRedo && !(isRecording || isRecordingAgainPaused)).
+        val recordingLike = ctx == NarrationStateType.RECORDING ||
+            ctx == NarrationStateType.RECORDING_AGAIN ||
+            ctx == NarrationStateType.RECORDING_AGAIN_PAUSED
+        // Scrub/scrollbar enabled (JVM isScrollEnabled): not recording/playing, not prepending.
+        val scrollEnabled = when (ctx) {
+            NarrationStateType.RECORDING, NarrationStateType.RECORDING_AGAIN,
+            NarrationStateType.RECORDING_AGAIN_PAUSED, NarrationStateType.PLAYING -> false
+            else -> true
+        } && !isPrependRecording
+        // Markers draggable when scroll is enabled AND not paused mid-record (JVM: marker
+        // dragTarget mouseTransparent only during RECORDING_PAUSED). Must stay true through
+        // MOVING_MARKER so an in-progress drag isn't cancelled by the modifier flipping off.
+        val markersEditable = scrollEnabled && ctx != NarrationStateType.RECORDING_PAUSED
         _uiState.value = _uiState.value.copy(
             verses = buildVerseItems(n.totalVerses, items, verseTextByLabel, sourceTextByIndex),
-            narrationState = ctx
+            narrationState = ctx,
+            canUndo = n.hasUndo() && !recordingLike,
+            canRedo = n.hasRedo() && !recordingLike,
+            scrollEnabled = scrollEnabled,
+            markersEditable = markersEditable,
+            // Restart whenever anything is recorded and we're not mid-take (more permissive than
+            // JVM's IN_PROGRESS/FINISHED-only, which left partial-but-paused chapters un-restartable).
+            canRestartChapter = n.activeVerses.isNotEmpty() &&
+                ctx != NarrationStateType.RECORDING &&
+                ctx != NarrationStateType.RECORDING_AGAIN
         )
     }
 
@@ -473,9 +531,36 @@ class OratureNarrationViewModel(
         // and relative chapter-frame location.
         _uiState.value = _uiState.value.copy(
             markerInfos = n.activeVerses.map { m ->
-                OratureMarkerInfo(total.indexOfFirst { it.formattedLabel == m.formattedLabel }, m.location)
+                val idx = total.indexOfFirst { it.formattedLabel == m.formattedLabel }
+                // First marker (index 0) is the chapter/verse-1 anchor and can't be dragged (JVM).
+                OratureMarkerInfo(verseIndex = idx, location = m.location, label = m.label, movable = idx > 0)
             }
         )
+    }
+
+    /**
+     * Create/refresh or drop the compiled chapter take as the chapter crosses the "all verses
+     * recorded" line (JVM: createPotentiallyFinishedChapterTake). createChapterTake bounces the
+     * active verses into a WAV and inserts+selects it (persisted by the workbook repo); deleting
+     * soft-deletes it when the chapter is no longer complete. Skipped mid-record.
+     */
+    private fun syncChapterTake() {
+        val n = narration ?: return
+        val ctx = stateMachine?.getNarrationContext()
+        if (ctx == NarrationStateType.RECORDING || ctx == NarrationStateType.RECORDING_AGAIN) return
+
+        val allRecorded = n.activeVerses.isNotEmpty() && n.activeVerses.size == n.totalVerses.size
+        val existing = chapterTake
+        if (allRecorded && (existing == null || existing.isDeleted())) {
+            viewModelScope.launch(Dispatchers.IO) {
+                runCatching { n.createChapterTake().await() }
+                    .onSuccess { chapterTake = it }
+                    .onFailure { System.err.println("[narration] createChapterTake failed: $it") }
+            }
+        } else if (existing != null && !allRecorded) {
+            n.deleteChapterTake()
+            chapterTake = null
+        }
     }
 
     // ---- waveform (AudioScene composite of recorded + live) ------------------------------
@@ -484,15 +569,6 @@ class OratureNarrationViewModel(
     private fun startWaveformTicker() {
         waveformTickerJob?.cancel()
         waveformTickerJob = viewModelScope.launch(Dispatchers.Default) {
-            // [perf-dbg] temporary: measure per-tick render cost + tick rate to locate the ~1s
-            // live-waveform lag (slow reader tick vs. ingestion). Remove once diagnosed.
-            var dbgTicks = 0
-            var dbgRenderNanos = 0L
-            var dbgMaxRenderNanos = 0L
-            var dbgWindowStart = System.nanoTime()
-            var dbgLastLocation = 0
-            var dbgLastReaderEnd = 0
-            var dbgLastCtx = "null"
             while (isActive) {
                 val scene = _audioScene.value
                 val n = narration
@@ -507,39 +583,18 @@ class OratureNarrationViewModel(
                         val ctx = stateMachine?.getNarrationContext()
                         val location = if (ctx == NarrationStateType.RECORDING) n.getTotalFrames()
                         else n.getLocationInFrames()
-                        dbgLastLocation = location
-                        dbgLastReaderEnd = sceneReader?.totalFrames ?: -1
-                        dbgLastCtx = ctx?.name ?: "null"
+                        audioPositionFrames = n.getLocationInFrames()
+                        totalAudioFrames = n.getTotalFrames()
                         // During re-record / prepend, render the split view (old audio + new take);
                         // otherwise the normal composite (JVM: selectRenderer).
                         val (reRecordLoc, nextVerseLoc) = selectRenderer()
-                        val dbgT0 = System.nanoTime()
                         val (buffer, viewports) =
                             scene.getNarrationDrawable(location, reRecordLoc, nextVerseLoc)
-                        val dbgDt = System.nanoTime() - dbgT0
-                        dbgRenderNanos += dbgDt
-                        if (dbgDt > dbgMaxRenderNanos) dbgMaxRenderNanos = dbgDt
                         // Publish a stable snapshot (scene.frameBuffer is cleared + refilled each
                         // render; the Canvas must never read it mid-update).
                         waveformFront = buffer.copyOf()
                         lastViewports = viewports
                     }.onFailure { System.err.println("[narration] waveform render failed: $it") }
-                }
-                dbgTicks++
-                val dbgElapsed = System.nanoTime() - dbgWindowStart
-                if (dbgElapsed >= 1_000_000_000L) {
-                    // offset math mirrors AudioScene.getNarrationDrawable (width=960, framesOnScreen=441000)
-                    val vpFirst = dbgLastLocation - 220500
-                    val readerEndInVp = dbgLastReaderEnd - vpFirst
-                    val dbgOffsetPx = if (dbgLastReaderEnd in vpFirst until (dbgLastLocation + 220500))
-                        (readerEndInVp / (441000.0 / 960)).toInt() else -1
-                    System.err.println(
-                        "[perf-dbg] ticks/s=$dbgTicks avgRender=${dbgRenderNanos / 1_000_000.0 / dbgTicks}ms " +
-                        "maxRender=${dbgMaxRenderNanos / 1_000_000.0}ms ctx=$dbgLastCtx " +
-                        "loc=$dbgLastLocation readerEnd=$dbgLastReaderEnd activeStartPx=$dbgOffsetPx/480"
-                    )
-                    dbgTicks = 0; dbgRenderNanos = 0L; dbgMaxRenderNanos = 0L
-                    dbgWindowStart = System.nanoTime()
                 }
                 delay(33) // ~30 fps; the workspace redraws the published snapshot every display frame
             }
@@ -639,6 +694,73 @@ class OratureNarrationViewModel(
         if (stateMachine?.getNarrationContext() == NarrationStateType.MODIFYING_AUDIO_FILE) {
             performTransition(NarrationStateTransition.FINISH_SAVE)
         }
+        updateMarkers()
+    }
+
+    /** Header Undo (JVM: undo() → resetNarratableList + clear live-record data). */
+    fun onUndo() {
+        val n = narration ?: return
+        stopPlayer()
+        n.undo()
+        _audioScene.value?.clear()
+        resetNarratableList()
+    }
+
+    /** Header Redo (JVM: redo() → resetNarratableList). */
+    fun onRedo() {
+        val n = narration ?: return
+        stopPlayer()
+        n.redo()
+        _audioScene.value?.clear()
+        resetNarratableList()
+    }
+
+    /**
+     * Restart the chapter (JVM: restartChapter → onResetAll + resetNarratableList). Clears every
+     * recorded verse back to the begin-recording state; syncChapterTake then soft-deletes the now
+     * orphaned chapter take.
+     */
+    fun onRestartChapter() {
+        val n = narration ?: return
+        stopPlayer()
+        n.onResetAll()
+        _audioScene.value?.clear()
+        resetNarratableList()
+        syncChapterTake()
+    }
+
+    /** Verse-marker drag begin (JVM: startMoveMarker → MOVING_MARKER). */
+    fun onStartMoveMarker(verseIndex: Int) {
+        stopPlayer()
+        performTransition(NarrationStateTransition.MOVING_MARKER, verseIndex)
+    }
+
+    /**
+     * Verse-marker drag end (JVM: finishMoveMarker → onVerseMarkerMoved + PLACE_MARKER). [deltaFrames]
+     * is the signed frame shift (right = later). PLACE_MARKER_WHILE_MODIFYING_AUDIO if a take edit is
+     * in flight, else PLACE_MARKER.
+     */
+    fun onFinishMoveMarker(verseIndex: Int, deltaFrames: Int) {
+        val n = narration ?: return
+        // Clamp so a marker can't cross (or touch) its neighbors — the domain corrupts verse
+        // boundaries otherwise (JVM enforces this with verseBoundaries during the drag).
+        val sorted = n.activeVerses.sortedBy { it.location }
+        val myLabel = n.totalVerses.getOrNull(verseIndex)?.formattedLabel
+        val i = sorted.indexOfFirst { it.formattedLabel == myLabel }
+        val clampedDelta = if (i >= 0) {
+            val cur = sorted[i].location
+            val lower = (if (i > 0) sorted[i - 1].location + MIN_MARKER_GAP_FRAMES else 0)
+            val upper = (if (i < sorted.lastIndex) sorted[i + 1].location - MIN_MARKER_GAP_FRAMES
+                else n.getTotalFrames())
+            (cur + deltaFrames).coerceIn(minOf(lower, upper), maxOf(lower, upper)) - cur
+        } else deltaFrames
+        if (clampedDelta != 0) n.onVerseMarkerMoved(verseIndex, clampedDelta)
+        val modifying = stateMachine?.getNarrationContext() == NarrationStateType.MODIFYING_AUDIO_FILE
+        performTransition(
+            if (modifying) NarrationStateTransition.PLACE_MARKER_WHILE_MODIFYING_AUDIO
+            else NarrationStateTransition.PLACE_MARKER,
+            verseIndex
+        )
         updateMarkers()
     }
 
@@ -744,6 +866,18 @@ class OratureNarrationViewModel(
 
     fun onSeekNextMarker() {
         narration?.seekToNext()
+        syncHighlightNow()
+    }
+
+    /**
+     * Seek the playhead to an absolute chapter frame (JVM: seekTo) — used by the scrollbar and
+     * the scrub-drag. Clamped to [0, total]; the waveform ticker redraws at the new position.
+     */
+    fun seekToFrame(frame: Int) {
+        val n = narration ?: return
+        val clamped = frame.coerceIn(0, n.getTotalFrames())
+        n.seek(clamped, true)
+        audioPositionFrames = clamped
         syncHighlightNow()
     }
 

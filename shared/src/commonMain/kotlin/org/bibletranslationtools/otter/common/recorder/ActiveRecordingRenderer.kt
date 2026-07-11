@@ -62,26 +62,8 @@ class ActiveRecordingRenderer(
         }
 
         renderingJob = scope.launch(Dispatchers.IO) {
-            // [perf-dbg] temporary: packets/sec + max inter-arrival gap, to see whether mic data
-            // reaches the renderer in real time (vs. buffered/stalled upstream). Remove once diagnosed.
-            var dbgPackets = 0
-            var dbgWindowStart = System.nanoTime()
-            var dbgLastArrival = System.nanoTime()
-            var dbgMaxGapNanos = 0L
             try {
                 stream.collect { byteArray ->
-                    val dbgNow = System.nanoTime()
-                    val dbgGap = dbgNow - dbgLastArrival
-                    if (dbgGap > dbgMaxGapNanos) dbgMaxGapNanos = dbgGap
-                    dbgLastArrival = dbgNow
-                    dbgPackets++
-                    if (dbgNow - dbgWindowStart >= 1_000_000_000L) {
-                        logger.info(
-                            "[perf-dbg] renderer packets/s=$dbgPackets maxGap=${dbgMaxGapNanos / 1_000_000.0}ms " +
-                            "ringFill=${floatBuffer.size()} active=${isActive.get()}"
-                        )
-                        dbgPackets = 0; dbgMaxGapNanos = 0L; dbgWindowStart = dbgNow
-                    }
                     bb.put(byteArray)
                     bb.position(0)
                     while (bb.hasRemaining()) {

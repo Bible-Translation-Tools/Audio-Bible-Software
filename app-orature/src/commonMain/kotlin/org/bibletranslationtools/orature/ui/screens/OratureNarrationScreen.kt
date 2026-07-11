@@ -17,6 +17,8 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -24,6 +26,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -36,6 +41,7 @@ import org.bibletranslationtools.orature.resources.goBack
 import org.bibletranslationtools.orature.resources.narrationTitle
 import org.bibletranslationtools.orature.resources.options
 import org.bibletranslationtools.orature.resources.redo
+import org.bibletranslationtools.orature.resources.restartChapter
 import org.bibletranslationtools.orature.resources.undo
 import org.bibletranslationtools.orature.ui.OratureColors
 import org.bibletranslationtools.orature.ui.components.OratureAudioWorkspace
@@ -73,7 +79,13 @@ fun OratureNarrationScreen(
             hasPrevious = uiState.hasPreviousChapter,
             hasNext = uiState.hasNextChapter,
             chapters = uiState.chapters,
+            canUndo = uiState.canUndo,
+            canRedo = uiState.canRedo,
+            canRestartChapter = uiState.canRestartChapter,
             onBack = onBack,
+            onUndo = viewModel::onUndo,
+            onRedo = viewModel::onRedo,
+            onRestartChapter = viewModel::onRestartChapter,
             onPrevious = viewModel::selectPreviousChapter,
             onNext = viewModel::selectNextChapter,
             onSelectChapter = viewModel::selectChapter
@@ -111,6 +123,15 @@ private fun NarrationBody(
             splitPivotProvider = viewModel::currentSplitPivot,
             markerInfos = uiState.markerInfos,
             volumeProvider = viewModel::currentVolume,
+            positionProvider = viewModel::currentAudioPosition,
+            totalFramesProvider = viewModel::currentTotalFrames,
+            scrollEnabled = uiState.scrollEnabled,
+            markersEditable = uiState.markersEditable,
+            onSeekToFrame = viewModel::seekToFrame,
+            onMarkerDragStart = viewModel::onStartMoveMarker,
+            onMarkerDragEnd = viewModel::onFinishMoveMarker,
+            onPlayVerse = viewModel::onPlayVerse,
+            onRecordAgain = viewModel::onRecordAgain,
             modifier = Modifier.fillMaxWidth().fillMaxHeight(0.33f)
         )
 
@@ -155,7 +176,13 @@ private fun NarrationHeader(
     hasPrevious: Boolean,
     hasNext: Boolean,
     chapters: List<org.bibletranslationtools.orature.ui.viewmodels.OratureChapterGridItem>,
+    canUndo: Boolean,
+    canRedo: Boolean,
+    canRestartChapter: Boolean,
     onBack: () -> Unit,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
+    onRestartChapter: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onSelectChapter: (Int) -> Unit
@@ -185,16 +212,31 @@ private fun NarrationHeader(
 
         Spacer(Modifier.weight(1f))
 
-        // Undo / redo / options mirror the real header but are inert until Phase 5 wires
-        // the narration state machine (JVM: enabled by NarrationStateType).
-        IconButton(onClick = {}, enabled = false) {
+        // Undo / redo enabled by history + narration state (JVM: hasUndo/hasRedo && not mid-record).
+        IconButton(onClick = onUndo, enabled = canUndo) {
             Icon(Icons.Filled.Undo, contentDescription = stringResource(Res.string.undo))
         }
-        IconButton(onClick = {}, enabled = false) {
+        IconButton(onClick = onRedo, enabled = canRedo) {
             Icon(Icons.Filled.Redo, contentDescription = stringResource(Res.string.redo))
         }
-        IconButton(onClick = {}, enabled = false) {
-            Icon(Icons.Filled.MoreVert, contentDescription = stringResource(Res.string.options))
+
+        // Options menu (JVM: NarrationMenu). Restart Chapter is the only wired item so far;
+        // open/import/verse-marker are later phases. Enabled once a chapter is in progress.
+        Box {
+            var menuOpen by remember { mutableStateOf(false) }
+            IconButton(onClick = { menuOpen = true }, enabled = canRestartChapter) {
+                Icon(Icons.Filled.MoreVert, contentDescription = stringResource(Res.string.options))
+            }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(Res.string.restartChapter)) },
+                    enabled = canRestartChapter,
+                    onClick = {
+                        menuOpen = false
+                        onRestartChapter()
+                    }
+                )
+            }
         }
 
         if (chapters.isNotEmpty()) {
