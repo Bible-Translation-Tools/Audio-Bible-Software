@@ -264,7 +264,9 @@ class OratureNarrationViewModel(
                     LoadResult(workbook, descriptor.mode, chapterList, completed)
                 }
 
-                workbookDataStore.open(loaded.workbook, loaded.mode)
+                // open() scaffolds the on-disk project files (RC manifest, source copy, takes/chunks
+                // files) — file I/O, so keep it off the main thread.
+                withContext(Dispatchers.IO) { workbookDataStore.open(loaded.workbook, loaded.mode) }
                 chapters = loaded.chapters
 
                 // Restore the last-viewed chapter for this workbook, else the first (JVM behavior).

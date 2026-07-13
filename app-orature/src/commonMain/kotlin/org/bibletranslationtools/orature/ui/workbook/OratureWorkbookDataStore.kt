@@ -58,6 +58,26 @@ class OratureWorkbookDataStore(
         _currentMode.value = mode
         _activeChapter.value = null
         _activeChunk.value = null
+        initializeProjectFiles(workbook, mode)
+    }
+
+    /**
+     * Scaffold the on-disk project files on open (JVM: `HomePageViewModel2.initializeProjectFiles`,
+     * called from openWorkbook). Writes the project resource container (manifest.yaml), copies the
+     * source files in, and creates the selected-takes / chunks / project-mode files. All steps are
+     * idempotent (no-ops when already present), so this is safe to run on every open. Without it,
+     * anything that does `ResourceContainer.load(projectDir)` (e.g. chunking's source-audio copy)
+     * fails with "missing manifest.yaml". Contributor info is deferred (metadata-only, Phase 11).
+     */
+    private fun initializeProjectFiles(workbook: Workbook, mode: ProjectMode) {
+        runCatching {
+            val pfa = workbook.projectFilesAccessor
+            pfa.initializeResourceContainerInDir(overwrite = false)
+            pfa.copySourceFiles()
+            pfa.createSelectedTakesFile()
+            pfa.createChunksFile()
+            pfa.setProjectMode(mode)
+        }.onFailure { System.err.println("[workbook] initializeProjectFiles failed: $it") }
     }
 
     /** Set the active chapter and remember it for [workbookDescriptorId] (JVM: `updateLastSelectedChapter`). */

@@ -35,7 +35,9 @@ data class OratureBookUiModel(
     val title: String,
     val anthology: Anthology,
     val progress: Double,
-    val sort: Int
+    val sort: Int,
+    /** The project mode — routes book-open to the narration vs translation page. */
+    val mode: ProjectMode
 )
 
 /** One project-group card in the projects pane (mirrors ProjectGroupCardModel). */
@@ -187,7 +189,8 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
             title = title,
             anthology = anthology,
             progress = resolvedProgress,
-            sort = sort
+            sort = sort,
+            mode = mode
         )
     }
 

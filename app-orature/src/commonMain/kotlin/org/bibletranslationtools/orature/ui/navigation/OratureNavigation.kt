@@ -13,10 +13,13 @@ import kotlinx.coroutines.launch
 import org.bibletranslationtools.orature.ui.screens.OratureHomeScreen
 import org.bibletranslationtools.orature.ui.screens.OratureNarrationScreen
 import org.bibletranslationtools.orature.ui.screens.OratureSplashScreen
+import org.bibletranslationtools.orature.ui.screens.OratureTranslationScreen
 import org.bibletranslationtools.orature.ui.viewmodels.OratureHomeViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureNarrationViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureProjectWizardViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureSplashViewModel
+import org.bibletranslationtools.orature.ui.viewmodels.OratureTranslationViewModel
+import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.koin.mp.KoinPlatform.getKoin
 
 @Composable
@@ -57,9 +60,12 @@ fun OratureNavigation(navController: NavHostController) {
                 wizardViewModel = wizardVm,
                 onBookClick = { book ->
                     // Open the project's mode page (JVM: openWorkbook docks the mode page).
-                    // Phase 4 routes every mode to the narration shell; Phase 6 branches
-                    // translation projects to their own page.
-                    navController.navigate(OratureNarrationRoute(book.id))
+                    // NARRATION/DIALECT → narration shell; TRANSLATION → translation shell.
+                    if (book.mode == ProjectMode.TRANSLATION) {
+                        navController.navigate(OratureTranslationRoute(book.id))
+                    } else {
+                        navController.navigate(OratureNarrationRoute(book.id))
+                    }
                 },
                 onImportClick = {
                     // Phase 9 wires up project import. Stub for now.
@@ -77,6 +83,18 @@ fun OratureNavigation(navController: NavHostController) {
             OratureNarrationScreen(
                 viewModel = vm,
                 onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable<OratureTranslationRoute> { entry ->
+            val route = entry.toRoute<OratureTranslationRoute>()
+            val vm = viewModel(key = "translation-${route.workbookDescriptorId}") {
+                OratureTranslationViewModel(route.workbookDescriptorId)
+            }
+            OratureTranslationScreen(
+                viewModel = vm,
+                onBack = { navController.popBackStack() },
+                onGoToNarration = { navController.navigate(OratureNarrationRoute(route.workbookDescriptorId)) }
             )
         }
     }
