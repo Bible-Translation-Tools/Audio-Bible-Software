@@ -8,12 +8,16 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.rx2.asFlow
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.orature.ui.workbook.OratureWorkbookDataStore
 import org.bibletranslationtools.orature.ui.translation.ChunkingStep
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
+import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.koin.core.component.KoinComponent
@@ -22,9 +26,8 @@ import org.koin.core.component.inject
 /** One chunk in the steps-drawer sub-list (JVM: `ChunkViewData`). */
 data class OratureChunkViewData(
     val number: Int,
-    val title: String,
-    val reachable: Boolean,
-    val completed: Boolean
+    val completed: Boolean,
+    val selected: Boolean
 )
 
 /** UI state for the oral-translation page shell (JVM: `TranslationViewModel2` + header/drawer). */
@@ -46,6 +49,8 @@ data class OratureTranslationUiState(
     val reachableStep: ChunkingStep = ChunkingStep.FINAL_REVIEW,
     /** The chapter's chunks (populated once chunking is done); drives the drawer sub-lists. */
     val chunks: List<OratureChunkViewData> = emptyList(),
+    /** The active chunk's sort number (the chunk shown in Blind Draft / later steps), or null. */
+    val activeChunkSort: Int? = null,
     /** True when the source has no audio for this chapter (Consume → SourceAudioMissing). */
     val noSourceAudio: Boolean = false,
     val canUndo: Boolean = false,
@@ -73,6 +78,7 @@ class OratureTranslationViewModel(
     val uiState: StateFlow<OratureTranslationUiState> = _uiState.asStateFlow()
 
     private var chapters: List<Chapter> = emptyList()
+    private var chunkJob: kotlinx.coroutines.Job? = null
 
     private data class LoadResult(
         val bookTitle: String,
@@ -164,6 +170,12 @@ class OratureTranslationViewModel(
     fun onUndo() { undoHandler?.invoke() }
     fun onRedo() { redoHandler?.invoke() }
 
+    // The active Chunking VM registers an awaited save here so leaving the step persists its chunks
+    // (and they're committed + readable) BEFORE the next step loads — matching Orature's undock save.
+    private var chunkSaveHandler: (suspend () -> Unit)? = null
+    fun setChunkSaveHandler(handler: suspend () -> Unit) { chunkSaveHandler = handler }
+    fun clearChunkSaveHandler() { chunkSaveHandler = null }
+
     /** Reload after an import (source audio may now exist → recompute noSourceAudio). */
     fun refresh() {
         // Re-fetch the workbook so the source-audio accessor rescans (its cache is per-instance).
@@ -173,8 +185,67 @@ class OratureTranslationViewModel(
     /** Navigate to a step (JVM: navigateStep) — only if it is reachable. */
     fun selectStep(step: ChunkingStep) {
         val s = _uiState.value
-        if (step.ordinal <= s.reachableStep.ordinal) {
+        if (step.ordinal > s.reachableStep.ordinal) return
+        // Leaving Chunking: persist its chunks and WAIT before switching, so the next step reads
+        // committed chunk content (JVM saves synchronously in undock before navigating).
+        val leavingChunking = s.selectedStep == ChunkingStep.CHUNKING && step != ChunkingStep.CHUNKING &&
+            chunkSaveHandler != null
+        if (leavingChunking) {
+            viewModelScope.launch {
+                runCatching { chunkSaveHandler?.invoke() }
+                _uiState.value = _uiState.value.copy(selectedStep = step)
+                if (step.ordinal >= ChunkingStep.BLIND_DRAFT.ordinal) loadChunks()
+            }
+        } else {
             _uiState.value = s.copy(selectedStep = step)
+            if (step.ordinal >= ChunkingStep.BLIND_DRAFT.ordinal) loadChunks()
+        }
+    }
+
+    /**
+     * Subscribe to the active chapter's TEXT chunks (JVM: subscribeToChunks). Reactive because chunks
+     * are created asynchronously when Chunking saves — a one-shot read would race that and find none.
+     * Keeps the current chunk selected across emissions; auto-selects the first (unrecorded) chunk
+     * when nothing is selected yet.
+     */
+    fun loadChunks() {
+        val chapterSort = _uiState.value.activeChapterSort ?: return
+        val chapter = chapters.firstOrNull { it.sort == chapterSort } ?: return
+        chunkJob?.cancel()
+        chunkJob = viewModelScope.launch {
+            chapter.observableChunks.asFlow()
+                .map { list -> list.filter { it.contentType == ContentType.TEXT } }
+                .collect { chunkList ->
+                    val activeSort = _uiState.value.activeChunkSort
+                    val active = chunkList.firstOrNull { it.sort == activeSort }
+                        ?: chunkList.firstOrNull { !it.hasSelectedAudio() }
+                        ?: chunkList.firstOrNull()
+                    if (active?.sort != workbookDataStore.activeChunk.value?.sort) {
+                        workbookDataStore.setActiveChunk(active)
+                    }
+                    _uiState.value = _uiState.value.copy(
+                        chunks = chunkList.map {
+                            OratureChunkViewData(it.sort, it.hasSelectedAudio(), it.sort == active?.sort)
+                        },
+                        activeChunkSort = active?.sort
+                    )
+                }
+        }
+    }
+
+    /** Select a chunk by sort (JVM: selectChunk) — drives the Blind Draft / later step bodies. */
+    fun selectChunk(sort: Int) {
+        val chapterSort = _uiState.value.activeChapterSort ?: return
+        val chapter = chapters.firstOrNull { it.sort == chapterSort } ?: return
+        viewModelScope.launch {
+            val chunk = withContext(Dispatchers.IO) {
+                runCatching { chapter.chunks.blockingGet().firstOrNull { it.sort == sort } }.getOrNull()
+            } ?: return@launch
+            workbookDataStore.setActiveChunk(chunk)
+            _uiState.value = _uiState.value.copy(
+                chunks = _uiState.value.chunks.map { it.copy(selected = it.number == sort) },
+                activeChunkSort = sort
+            )
         }
     }
 

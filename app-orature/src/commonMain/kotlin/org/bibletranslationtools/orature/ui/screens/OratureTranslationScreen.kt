@@ -68,7 +68,11 @@ import org.bibletranslationtools.orature.resources.chapter
 import org.bibletranslationtools.orature.resources.chapterTitle
 import org.bibletranslationtools.orature.resources.check_online
 import org.bibletranslationtools.orature.resources.choose_file
+import org.bibletranslationtools.orature.resources.cancel
 import org.bibletranslationtools.orature.resources.close
+import org.bibletranslationtools.orature.resources.`continue`
+import org.bibletranslationtools.orature.resources.overridingSource
+import org.bibletranslationtools.orature.resources.warning
 import org.bibletranslationtools.orature.resources.collapse
 import org.bibletranslationtools.orature.resources.drag_drop_or_browse_import__template
 import org.bibletranslationtools.orature.resources.expand
@@ -165,6 +169,25 @@ fun OratureTranslationScreen(
                 }
             }
         }
+        // Conflict: imported source matches an existing one but with a different version +
+        // versification — confirm overwrite (JVM: ExistingSourceImporter onRequestUserInput).
+        if (importState is OratureImportState.ConflictPrompt) {
+            AlertDialog(
+                onDismissRequest = { importVm.resolveConflict(false) },
+                confirmButton = {
+                    TextButton(onClick = { importVm.resolveConflict(true) }) {
+                        Text(stringResource(Res.string.`continue`))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { importVm.resolveConflict(false) }) {
+                        Text(stringResource(Res.string.cancel))
+                    }
+                },
+                title = { Text(stringResource(Res.string.warning)) },
+                text = { Text(stringResource(Res.string.overridingSource)) }
+            )
+        }
         (importState as? OratureImportState.Error)?.let { err ->
             AlertDialog(
                 onDismissRequest = importVm::acknowledge,
@@ -190,7 +213,9 @@ private fun TranslationBody(
             selected = uiState.selectedStep,
             reachable = uiState.reachableStep,
             noSourceAudio = uiState.noSourceAudio,
-            onSelectStep = viewModel::selectStep
+            chunks = uiState.chunks,
+            onSelectStep = viewModel::selectStep,
+            onSelectChunk = viewModel::selectChunk
         )
 
         // Center: the current step's screen (Consume is built in 6b; others placeholder).
@@ -223,13 +248,17 @@ private fun TranslationBody(
                         val chunkingVm = androidx.lifecycle.viewmodel.compose.viewModel(key = "chunking-$sort") {
                             org.bibletranslationtools.orature.ui.viewmodels.OratureChunkingViewModel(sort, viewModel)
                         }
-                        // A keyed viewModel isn't cleared when this branch leaves composition, so
-                        // persist the chunks explicitly when navigating off the Chunking step.
-                        androidx.compose.runtime.DisposableEffect(sort) {
-                            onDispose { chunkingVm.saveIfDirty() }
-                        }
+                        // Step-leave persistence is handled by the translation VM's awaited chunk-save
+                        // handler (selectStep), which commits BEFORE loading the next step. A second
+                        // fire-and-forget save here would race it and corrupt the write, so it's gone.
                         OratureChunkingScreen(chunkingVm)
                     }
+                }
+                ChunkingStep.BLIND_DRAFT -> {
+                    val blindDraftVm = androidx.lifecycle.viewmodel.compose.viewModel {
+                        org.bibletranslationtools.orature.ui.viewmodels.OratureBlindDraftViewModel()
+                    }
+                    OratureBlindDraftScreen(blindDraftVm)
                 }
                 else -> Text(
                     text = stringResource(uiState.selectedStep.title),
@@ -325,7 +354,9 @@ private fun ChunkingStepsDrawer(
     selected: ChunkingStep,
     reachable: ChunkingStep,
     noSourceAudio: Boolean,
-    onSelectStep: (ChunkingStep) -> Unit
+    chunks: List<org.bibletranslationtools.orature.ui.viewmodels.OratureChunkViewData>,
+    onSelectStep: (ChunkingStep) -> Unit,
+    onSelectChunk: (Int) -> Unit
 ) {
     var collapsed by remember { mutableStateOf(false) }
     val width = if (collapsed) 64.dp else 260.dp
@@ -369,6 +400,42 @@ private fun ChunkingStepsDrawer(
                     collapsed = collapsed,
                     onClick = { onSelectStep(step) }
                 )
+                // The chunk sub-list under the active chunk-using step (JVM: chunkListProperty).
+                val usesChunks = step.ordinal >= ChunkingStep.BLIND_DRAFT.ordinal
+                if (!collapsed && step == selected && usesChunks && chunks.isNotEmpty()) {
+                    ChunkSubList(chunks, onSelectChunk)
+                }
+            }
+        }
+    }
+}
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun ChunkSubList(
+    chunks: List<org.bibletranslationtools.orature.ui.viewmodels.OratureChunkViewData>,
+    onSelectChunk: (Int) -> Unit
+) {
+    androidx.compose.foundation.layout.FlowRow(
+        modifier = Modifier.fillMaxWidth().padding(start = 40.dp, end = 12.dp, top = 4.dp, bottom = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        for (c in chunks) {
+            val bg = when {
+                c.selected -> OratureColors.Primary
+                c.completed -> OratureColors.Primary.copy(alpha = 0.15f)
+                else -> OratureColors.SurfaceSecondary
+            }
+            val fg = if (c.selected) OratureColors.OnPrimary else OratureColors.RegularText
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .background(bg, androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                    .clickable { onSelectChunk(c.number) },
+                contentAlignment = Alignment.Center
+            ) {
+                Text("${c.number}", color = fg, fontSize = 13.sp, fontWeight = FontWeight.Medium)
             }
         }
     }

@@ -94,6 +94,11 @@ class OratureChunkingViewModel(
     private var waveformTickerJob: Job? = null
     // Save must outlive the VM (it's triggered as the VM is torn down on navigate).
     private val saveScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    // True when marker state has changed since the last successful save. The step-leave save
+    // (awaited saveSuspend) clears this, so the onCleared backstop does NOT re-run the destructive
+    // reset+insert on a detached scope during app-close (which, if interrupted mid-delete, wiped
+    // the already-committed chunks — the "persists then vanishes on restart" bug).
+    private var dirty = false
 
     fun currentWaveform(): FloatArray = waveformFront
     fun currentPosition(): Int = positionFrames
@@ -103,7 +108,30 @@ class OratureChunkingViewModel(
     init {
         // The header undo/redo route here while this step is active (JVM: translationViewModel).
         translationVm.setUndoRedoHandlers(::undo, ::redo)
+        // The translation VM awaits this before leaving the step, so the chunk DB writes commit
+        // (and are readable) BEFORE Blind Draft loads — matching Orature's synchronous undock save.
+        translationVm.setChunkSaveHandler(::saveSuspend)
         load()
+    }
+
+    /** Persist the chunks and WAIT for completion (JVM: saveChanges().blockingAwait() in undock). */
+    private suspend fun saveSuspend() {
+        val wb = workbook ?: return
+        val chap = chapter ?: return
+        val src = sourceFile ?: return
+        val model = markerModel ?: return
+        if (!model.canUndo()) return // nothing changed
+        val cues = model.markerItems.filter { it.placed }.map { it.toAudioCue() }
+        val accessor = wb.projectFilesAccessor
+        withContext(Dispatchers.IO) {
+            runCatching {
+                resetChunks.resetChapter(accessor, chap)
+                    .andThen(createChunks.createUserDefinedChunks(wb, chap, cues))
+                    .await()
+                ChunkAudioUseCase(directoryProvider, accessor).createChunkedSourceAudio(src, cues)
+                dirty = false
+            }.onFailure { System.err.println("Chunk save failed: $it") }
+        }
     }
 
     private fun load() {
@@ -181,6 +209,7 @@ class OratureChunkingViewModel(
     fun placeMarker() {
         val model = markerModel ?: return
         model.addMarker(positionFrames)
+        dirty = true
         refreshMarkers()
     }
 
@@ -188,21 +217,25 @@ class OratureChunkingViewModel(
         val model = markerModel ?: return
         val original = model.markerItems.firstOrNull { it.id == id }?.frame ?: return
         model.moveMarker(id, original, newFrame.coerceIn(0, totalFrames))
+        dirty = true
         refreshMarkers()
     }
 
     fun deleteMarker(id: Int) {
         markerModel?.deleteMarker(id)
+        dirty = true
         refreshMarkers()
     }
 
     fun undo() {
         markerModel?.undo()
+        dirty = true
         refreshMarkers()
     }
 
     fun redo() {
         markerModel?.redo()
+        dirty = true
         refreshMarkers()
     }
 
@@ -279,11 +312,9 @@ class OratureChunkingViewModel(
         }
     }
 
-    /** Persist on leaving the step (called from the screen's onDispose, since a keyed viewModel
-     * isn't cleared when its step-branch merely leaves composition). */
-    fun saveIfDirty() = save()
-
-    /** Persist the placed chunks (JVM: saveChanges) — reset, recreate content, write chunked audio. */
+    /** Backstop persist for the "quit / leave the whole page while still on the Chunking step" case,
+     *  where the awaited step-leave save never ran. Only fires when there are genuinely unsaved edits
+     *  ([dirty]) so it never re-runs the destructive reset+insert over already-committed chunks. */
     private fun save() {
         val wb = workbook ?: return
         val chap = chapter ?: return
@@ -298,13 +329,17 @@ class OratureChunkingViewModel(
                     .andThen(createChunks.createUserDefinedChunks(wb, chap, cues))
                     .await()
                 ChunkAudioUseCase(directoryProvider, accessor).createChunkedSourceAudio(src, cues)
-            }.onFailure { System.err.println("[chunking] save failed: $it") }
+            }.onFailure { System.err.println("Chunk backstop save failed: $it") }
         }
     }
 
     public override fun onCleared() {
         translationVm.clearUndoRedoHandlers()
-        save() // persist on leaving the step (JVM: undock)
+        translationVm.clearChunkSaveHandler()
+        // Only save if there are unsaved edits. After a step-leave save (awaited saveSuspend) dirty is
+        // false, so we do NOT re-run the destructive reset+insert here — which, abandoned mid-delete on
+        // app-close, was wiping the committed chunks.
+        if (dirty) save()
         waveformTickerJob?.cancel()
         runCatching { player?.pause() }
         runCatching { player?.release() }
