@@ -84,12 +84,15 @@ data class OratureHomeUiState(
 class OratureHomeViewModel : ViewModel(), KoinComponent {
 
     private val workbookDescriptorRepository: IWorkbookDescriptorRepository by inject()
+    private val importEvents: OratureImportEvents by inject()
 
     private val _uiState = MutableStateFlow(OratureHomeUiState())
     val uiState: StateFlow<OratureHomeUiState> = _uiState.asStateFlow()
 
     init {
         loadProjects()
+        // Refresh when a project is imported via the global Add Files drawer.
+        viewModelScope.launch { importEvents.imported.collect { loadProjects() } }
     }
 
     /** Reload projects, selecting the most-recently-modified group (the default landing state). */
@@ -212,8 +215,4 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
         println("Orature: new project clicked (stub)")
     }
 
-    fun onImportClick() {
-        // Phase 9 wires up project import. Stub for now.
-        println("Orature: import clicked (stub)")
-    }
 }

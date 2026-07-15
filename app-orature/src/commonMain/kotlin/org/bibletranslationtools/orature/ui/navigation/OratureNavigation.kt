@@ -66,12 +66,9 @@ fun OratureNavigation(navController: NavHostController) {
                     } else {
                         navController.navigate(OratureNarrationRoute(book.id))
                     }
-                },
-                onImportClick = {
-                    // Phase 9 wires up project import. Stub for now.
                 }
-                // Settings/Info are now left drawers hosted inside the home screen
-                // (Phase 2), toggled by the nav rail — no longer separate routes.
+                // The project-import modal is hosted inside the home screen (opened by its import
+                // button). Settings/Info are left drawers hosted by the shell, toggled by the rail.
             )
         }
 

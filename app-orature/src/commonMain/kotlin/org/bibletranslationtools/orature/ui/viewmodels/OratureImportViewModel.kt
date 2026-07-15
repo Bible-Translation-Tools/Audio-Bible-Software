@@ -51,6 +51,7 @@ class OratureImportViewModel : ViewModel(), KoinComponent {
 
     private val importProjectUseCase: ImportProjectUseCase by inject()
     private val directoryProvider: IDirectoryProvider by inject()
+    private val importEvents: OratureImportEvents by inject()
 
     private val _importState = MutableStateFlow<OratureImportState>(OratureImportState.Idle)
     val importState: StateFlow<OratureImportState> = _importState.asStateFlow()
@@ -74,7 +75,10 @@ class OratureImportViewModel : ViewModel(), KoinComponent {
                     importProjectUseCase.import(tmp, callback).await()
                 }
                 _importState.value = when (result) {
-                    ImportResult.SUCCESS, ImportResult.ALREADY_EXISTS -> OratureImportState.Success
+                    ImportResult.SUCCESS, ImportResult.ALREADY_EXISTS -> {
+                        importEvents.notifyImported() // refresh the home project list
+                        OratureImportState.Success
+                    }
                     ImportResult.ABORTED -> OratureImportState.Idle
                     else -> OratureImportState.Error(getString(Res.string.importFailed))
                 }

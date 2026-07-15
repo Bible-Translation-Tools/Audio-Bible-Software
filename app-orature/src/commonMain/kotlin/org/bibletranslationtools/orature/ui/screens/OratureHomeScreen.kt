@@ -67,8 +67,7 @@ import org.bibletranslationtools.orature.resources.search
 fun OratureHomeScreen(
     viewModel: OratureHomeViewModel,
     wizardViewModel: OratureProjectWizardViewModel,
-    onBookClick: (OratureBookUiModel) -> Unit,
-    onImportClick: () -> Unit
+    onBookClick: (OratureBookUiModel) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val wizardState by wizardViewModel.uiState.collectAsState()
@@ -76,6 +75,8 @@ fun OratureHomeScreen(
     // Center-pane mode: BOOK_TABLE by default; the new-project card swaps in the WIZARD.
     // On cancel/complete we swap back and the wizard VM's onComplete reloads projects.
     var centerMode by remember { mutableStateOf(CenterPaneMode.BOOK_TABLE) }
+    // The project-import modal (JVM: ImportProjectDialog), opened from the home import button.
+    var showImport by remember { mutableStateOf(false) }
 
     // When the wizard finishes creating (or matching) a project, close it, return to the
     // book table, and reselect the created group — mirrors Orature's onNavigateBack
@@ -109,10 +110,7 @@ fun OratureHomeScreen(
             wizardViewModel.reset()
             centerMode = CenterPaneMode.WIZARD
         },
-        onImportClick = {
-            viewModel.onImportClick()
-            onImportClick()
-        },
+        onImportClick = { showImport = true },
         onWizardModeSelected = wizardViewModel::onModeSelected,
         onWizardBack = {
             // Step-1 back cancels the wizard and returns to the book table.
@@ -126,6 +124,12 @@ fun OratureHomeScreen(
         onWizardSourceSearchChange = wizardViewModel::onSourceLanguageSearchQueryChange,
         onWizardTargetSearchChange = wizardViewModel::onTargetLanguageSearchQueryChange
     )
+
+    if (showImport) {
+        org.bibletranslationtools.orature.ui.components.OratureImportProjectDialog(
+            onDismiss = { showImport = false }
+        )
+    }
 }
 
 /** What occupies the home center region: the book table, or the project-creation wizard. */
