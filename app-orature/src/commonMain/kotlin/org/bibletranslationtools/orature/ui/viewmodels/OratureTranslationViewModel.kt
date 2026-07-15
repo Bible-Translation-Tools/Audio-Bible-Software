@@ -17,9 +17,11 @@ import org.bibletranslationtools.orature.ui.workbook.OratureWorkbookDataStore
 import org.bibletranslationtools.orature.ui.translation.ChunkingStep
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
+import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
+import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -43,10 +45,10 @@ data class OratureTranslationUiState(
     val selectedStep: ChunkingStep = ChunkingStep.CONSUME_AND_VERBALIZE,
     /**
      * The furthest step the user may open; later steps are locked (JVM: reachableStep, computed
-     * from chapter/chunk progress). TODO(6b/6c): derive from progress. Temporarily all-reachable so
-     * the shell is fully navigable.
+     * from chapter/chunk progress in [updateReachableStep]). Starts at CHUNKING (only Consume +
+     * Chunking open) until chunks exist and gain audio/checking status.
      */
-    val reachableStep: ChunkingStep = ChunkingStep.FINAL_REVIEW,
+    val reachableStep: ChunkingStep = ChunkingStep.CHUNKING,
     /** The chapter's chunks (populated once chunking is done); drives the drawer sub-lists. */
     val chunks: List<OratureChunkViewData> = emptyList(),
     /** The active chunk's sort number (the chunk shown in Blind Draft / later steps), or null. */
@@ -79,6 +81,7 @@ class OratureTranslationViewModel(
 
     private var chapters: List<Chapter> = emptyList()
     private var chunkJob: kotlinx.coroutines.Job? = null
+    private var reachableJob: kotlinx.coroutines.Job? = null
 
     private data class LoadResult(
         val bookTitle: String,
@@ -97,6 +100,33 @@ class OratureTranslationViewModel(
 
     init {
         load()
+        // Keep the right-hand source-text drawer in sync with the active chunk (JVM: sourceTextBinding
+        // → getChunkSourceText). Shown on Peer-Edit-and-later steps and when source audio is missing.
+        viewModelScope.launch {
+            workbookDataStore.activeChunk.collect { chunk -> updateSourceText(chunk) }
+        }
+    }
+
+    /** Load the source scripture text for [chunk] (or the chapter when null) into the drawer. */
+    private fun updateSourceText(chunk: org.bibletranslationtools.otter.common.data.workbook.Chunk?) {
+        val wb = workbookDataStore.activeWorkbook.value ?: return
+        val chapterSort = _uiState.value.activeChapterSort
+            ?: workbookDataStore.activeChapter.value?.sort ?: return
+        viewModelScope.launch {
+            val text = withContext(Dispatchers.IO) {
+                runCatching {
+                    val accessor = wb.projectFilesAccessor
+                    val slug = wb.source.slug
+                    val verses = if (chunk != null) {
+                        accessor.getChunkText(slug, chapterSort, chunk.start, chunk.end)
+                    } else {
+                        accessor.getChapterText(slug, chapterSort)
+                    }
+                    buildString { verses.forEach { append(it); append("\n") } }
+                }.getOrDefault("")
+            }
+            _uiState.value = _uiState.value.copy(sourceText = text)
+        }
     }
 
     private fun load() {
@@ -139,6 +169,7 @@ class OratureTranslationViewModel(
                     hasNextChapter = hasNeighbor(active?.sort, step = +1),
                     noSourceAudio = loaded.noSourceAudio
                 )
+                updateReachableStep()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -215,22 +246,84 @@ class OratureTranslationViewModel(
         chunkJob = viewModelScope.launch {
             chapter.observableChunks.asFlow()
                 .map { list -> list.filter { it.contentType == ContentType.TEXT } }
+                .collect { chunkList -> applyChunkState(chunkList) }
+        }
+    }
+
+    /**
+     * A take was recorded / selected / deleted on a chunk step (JVM: refreshChunkList). Take
+     * selection doesn't change content rows, so [observableChunks] won't re-emit — re-read the
+     * current chunk state so the drawer completion + reachable step update.
+     */
+    fun onChunkTakesChanged() {
+        val chapterSort = _uiState.value.activeChapterSort ?: return
+        val chapter = chapters.firstOrNull { it.sort == chapterSort } ?: return
+        viewModelScope.launch {
+            val chunkList = withContext(Dispatchers.IO) {
+                runCatching { chapter.chunks.blockingGet().filter { it.contentType == ContentType.TEXT } }
+                    .getOrDefault(emptyList())
+            }
+            applyChunkState(chunkList)
+        }
+    }
+
+    /** Publish the drawer chunk list (step-aware completion), keep a chunk active, and recompute the
+     *  reachable step from the chunks' audio/checking status (JVM: loadChunks + updateStep). */
+    private fun applyChunkState(chunkList: List<Chunk>) {
+        val activeSort = _uiState.value.activeChunkSort
+        val active = chunkList.firstOrNull { it.sort == activeSort }
+            ?: chunkList.firstOrNull { !it.hasSelectedAudio() }
+            ?: chunkList.firstOrNull()
+        if (active?.sort != workbookDataStore.activeChunk.value?.sort) {
+            workbookDataStore.setActiveChunk(active)
+        }
+        val step = _uiState.value.selectedStep
+        _uiState.value = _uiState.value.copy(
+            chunks = chunkList.map {
+                OratureChunkViewData(it.sort, stepCompleted(it, step), it.sort == active?.sort)
+            },
+            activeChunkSort = active?.sort,
+            reachableStep = computeReachableStep(chunkList)
+        )
+    }
+
+    /** Whether a chunk counts as "done" for the drawer checkmark at [step] (JVM: loadChunks.completed). */
+    private fun stepCompleted(chunk: Chunk, step: ChunkingStep): Boolean = when (step) {
+        ChunkingStep.BLIND_DRAFT -> chunk.hasSelectedAudio()
+        ChunkingStep.PEER_EDIT -> chunk.checkingStatus().ordinal >= CheckingStatus.PEER_EDIT.ordinal
+        ChunkingStep.KEYWORD_CHECK -> chunk.checkingStatus().ordinal >= CheckingStatus.KEYWORD.ordinal
+        ChunkingStep.VERSE_CHECK -> chunk.checkingStatus().ordinal >= CheckingStatus.VERSE.ordinal
+        else -> false
+    }
+
+    /**
+     * Keep [OratureTranslationUiState.reachableStep] current for the active chapter (JVM: updateStep).
+     * Runs independently of the selected step so the steps drawer unlocks Blind Draft the moment
+     * chunks are created, then Peer Edit once every chunk has selected audio, and so on. Re-created on
+     * each chapter change; take-selection changes (which don't re-emit here) go through
+     * [onChunkTakesChanged].
+     */
+    private fun updateReachableStep() {
+        val chapterSort = _uiState.value.activeChapterSort ?: return
+        val chapter = chapters.firstOrNull { it.sort == chapterSort } ?: return
+        reachableJob?.cancel()
+        reachableJob = viewModelScope.launch {
+            chapter.observableChunks.asFlow()
+                .map { list -> list.filter { it.contentType == ContentType.TEXT } }
                 .collect { chunkList ->
-                    val activeSort = _uiState.value.activeChunkSort
-                    val active = chunkList.firstOrNull { it.sort == activeSort }
-                        ?: chunkList.firstOrNull { !it.hasSelectedAudio() }
-                        ?: chunkList.firstOrNull()
-                    if (active?.sort != workbookDataStore.activeChunk.value?.sort) {
-                        workbookDataStore.setActiveChunk(active)
-                    }
-                    _uiState.value = _uiState.value.copy(
-                        chunks = chunkList.map {
-                            OratureChunkViewData(it.sort, it.hasSelectedAudio(), it.sort == active?.sort)
-                        },
-                        activeChunkSort = active?.sort
-                    )
+                    _uiState.value = _uiState.value.copy(reachableStep = computeReachableStep(chunkList))
                 }
         }
+    }
+
+    /** The furthest reachable step given the chunks' progress (JVM: updateStep). */
+    private fun computeReachableStep(chunkList: List<Chunk>): ChunkingStep = when {
+        chunkList.isEmpty() -> ChunkingStep.CHUNKING
+        chunkList.all { it.checkingStatus() == CheckingStatus.VERSE } -> ChunkingStep.FINAL_REVIEW
+        chunkList.all { it.checkingStatus().ordinal >= CheckingStatus.KEYWORD.ordinal } -> ChunkingStep.VERSE_CHECK
+        chunkList.all { it.checkingStatus().ordinal >= CheckingStatus.PEER_EDIT.ordinal } -> ChunkingStep.KEYWORD_CHECK
+        chunkList.all { it.hasSelectedAudio() } -> ChunkingStep.PEER_EDIT
+        else -> ChunkingStep.BLIND_DRAFT
     }
 
     /** Select a chunk by sort (JVM: selectChunk) — drives the Blind Draft / later step bodies. */
@@ -262,6 +355,7 @@ class OratureTranslationViewModel(
             // Reset the workflow to the first step for the newly-selected chapter.
             selectedStep = ChunkingStep.CONSUME_AND_VERBALIZE
         )
+        updateReachableStep()
         viewModelScope.launch {
             val noSource = withContext(Dispatchers.IO) { hasNoSourceAudio(sort) }
             if (_uiState.value.activeChapterSort == sort) {

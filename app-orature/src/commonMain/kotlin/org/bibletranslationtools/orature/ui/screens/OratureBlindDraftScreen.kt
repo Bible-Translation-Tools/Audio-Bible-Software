@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -42,6 +43,7 @@ import org.bibletranslationtools.orature.resources.available_takes
 import org.bibletranslationtools.orature.resources.best_take
 import org.bibletranslationtools.orature.resources.cancel
 import org.bibletranslationtools.orature.resources.chunk
+import org.bibletranslationtools.orature.resources.delete
 import org.bibletranslationtools.orature.resources.new_recording
 import org.bibletranslationtools.orature.resources.pause
 import org.bibletranslationtools.orature.resources.playSource
@@ -92,7 +94,13 @@ fun OratureBlindDraftScreen(viewModel: OratureBlindDraftViewModel) {
                 Text(stringResource(Res.string.best_take), fontSize = 14.sp, fontWeight = FontWeight.Medium, color = OratureColors.NoteText)
                 Spacer(Modifier.height(4.dp))
                 uiState.selectedTake?.let { t ->
-                    TakeRow(t, isPlaying = uiState.playingTakeId == t.id, onPlay = { viewModel.toggleTake(t.id) }, onSelect = null)
+                    TakeRow(
+                        t,
+                        isPlaying = uiState.playingTakeId == t.id,
+                        onPlay = { viewModel.toggleTake(t.id) },
+                        onSelect = null,
+                        onDelete = { viewModel.deleteTake(t.id) }
+                    )
                 }
 
                 Spacer(Modifier.height(16.dp))
@@ -104,7 +112,8 @@ fun OratureBlindDraftScreen(viewModel: OratureBlindDraftViewModel) {
                             t,
                             isPlaying = uiState.playingTakeId == t.id,
                             onPlay = { viewModel.toggleTake(t.id) },
-                            onSelect = { viewModel.selectTake(t.id) }
+                            onSelect = { viewModel.selectTake(t.id) },
+                            onDelete = { viewModel.deleteTake(t.id) }
                         )
                         Spacer(Modifier.height(6.dp))
                     }
@@ -127,7 +136,7 @@ fun OratureBlindDraftScreen(viewModel: OratureBlindDraftViewModel) {
  * save, and cancel. The waveform is the `ActiveRecordingRenderer` min/max buffer, drawn each frame.
  */
 @Composable
-private fun RecordingSection(
+internal fun RecordingSection(
     waveformProvider: () -> FloatArray,
     isActive: Boolean,
     onToggle: () -> Unit,
@@ -185,7 +194,8 @@ private fun TakeRow(
     take: OratureTakeCard,
     isPlaying: Boolean,
     onPlay: () -> Unit,
-    onSelect: (() -> Unit)?
+    onSelect: (() -> Unit)?,
+    onDelete: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -217,5 +227,11 @@ private fun TakeRow(
         } else if (take.selected) {
             Icon(Icons.Filled.Check, contentDescription = null, tint = OratureColors.StatusComplete)
         }
+        Icon(
+            Icons.Filled.Delete,
+            contentDescription = stringResource(Res.string.delete),
+            tint = OratureColors.NoteText,
+            modifier = Modifier.size(28.dp).clickable(onClick = onDelete).padding(4.dp)
+        )
     }
 }

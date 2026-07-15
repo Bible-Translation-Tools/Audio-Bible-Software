@@ -255,10 +255,16 @@ private fun TranslationBody(
                     }
                 }
                 ChunkingStep.BLIND_DRAFT -> {
-                    val blindDraftVm = androidx.lifecycle.viewmodel.compose.viewModel {
-                        org.bibletranslationtools.orature.ui.viewmodels.OratureBlindDraftViewModel()
+                    val blindDraftVm = androidx.lifecycle.viewmodel.compose.viewModel(key = "blinddraft") {
+                        org.bibletranslationtools.orature.ui.viewmodels.OratureBlindDraftViewModel(viewModel)
                     }
                     OratureBlindDraftScreen(blindDraftVm)
+                }
+                ChunkingStep.PEER_EDIT -> {
+                    val peerEditVm = androidx.lifecycle.viewmodel.compose.viewModel(key = "peeredit") {
+                        org.bibletranslationtools.orature.ui.viewmodels.OraturePeerEditViewModel(viewModel)
+                    }
+                    OraturePeerEditScreen(peerEditVm)
                 }
                 else -> Text(
                     text = stringResource(uiState.selectedStep.title),

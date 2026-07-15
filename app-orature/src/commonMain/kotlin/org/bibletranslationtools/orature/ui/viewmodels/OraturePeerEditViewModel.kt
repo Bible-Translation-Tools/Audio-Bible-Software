@@ -4,18 +4,23 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.flow.MutableStateFlow as MutableStateFlowOf
 import org.bibletranslationtools.orature.ui.workbook.OratureWorkbookDataStore
-import org.bibletranslationtools.otter.common.audio.AudioFileFormat
+import org.bibletranslationtools.orature.ui.workbook.PrecomputedWaveform
 import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
+import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
 import org.bibletranslationtools.otter.common.data.primitives.MimeType
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Take
+import org.bibletranslationtools.otter.common.data.workbook.TakeCheckingState
+import org.bibletranslationtools.otter.common.audio.AudioFileFormat
 import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnection
 import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
 import org.bibletranslationtools.otter.common.device.newaudio.AudioRecorderConnection
@@ -26,47 +31,41 @@ import org.bibletranslationtools.otter.common.domain.IUndoable
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
 import org.bibletranslationtools.otter.common.domain.model.UndoableActionHistory
-import org.bibletranslationtools.otter.common.domain.translation.TranslationTakeDeleteAction
-import org.bibletranslationtools.otter.common.domain.translation.TranslationTakeRecordAction
-import org.bibletranslationtools.otter.common.domain.translation.TranslationTakeSelectAction
+import org.bibletranslationtools.otter.common.domain.translation.TranslationTakeApproveAction
 import org.bibletranslationtools.otter.common.recorder.ActiveRecordingRenderer
 import org.bibletranslationtools.otter.common.recorder.WavFileWriter
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.time.LocalDate
 
-/** A single take shown in the Blind Draft take list (JVM: `TakeCardModel`/`ChunkTakeCard`). */
-data class OratureTakeCard(
-    val id: Int,
-    val number: Int,
-    val selected: Boolean
-)
+private const val PEER_WAVEFORM_WIDTH = 960
+private const val PEER_SECONDS_ON_SCREEN = 10
 
-data class OratureBlindDraftUiState(
+/** UI state for the Peer Edit step (JVM: `PeerEditViewModel`). */
+data class OraturePeerEditUiState(
     val isLoading: Boolean = false,
     val hasChunk: Boolean = false,
+    /** True when the active chunk has no selected take to review (guard; shouldn't occur once gated). */
+    val noTake: Boolean = false,
     val chunkTitle: String = "",
     val isSourcePlaying: Boolean = false,
-    /** The chunk's selected take ("best take"), if any. */
-    val selectedTake: OratureTakeCard? = null,
-    /** The chunk's other takes ("available takes"). */
-    val availableTakes: List<OratureTakeCard> = emptyList(),
-    /** The take currently playing in the list (its id), or null. */
-    val playingTakeId: Int? = null,
-    /** True while the recording section is shown (JVM: recordingView). */
+    /** Target-take playback (the center waveform). */
+    val isPlaying: Boolean = false,
+    /** True once this chunk has been confirmed at the peer-edit stage (JVM: chunkConfirmed). */
+    val confirmed: Boolean = false,
     val recording: Boolean = false,
-    /** True while actively capturing (false when paused mid-recording). */
     val recordingActive: Boolean = false,
     val error: String? = null
 )
 
 /**
- * Drives the Blind Draft step for the active chunk (JVM: `BlindDraftViewModel`): plays the chunk's
- * source audio, lists its target takes ("best take" + "available takes"), and lets the translator
- * record a new draft (7b) and pick the best take (7c). Follows the shared [OratureWorkbookDataStore]
- * active-chunk selection; playback uses the shared newaudio player.
+ * Drives the Peer Edit step for the active chunk (JVM: `PeerEditViewModel`): plays the chunk's source
+ * audio (top), shows the chunk's selected target take as a playback waveform (center), and lets the
+ * reviewer Confirm the take (advancing its checking status) or Record a replacement. Confirm and the
+ * (re)record are undoable and drive the page header undo/redo. Follows the shared active-chunk
+ * selection; reuses the Consume waveform pipeline + the Blind Draft recording pipeline.
  */
-class OratureBlindDraftViewModel(
+class OraturePeerEditViewModel(
     private val translationVm: OratureTranslationViewModel
 ) : ViewModel(), KoinComponent {
 
@@ -74,31 +73,39 @@ class OratureBlindDraftViewModel(
     private val playerFactory: AudioPlayerConnectionFactory by inject()
     private val recorderFactory: AudioRecorderConnectionFactory by inject()
 
-    private val _uiState = MutableStateFlow(OratureBlindDraftUiState())
-    val uiState: StateFlow<OratureBlindDraftUiState> = _uiState.asStateFlow()
+    private val _uiState = MutableStateFlow(OraturePeerEditUiState())
+    val uiState: StateFlow<OraturePeerEditUiState> = _uiState.asStateFlow()
 
     private var activeChunk: Chunk? = null
-    private var takesById: Map<Int, Take> = emptyMap()
+    private var selectedTake: Take? = null
     private var sourcePlayer: IAudioPlayer? = null
     private var takePlayer: IAudioPlayer? = null
+    private var precomputed: PrecomputedWaveform? = null
 
-    // Take select/delete/record are undoable (JVM: BlindDraftViewModel.actionHistory). The page header's
-    // undo/redo route here while Blind Draft is active (JVM: writes translationViewModel can-undo/redo).
-    private val actionHistory = UndoableActionHistory<IUndoable>()
+    private var sampleRate: Int = DEFAULT_SAMPLE_RATE
+    private var totalFrames: Int = 0
+    private var positionFrames: Int = 0
+    private var waveformFront: FloatArray = FloatArray(PEER_WAVEFORM_WIDTH * 2)
+    private var waveformTickerJob: Job? = null
 
-    // Recording pipeline (reuses narration's: recorder connection + WavFileWriter gated by
-    // start()/pause() + ActiveRecordingRenderer for the live wave).
+    // Recording pipeline (same shape as Blind Draft).
     private var recorder: AudioRecorderConnection? = null
     private var writer: WavFileWriter? = null
     private var activeRenderer: ActiveRecordingRenderer? = null
     private var pendingTake: Take? = null
-    private val recordingActiveFlow = MutableStateFlowOf(false)
+    private val recordingActiveFlow = MutableStateFlow(false)
     private val emptyWave = FloatArray(RECORD_WIDTH * 2)
 
+    private val actionHistory = UndoableActionHistory<IUndoable>()
+
+    // Waveform providers read by the screen each display frame.
+    fun currentWaveform(): FloatArray = waveformFront
+    fun currentPosition(): Int = positionFrames
+    fun currentTotalFrames(): Int = totalFrames
+    fun currentRecordingWaveform(): FloatArray = activeRenderer?.floatBuffer?.array ?: emptyWave
+
     init {
-        // The page header undo/redo route here while this step is active.
         translationVm.setUndoRedoHandlers(::undo, ::redo)
-        // Follow the shared active-chunk selection (set by the translation VM's steps-drawer nav).
         viewModelScope.launch {
             workbookDataStore.activeChunk.collect { chunk -> onChunk(chunk) }
         }
@@ -106,49 +113,70 @@ class OratureBlindDraftViewModel(
 
     private fun onChunk(chunk: Chunk?) {
         stopAll()
-        // Undo history is per-chunk (JVM: actionHistory.clear() on chunk change).
         if (chunk?.sort != activeChunk?.sort) {
             actionHistory.clear()
             translationVm.updateChunkUndoRedo(canUndo = false, canRedo = false)
         }
         activeChunk = chunk
         if (chunk == null) {
-            _uiState.value = OratureBlindDraftUiState(hasChunk = false)
+            _uiState.value = OraturePeerEditUiState(hasChunk = false)
             return
         }
-        _uiState.value = OratureBlindDraftUiState(isLoading = true, hasChunk = true)
+        _uiState.value = OraturePeerEditUiState(isLoading = true, hasChunk = true)
         viewModelScope.launch {
             try {
-                val loaded = withContext(Dispatchers.IO) {
-                    val takes = chunk.audio.getAllTakes()
-                        .filter { !it.isDeleted() }
-                        .sortedByDescending { it.file.lastModified() }
-                    val selected = chunk.audio.getSelectedTake()
-                    LoadedTakes(takes, selected, prepareSourcePlayer(chunk))
+                val prepared = withContext(Dispatchers.IO) {
+                    val take = chunk.audio.getSelectedTake() ?: return@withContext null
+                    val audioFile = OratureAudioFile(take.file)
+                    val playerReader = audioFile.reader().apply { open() }
+                    val sr = playerReader.spec.sampleRate.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
+                    val peakReader = audioFile.reader().apply { open() }
+                    val peaks = try {
+                        PrecomputedWaveform.build(peakReader, PEER_WAVEFORM_WIDTH, PEER_SECONDS_ON_SCREEN, sr)
+                    } finally {
+                        runCatching { peakReader.release() }
+                    }
+                    Prepared(take, playerReader.totalFrames, sr, peaks, prepareSourcePlayer(chunk))
+                } ?: run {
+                    _uiState.value = OraturePeerEditUiState(hasChunk = true, noTake = true)
+                    return@launch
                 }
-                takesById = loaded.takes.associateBy { it.number }
-                sourcePlayer = loaded.sourcePlayer
-                val selectedNum = loaded.selected?.number
-                _uiState.value = OratureBlindDraftUiState(
+
+                selectedTake = prepared.take
+                sampleRate = prepared.sampleRate
+                totalFrames = prepared.totalFrames
+                positionFrames = 0
+                precomputed = prepared.peaks
+                sourcePlayer = prepared.sourcePlayer
+                val takeAudio = OratureAudioFile(prepared.take.file)
+                val p = AudioPlayerConnection(TAKE_PLAYER_ID, playerFactory, viewModelScope, Dispatchers.Default)
+                p.load(takeAudio.reader().apply { open() })
+                takePlayer = p
+
+                _uiState.value = OraturePeerEditUiState(
                     isLoading = false,
                     hasChunk = true,
                     chunkTitle = "${chunk.sort}",
-                    selectedTake = loaded.selected?.let { OratureTakeCard(it.number, it.number, true) },
-                    availableTakes = loaded.takes
-                        .filter { it.number != selectedNum }
-                        .map { OratureTakeCard(it.number, it.number, false) }
+                    confirmed = chunk.checkingStatus().ordinal >= CheckingStatus.PEER_EDIT.ordinal
                 )
+                startWaveformTicker()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _uiState.value = OratureBlindDraftUiState(hasChunk = true, error = e.message ?: "Unknown error")
+                _uiState.value = OraturePeerEditUiState(hasChunk = true, error = e.message ?: "Unknown error")
             }
         }
     }
 
-    private data class LoadedTakes(val takes: List<Take>, val selected: Take?, val sourcePlayer: IAudioPlayer?)
+    private data class Prepared(
+        val take: Take,
+        val totalFrames: Int,
+        val sampleRate: Int,
+        val peaks: PrecomputedWaveform,
+        val sourcePlayer: IAudioPlayer?
+    )
 
-    /** Load the chunk's source audio into a player (chunk-level source slicing lands with 7d). */
+    /** Load the chapter's source audio for the top source player (chunk-level slicing lands later). */
     private fun prepareSourcePlayer(chunk: Chunk): IAudioPlayer? {
         val wb = workbookDataStore.activeWorkbook.value ?: return null
         val chapterSort = workbookDataStore.activeChapter.value?.sort ?: return null
@@ -156,8 +184,7 @@ class OratureBlindDraftViewModel(
             wb.sourceAudioAccessor.getUserMarkedChapter(chapterSort, wb.target)
                 ?: wb.sourceAudioAccessor.getChapter(chapterSort, wb.target)
         }.getOrNull() ?: return null
-        val reader = org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile(sa.file)
-            .reader().apply { open() }
+        val reader = OratureAudioFile(sa.file).reader().apply { open() }
         return AudioPlayerConnection(SOURCE_PLAYER_ID, playerFactory, viewModelScope, Dispatchers.Default)
             .also { it.load(reader) }
     }
@@ -166,28 +193,43 @@ class OratureBlindDraftViewModel(
         val p = sourcePlayer ?: return
         takePlayer?.pause()
         if (p.isPlaying()) p.pause() else p.play()
-        _uiState.value = _uiState.value.copy(isSourcePlaying = p.isPlaying(), playingTakeId = null)
+        _uiState.value = _uiState.value.copy(isSourcePlaying = p.isPlaying(), isPlaying = false)
     }
 
-    fun toggleTake(id: Int) {
-        val take = takesById[id] ?: return
+    fun togglePlay() {
+        val p = takePlayer ?: return
         sourcePlayer?.pause()
-        val current = _uiState.value.playingTakeId
-        takePlayer?.pause()
-        if (current == id) {
-            _uiState.value = _uiState.value.copy(playingTakeId = null, isSourcePlaying = false)
-            return
-        }
-        val reader = org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile(take.file)
-            .reader().apply { open() }
-        val p = AudioPlayerConnection(TAKE_PLAYER_ID, playerFactory, viewModelScope, Dispatchers.Default)
-        p.load(reader)
-        p.play()
-        takePlayer = p
-        _uiState.value = _uiState.value.copy(playingTakeId = id, isSourcePlaying = false)
+        if (p.isPlaying()) p.pause() else p.play()
+        _uiState.value = _uiState.value.copy(isPlaying = p.isPlaying(), isSourcePlaying = false)
     }
 
-    /** Start a new recording: create an empty take + wire the recorder/writer/live renderer. */
+    fun pause() {
+        takePlayer?.pause()
+        _uiState.value = _uiState.value.copy(isPlaying = false)
+    }
+
+    fun seekToFrame(frame: Int) {
+        val clamped = frame.coerceIn(0, totalFrames)
+        takePlayer?.seek(clamped)
+        positionFrames = clamped
+    }
+
+    /** Confirm the take at the peer-edit stage (JVM: confirmChunk → TranslationTakeApproveAction). */
+    fun confirmChunk() {
+        val chunk = activeChunk ?: return
+        val take = chunk.audio.getSelectedTake() ?: return
+        val current = take.checkingState.value ?: TakeCheckingState(CheckingStatus.UNCHECKED, null)
+        val op = TranslationTakeApproveAction(take, CheckingStatus.PEER_EDIT, current).apply {
+            setUndoCallback { _uiState.value = _uiState.value.copy(confirmed = false) }
+            setRedoCallback { _uiState.value = _uiState.value.copy(confirmed = true) }
+        }
+        actionHistory.execute(op)
+        _uiState.value = _uiState.value.copy(confirmed = true)
+        onUndoableAction()
+        translationVm.onChunkTakesChanged()
+    }
+
+    /** Start a re-recording (JVM: onRecordNew) — same pipeline as Blind Draft. */
     fun onRecordNew() {
         val chunk = activeChunk ?: return
         val wb = workbookDataStore.activeWorkbook.value ?: return
@@ -206,9 +248,6 @@ class OratureBlindDraftViewModel(
                 val rec = AudioRecorderConnection(RECORDER_ID, recorderFactory, viewModelScope)
                 rec.start(AudioSpec())
                 recorder = rec
-                // Initialize with an explicit format so a valid empty WAV header is written up front
-                // (JVM: createTake(createEmpty = true)); the plain OratureAudioFile(file) constructor
-                // parses the header and throws "file length is less than a chunk header" on an empty file.
                 val takeAudio = OratureAudioFile(take.file, 1, DEFAULT_SAMPLE_RATE, 16)
                 val w = WavFileWriter(takeAudio, rec.getAudioStream(), false, {}, viewModelScope)
                 w.listen()
@@ -227,7 +266,6 @@ class OratureBlindDraftViewModel(
         }
     }
 
-    /** Pause / resume the active recording (JVM: RecordingSection toggle). */
     fun toggleRecording() {
         val w = writer ?: return
         if (_uiState.value.recordingActive) {
@@ -239,7 +277,8 @@ class OratureBlindDraftViewModel(
         }
     }
 
-    /** Finish + keep the recording: finalize the WAV, register it as a take, select it. */
+    /** Keep the re-recording: finalize + insert (auto-selected); the new take is unchecked so the chunk
+     *  needs confirming again (JVM: insertTake then re-navigate to PEER_EDIT). */
     fun saveRecording() {
         val chunk = activeChunk ?: return
         val take = pendingTake ?: return
@@ -253,11 +292,7 @@ class OratureBlindDraftViewModel(
             stopRecordingPipeline()
             val hasAudio = runCatching { OratureAudioFile(take.file).totalFrames > 0 }.getOrDefault(false)
             if (hasAudio) {
-                // Insert as an undoable record action; inserting auto-selects the new take as "best"
-                // (AssociatedAudio's takes relay selects on insert). JVM: TranslationTakeRecordAction.
-                val op = TranslationTakeRecordAction(chunk, take, chunk.audio.getSelectedTake())
-                actionHistory.execute(op)
-                onUndoableAction()
+                chunk.audio.insertTake(take)
             } else {
                 runCatching { take.file.delete() }
             }
@@ -267,7 +302,6 @@ class OratureBlindDraftViewModel(
         }
     }
 
-    /** Discard the active recording. */
     fun cancelRecording() {
         val take = pendingTake
         viewModelScope.launch {
@@ -284,8 +318,47 @@ class OratureBlindDraftViewModel(
         }
     }
 
-    /** Live recording waveform (min/max pairs) for the recording section. */
-    fun currentRecordingWaveform(): FloatArray = activeRenderer?.floatBuffer?.array ?: emptyWave
+    fun undo() {
+        if (!actionHistory.canUndo()) return
+        actionHistory.undo()
+        translationVm.updateChunkUndoRedo(canUndo = actionHistory.canUndo(), canRedo = true)
+        translationVm.onChunkTakesChanged()
+    }
+
+    fun redo() {
+        if (!actionHistory.canRedo()) return
+        actionHistory.redo()
+        translationVm.updateChunkUndoRedo(canUndo = true, canRedo = actionHistory.canRedo())
+        translationVm.onChunkTakesChanged()
+    }
+
+    private fun onUndoableAction() {
+        translationVm.updateChunkUndoRedo(canUndo = true, canRedo = false)
+    }
+
+    private fun startWaveformTicker() {
+        waveformTickerJob?.cancel()
+        waveformTickerJob = viewModelScope.launch(Dispatchers.Default) {
+            val out = FloatArray(PEER_WAVEFORM_WIDTH * 2)
+            while (isActive) {
+                val p = takePlayer
+                val peaks = precomputed
+                if (p != null && peaks != null) {
+                    runCatching {
+                        val playing = p.isPlaying()
+                        if (playing) positionFrames = p.getLocationInFrames()
+                        if (_uiState.value.isPlaying != playing) {
+                            _uiState.value = _uiState.value.copy(isPlaying = playing)
+                        }
+                        val halfWindow = PEER_SECONDS_ON_SCREEN * sampleRate / 2
+                        peaks.window(positionFrames - halfWindow, out)
+                        waveformFront = out.copyOf()
+                    }.onFailure { System.err.println("[peeredit] waveform render failed: $it") }
+                }
+                delay(33)
+            }
+        }
+    }
 
     private fun stopRecordingPipeline() {
         runCatching { activeRenderer?.close() }
@@ -295,70 +368,15 @@ class OratureBlindDraftViewModel(
         pendingTake = null
     }
 
-    /** Select the best take (JVM: onSelectTake) — undoable. */
-    fun selectTake(id: Int) {
-        val take = takesById[id] ?: return
-        val chunk = activeChunk ?: return
-        val op = TranslationTakeSelectAction(chunk, take, chunk.audio.getSelectedTake())
-        actionHistory.execute(op)
-        onUndoableAction()
-        onChunk(chunk) // reload to reflect the new selection
-        translationVm.onChunkTakesChanged()
-    }
-
-    /** Delete a take (JVM: onDeleteTake) — undoable; reselects another take if the deleted one was best. */
-    fun deleteTake(id: Int) {
-        val take = takesById[id] ?: return
-        val chunk = activeChunk ?: return
-        runCatching { takePlayer?.pause() }
-        val wasSelected = chunk.audio.getSelectedTake() == take
-        val op = TranslationTakeDeleteAction(chunk, take, wasSelected, ::handlePostDeleteTake)
-        actionHistory.execute(op)
-        onUndoableAction()
-        onChunk(chunk)
-        translationVm.onChunkTakesChanged()
-    }
-
-    /** After a delete: if the removed take was the selected one, promote the newest remaining take. */
-    private fun handlePostDeleteTake(deleted: Take, selectAnother: Boolean) {
-        if (!selectAnother) return
-        val chunk = activeChunk ?: return
-        chunk.audio.getAllTakes()
-            .filter { !it.isDeleted() && it != deleted }
-            .maxByOrNull { it.file.lastModified() }
-            ?.let { chunk.audio.selectTake(it) }
-    }
-
-    fun undo() {
-        if (!actionHistory.canUndo()) return
-        runCatching { takePlayer?.pause() }
-        actionHistory.undo()
-        translationVm.updateChunkUndoRedo(canUndo = actionHistory.canUndo(), canRedo = true)
-        activeChunk?.let { onChunk(it) }
-        translationVm.onChunkTakesChanged()
-    }
-
-    fun redo() {
-        if (!actionHistory.canRedo()) return
-        runCatching { takePlayer?.pause() }
-        actionHistory.redo()
-        translationVm.updateChunkUndoRedo(canUndo = true, canRedo = actionHistory.canRedo())
-        activeChunk?.let { onChunk(it) }
-        translationVm.onChunkTakesChanged()
-    }
-
-    private fun onUndoableAction() {
-        translationVm.updateChunkUndoRedo(canUndo = true, canRedo = false)
-    }
-
     private fun stopAll() {
+        waveformTickerJob?.cancel()
         runCatching { sourcePlayer?.pause() }
         runCatching { sourcePlayer?.release() }
         runCatching { takePlayer?.pause() }
         runCatching { takePlayer?.release() }
         sourcePlayer = null
         takePlayer = null
-        // Abort any in-progress recording (e.g. chunk switched away).
+        precomputed = null
         if (writer != null || recorder != null) {
             recordingActiveFlow.value = false
             runCatching { writer?.close() }
@@ -373,9 +391,9 @@ class OratureBlindDraftViewModel(
     }
 
     companion object {
-        private const val SOURCE_PLAYER_ID = 90_010
-        private const val TAKE_PLAYER_ID = 90_011
-        private const val RECORDER_ID = 90_012
+        private const val SOURCE_PLAYER_ID = 90_020
+        private const val TAKE_PLAYER_ID = 90_021
+        private const val RECORDER_ID = 90_022
         private const val RECORD_WIDTH = 480
         private const val RECORD_SECONDS = 10
     }
