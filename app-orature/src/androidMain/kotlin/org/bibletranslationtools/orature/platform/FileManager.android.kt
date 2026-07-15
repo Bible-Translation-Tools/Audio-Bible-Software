@@ -6,3 +6,5 @@ import java.io.File
 actual fun canOpenInFileManager(): Boolean = false
 
 actual fun openInFileManager(file: File) { /* no-op */ }
+
+actual fun openUrl(url: String) { /* no-op */ }

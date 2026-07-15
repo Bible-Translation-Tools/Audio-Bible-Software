@@ -55,6 +55,7 @@ import org.bibletranslationtools.orature.resources.createProjectMessageBody
 import org.bibletranslationtools.orature.resources.createProjectMessageTitle
 import org.bibletranslationtools.orature.resources.exportFailed
 import org.bibletranslationtools.orature.resources.exportSuccessful
+import org.bibletranslationtools.orature.resources.modifyContributors
 import org.bibletranslationtools.orature.resources.options
 import org.bibletranslationtools.orature.resources.showLocation
 import kotlinx.coroutines.launch
@@ -265,6 +266,8 @@ private fun OratureBookSection(
     val selectedGroup: OratureProjectGroupUiModel? = uiState.selectedGroup
     // The book whose Export dialog is open (JVM: WorkbookExportDialogOpenEvent), or null.
     var exportBookId by remember { mutableStateOf<Int?>(null) }
+    // The group (its first book's descriptor id) whose Contributors dialog is open, or null.
+    var contributorsForId by remember { mutableStateOf<Int?>(null) }
     // Export-finish toast (JVM: WorkbookExportFinishEvent → snackbar notification).
     val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -292,8 +295,16 @@ private fun OratureBookSection(
                     )
                 }
                 DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                    // Stub menu — populated with real project-group actions in a later phase.
-                    DropdownMenuItem(text = { Text(stringResource(Res.string.options)) }, onClick = { menuExpanded = false })
+                    // JVM: ProjectGroupOptionMenu — Modify Contributors (Delete Project is deferred
+                    // with the project-deletion-queue guard).
+                    DropdownMenuItem(
+                        text = { Text(stringResource(Res.string.modifyContributors)) },
+                        enabled = selectedGroup?.books?.isNotEmpty() == true,
+                        onClick = {
+                            menuExpanded = false
+                            contributorsForId = selectedGroup?.books?.firstOrNull()?.id
+                        }
+                    )
                 }
             }
 
@@ -359,6 +370,13 @@ private fun OratureBookSection(
                 )
             }
         }
+    }
+
+    contributorsForId?.let { id ->
+        org.bibletranslationtools.orature.ui.components.OratureContributorDialog(
+            workbookDescriptorId = id,
+            onDismiss = { contributorsForId = null }
+        )
     }
 
     exportBookId?.let { id ->
