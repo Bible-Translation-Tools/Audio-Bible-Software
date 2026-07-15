@@ -53,7 +53,11 @@ import org.jetbrains.compose.resources.stringResource
 import org.bibletranslationtools.orature.resources.Res
 import org.bibletranslationtools.orature.resources.createProjectMessageBody
 import org.bibletranslationtools.orature.resources.createProjectMessageTitle
+import org.bibletranslationtools.orature.resources.exportFailed
+import org.bibletranslationtools.orature.resources.exportSuccessful
 import org.bibletranslationtools.orature.resources.options
+import org.bibletranslationtools.orature.resources.showLocation
+import kotlinx.coroutines.launch
 import org.bibletranslationtools.orature.resources.projectGroupTitle
 import org.bibletranslationtools.orature.resources.projects
 import org.bibletranslationtools.orature.resources.search
@@ -259,9 +263,20 @@ private fun OratureBookSection(
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     val selectedGroup: OratureProjectGroupUiModel? = uiState.selectedGroup
+    // The book whose Export dialog is open (JVM: WorkbookExportDialogOpenEvent), or null.
+    var exportBookId by remember { mutableStateOf<Int?>(null) }
+    // Export-finish toast (JVM: WorkbookExportFinishEvent → snackbar notification).
+    val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val exportSuccessMsg = stringResource(Res.string.exportSuccessful)
+    val exportFailMsg = stringResource(Res.string.exportFailed)
+    val showLocationLabel = stringResource(Res.string.showLocation)
+    val canShowLocation = org.bibletranslationtools.orature.platform.canOpenInFileManager()
 
+    Box(modifier = modifier) {
     Column(
-        modifier = modifier
+        modifier = Modifier
+            .fillMaxSize()
             .background(OratureColors.Background)
             .padding(16.dp)
     ) {
@@ -339,10 +354,36 @@ private fun OratureBookSection(
                 OratureBookTable(
                     books = uiState.visibleBooks,
                     onBookClick = onBookClick,
-                    onRowOptionsClick = { /* stub — per-row overflow menu, later phase */ },
+                    onExportBook = { book -> exportBookId = book.id },
                     modifier = Modifier.fillMaxSize()
                 )
             }
         }
+    }
+
+    exportBookId?.let { id ->
+        org.bibletranslationtools.orature.ui.components.OratureExportProjectDialog(
+            workbookDescriptorId = id,
+            onDismiss = { exportBookId = null },
+            onFinished = { success, location ->
+                exportBookId = null
+                scope.launch {
+                    val withLocation = success && canShowLocation && location != null
+                    val result = snackbarHostState.showSnackbar(
+                        message = if (success) exportSuccessMsg else exportFailMsg,
+                        actionLabel = if (withLocation) showLocationLabel else null
+                    )
+                    if (withLocation && result == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                        org.bibletranslationtools.orature.platform.openInFileManager(location!!)
+                    }
+                }
+            }
+        )
+    }
+
+        androidx.compose.material3.SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp)
+        )
     }
 }

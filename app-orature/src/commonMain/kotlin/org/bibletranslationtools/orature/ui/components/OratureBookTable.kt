@@ -15,6 +15,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -22,6 +24,10 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -36,6 +42,7 @@ import org.bibletranslationtools.orature.resources.book
 import org.bibletranslationtools.orature.resources.code
 import org.bibletranslationtools.orature.resources.newTestament
 import org.bibletranslationtools.orature.resources.oldTestament
+import org.bibletranslationtools.orature.resources.exportOptions
 import org.bibletranslationtools.orature.resources.options
 import org.bibletranslationtools.orature.resources.progress
 
@@ -56,7 +63,7 @@ fun anthologyLabel(anthology: Anthology): String = when (anthology) {
 fun OratureBookTable(
     books: List<OratureBookUiModel>,
     onBookClick: (OratureBookUiModel) -> Unit,
-    onRowOptionsClick: (OratureBookUiModel) -> Unit,
+    onExportBook: (OratureBookUiModel) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(modifier = modifier.fillMaxSize()) {
@@ -69,7 +76,7 @@ fun OratureBookTable(
                 OratureBookTableRow(
                     book = book,
                     onClick = { onBookClick(book) },
-                    onOptionsClick = { onRowOptionsClick(book) }
+                    onExport = { onExportBook(book) }
                 )
                 HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
             }
@@ -123,8 +130,9 @@ private fun OratureBookTableHeader() {
 private fun OratureBookTableRow(
     book: OratureBookUiModel,
     onClick: () -> Unit,
-    onOptionsClick: () -> Unit
+    onExport: () -> Unit
 ) {
+    var menuExpanded by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -158,12 +166,20 @@ private fun OratureBookTableRow(
             trackColor = MaterialTheme.colorScheme.surfaceVariant,
             modifier = Modifier.weight(0.18f).padding(end = 8.dp)
         )
-        IconButton(onClick = onOptionsClick, modifier = Modifier.width(40.dp)) {
-            Icon(
-                imageVector = Icons.Filled.MoreVert,
-                contentDescription = stringResource(Res.string.options),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+        Box {
+            IconButton(onClick = { menuExpanded = true }, modifier = Modifier.width(40.dp)) {
+                Icon(
+                    imageVector = Icons.Filled.MoreVert,
+                    contentDescription = stringResource(Res.string.options),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(Res.string.exportOptions)) },
+                    onClick = { menuExpanded = false; onExport() }
+                )
+            }
         }
     }
 }
