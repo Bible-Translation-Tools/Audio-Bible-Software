@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.bibletranslationtools.orature.ui.translation.ChunkingStep
 import org.bibletranslationtools.orature.ui.workbook.OratureWorkbookDataStore
 import org.bibletranslationtools.orature.ui.workbook.PrecomputedWaveform
 import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
@@ -157,7 +158,7 @@ class OraturePeerEditViewModel(
                     isLoading = false,
                     hasChunk = true,
                     chunkTitle = "${chunk.sort}",
-                    confirmed = chunk.checkingStatus().ordinal >= CheckingStatus.PEER_EDIT.ordinal
+                    confirmed = chunk.checkingStatus().ordinal >= checkingStatusForStep().ordinal
                 )
                 startWaveformTicker()
             } catch (e: CancellationException) {
@@ -214,12 +215,21 @@ class OraturePeerEditViewModel(
         positionFrames = clamped
     }
 
-    /** Confirm the take at the peer-edit stage (JVM: confirmChunk → TranslationTakeApproveAction). */
+    /** The checking status this step confirms to (JVM: checkingStatusFromStep). The one screen serves
+     *  Peer Edit, Keyword Check, and Verse Check — only the applied status differs. */
+    private fun checkingStatusForStep(): CheckingStatus = when (translationVm.uiState.value.selectedStep) {
+        ChunkingStep.PEER_EDIT -> CheckingStatus.PEER_EDIT
+        ChunkingStep.KEYWORD_CHECK -> CheckingStatus.KEYWORD
+        ChunkingStep.VERSE_CHECK -> CheckingStatus.VERSE
+        else -> CheckingStatus.UNCHECKED
+    }
+
+    /** Confirm the take at this checking stage (JVM: confirmChunk → TranslationTakeApproveAction). */
     fun confirmChunk() {
         val chunk = activeChunk ?: return
         val take = chunk.audio.getSelectedTake() ?: return
         val current = take.checkingState.value ?: TakeCheckingState(CheckingStatus.UNCHECKED, null)
-        val op = TranslationTakeApproveAction(take, CheckingStatus.PEER_EDIT, current).apply {
+        val op = TranslationTakeApproveAction(take, checkingStatusForStep(), current).apply {
             setUndoCallback { _uiState.value = _uiState.value.copy(confirmed = false) }
             setRedoCallback { _uiState.value = _uiState.value.copy(confirmed = true) }
         }

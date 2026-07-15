@@ -260,11 +260,20 @@ private fun TranslationBody(
                     }
                     OratureBlindDraftScreen(blindDraftVm)
                 }
-                ChunkingStep.PEER_EDIT -> {
-                    val peerEditVm = androidx.lifecycle.viewmodel.compose.viewModel(key = "peeredit") {
+                // Peer Edit, Keyword Check, and Verse Check are the same review screen (JVM: all
+                // find<PeerEdit>()); the VM applies a different checking status per step. Key by step
+                // so switching steps re-inits with the right target status.
+                ChunkingStep.PEER_EDIT, ChunkingStep.KEYWORD_CHECK, ChunkingStep.VERSE_CHECK -> {
+                    val peerEditVm = androidx.lifecycle.viewmodel.compose.viewModel(key = "review-${uiState.selectedStep}") {
                         org.bibletranslationtools.orature.ui.viewmodels.OraturePeerEditViewModel(viewModel)
                     }
                     OraturePeerEditScreen(peerEditVm)
+                }
+                ChunkingStep.FINAL_REVIEW -> {
+                    val reviewVm = androidx.lifecycle.viewmodel.compose.viewModel(key = "finalreview") {
+                        org.bibletranslationtools.orature.ui.viewmodels.OratureChapterReviewViewModel(viewModel)
+                    }
+                    OratureChapterReviewScreen(reviewVm)
                 }
                 else -> Text(
                     text = stringResource(uiState.selectedStep.title),
@@ -407,7 +416,9 @@ private fun ChunkingStepsDrawer(
                     onClick = { onSelectStep(step) }
                 )
                 // The chunk sub-list under the active chunk-using step (JVM: chunkListProperty).
-                val usesChunks = step.ordinal >= ChunkingStep.BLIND_DRAFT.ordinal
+                // Final Review is chapter-level (activeChunk = null), so it has no chunk sub-list.
+                val usesChunks = step.ordinal >= ChunkingStep.BLIND_DRAFT.ordinal &&
+                    step != ChunkingStep.FINAL_REVIEW
                 if (!collapsed && step == selected && usesChunks && chunks.isNotEmpty()) {
                     ChunkSubList(chunks, onSelectChunk)
                 }
