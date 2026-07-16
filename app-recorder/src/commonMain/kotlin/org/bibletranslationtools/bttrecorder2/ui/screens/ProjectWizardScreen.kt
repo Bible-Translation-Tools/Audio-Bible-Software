@@ -107,25 +107,23 @@ fun ProjectWizardScreen(
                     }
                 },
                 actions = {
-                    // Source step is a single-item list in practice; search is
-                    // most useful for the long language / book lists.
-                    if (uiState.currentStep != WizardStep.SOURCE) {
-                        IconButton(onClick = {
-                            if (isSearchActive) {
-                                // Toggling off — drop the query so the list resets.
-                                searchQuery = ""
-                            }
-                            isSearchActive = !isSearchActive
-                        }) {
-                            Icon(
-                                imageVector = if (isSearchActive) Icons.Default.Close else Icons.Default.Search,
-                                contentDescription = if (isSearchActive) {
-                                    stringResource(Res.string.cd_close_search)
-                                } else {
-                                    stringResource(Res.string.cd_search)
-                                }
-                            )
+                    // Search helps on every step now that the source list surfaces the
+                    // bundled gateway sources (previously it was effectively a single row).
+                    IconButton(onClick = {
+                        if (isSearchActive) {
+                            // Toggling off — drop the query so the list resets.
+                            searchQuery = ""
                         }
+                        isSearchActive = !isSearchActive
+                    }) {
+                        Icon(
+                            imageVector = if (isSearchActive) Icons.Default.Close else Icons.Default.Search,
+                            contentDescription = if (isSearchActive) {
+                                stringResource(Res.string.cd_close_search)
+                            } else {
+                                stringResource(Res.string.cd_search)
+                            }
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
@@ -149,7 +147,10 @@ fun ProjectWizardScreen(
                     WizardStep.SOURCE -> {
                         SourceSelectionScreen(
                             sources = uiState.sources,
-                            onSourceSelected = { viewModel.selectSource(it) }
+                            availableSources = uiState.availableSources,
+                            searchQuery = searchQuery,
+                            onSourceSelected = { viewModel.selectSource(it) },
+                            onAvailableSourceSelected = { viewModel.selectAvailableSource(it) }
                         )
                     }
                     WizardStep.TARGET_LANGUAGE -> {

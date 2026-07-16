@@ -26,7 +26,7 @@ import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.workbook.Translation
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase.Companion.glSources
-import org.bibletranslationtools.otter.common.domain.project.SOURCE_PATH_TEMPLATE
+import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase.Companion.embeddedSourceNames
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ILanguageRepository
 import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.LanguageMapper
@@ -271,18 +271,17 @@ class LanguageRepository @Inject constructor(
     override suspend fun deleteTranslationSuspend(translation: Translation) = deleteTranslation(translation).await()
 
     /**
-     * Returns a list of source languages (slug) that have the matching resource container
-     * embedded inside the jar.
+     * Returns a list of source languages (slug) that ship with a bundled resource container.
+     *
+     * The bundled GL zips are Compose Multiplatform resources (composeResources/files/content/),
+     * not JVM classpath entries, and Compose exposes no cheap "does this resource exist" probe
+     * (Res.readBytes reads the whole file). So we consult the build-generated manifest of what
+     * actually got bundled ([embeddedSourceNames]) — the source catalog is partly stale, so this
+     * offers only gateway languages whose zip is really present and can be sideloaded.
      */
     private fun listEmbeddedSourceLanguages(): List<String> {
         return glSources
-            .filter {
-                val path = SOURCE_PATH_TEMPLATE.format(it.name)
-                val exists = javaClass.classLoader.getResource(path) != null
-                exists
-            }
-            .map {
-                it.languageCode
-            }
+            .filter { it.name in embeddedSourceNames }
+            .map { it.languageCode }
     }
 }

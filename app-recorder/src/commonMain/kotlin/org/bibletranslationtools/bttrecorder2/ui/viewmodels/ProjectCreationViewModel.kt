@@ -2,11 +2,13 @@ package org.bibletranslationtools.bttrecorder2.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ILanguageRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
@@ -15,9 +17,11 @@ import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.domain.collections.CreateProject
+import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
 import org.jetbrains.compose.resources.getString
 import org.bibletranslationtools.shared.resources.Res
 import org.bibletranslationtools.shared.resources.err_source_collection_not_found
+import org.bibletranslationtools.shared.resources.import_failed
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -30,6 +34,9 @@ enum class WizardStep {
 data class ProjectCreationUiState(
     val currentStep: WizardStep = WizardStep.SOURCE,
     val sources: List<ResourceMetadata> = emptyList(),
+    // Gateway-language sources that ship bundled but aren't imported yet. Selecting one
+    // sideloads (imports) it on demand, mirroring Orature's project wizard.
+    val availableSources: List<Language> = emptyList(),
     val targetLanguages: List<Language> = emptyList(),
     val availableBooks: List<Collection> = emptyList(),
     val selectedSource: ResourceMetadata? = null,
@@ -46,6 +53,7 @@ class ProjectCreationViewModel : ViewModel(), KoinComponent {
     private val languageRepository: ILanguageRepository by inject()
     private val collectionRepository: ICollectionRepository by inject()
     private val createProject: CreateProject by inject()
+    private val importer: ImportProjectUseCase by inject()
 
     private val _uiState = MutableStateFlow(ProjectCreationUiState())
     val uiState: StateFlow<ProjectCreationUiState> = _uiState.asStateFlow()
@@ -59,10 +67,20 @@ class ProjectCreationViewModel : ViewModel(), KoinComponent {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             try {
-                // Fetch root sources (gateway sources)
-                // Using getAllSources() from IResourceMetadataRepository or similar based on Otter usage
-                val sources = resourceMetadataRepository.getAllSources().blockingGet()
-                _uiState.update { it.copy(sources = sources, isLoading = false) }
+                // Imported sources (already in the DB) + bundled gateway sources that can be
+                // sideloaded on demand. getAvailableGatewaySources returns only gateway
+                // languages whose source zip is actually bundled (LanguageRepository consults
+                // the build-generated manifest), so every entry here is sideloadable.
+                val (sources, available) = withContext(Dispatchers.IO) {
+                    val imported = resourceMetadataRepository.getAllSources().blockingGet()
+                    val importedLangs = imported.map { it.language.slug }.toSet()
+                    val available = languageRepository.getAvailableGatewaySources().blockingGet()
+                        .filter { it.slug !in importedLangs }
+                    imported to available
+                }
+                _uiState.update {
+                    it.copy(sources = sources, availableSources = available, isLoading = false)
+                }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, error = e.message) }
             }
@@ -82,6 +100,40 @@ class ProjectCreationViewModel : ViewModel(), KoinComponent {
 
     fun selectSource(source: ResourceMetadata) {
         _uiState.update { it.copy(selectedSource = source, currentStep = WizardStep.TARGET_LANGUAGE) }
+    }
+
+    /**
+     * Selecting a not-yet-imported gateway source: sideload (import) its bundled zip, then
+     * proceed as if the resulting source metadata had been picked. Mirrors Orature's wizard,
+     * where sources are imported on demand rather than all at app initialization.
+     */
+    fun selectAvailableSource(language: Language) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            try {
+                val metadata = withContext(Dispatchers.IO) {
+                    importer.sideloadSource(language).blockingAwait()
+                    resourceMetadataRepository.getAllSources().blockingGet()
+                        .firstOrNull { it.language.slug == language.slug }
+                }
+                if (metadata != null) {
+                    _uiState.update {
+                        it.copy(
+                            sources = it.sources + metadata,
+                            availableSources = it.availableSources.filterNot { l -> l.slug == language.slug },
+                            selectedSource = metadata,
+                            currentStep = WizardStep.TARGET_LANGUAGE,
+                            isLoading = false
+                        )
+                    }
+                } else {
+                    val msg = getString(Res.string.import_failed)
+                    _uiState.update { it.copy(isLoading = false, error = msg) }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, error = e.message) }
+            }
+        }
     }
 
     fun selectTarget(language: Language) {

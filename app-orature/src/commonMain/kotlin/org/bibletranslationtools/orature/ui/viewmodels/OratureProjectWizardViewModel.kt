@@ -167,13 +167,12 @@ class OratureProjectWizardViewModel(
             val languages = withContext(Dispatchers.IO) {
                 // Union of every "available source" signal, each fetched independently so
                 // one failing path can't wipe the others (and errors are logged, not
-                // swallowed). NOTE (port fix): the JVM VM used only getRootSources ∪
-                // getAvailableGatewaySources, but in this port getAvailableGatewaySources
-                // is empty (its listEmbeddedSourceLanguages does a CLASSPATH lookup, and
-                // GL content lives in Compose resources here), and getRootSources wasn't
-                // surfacing imported sources — so we also include getAllSources()'s
-                // languages (the imported source RCs, e.g. en_ulb), which is what the
-                // recorder's wizard reliably uses.
+                // swallowed). The JVM VM used getRootSources ∪ getAvailableGatewaySources;
+                // we also include getAllSources()'s languages (the imported source RCs, e.g.
+                // en_ulb) so already-imported sources always surface even if they aren't
+                // gateway. getAvailableGatewaySources now returns the bundled gateway
+                // languages (its listEmbeddedSourceLanguages reads the build-generated
+                // manifest via Res, not a classpath lookup — fixed alongside the recorder).
                 val result = linkedSetOf<Language>()
                 runCatching {
                     resourceMetadataRepo.getAllSources().await().map { it.language }

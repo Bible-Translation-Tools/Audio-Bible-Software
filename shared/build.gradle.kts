@@ -1,5 +1,7 @@
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.net.HttpURLConnection
+import java.net.URI
 
 // :shared — the cross-app module: Orature backend (org.bibletranslationtools.otter.*) +
 // shared Compose resources (+ reusable render/UI primitives arriving in a later step).
@@ -176,52 +178,102 @@ android {
     }
 }
 
-// GL source download + copy into composeResources/files/content (lives in :shared now).
+// ── GL source download + bundling ────────────────────────────────────────────────────
+// gl_sources.json lists ~96 gateway-language ULB sources by {name, languageCode, url}.
+// downloadGLSources fetches each zip straight into composeResources/files/content/ so it
+// ships as a Compose Multiplatform resource (read at runtime via Res.readBytes — NOT the
+// JVM classpath). The content lives in :shared, so BOTH apps get the sources.
+//
+// Downloads are SYNCHRONOUS + per-file guarded on purpose: the wa-catalog manifest has gone
+// partly stale (~24 URLs 404), and undercouch's DownloadAction runs on the Worker API async,
+// so its failures escape a surrounding try/catch and fail the whole build. A plain blocking
+// HttpURLConnection per file lets us skip a dead URL (404/error) and keep the rest.
+val glContentDir = file("src/commonMain/composeResources/files/content")
+val embeddedManifest = file("src/commonMain/composeResources/files/embedded_gl_sources.json")
+
 tasks.register("downloadGLSources") {
+    // The zips land directly in src/ (survives `clean`), so guarding on existence means a
+    // clean build re-checks but does not re-download the ~100MB set every time.
+    outputs.dir(glContentDir)
     doLast {
         val jsonFile = file("src/commonMain/composeResources/files/gl_sources.json")
         if (!jsonFile.exists()) {
             println("GL sources file not found: ${jsonFile.absolutePath}")
             return@doLast
         }
-        val jsonSlurper = groovy.json.JsonSlurper()
-        val jsonData = jsonSlurper.parse(jsonFile) as List<Map<String, String>>
+        glContentDir.mkdirs()
+        @Suppress("UNCHECKED_CAST")
+        val jsonData = groovy.json.JsonSlurper().parse(jsonFile) as List<Map<String, String>>
+        var downloaded = 0
+        var skipped = 0
+        var failed = 0
         jsonData.forEach { dependency ->
-            val artifactName = dependency["name"]
-            val artifactUrl = dependency["url"]
-            val outputDir = layout.buildDirectory.dir("resources/content").get().asFile
-            outputDir.mkdirs()
-            val outputPath = outputDir.resolve("${artifactName}.zip")
-            if (!outputPath.exists()) {
-                try {
-                    val action = de.undercouch.gradle.tasks.download.DownloadAction(project)
-                    action.src(artifactUrl)
-                    action.dest(outputPath)
-                    action.header("X-Requested-With", "WA-Tool-Orature")
-                    action.overwrite(false)
-                    action.execute()
-                    println("Downloaded $artifactName")
-                } catch (e: Exception) {
-                    println("Failed to download $artifactName from $artifactUrl")
-                    e.printStackTrace()
+            val artifactName = dependency["name"] ?: return@forEach
+            val artifactUrl = dependency["url"] ?: return@forEach
+            val outputPath = glContentDir.resolve("$artifactName.zip")
+            if (outputPath.exists()) {
+                skipped++
+                return@forEach
+            }
+            try {
+                val conn = (URI(artifactUrl).toURL().openConnection() as HttpURLConnection).apply {
+                    instanceFollowRedirects = true
+                    connectTimeout = 30_000
+                    readTimeout = 60_000
+                    setRequestProperty("X-Requested-With", "WA-Tool-Orature")
                 }
-            } else {
-                println("Skipping $artifactName (already exists)")
+                val code = conn.responseCode
+                if (code != HttpURLConnection.HTTP_OK) {
+                    failed++
+                    println("Skipping $artifactName (HTTP $code): $artifactUrl")
+                    conn.disconnect()
+                    return@forEach
+                }
+                // Write to a temp file first so a mid-download failure never leaves a partial zip.
+                val tmp = glContentDir.resolve("$artifactName.zip.part")
+                conn.inputStream.use { input -> tmp.outputStream().use { output -> input.copyTo(output) } }
+                conn.disconnect()
+                tmp.renameTo(outputPath)
+                downloaded++
+                println("Downloaded $artifactName")
+            } catch (e: Exception) {
+                failed++
+                println("Failed to download $artifactName from $artifactUrl: ${e.message}")
             }
         }
+        println("GL sources: $downloaded downloaded, $skipped already present, $failed unavailable.")
     }
 }
 
-tasks.register<Copy>("copyToResources") {
+// Emit a manifest of the source names ACTUALLY bundled (content/*.zip). The runtime
+// (LanguageRepository.listEmbeddedSourceLanguages) reads this so the project wizard offers
+// only gateway languages whose zip is really present — never a stale-URL entry that would
+// fail on sideload.
+tasks.register("generateEmbeddedSourcesManifest") {
     dependsOn("downloadGLSources")
-    from(layout.buildDirectory.dir("resources/content"))
-    into("src/commonMain/composeResources/files/content")
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    rename { filename ->
-        if (filename.matches(Regex(".*.json$"))) {
-            filename.replace(Regex("-\\.json$"), ".json")
-        } else {
-            filename
-        }
+    outputs.file(embeddedManifest)
+    doLast {
+        val names = (glContentDir.listFiles() ?: emptyArray())
+            .filter { it.isFile && it.extension == "zip" }
+            .map { it.nameWithoutExtension }
+            .sorted()
+        embeddedManifest.writeText(groovy.json.JsonBuilder(names).toPrettyString())
+        println("Embedded GL sources manifest: ${names.size} sources bundled.")
     }
+}
+
+// Ensure the GL source zips + manifest exist BEFORE any Compose resource task reads the
+// composeResources source dirs (Res.readBytes reads from Compose's packed store, not the
+// classpath). This covers every task in the Compose MP resource pipeline that consumes
+// composeResources/ — the assemble/prepare tasks AND the value-resource copy/convert tasks —
+// so none runs ahead of the download (which declares content/ as its output).
+tasks.matching {
+    val n = it.name
+    n.contains("ComposeResources") ||
+        n.startsWith("prepareComposeResourcesTask") ||
+        n.startsWith("copyNonXmlValueResources") ||
+        n.startsWith("convertXmlValueResources") ||
+        n.startsWith("generateResourceAccessors")
+}.configureEach {
+    dependsOn("generateEmbeddedSourcesManifest")
 }
