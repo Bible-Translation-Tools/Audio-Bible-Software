@@ -5,6 +5,7 @@ import androidx.compose.ui.window.application
 import org.bibletranslationtools.orature.di.oratureDirectoryProviderModule
 import org.bibletranslationtools.orature.di.oratureViewModelModule
 import org.bibletranslationtools.orature.ui.OratureApp
+import org.bibletranslationtools.otter.common.persistence.DesktopDirectoryProvider
 import org.bibletranslationtools.otter.common.device.newaudio.AudioDeviceSelector
 import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
 import org.bibletranslationtools.otter.common.device.newaudio.AudioSystemConfig
@@ -14,6 +15,22 @@ import org.koin.core.context.startKoin
 
 fun main() {
     System.setProperty("apple.awt.application.name", "Orature")
+
+    // Route logging to a file in the app's logs dir BEFORE anything logs (slf4j-simple reads its
+    // config on first use), so Info → View Logs opens a folder with real logs. Uses the real
+    // DirectoryProvider path logic rather than duplicating it.
+    runCatching {
+        val logsDir = DesktopDirectoryProvider(
+            appName = "Orature2",
+            pathSeparator = System.getProperty("file.separator"),
+            userHome = System.getProperty("user.home"),
+            windowsAppData = System.getenv("APPDATA"),
+            osName = System.getProperty("os.name").uppercase()
+        ).logsDirectory.apply { mkdirs() }
+        System.setProperty("org.slf4j.simpleLogger.logFile", java.io.File(logsDir, "orature.log").absolutePath)
+        System.setProperty("org.slf4j.simpleLogger.showDateTime", "true")
+        System.setProperty("org.slf4j.simpleLogger.dateTimeFormat", "yyyy-MM-dd HH:mm:ss.SSS")
+    }
 
     // Compose the shared backend/engine Koin graph + Orature's own directory provider
     // and ViewModels.

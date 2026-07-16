@@ -25,3 +25,7 @@ actual fun openUrl(url: String) {
         }
     }
 }
+
+// The packaged jar's Implementation-Version (set by the build manifest); a dev fallback otherwise.
+actual fun appVersion(): String =
+    object {}.javaClass.`package`?.implementationVersion ?: "1.0.0-dev"

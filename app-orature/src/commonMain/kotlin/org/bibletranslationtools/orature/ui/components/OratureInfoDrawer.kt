@@ -54,12 +54,6 @@ import org.bibletranslationtools.orature.resources.sendErrorReport
 import org.bibletranslationtools.orature.resources.viewLogs
 
 /**
- * The app version, sourced from app-orature/build.gradle.kts (versionName). Mirrors the JVM
- * app's `AppInfo.getVersion()` reading `version.properties`; falls back to [Res.string.na].
- */
-private const val ORATURE_VERSION = "1.0"
-
-/**
  * Orature's info drawer, rebuilt faithfully against the JVM `InfoView` (a scrollable 550dp
  * panel, same surface + 40dp padding + 30dp section gaps as the settings drawer). Sections in
  * InfoView order:
@@ -78,7 +72,9 @@ private const val ORATURE_VERSION = "1.0"
 @Composable
 fun OratureInfoDrawer(
     onClose: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    viewModel: org.bibletranslationtools.orature.ui.viewmodels.OratureInfoViewModel =
+        androidx.lifecycle.viewmodel.compose.viewModel { org.bibletranslationtools.orature.ui.viewmodels.OratureInfoViewModel() }
 ) {
     // Error-report message + submit timestamp. The JVM AppInfoViewModel throws an
     // ErrorReportException (caught by the crash reporter) and stamps the submit time; no such
@@ -152,7 +148,7 @@ fun OratureInfoDrawer(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = ORATURE_VERSION.ifBlank { stringResource(Res.string.na) },
+                    text = viewModel.version.ifBlank { stringResource(Res.string.na) },
                     fontSize = 16.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -166,7 +162,7 @@ fun OratureInfoDrawer(
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                OutlinedButton(onClick = { /* stub — opens the logs directory in the JVM app */ }) {
+                OutlinedButton(onClick = viewModel::browseLogs, enabled = viewModel.canViewLogs) {
                     Icon(Icons.Filled.Description, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(stringResource(Res.string.viewLogs))
