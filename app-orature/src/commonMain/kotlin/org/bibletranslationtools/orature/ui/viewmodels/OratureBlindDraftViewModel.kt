@@ -57,6 +57,8 @@ data class OratureBlindDraftUiState(
     val recording: Boolean = false,
     /** True while actively capturing (false when paused mid-recording). */
     val recordingActive: Boolean = false,
+    /** True when a take can be opened in a configured external editor (desktop only). */
+    val canEditExternally: Boolean = false,
     val error: String? = null
 )
 
@@ -85,6 +87,50 @@ class OratureBlindDraftViewModel(
     // Take select/delete/record are undoable (JVM: BlindDraftViewModel.actionHistory). The page header's
     // undo/redo route here while Blind Draft is active (JVM: writes translationViewModel can-undo/redo).
     private val actionHistory = UndoableActionHistory<IUndoable>()
+
+    // External-editor plugin support (JVM: edit-take-in-plugin). Desktop-only.
+    private val pluginStore: org.bibletranslationtools.orature.plugins.OraturePluginStore by inject()
+
+    /** The configured default editor plugin, if external editing is available (desktop + one selected). */
+    private fun selectedEditor(): org.bibletranslationtools.orature.plugins.OratureExternalPlugin? {
+        if (!org.bibletranslationtools.orature.plugins.canLaunchPlugins()) return null
+        val reg = pluginStore.load()
+        return reg.plugins.firstOrNull { it.id == reg.selectedEditorId && it.canEdit }
+    }
+
+    /** Open a take in the configured external editor, then reload it (edited in place). */
+    fun editTakeExternally(id: Int) {
+        val take = takesById[id] ?: return
+        val editor = selectedEditor() ?: return
+        val chunk = activeChunk ?: return
+        viewModelScope.launch {
+            stopAll()
+            org.bibletranslationtools.orature.plugins.launchPlugin(editor, take.file, pluginParams(chunk))
+            onChunk(chunk) // reload the take list (file was edited in place)
+        }
+    }
+
+    /** Translation context handed to a plugin (JVM: PluginParameters). Populated with what's cheaply
+     *  available; the plugin's args template selects which fields it actually receives. */
+    private fun pluginParams(chunk: Chunk): org.bibletranslationtools.otter.common.domain.plugins.PluginParameters {
+        val wb = workbookDataStore.activeWorkbook.value
+        val chapter = workbookDataStore.activeChapter.value
+        val sourceAudio = wb?.let { w ->
+            chapter?.let { runCatching { w.sourceAudioAccessor.getChapter(it.sort, w.target)?.file }.getOrNull() }
+        }
+        return org.bibletranslationtools.otter.common.domain.plugins.PluginParameters(
+            languageName = wb?.target?.language?.name ?: "",
+            bookSlug = wb?.target?.slug ?: "",
+            bookTitle = wb?.target?.title ?: (wb?.target?.slug ?: ""),
+            chapterLabel = chapter?.title ?: chapter?.sort?.toString() ?: "",
+            chapterNumber = chapter?.sort ?: 1,
+            verseTotal = null,
+            chunkNumber = chunk.sort,
+            chunkLabel = chunk.sort.toString(),
+            sourceChapterAudio = sourceAudio,
+            sourceLanguageName = wb?.source?.language?.name
+        )
+    }
 
     // Recording pipeline (reuses narration's: recorder connection + WavFileWriter gated by
     // start()/pause() + ActiveRecordingRenderer for the live wave).
@@ -136,7 +182,8 @@ class OratureBlindDraftViewModel(
                     selectedTake = loaded.selected?.let { OratureTakeCard(it.number, it.number, true) },
                     availableTakes = loaded.takes
                         .filter { it.number != selectedNum }
-                        .map { OratureTakeCard(it.number, it.number, false) }
+                        .map { OratureTakeCard(it.number, it.number, false) },
+                    canEditExternally = selectedEditor() != null
                 )
             } catch (e: CancellationException) {
                 throw e
@@ -187,21 +234,35 @@ class OratureBlindDraftViewModel(
         _uiState.value = _uiState.value.copy(playingTakeId = id, isSourcePlaying = false)
     }
 
-    /** Start a new recording: create an empty take + wire the recorder/writer/live renderer. */
+    /** The configured default recorder plugin, if external recording is available. */
+    private fun selectedRecorder(): org.bibletranslationtools.orature.plugins.OratureExternalPlugin? {
+        if (!org.bibletranslationtools.orature.plugins.canLaunchPlugins()) return null
+        val reg = pluginStore.load()
+        return reg.plugins.firstOrNull { it.id == reg.selectedRecorderId && it.canRecord }
+    }
+
+    /** Build a new, un-persisted take for the active chunk (JVM: recorderViewModel.createTake). */
+    private suspend fun newTake(chunk: Chunk): Take {
+        val wb = workbookDataStore.activeWorkbook.value ?: error("No active workbook")
+        val chapter = workbookDataStore.activeChapter.value ?: error("No active chapter")
+        val takeNumber = chunk.audio.getNewTakeNumberSuspend()
+        val namer = WorkbookFileNamerBuilder.createFileNamer(wb, chapter, chunk, chunk, wb.sourceMetadataSlug)
+        val dir = wb.projectFilesAccessor.audioDir.resolve(namer.formatChapterNumber()).apply { mkdirs() }
+        val name = namer.generateName(takeNumber, AudioFileFormat.WAV)
+        return Take(name, dir.resolve(name), takeNumber, MimeType.WAV, LocalDate.now())
+    }
+
+    /**
+     * Start a new recording. If an external recorder plugin is configured, launch it (JVM:
+     * recordWithExternalPlugin); otherwise capture natively with the built-in recorder.
+     */
     fun onRecordNew() {
         val chunk = activeChunk ?: return
-        val wb = workbookDataStore.activeWorkbook.value ?: return
-        val chapter = workbookDataStore.activeChapter.value ?: return
+        if (selectedRecorder() != null) { recordWithExternalPlugin(chunk); return }
         stopAll()
         viewModelScope.launch {
             try {
-                val take = withContext(Dispatchers.IO) {
-                    val takeNumber = chunk.audio.getNewTakeNumberSuspend()
-                    val namer = WorkbookFileNamerBuilder.createFileNamer(wb, chapter, chunk, chunk, wb.sourceMetadataSlug)
-                    val dir = wb.projectFilesAccessor.audioDir.resolve(namer.formatChapterNumber()).apply { mkdirs() }
-                    val name = namer.generateName(takeNumber, AudioFileFormat.WAV)
-                    Take(name, dir.resolve(name), takeNumber, MimeType.WAV, LocalDate.now())
-                }
+                val take = withContext(Dispatchers.IO) { newTake(chunk) }
                 pendingTake = take
                 val rec = AudioRecorderConnection(RECORDER_ID, recorderFactory, viewModelScope)
                 rec.start(AudioSpec())
@@ -224,6 +285,32 @@ class OratureBlindDraftViewModel(
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(recording = false, recordingActive = false, error = e.message)
             }
+        }
+    }
+
+    /** Record into a new take using the configured external recorder (JVM: recordWithExternalPlugin):
+     *  create an empty take file, launch the recorder on it, then keep it if it has audio. */
+    private fun recordWithExternalPlugin(chunk: Chunk) {
+        val recorder = selectedRecorder() ?: return
+        stopAll()
+        viewModelScope.launch {
+            val take = withContext(Dispatchers.IO) {
+                val t = newTake(chunk)
+                // Valid empty WAV so the external recorder has a target file (JVM: createEmpty = true).
+                OratureAudioFile(t.file, 1, DEFAULT_SAMPLE_RATE, 16)
+                t
+            }
+            org.bibletranslationtools.orature.plugins.launchPlugin(recorder, take.file, pluginParams(chunk))
+            val hasAudio = runCatching { OratureAudioFile(take.file).totalFrames > 0 }.getOrDefault(false)
+            if (hasAudio) {
+                val op = TranslationTakeRecordAction(chunk, take, chunk.audio.getSelectedTake())
+                actionHistory.execute(op)
+                onUndoableAction()
+            } else {
+                runCatching { take.file.delete() }
+            }
+            onChunk(chunk)
+            translationVm.onChunkTakesChanged()
         }
     }
 

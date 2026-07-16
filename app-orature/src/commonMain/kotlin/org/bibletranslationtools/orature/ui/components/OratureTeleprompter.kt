@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -39,6 +40,7 @@ import org.bibletranslationtools.orature.resources.Res
 import org.bibletranslationtools.orature.resources.next
 import org.bibletranslationtools.orature.resources.pause
 import org.bibletranslationtools.orature.resources.record
+import org.bibletranslationtools.orature.resources.edit
 import org.bibletranslationtools.orature.resources.reRecord
 import org.bibletranslationtools.orature.resources.resume
 import org.bibletranslationtools.orature.resources.save
@@ -56,7 +58,9 @@ class TeleprompterActions(
     val onRecordAgain: (Int) -> Unit = {},
     val onSave: (Int) -> Unit = {},
     val onPlay: (Int) -> Unit = {},
-    val onPausePlayback: (Int) -> Unit = {}
+    val onPausePlayback: (Int) -> Unit = {},
+    /** Open a recorded verse in the configured external editor (desktop only). */
+    val onEditExternally: (Int) -> Unit = {}
 )
 
 /**
@@ -72,6 +76,7 @@ fun OratureTeleprompter(
     highlightedIndex: Int,
     actions: TeleprompterActions,
     actionsEnabled: Boolean,
+    canEditExternally: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val lastVerseIndex = verses.lastOrNull { !it.isTitle }?.index
@@ -85,7 +90,8 @@ fun OratureTeleprompter(
                 isLast = verse.index == lastVerseIndex,
                 highlighted = verse.index == highlightedIndex,
                 actions = actions,
-                actionsEnabled = actionsEnabled
+                actionsEnabled = actionsEnabled,
+                canEditExternally = canEditExternally
             )
         }
     }
@@ -97,7 +103,8 @@ private fun VerseRow(
     isLast: Boolean,
     highlighted: Boolean,
     actions: TeleprompterActions,
-    actionsEnabled: Boolean
+    actionsEnabled: Boolean,
+    canEditExternally: Boolean
 ) {
     // The row content is a CENTERED, width-capped group (JVM `.narration-list__verse-item`
     // alignment center): on a wide window it leaves equal gaps left/right so the scripture text
@@ -151,7 +158,7 @@ private fun VerseRow(
 
             // Right: the record/next/save buttons for this verse's state.
             Box(modifier = Modifier.width(332.dp), contentAlignment = Alignment.TopCenter) {
-                VerseButtons(verse, isLast, actions, actionsEnabled)
+                VerseButtons(verse, isLast, actions, actionsEnabled, canEditExternally)
             }
         }
     }
@@ -191,7 +198,8 @@ private fun VerseButtons(
     verse: OratureVerseItem,
     isLast: Boolean,
     actions: TeleprompterActions,
-    actionsEnabled: Boolean
+    actionsEnabled: Boolean,
+    canEditExternally: Boolean
 ) {
     val i = verse.index
     val nextOrSaveText = if (isLast) stringResource(Res.string.save) else stringResource(Res.string.next)
@@ -235,7 +243,18 @@ private fun VerseButtons(
 
         TeleprompterItemState.RECORD_AGAIN,
         TeleprompterItemState.PLAYING ->
-            NarrationButton(
+            if (canEditExternally) ButtonPair {
+                NarrationButton(
+                    stringResource(Res.string.reRecord), Icons.Filled.Mic, NarrationButtonStyle.SECONDARY,
+                    onClick = { actions.onRecordAgain(i) },
+                    enabled = actionsEnabled && verse.isRecordAgainEnabled, modifier = Modifier.width(150.dp)
+                )
+                NarrationButton(
+                    stringResource(Res.string.edit), Icons.Filled.Edit, NarrationButtonStyle.SECONDARY,
+                    onClick = { actions.onEditExternally(i) },
+                    enabled = actionsEnabled && verse.isRecordAgainEnabled, modifier = Modifier.width(150.dp)
+                )
+            } else NarrationButton(
                 stringResource(Res.string.reRecord), Icons.Filled.Mic, NarrationButtonStyle.SECONDARY,
                 onClick = { actions.onRecordAgain(i) },
                 enabled = actionsEnabled && verse.isRecordAgainEnabled, modifier = Modifier.width(316.dp)

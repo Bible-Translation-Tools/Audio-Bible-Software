@@ -167,6 +167,7 @@ class OratureNarrationViewModel(
     private val workbookRepository: IWorkbookRepository by inject()
     private val workbookDataStore: OratureWorkbookDataStore by inject()
     private val narrationFactory: OratureNarrationFactory by inject()
+    private val pluginStore: org.bibletranslationtools.orature.plugins.OraturePluginStore by inject()
 
     private val _uiState = MutableStateFlow(OratureNarrationUiState())
     val uiState: StateFlow<OratureNarrationUiState> = _uiState.asStateFlow()
@@ -645,6 +646,10 @@ class OratureNarrationViewModel(
     // ---- record loop (JVM: NarrationViewModel record/next/save/recordAgain) --------------
 
     fun onRecord(index: Int) {
+        // If an external recorder is configured, record this verse in it (JVM: record() →
+        // openInAudioPlugin when a RECORDER plugin is selected) — works on an empty chapter too,
+        // since getSectionAsFile creates a temp file for an unrecorded verse.
+        pluginFor(record = true)?.let { editVerseWithPlugin(index, it); return }
         val n = narration ?: return
         _audioScene.value?.clear()
         n.onNewVerse(index)
@@ -767,6 +772,9 @@ class OratureNarrationViewModel(
     }
 
     fun onRecordAgain(index: Int) {
+        // If an external recorder is configured, re-record the verse in it (JVM: recordAgain →
+        // openInAudioPlugin when a RECORDER plugin is selected); otherwise capture natively.
+        pluginFor(record = true)?.let { editVerseWithPlugin(index, it); return }
         val n = narration ?: return
         stopPlayer()
         _audioScene.value?.clear()
@@ -774,6 +782,121 @@ class OratureNarrationViewModel(
         recordingVerseIndex = index
         recordAgainVerseIndex = index
         performTransition(NarrationStateTransition.RECORD_AGAIN, index)
+    }
+
+    /** The configured recorder/editor plugin, if external plugins are available (desktop + selected). */
+    private fun pluginFor(record: Boolean): org.bibletranslationtools.orature.plugins.OratureExternalPlugin? {
+        if (!org.bibletranslationtools.orature.plugins.canLaunchPlugins()) return null
+        val reg = pluginStore.load()
+        val id = if (record) reg.selectedRecorderId else reg.selectedEditorId
+        return reg.plugins.firstOrNull { it.id == id && (if (record) it.canRecord else it.canEdit) }
+    }
+
+    /** True when a verse can be opened in a configured external editor (drives the teleprompter Edit button). */
+    fun editorConfigured(): Boolean = pluginFor(record = false) != null
+
+    /** Open a recorded verse in the configured external editor (JVM: openInAudioPlugin). */
+    fun editVerseExternally(index: Int) {
+        pluginFor(record = false)?.let { editVerseWithPlugin(index, it) }
+    }
+
+    private fun markerPlugin(): org.bibletranslationtools.orature.plugins.OratureExternalPlugin? {
+        if (!org.bibletranslationtools.orature.plugins.canLaunchPlugins()) return null
+        val reg = pluginStore.load()
+        return reg.plugins.firstOrNull { it.id == reg.selectedMarkerId && it.canMark }
+    }
+
+    /** True when an editor / marker plugin is configured — drives kebab item visibility. Always
+     *  enabled once shown: the chapter take is compiled on demand (JVM: Open Chapter In has no
+     *  enableWhen; processChapterWithPlugin compiles via createChapterTakeWithAudio if needed). */
+    fun editorConfiguredForChapter(): Boolean = pluginFor(record = false) != null
+    fun markerConfigured(): Boolean = markerPlugin() != null
+
+    /** Open the chapter take in the external editor, then reload (JVM: processChapterWithPlugin). */
+    fun openChapterInEditor() = launchChapterPlugin(pluginFor(record = false))
+
+    /** Open the chapter take in the external marker tool, then reload (JVM: MARKER plugin). */
+    fun editVerseMarkersExternally() = launchChapterPlugin(markerPlugin())
+
+    private fun launchChapterPlugin(plugin: org.bibletranslationtools.orature.plugins.OratureExternalPlugin?) {
+        plugin ?: return
+        val n = narration ?: return
+        stopPlayer()
+        _audioScene.value?.clear()
+        viewModelScope.launch {
+            try {
+                // Reuse the compiled chapter take, or compile one on the fly from what's recorded
+                // (JVM: chapterTakeProperty ?: narration.createChapterTakeWithAudio()).
+                val take = chapterTake ?: withContext(Dispatchers.IO) {
+                    runCatching { n.createChapterTakeWithAudio().await() }.getOrNull()
+                }
+                if (take == null) return@launch // nothing recorded yet to compile
+                chapterTake = take
+                org.bibletranslationtools.orature.plugins.launchPlugin(plugin, take.file, narrationPluginParams(0))
+                withContext(Dispatchers.IO) { runCatching { n.loadFromSelectedChapterFile().blockingAwait() } }
+                refreshVerses()
+                resetNarratableList()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                System.err.println("Chapter external plugin failed: $e")
+            }
+        }
+    }
+
+    /** Import an existing audio file as the chapter narration (JVM: onImportChapterAudio). */
+    fun onImportChapterAudio(path: String) {
+        val n = narration ?: return
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) { n.importChapterAudioFile(java.io.File(path)).blockingAwait() }
+                refreshVerses()
+                resetNarratableList()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                System.err.println("Import chapter audio failed: $e")
+            }
+        }
+    }
+
+    /**
+     * Extract a verse to a temp file, launch [plugin] on it, splice the result back, and refresh
+     * (JVM: getSectionAsFile → processWithEditor → onEditVerse + onChapterReturnFromPlugin).
+     */
+    private fun editVerseWithPlugin(index: Int, plugin: org.bibletranslationtools.orature.plugins.OratureExternalPlugin) {
+        val n = narration ?: return
+        stopPlayer()
+        _audioScene.value?.clear()
+        viewModelScope.launch {
+            try {
+                val file = withContext(Dispatchers.IO) { n.getSectionAsFile(index) }
+                org.bibletranslationtools.orature.plugins.launchPlugin(plugin, file, narrationPluginParams(index))
+                withContext(Dispatchers.IO) { n.onEditVerse(index, file).blockingAwait() }
+                refreshVerses()
+                resetNarratableList()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                System.err.println("Narration external edit failed: $e")
+            }
+        }
+    }
+
+    private fun narrationPluginParams(index: Int): org.bibletranslationtools.otter.common.domain.plugins.PluginParameters {
+        val wb = workbookDataStore.activeWorkbook.value
+        val chapter = workbookDataStore.activeChapter.value
+        val verseLabel = narration?.totalVerses?.getOrNull(index)?.label
+        return org.bibletranslationtools.otter.common.domain.plugins.PluginParameters(
+            languageName = wb?.target?.language?.name ?: "",
+            bookSlug = wb?.target?.slug ?: "",
+            bookTitle = wb?.target?.title ?: (wb?.target?.slug ?: ""),
+            chapterLabel = chapter?.title ?: chapter?.sort?.toString() ?: "",
+            chapterNumber = chapter?.sort ?: 1,
+            verseTotal = narration?.totalVerses?.size,
+            verseLabels = verseLabel?.let { listOf(it) },
+            sourceLanguageName = wb?.source?.language?.name
+        )
     }
 
     /** Shared teleprompter Pause button — dispatches by current state (normal vs re-record). */

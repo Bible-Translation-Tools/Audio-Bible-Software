@@ -17,8 +17,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Brightness6
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Public
@@ -56,6 +59,7 @@ import org.bibletranslationtools.orature.ui.viewmodels.OratureLangNamesUpdateSta
 import org.bibletranslationtools.orature.ui.viewmodels.OratureSettingsViewModel
 import org.bibletranslationtools.shared.preferences.AppSettings
 import org.bibletranslationtools.shared.preferences.ThemeMode
+import io.github.vinceglb.filekit.path
 import org.jetbrains.compose.resources.stringResource
 import org.bibletranslationtools.orature.resources.Res
 import org.bibletranslationtools.orature.resources.action
@@ -63,11 +67,14 @@ import org.bibletranslationtools.orature.resources.addApp
 import org.bibletranslationtools.orature.resources.addVerseMarker
 import org.bibletranslationtools.orature.resources.appSettings
 import org.bibletranslationtools.orature.resources.audioSettings
+import org.bibletranslationtools.orature.resources.browse
 import org.bibletranslationtools.orature.resources.checkForUpdates
 import org.bibletranslationtools.orature.resources.close
 import org.bibletranslationtools.orature.resources.colorTheme
 import org.bibletranslationtools.orature.resources.dark
+import org.bibletranslationtools.orature.resources.delete
 import org.bibletranslationtools.orature.resources.edit
+import org.bibletranslationtools.orature.resources.editVerseMarkers
 import org.bibletranslationtools.orature.resources.focus
 import org.bibletranslationtools.orature.resources.goBack
 import org.bibletranslationtools.orature.resources.interfaceSettings
@@ -224,9 +231,11 @@ fun OratureSettingsDrawer(
                 onReset = viewModel::resetLangNamesUrl
             )
 
-            // ── App Settings (external plugins — visual only) ───────────────
-            SectionTitle(stringResource(Res.string.appSettings))
-            AppPluginsSection()
+            // ── App Settings (external editor plugins) — desktop only (process launch) ──
+            if (org.bibletranslationtools.orature.plugins.canLaunchPlugins()) {
+                SectionTitle(stringResource(Res.string.appSettings))
+                AppPluginsSection()
+            }
 
             // ── Keyboard Shortcuts (static reference) ───────────────────────
             SectionTitle(stringResource(Res.string.keyboardShortcutsSettings))
@@ -435,59 +444,115 @@ private fun LanguageNamesSection(
  */
 @Composable
 private fun AppPluginsSection() {
+    val pluginVm: org.bibletranslationtools.orature.ui.viewmodels.OraturePluginViewModel =
+        viewModel { org.bibletranslationtools.orature.ui.viewmodels.OraturePluginViewModel() }
+    val ui by pluginVm.uiState.collectAsState()
+    var showAdd by remember { mutableStateOf(false) }
+    // Import an Orature plugin-definition YAML the user picks (JVM: AudioPluginRegistrar.import).
+    val yamlPicker = io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher(
+        type = io.github.vinceglb.filekit.dialogs.FileKitType.File(extensions = listOf("yaml", "yml")),
+        mode = io.github.vinceglb.filekit.dialogs.FileKitMode.Single
+    ) { file -> file?.let { pluginVm.importDefinition(it.path) } }
+
     Section {
         // Header row: name column (flex) + right-aligned record/edit icon columns.
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Spacer(Modifier.weight(1f))
-            Column(
-                modifier = Modifier.width(50.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Icon(
-                    Icons.Filled.Mic,
-                    contentDescription = stringResource(Res.string.record),
-                    tint = MaterialTheme.colorScheme.onSurface
+            Column(modifier = Modifier.width(50.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Filled.Mic, contentDescription = stringResource(Res.string.record), tint = MaterialTheme.colorScheme.onSurface)
+            }
+            Column(modifier = Modifier.width(50.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Filled.Edit, contentDescription = stringResource(Res.string.edit), tint = MaterialTheme.colorScheme.onSurface)
+            }
+            Column(modifier = Modifier.width(50.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Filled.Bookmark, contentDescription = stringResource(Res.string.editVerseMarkers), tint = MaterialTheme.colorScheme.onSurface)
+            }
+            Spacer(Modifier.width(40.dp))
+        }
+
+        // The built-in "OratureRecorder" is always listed and can't be removed (JVM). It's the
+        // selected role whenever no external plugin is chosen for that role.
+        val builtin = org.bibletranslationtools.orature.plugins.OratureExternalPlugin.BUILTIN
+        val builtinRecorderSelected = ui.plugins.none { it.id == ui.selectedRecorderId }
+        val builtinEditorSelected = ui.plugins.none { it.id == ui.selectedEditorId }
+        val builtinMarkerSelected = ui.plugins.none { it.id == ui.selectedMarkerId }
+        PluginRow(
+            name = builtin.name,
+            showRecord = true, recordSelected = builtinRecorderSelected, onRecord = { pluginVm.selectRecorder(builtin.id) },
+            showEdit = true, editSelected = builtinEditorSelected, onEdit = { pluginVm.selectEditor(builtin.id) },
+            showMark = true, markSelected = builtinMarkerSelected, onMark = { pluginVm.selectMarker(builtin.id) },
+            onRemove = null // non-removable
+        )
+        for (plugin in ui.plugins) {
+            PluginRow(
+                name = plugin.name,
+                showRecord = plugin.canRecord, recordSelected = ui.selectedRecorderId == plugin.id, onRecord = { pluginVm.selectRecorder(plugin.id) },
+                showEdit = plugin.canEdit, editSelected = ui.selectedEditorId == plugin.id, onEdit = { pluginVm.selectEditor(plugin.id) },
+                showMark = plugin.canMark, markSelected = ui.selectedMarkerId == plugin.id, onMark = { pluginVm.selectMarker(plugin.id) },
+                onRemove = { pluginVm.removePlugin(plugin.id) }
+            )
+        }
+
+        // "Add App" (manual) + "Import" (a plugin-definition YAML).
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { showAdd = true }) {
+                Icon(Icons.Filled.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = stringResource(Res.string.addApp),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
-            Column(
-                modifier = Modifier.width(50.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Icon(
-                    Icons.Filled.Edit,
-                    contentDescription = stringResource(Res.string.edit),
-                    tint = MaterialTheme.colorScheme.onSurface
+            Spacer(Modifier.width(24.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { yamlPicker.launch() }) {
+                Icon(Icons.Filled.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = stringResource(Res.string.browse),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
         }
+    }
 
-        // Empty plugin list placeholder (Phase 12 populates from the real registry).
-        Text(
-            text = stringResource(Res.string.noAppsConfigured),
-            fontSize = 16.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+    if (showAdd) {
+        OratureAddPluginDialog(
+            onAdd = { name, exec, canEdit, canRecord, canMark -> pluginVm.addPlugin(name, exec, emptyList(), canEdit, canRecord, canMark) },
+            onDismiss = { showAdd = false }
         )
+    }
+}
 
-        // "Add App" link — stub. Phase 12 opens the add-plugin dialog / file picker.
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Icon(
-                Icons.Filled.Add,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = stringResource(Res.string.addApp),
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.primary
-            )
+/** One row of the plugin registry: name + record/edit/mark role selectors + optional remove. */
+@Composable
+private fun PluginRow(
+    name: String,
+    showRecord: Boolean, recordSelected: Boolean, onRecord: () -> Unit,
+    showEdit: Boolean, editSelected: Boolean, onEdit: () -> Unit,
+    showMark: Boolean, markSelected: Boolean, onMark: () -> Unit,
+    onRemove: (() -> Unit)?
+) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(name, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+        Column(modifier = Modifier.width(50.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            if (showRecord) androidx.compose.material3.RadioButton(selected = recordSelected, onClick = onRecord)
+        }
+        Column(modifier = Modifier.width(50.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            if (showEdit) androidx.compose.material3.RadioButton(selected = editSelected, onClick = onEdit)
+        }
+        Column(modifier = Modifier.width(50.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            if (showMark) androidx.compose.material3.RadioButton(selected = markSelected, onClick = onMark)
+        }
+        Box(modifier = Modifier.width(40.dp), contentAlignment = Alignment.Center) {
+            if (onRemove != null) {
+                androidx.compose.material3.IconButton(onClick = onRemove) {
+                    Icon(Icons.Filled.Delete, contentDescription = stringResource(Res.string.delete), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
     }
 }

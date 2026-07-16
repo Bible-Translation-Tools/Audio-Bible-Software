@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -44,6 +45,7 @@ import org.bibletranslationtools.orature.resources.best_take
 import org.bibletranslationtools.orature.resources.cancel
 import org.bibletranslationtools.orature.resources.chunk
 import org.bibletranslationtools.orature.resources.delete
+import org.bibletranslationtools.orature.resources.edit
 import org.bibletranslationtools.orature.resources.new_recording
 import org.bibletranslationtools.orature.resources.pause
 import org.bibletranslationtools.orature.resources.playSource
@@ -99,7 +101,8 @@ fun OratureBlindDraftScreen(viewModel: OratureBlindDraftViewModel) {
                         isPlaying = uiState.playingTakeId == t.id,
                         onPlay = { viewModel.toggleTake(t.id) },
                         onSelect = null,
-                        onDelete = { viewModel.deleteTake(t.id) }
+                        onDelete = { viewModel.deleteTake(t.id) },
+                        onEdit = if (uiState.canEditExternally) ({ viewModel.editTakeExternally(t.id) }) else null
                     )
                 }
 
@@ -113,7 +116,8 @@ fun OratureBlindDraftScreen(viewModel: OratureBlindDraftViewModel) {
                             isPlaying = uiState.playingTakeId == t.id,
                             onPlay = { viewModel.toggleTake(t.id) },
                             onSelect = { viewModel.selectTake(t.id) },
-                            onDelete = { viewModel.deleteTake(t.id) }
+                            onDelete = { viewModel.deleteTake(t.id) },
+                            onEdit = if (uiState.canEditExternally) ({ viewModel.editTakeExternally(t.id) }) else null
                         )
                         Spacer(Modifier.height(6.dp))
                     }
@@ -195,7 +199,8 @@ private fun TakeRow(
     isPlaying: Boolean,
     onPlay: () -> Unit,
     onSelect: (() -> Unit)?,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onEdit: (() -> Unit)? = null
 ) {
     Row(
         modifier = Modifier
@@ -226,6 +231,14 @@ private fun TakeRow(
             OutlinedButton(onClick = onSelect) { Text(stringResource(Res.string.best_take)) }
         } else if (take.selected) {
             Icon(Icons.Filled.Check, contentDescription = null, tint = OratureColors.StatusComplete)
+        }
+        onEdit?.let {
+            Icon(
+                Icons.Filled.Edit,
+                contentDescription = stringResource(Res.string.edit),
+                tint = OratureColors.Primary,
+                modifier = Modifier.size(28.dp).clickable(onClick = it).padding(4.dp)
+            )
         }
         Icon(
             Icons.Filled.Delete,

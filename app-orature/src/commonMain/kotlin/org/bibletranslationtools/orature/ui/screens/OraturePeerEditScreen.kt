@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -37,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import org.bibletranslationtools.orature.resources.Res
 import org.bibletranslationtools.orature.resources.chunk
 import org.bibletranslationtools.orature.resources.confirm
+import org.bibletranslationtools.orature.resources.edit
 import org.bibletranslationtools.orature.resources.pause
 import org.bibletranslationtools.orature.resources.play
 import org.bibletranslationtools.orature.resources.playSource
@@ -141,6 +143,13 @@ private fun PeerEditBody(
                 }
             }
             Spacer(Modifier.weight(1f))
+            if (uiState.canEditExternally) {
+                OutlinedButton(onClick = viewModel::editTakeExternally, enabled = !uiState.isPlaying) {
+                    Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Text(stringResource(Res.string.edit), modifier = Modifier.padding(start = 6.dp))
+                }
+                Spacer(Modifier.size(8.dp))
+            }
             OutlinedButton(onClick = viewModel::onRecordNew, enabled = !uiState.isPlaying) {
                 Icon(Icons.Filled.Mic, contentDescription = null, modifier = Modifier.size(18.dp))
                 Text(stringResource(Res.string.record), modifier = Modifier.padding(start = 6.dp))

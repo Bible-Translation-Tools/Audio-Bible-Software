@@ -56,6 +56,8 @@ data class OraturePeerEditUiState(
     val confirmed: Boolean = false,
     val recording: Boolean = false,
     val recordingActive: Boolean = false,
+    /** True when the current take can be opened in a configured external editor (desktop only). */
+    val canEditExternally: Boolean = false,
     val error: String? = null
 )
 
@@ -73,6 +75,7 @@ class OraturePeerEditViewModel(
     private val workbookDataStore: OratureWorkbookDataStore by inject()
     private val playerFactory: AudioPlayerConnectionFactory by inject()
     private val recorderFactory: AudioRecorderConnectionFactory by inject()
+    private val pluginStore: org.bibletranslationtools.orature.plugins.OraturePluginStore by inject()
 
     private val _uiState = MutableStateFlow(OraturePeerEditUiState())
     val uiState: StateFlow<OraturePeerEditUiState> = _uiState.asStateFlow()
@@ -158,7 +161,8 @@ class OraturePeerEditViewModel(
                     isLoading = false,
                     hasChunk = true,
                     chunkTitle = "${chunk.sort}",
-                    confirmed = chunk.checkingStatus().ordinal >= checkingStatusForStep().ordinal
+                    confirmed = chunk.checkingStatus().ordinal >= checkingStatusForStep().ordinal,
+                    canEditExternally = selectedPlugin(recorder = false) != null
                 )
                 startWaveformTicker()
             } catch (e: CancellationException) {
@@ -240,20 +244,82 @@ class OraturePeerEditViewModel(
     }
 
     /** Start a re-recording (JVM: onRecordNew) — same pipeline as Blind Draft. */
+    private fun selectedPlugin(recorder: Boolean): org.bibletranslationtools.orature.plugins.OratureExternalPlugin? {
+        if (!org.bibletranslationtools.orature.plugins.canLaunchPlugins()) return null
+        val reg = pluginStore.load()
+        val id = if (recorder) reg.selectedRecorderId else reg.selectedEditorId
+        return reg.plugins.firstOrNull { it.id == id && (if (recorder) it.canRecord else it.canEdit) }
+    }
+
+    private suspend fun newTake(chunk: Chunk): Take {
+        val wb = workbookDataStore.activeWorkbook.value ?: error("No active workbook")
+        val chapter = workbookDataStore.activeChapter.value ?: error("No active chapter")
+        val takeNumber = chunk.audio.getNewTakeNumberSuspend()
+        val namer = WorkbookFileNamerBuilder.createFileNamer(wb, chapter, chunk, chunk, wb.sourceMetadataSlug)
+        val dir = wb.projectFilesAccessor.audioDir.resolve(namer.formatChapterNumber()).apply { mkdirs() }
+        val name = namer.generateName(takeNumber, AudioFileFormat.WAV)
+        return Take(name, dir.resolve(name), takeNumber, MimeType.WAV, LocalDate.now())
+    }
+
+    /** Re-record into a new take with the configured external recorder, else native (JVM:
+     *  recordWithExternalPlugin). The new take auto-selects, so the chunk needs confirming again. */
+    private fun recordWithExternalPlugin(chunk: Chunk) {
+        val recorder = selectedPlugin(recorder = true) ?: return
+        stopAll()
+        viewModelScope.launch {
+            val take = withContext(Dispatchers.IO) {
+                val t = newTake(chunk)
+                OratureAudioFile(t.file, 1, DEFAULT_SAMPLE_RATE, 16)
+                t
+            }
+            org.bibletranslationtools.orature.plugins.launchPlugin(recorder, take.file, pluginParams(chunk))
+            val hasAudio = runCatching { OratureAudioFile(take.file).totalFrames > 0 }.getOrDefault(false)
+            if (hasAudio) chunk.audio.insertTake(take) else runCatching { take.file.delete() }
+            onChunk(chunk)
+            translationVm.onChunkTakesChanged()
+        }
+    }
+
+    /** Open the chunk's selected take in the configured external editor, then reload (JVM: edit plugin). */
+    fun editTakeExternally() {
+        val chunk = activeChunk ?: return
+        val take = chunk.audio.getSelectedTake() ?: return
+        val editor = selectedPlugin(recorder = false) ?: return
+        viewModelScope.launch {
+            stopAll()
+            org.bibletranslationtools.orature.plugins.launchPlugin(editor, take.file, pluginParams(chunk))
+            onChunk(chunk)
+        }
+    }
+
+    /** Translation context handed to a plugin (JVM: PluginParameters). */
+    private fun pluginParams(chunk: Chunk): org.bibletranslationtools.otter.common.domain.plugins.PluginParameters {
+        val wb = workbookDataStore.activeWorkbook.value
+        val chapter = workbookDataStore.activeChapter.value
+        val sourceAudio = wb?.let { w ->
+            chapter?.let { runCatching { w.sourceAudioAccessor.getChapter(it.sort, w.target)?.file }.getOrNull() }
+        }
+        return org.bibletranslationtools.otter.common.domain.plugins.PluginParameters(
+            languageName = wb?.target?.language?.name ?: "",
+            bookSlug = wb?.target?.slug ?: "",
+            bookTitle = wb?.target?.title ?: (wb?.target?.slug ?: ""),
+            chapterLabel = chapter?.title ?: chapter?.sort?.toString() ?: "",
+            chapterNumber = chapter?.sort ?: 1,
+            verseTotal = null,
+            chunkNumber = chunk.sort,
+            chunkLabel = chunk.sort.toString(),
+            sourceChapterAudio = sourceAudio,
+            sourceLanguageName = wb?.source?.language?.name
+        )
+    }
+
     fun onRecordNew() {
         val chunk = activeChunk ?: return
-        val wb = workbookDataStore.activeWorkbook.value ?: return
-        val chapter = workbookDataStore.activeChapter.value ?: return
+        if (selectedPlugin(recorder = true) != null) { recordWithExternalPlugin(chunk); return }
         stopAll()
         viewModelScope.launch {
             try {
-                val take = withContext(Dispatchers.IO) {
-                    val takeNumber = chunk.audio.getNewTakeNumberSuspend()
-                    val namer = WorkbookFileNamerBuilder.createFileNamer(wb, chapter, chunk, chunk, wb.sourceMetadataSlug)
-                    val dir = wb.projectFilesAccessor.audioDir.resolve(namer.formatChapterNumber()).apply { mkdirs() }
-                    val name = namer.generateName(takeNumber, AudioFileFormat.WAV)
-                    Take(name, dir.resolve(name), takeNumber, MimeType.WAV, LocalDate.now())
-                }
+                val take = withContext(Dispatchers.IO) { newTake(chunk) }
                 pendingTake = take
                 val rec = AudioRecorderConnection(RECORDER_ID, recorderFactory, viewModelScope)
                 rec.start(AudioSpec())

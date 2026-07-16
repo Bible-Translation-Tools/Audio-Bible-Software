@@ -21,6 +21,8 @@ val oratureViewModelModule = module {
     single { OratureImportEvents() }
     // App-scoped project-deletion coordinator + pending-delete counter (guards project creation).
     single { OratureProjectDeletion() }
+    // App-scoped registry of external-editor plugins (Settings → plugins; desktop-only).
+    single { org.bibletranslationtools.orature.plugins.OraturePluginStore() }
     // Shared open-project state (JVM: WorkbookDataStore) — written by the narration VM,
     // read by the mode-page components. Single so it survives across the mode screens.
     single { OratureWorkbookDataStore(get()) }

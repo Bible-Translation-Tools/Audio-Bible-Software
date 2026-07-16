@@ -39,6 +39,10 @@ import org.bibletranslationtools.orature.resources.chapter
 import org.bibletranslationtools.orature.resources.chapterTitle
 import org.bibletranslationtools.orature.resources.goBack
 import org.bibletranslationtools.orature.resources.narrationTitle
+import io.github.vinceglb.filekit.path
+import org.bibletranslationtools.orature.resources.`import`
+import org.bibletranslationtools.orature.resources.editVerseMarkers
+import org.bibletranslationtools.orature.resources.openChapterIn
 import org.bibletranslationtools.orature.resources.options
 import org.bibletranslationtools.orature.resources.redo
 import org.bibletranslationtools.orature.resources.restartChapter
@@ -82,10 +86,20 @@ fun OratureNarrationScreen(
             canUndo = uiState.canUndo,
             canRedo = uiState.canRedo,
             canRestartChapter = uiState.canRestartChapter,
+            editorConfigured = viewModel.editorConfiguredForChapter(),
+            markerConfigured = viewModel.markerConfigured(),
+            // Import is available except while actively recording/playing (JVM: NarrationMenu disableWhen).
+            canImportChapterAudio = uiState.narrationState.let { s ->
+                s != NarrationStateType.RECORDING && s != NarrationStateType.RECORDING_AGAIN &&
+                    s != NarrationStateType.RECORDING_AGAIN_PAUSED && s != NarrationStateType.PLAYING
+            },
             onBack = onBack,
             onUndo = viewModel::onUndo,
             onRedo = viewModel::onRedo,
             onRestartChapter = viewModel::onRestartChapter,
+            onOpenChapterInEditor = viewModel::openChapterInEditor,
+            onEditVerseMarkers = viewModel::editVerseMarkersExternally,
+            onImportChapterAudio = viewModel::onImportChapterAudio,
             onPrevious = viewModel::selectPreviousChapter,
             onNext = viewModel::selectNextChapter,
             onSelectChapter = viewModel::selectChapter
@@ -161,9 +175,11 @@ private fun NarrationBody(
                 onRecordAgain = viewModel::onRecordAgain,
                 onSave = viewModel::onSave,
                 onPlay = viewModel::onPlayVerse,
-                onPausePlayback = { viewModel.onPausePlayback() }
+                onPausePlayback = { viewModel.onPausePlayback() },
+                onEditExternally = viewModel::editVerseExternally
             ),
             actionsEnabled = uiState.actionsEnabled,
+            canEditExternally = viewModel.editorConfigured(),
             modifier = Modifier.weight(1f)
         )
     }
@@ -179,10 +195,16 @@ private fun NarrationHeader(
     canUndo: Boolean,
     canRedo: Boolean,
     canRestartChapter: Boolean,
+    editorConfigured: Boolean,
+    markerConfigured: Boolean,
+    canImportChapterAudio: Boolean,
     onBack: () -> Unit,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
     onRestartChapter: () -> Unit,
+    onOpenChapterInEditor: () -> Unit,
+    onEditVerseMarkers: () -> Unit,
+    onImportChapterAudio: (String) -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onSelectChapter: (Int) -> Unit
@@ -220,21 +242,42 @@ private fun NarrationHeader(
             Icon(Icons.Filled.Redo, contentDescription = stringResource(Res.string.redo))
         }
 
-        // Options menu (JVM: NarrationMenu). Restart Chapter is the only wired item so far;
-        // open/import/verse-marker are later phases. Enabled once a chapter is in progress.
+        // Options menu (JVM: NarrationMenu). The button always opens; items gate themselves.
         Box {
             var menuOpen by remember { mutableStateOf(false) }
-            IconButton(onClick = { menuOpen = true }, enabled = canRestartChapter) {
+            // Audio-file picker for "Import Chapter Audio" (JVM: NarrationOpenImportAudioDialogEvent).
+            val audioPicker = io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher(
+                type = io.github.vinceglb.filekit.dialogs.FileKitType.File(extensions = listOf("wav", "mp3")),
+                mode = io.github.vinceglb.filekit.dialogs.FileKitMode.Single
+            ) { file -> file?.let { onImportChapterAudio(it.path) } }
+
+            IconButton(onClick = { menuOpen = true }) {
                 Icon(Icons.Filled.MoreVert, contentDescription = stringResource(Res.string.options))
             }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                // Plugin items appear when a plugin of that type is configured, and are always
+                // enabled — the chapter take is compiled on demand (JVM: no enableWhen on these).
+                if (editorConfigured) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(Res.string.openChapterIn)) },
+                        onClick = { menuOpen = false; onOpenChapterInEditor() }
+                    )
+                }
+                if (markerConfigured) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(Res.string.editVerseMarkers)) },
+                        onClick = { menuOpen = false; onEditVerseMarkers() }
+                    )
+                }
                 DropdownMenuItem(
                     text = { Text(stringResource(Res.string.restartChapter)) },
                     enabled = canRestartChapter,
-                    onClick = {
-                        menuOpen = false
-                        onRestartChapter()
-                    }
+                    onClick = { menuOpen = false; onRestartChapter() }
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(Res.string.`import`)) },
+                    enabled = canImportChapterAudio,
+                    onClick = { menuOpen = false; audioPicker.launch() }
                 )
             }
         }
