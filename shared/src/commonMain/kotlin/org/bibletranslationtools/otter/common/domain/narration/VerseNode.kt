@@ -62,7 +62,7 @@ internal data class VerseNode(
     fun finalize(end: Int) {
         if (sectors.isNotEmpty()) {
             val last = sectors.last()
-            sectors.removeLast()
+            sectors.removeAt(sectors.lastIndex)
             sectors.add(last.first..end)
         } else {
             throw IllegalStateException("Tried to finalize VerseNode ${marker.label} that was not started!")
@@ -86,7 +86,7 @@ internal data class VerseNode(
                 remaining >= length -> {
                     val total = sectors.map { it } as MutableList
                     val lastSector = total.last()
-                    total.removeLast()
+                    total.removeAt(total.lastIndex)
                     if (lastSector.first != lastSector.last) {
                         total.add(lastSector.first until lastSector.last)
                     }
@@ -99,7 +99,7 @@ internal data class VerseNode(
                 remaining >= sectors.first().last - sectors.first().first -> {
                     val sector = sectors.first()
                     remaining -= sector.length()
-                    sectors.removeFirst()
+                    sectors.removeAt(0)
                     toGive.add(sector)
                 }
                 // Split node
@@ -131,7 +131,7 @@ internal data class VerseNode(
                 remaining >= length -> {
                     val total = sectors.map { it } as MutableList
                     val firstSector = total.first()
-                    total.removeFirst()
+                    total.removeAt(0)
                     if (firstSector.first != firstSector.last) {
                         total.add(0, firstSector.first + 1..firstSector.last)
                     }
@@ -144,7 +144,7 @@ internal data class VerseNode(
                 remaining >= sectors.last().length() -> {
                     val node = sectors.last()
                     remaining -= node.length()
-                    sectors.removeLast()
+                    sectors.removeAt(sectors.lastIndex)
                     toGive.add(0, node)
                 }
                 // Split node

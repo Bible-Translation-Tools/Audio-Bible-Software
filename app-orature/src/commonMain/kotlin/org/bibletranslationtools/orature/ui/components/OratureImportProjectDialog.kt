@@ -34,8 +34,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.vinceglb.filekit.dialogs.FileKitMode
-import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
+import org.bibletranslationtools.orature.platform.importPickerType
 import org.bibletranslationtools.orature.resources.Res
 import org.bibletranslationtools.orature.resources.cancel
 import org.bibletranslationtools.orature.resources.choose_file
@@ -65,8 +65,9 @@ fun OratureImportProjectDialog(onDismiss: () -> Unit) {
     val importVm = viewModel { OratureImportViewModel() }
     val importState by importVm.importState.collectAsState()
 
+    // Extension-filtered on desktop, all-files on Android (SAF can't match .orature by MIME).
     val picker = rememberFilePickerLauncher(
-        type = FileKitType.File(extensions = listOf("orature", "zip", "tstudio")),
+        type = importPickerType(),
         mode = FileKitMode.Single
     ) { file -> file?.let(importVm::importFile) }
 

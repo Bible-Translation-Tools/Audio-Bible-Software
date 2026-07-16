@@ -1,8 +1,12 @@
 package org.bibletranslationtools.orature.platform
 
+import io.github.vinceglb.filekit.dialogs.FileKitType
 import java.awt.Desktop
 import java.io.File
 import java.net.URI
+
+actual fun importPickerType(): FileKitType =
+    FileKitType.File(extensions = listOf("orature", "zip", "tstudio"))
 
 actual fun canOpenInFileManager(): Boolean =
     Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)

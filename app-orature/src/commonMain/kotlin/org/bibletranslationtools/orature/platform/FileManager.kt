@@ -1,6 +1,14 @@
 package org.bibletranslationtools.orature.platform
 
+import io.github.vinceglb.filekit.dialogs.FileKitType
 import java.io.File
+
+/**
+ * The file-picker filter for project import. Desktop filters by the Orature/RC/tstudio extensions
+ * (nice UX); Android must allow all files, since SAF matches by MIME type and .orature/.tstudio have
+ * no registered MIME (an extension filter greys them out). The importer validates content regardless.
+ */
+expect fun importPickerType(): FileKitType
 
 /** True when the OS file manager can be opened from the app (desktop only). */
 expect fun canOpenInFileManager(): Boolean

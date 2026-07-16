@@ -251,7 +251,9 @@ private fun OratureProjectsPane(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    items(uiState.projectGroups, key = { it.key }) { group ->
+                    // LazyColumn keys must be Bundle-storable on Android, so use a stable String
+                    // rather than the OratureProjectGroupKey data class (crashes SaveableStateHolder).
+                    items(uiState.projectGroups, key = { it.key.toString() }) { group ->
                         OratureProjectGroupCard(
                             group = group,
                             isSelected = group.key == uiState.selectedGroupKey,
