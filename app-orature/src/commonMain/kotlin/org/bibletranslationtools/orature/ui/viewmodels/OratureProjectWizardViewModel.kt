@@ -128,6 +128,7 @@ class OratureProjectWizardViewModel(
     private val resourceMetadataRepo: IResourceMetadataRepository by inject()
     private val workbookDescriptorRepo: IWorkbookDescriptorRepository by inject()
     private val importer: ImportProjectUseCase by inject()
+    private val projectDeletion: OratureProjectDeletion by inject()
 
     private val _uiState = MutableStateFlow(WizardUiState())
     val uiState: StateFlow<WizardUiState> = _uiState.asStateFlow()
@@ -337,6 +338,10 @@ class OratureProjectWizardViewModel(
     ) {
         val mode = _uiState.value.mode ?: return
         _uiState.value = _uiState.value.copy(isLoading = true)
+
+        // Wait for any in-flight project-group delete to finish first, so we don't derive against
+        // rows a delete is concurrently removing (JVM: waitForProjectDeletionFinishes).
+        projectDeletion.awaitClear()
 
         val existing = findExistingWorkbook(resourceVersion, sourceLanguage, targetLanguage)
         if (existing != null) {

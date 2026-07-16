@@ -2,6 +2,7 @@ package org.bibletranslationtools.orature.di
 
 import org.bibletranslationtools.orature.ui.viewmodels.OratureHomeViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureImportEvents
+import org.bibletranslationtools.orature.ui.viewmodels.OratureProjectDeletion
 import org.bibletranslationtools.orature.ui.viewmodels.OratureProjectWizardViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureSettingsViewModel
 import org.bibletranslationtools.orature.ui.narration.OratureNarrationFactory
@@ -18,6 +19,8 @@ val oratureViewModelModule = module {
     single { OratureHomeViewModel() }
     // App-scoped bus so a successful import (global Add Files drawer in the shell) refreshes home.
     single { OratureImportEvents() }
+    // App-scoped project-deletion coordinator + pending-delete counter (guards project creation).
+    single { OratureProjectDeletion() }
     // Shared open-project state (JVM: WorkbookDataStore) — written by the narration VM,
     // read by the mode-page components. Single so it survives across the mode screens.
     single { OratureWorkbookDataStore(get()) }

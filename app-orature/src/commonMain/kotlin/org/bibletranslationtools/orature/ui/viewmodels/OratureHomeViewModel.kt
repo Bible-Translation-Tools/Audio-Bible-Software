@@ -3,11 +3,15 @@ package org.bibletranslationtools.orature.ui.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
+import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.data.primitives.Anthology
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
@@ -15,6 +19,9 @@ import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.time.LocalDateTime
+
+/** The undo window before a group delete is permanent (JVM: NOTIFICATION_DURATION_SEC). */
+private const val GROUP_DELETE_UNDO_MS = 5000L
 
 /**
  * The grouping key used by the real Orature app (HomePageViewModel2.updateBookList):
@@ -85,9 +92,17 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
 
     private val workbookDescriptorRepository: IWorkbookDescriptorRepository by inject()
     private val importEvents: OratureImportEvents by inject()
+    private val projectDeletion: OratureProjectDeletion by inject()
 
     private val _uiState = MutableStateFlow(OratureHomeUiState())
     val uiState: StateFlow<OratureHomeUiState> = _uiState.asStateFlow()
+
+    // All groups from the last DB load + the descriptors behind them, so a group delete can be
+    // resolved to its books and the group can be optimistically hidden during its undo window.
+    private var allGroups: List<OratureProjectGroupUiModel> = emptyList()
+    private var loadedDescriptors: List<WorkbookDescriptor> = emptyList()
+    private val pendingDeleteKeys = mutableSetOf<OratureProjectGroupKey>()
+    private val deleteJobs = mutableMapOf<OratureProjectGroupKey, Job>()
 
     init {
         loadProjects()
@@ -121,10 +136,13 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
             try {
                 val descriptors = workbookDescriptorRepository.getAllSuspend()
                 val groups = buildProjectGroups(descriptors)
+                loadedDescriptors = descriptors
+                allGroups = groups
+                val visible = groups.filter { it.key !in pendingDeleteKeys }
                 _uiState.value = OratureHomeUiState(
                     isLoading = false,
-                    projectGroups = groups,
-                    selectedGroupKey = select(groups)
+                    projectGroups = visible,
+                    selectedGroupKey = select(visible)
                 )
             } catch (e: CancellationException) {
                 throw e
@@ -134,6 +152,55 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
                     error = e.message ?: "Unknown error"
                 )
             }
+        }
+    }
+
+    private fun publishVisibleGroups() {
+        val visible = allGroups.filter { it.key !in pendingDeleteKeys }
+        val sel = _uiState.value.selectedGroupKey
+        val newSel = if (sel != null && visible.any { it.key == sel }) sel else visible.firstOrNull()?.key
+        _uiState.value = _uiState.value.copy(projectGroups = visible, selectedGroupKey = newSel)
+    }
+
+    /**
+     * Start deleting a project group after an undo window (JVM: removeProjectFromList +
+     * deleteProjectGroupWithTimer). The group is hidden immediately; if [undoGroupDelete] isn't called
+     * within the window it's permanently deleted. A pending delete blocks project creation.
+     */
+    fun scheduleGroupDelete(key: OratureProjectGroupKey) {
+        if (key in pendingDeleteKeys) return
+        val descriptors = loadedDescriptors.filter { it.groupKey() == key }
+        if (descriptors.isEmpty()) return
+        pendingDeleteKeys.add(key)
+        projectDeletion.beginPending()
+        publishVisibleGroups()
+        deleteJobs[key] = viewModelScope.launch {
+            try {
+                delay(GROUP_DELETE_UNDO_MS)
+                if (key !in pendingDeleteKeys) return@launch // undone during the window
+                withContext(Dispatchers.IO) { projectDeletion.deleteGroup(descriptors) }
+                pendingDeleteKeys.remove(key)
+                loadProjects()
+            } finally {
+                deleteJobs.remove(key)
+                projectDeletion.endPending()
+            }
+        }
+    }
+
+    /** Cancel a pending group delete and restore the group (JVM: undoDeleteProjectGroup). */
+    fun undoGroupDelete(key: OratureProjectGroupKey) {
+        pendingDeleteKeys.remove(key)
+        deleteJobs.remove(key)?.cancel() // its finally decrements the pending counter
+        publishVisibleGroups()
+    }
+
+    /** Reset a single book to its initial state (JVM: deleteBook — deletes takes, re-derives). */
+    fun deleteBook(workbookDescriptorId: Int) {
+        val descriptor = loadedDescriptors.firstOrNull { it.id == workbookDescriptorId } ?: return
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { projectDeletion.deleteBook(descriptor) }
+            loadProjects()
         }
     }
 

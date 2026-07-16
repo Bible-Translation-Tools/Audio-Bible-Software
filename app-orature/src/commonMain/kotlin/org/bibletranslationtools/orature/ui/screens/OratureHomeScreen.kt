@@ -53,10 +53,14 @@ import org.jetbrains.compose.resources.stringResource
 import org.bibletranslationtools.orature.resources.Res
 import org.bibletranslationtools.orature.resources.createProjectMessageBody
 import org.bibletranslationtools.orature.resources.createProjectMessageTitle
+import org.bibletranslationtools.orature.resources.bookDeleted
+import org.bibletranslationtools.orature.resources.deleteProject
 import org.bibletranslationtools.orature.resources.exportFailed
 import org.bibletranslationtools.orature.resources.exportSuccessful
 import org.bibletranslationtools.orature.resources.modifyContributors
 import org.bibletranslationtools.orature.resources.options
+import org.bibletranslationtools.orature.resources.projectDeleted
+import org.bibletranslationtools.orature.resources.undo
 import org.bibletranslationtools.orature.resources.showLocation
 import kotlinx.coroutines.launch
 import org.bibletranslationtools.orature.resources.projectGroupTitle
@@ -110,6 +114,9 @@ fun OratureHomeScreen(
             viewModel.onBookClick(book)
             onBookClick(book)
         },
+        onScheduleGroupDelete = viewModel::scheduleGroupDelete,
+        onUndoGroupDelete = viewModel::undoGroupDelete,
+        onDeleteBook = viewModel::deleteBook,
         onNewProjectClick = {
             viewModel.onNewProjectClick()
             wizardViewModel.reset()
@@ -148,6 +155,9 @@ fun OratureHomeContent(
     onSelectGroup: (OratureProjectGroupKey) -> Unit,
     onBookSearchQueryChange: (String) -> Unit,
     onBookClick: (OratureBookUiModel) -> Unit,
+    onScheduleGroupDelete: (OratureProjectGroupKey) -> Unit,
+    onUndoGroupDelete: (OratureProjectGroupKey) -> Unit,
+    onDeleteBook: (Int) -> Unit,
     onNewProjectClick: () -> Unit,
     onImportClick: () -> Unit,
     onWizardModeSelected: (org.bibletranslationtools.otter.common.data.primitives.ProjectMode) -> Unit,
@@ -176,6 +186,9 @@ fun OratureHomeContent(
                 uiState = uiState,
                 onBookSearchQueryChange = onBookSearchQueryChange,
                 onBookClick = onBookClick,
+                onScheduleGroupDelete = onScheduleGroupDelete,
+                onUndoGroupDelete = onUndoGroupDelete,
+                onDeleteBook = onDeleteBook,
                 modifier = Modifier.weight(1f).fillMaxHeight()
             )
             CenterPaneMode.WIZARD -> OratureProjectWizardSection(
@@ -260,8 +273,14 @@ private fun OratureBookSection(
     uiState: OratureHomeUiState,
     onBookSearchQueryChange: (String) -> Unit,
     onBookClick: (OratureBookUiModel) -> Unit,
+    onScheduleGroupDelete: (OratureProjectGroupKey) -> Unit,
+    onUndoGroupDelete: (OratureProjectGroupKey) -> Unit,
+    onDeleteBook: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val projectDeletedMsg = stringResource(Res.string.projectDeleted)
+    val undoLabel = stringResource(Res.string.undo)
+    val bookDeletedMsg = stringResource(Res.string.bookDeleted)
     var menuExpanded by remember { mutableStateOf(false) }
     val selectedGroup: OratureProjectGroupUiModel? = uiState.selectedGroup
     // The book whose Export dialog is open (JVM: WorkbookExportDialogOpenEvent), or null.
@@ -303,6 +322,27 @@ private fun OratureBookSection(
                         onClick = {
                             menuExpanded = false
                             contributorsForId = selectedGroup?.books?.firstOrNull()?.id
+                        }
+                    )
+                    // Delete Project — disabled when any book has progress (JVM: disableWhen
+                    // books.any { progress > 0 }). Deletes after an undo window.
+                    val groupHasProgress = selectedGroup?.books?.any { it.progress > 0.0 } == true
+                    DropdownMenuItem(
+                        text = { Text(stringResource(Res.string.deleteProject), color = MaterialTheme.colorScheme.error) },
+                        enabled = selectedGroup != null && !groupHasProgress,
+                        onClick = {
+                            menuExpanded = false
+                            val key = selectedGroup?.key ?: return@DropdownMenuItem
+                            onScheduleGroupDelete(key)
+                            scope.launch {
+                                val r = snackbarHostState.showSnackbar(
+                                    message = projectDeletedMsg,
+                                    actionLabel = undoLabel
+                                )
+                                if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                                    onUndoGroupDelete(key)
+                                }
+                            }
                         }
                     )
                 }
@@ -366,6 +406,11 @@ private fun OratureBookSection(
                     books = uiState.visibleBooks,
                     onBookClick = onBookClick,
                     onExportBook = { book -> exportBookId = book.id },
+                    onDeleteBook = { book ->
+                        onDeleteBook(book.id)
+                        // Book delete has no undo in Orature — just a warning toast (JVM: bookDeleted).
+                        scope.launch { snackbarHostState.showSnackbar(bookDeletedMsg) }
+                    },
                     modifier = Modifier.fillMaxSize()
                 )
             }

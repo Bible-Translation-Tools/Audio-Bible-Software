@@ -42,6 +42,7 @@ import org.bibletranslationtools.orature.resources.book
 import org.bibletranslationtools.orature.resources.code
 import org.bibletranslationtools.orature.resources.newTestament
 import org.bibletranslationtools.orature.resources.oldTestament
+import org.bibletranslationtools.orature.resources.deleteBook
 import org.bibletranslationtools.orature.resources.exportOptions
 import org.bibletranslationtools.orature.resources.options
 import org.bibletranslationtools.orature.resources.progress
@@ -64,6 +65,7 @@ fun OratureBookTable(
     books: List<OratureBookUiModel>,
     onBookClick: (OratureBookUiModel) -> Unit,
     onExportBook: (OratureBookUiModel) -> Unit,
+    onDeleteBook: (OratureBookUiModel) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(modifier = modifier.fillMaxSize()) {
@@ -76,7 +78,8 @@ fun OratureBookTable(
                 OratureBookTableRow(
                     book = book,
                     onClick = { onBookClick(book) },
-                    onExport = { onExportBook(book) }
+                    onExport = { onExportBook(book) },
+                    onDelete = { onDeleteBook(book) }
                 )
                 HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
             }
@@ -130,7 +133,8 @@ private fun OratureBookTableHeader() {
 private fun OratureBookTableRow(
     book: OratureBookUiModel,
     onClick: () -> Unit,
-    onExport: () -> Unit
+    onExport: () -> Unit,
+    onDelete: () -> Unit
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     Row(
@@ -178,6 +182,11 @@ private fun OratureBookTableRow(
                 DropdownMenuItem(
                     text = { Text(stringResource(Res.string.exportOptions)) },
                     onClick = { menuExpanded = false; onExport() }
+                )
+                // Delete Book resets the book to its initial state (JVM: deleteBook — deletes takes).
+                DropdownMenuItem(
+                    text = { Text(stringResource(Res.string.deleteBook), color = MaterialTheme.colorScheme.error) },
+                    onClick = { menuExpanded = false; onDelete() }
                 )
             }
         }
