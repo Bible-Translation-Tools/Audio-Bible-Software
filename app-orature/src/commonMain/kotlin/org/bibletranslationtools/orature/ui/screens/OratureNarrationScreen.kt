@@ -51,6 +51,7 @@ import org.bibletranslationtools.orature.ui.OratureColors
 import org.bibletranslationtools.orature.ui.components.OratureAudioWorkspace
 import org.bibletranslationtools.orature.ui.components.OratureChapterSelector
 import org.bibletranslationtools.orature.ui.components.OratureNarrationToolBar
+import org.bibletranslationtools.orature.ui.components.OraturePluginOpenedCover
 import org.bibletranslationtools.orature.ui.components.OratureTeleprompter
 import org.bibletranslationtools.orature.ui.components.TeleprompterActions
 import org.bibletranslationtools.orature.ui.viewmodels.OratureNarrationViewModel
@@ -75,6 +76,26 @@ fun OratureNarrationScreen(
     // take and populated the handoff (JVM: the marker plugin window opening).
     androidx.compose.runtime.LaunchedEffect(Unit) {
         viewModel.openVerseMarkerEditor.collect { onOpenVerseMarkerEditor() }
+    }
+
+    // While a plugin is open, the whole page is replaced by the plugin-opened cover — no header,
+    // no chapter selector, no teleprompter (JVM: `workspace.dock(pluginOpenedPage)` replaces the
+    // ENTIRE page). Narration has no source-audio-player concept, so the cover always shows
+    // "Source Audio Not Available" (sourceDurationMs = 0) — a real architectural fact, not a stub.
+    if (uiState.isPluginOpen) {
+        OraturePluginOpenedCover(
+            contentTitle = "${uiState.bookTitle} ${uiState.activeChapterTitle}".trim(),
+            sourceText = uiState.sourceText,
+            sourceLicense = uiState.sourceLicense,
+            isSourcePlaying = false,
+            sourcePositionMs = 0,
+            sourceDurationMs = 0,
+            sourceRate = 1.0,
+            onToggleSource = {},
+            onSeekSource = {},
+            onSetSourceRate = {}
+        )
+        return
     }
 
     Column(
@@ -135,6 +156,18 @@ private fun NarrationBody(
     uiState: org.bibletranslationtools.orature.ui.viewmodels.OratureNarrationUiState,
     viewModel: OratureNarrationViewModel
 ) {
+    // The verse marker menu's "Import" item (JVM: NarrationOpenImportAudioDialogEvent(verseIndex))
+    // opens a file picker; the chosen file is spliced into whichever verse was pending when picked.
+    var pendingImportVerseIndex by remember { mutableStateOf<Int?>(null) }
+    val verseAudioPicker = io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher(
+        type = io.github.vinceglb.filekit.dialogs.FileKitType.File(extensions = listOf("wav", "mp3")),
+        mode = io.github.vinceglb.filekit.dialogs.FileKitMode.Single
+    ) { file ->
+        val index = pendingImportVerseIndex
+        pendingImportVerseIndex = null
+        if (file != null && index != null) viewModel.importVerseAudio(index, java.io.File(file.path))
+    }
+
     Column(modifier = Modifier.fillMaxSize().background(OratureColors.Background)) {
         // Audio workspace: the AudioScene composite (recorded chapter + live take) + verse
         // markers + centered playhead + volume bar. Reads the VM's double-buffered snapshot.
@@ -153,6 +186,8 @@ private fun NarrationBody(
             onMarkerDragEnd = viewModel::onFinishMoveMarker,
             onPlayVerse = viewModel::onPlayVerse,
             onRecordAgain = viewModel::onRecordAgain,
+            onEditVerse = viewModel::editVerseExternally,
+            onImportVerse = { index -> pendingImportVerseIndex = index; verseAudioPicker.launch() },
             modifier = Modifier.fillMaxWidth().fillMaxHeight(0.33f)
         )
 
@@ -261,7 +296,11 @@ private fun NarrationHeader(
             IconButton(onClick = { menuOpen = true }) {
                 Icon(Icons.Filled.MoreVert, contentDescription = stringResource(Res.string.options))
             }
-            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            DropdownMenu(
+                expanded = menuOpen,
+                onDismissRequest = { menuOpen = false },
+                containerColor = MaterialTheme.colorScheme.surface
+            ) {
                 // Plugin items appear when a plugin of that type is configured, and are always
                 // enabled — the chapter take is compiled on demand (JVM: no enableWhen on these).
                 if (editorConfigured) {

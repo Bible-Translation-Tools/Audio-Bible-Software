@@ -15,15 +15,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -287,6 +285,8 @@ private fun OratureBookSection(
     val selectedGroup: OratureProjectGroupUiModel? = uiState.selectedGroup
     // The book whose Export dialog is open (JVM: WorkbookExportDialogOpenEvent), or null.
     var exportBookId by remember { mutableStateOf<Int?>(null) }
+    // The book running a quick backup (JVM: WorkbookQuickBackupEvent), or null.
+    var backupBookId by remember { mutableStateOf<Int?>(null) }
     // The group (its first book's descriptor id) whose Contributors dialog is open, or null.
     var contributorsForId by remember { mutableStateOf<Int?>(null) }
     // Export-finish toast (JVM: WorkbookExportFinishEvent → snackbar notification).
@@ -309,17 +309,20 @@ private fun OratureBookSection(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box {
-                IconButton(onClick = { menuExpanded = true }) {
-                    Icon(
-                        imageVector = Icons.Filled.MoreVert,
-                        contentDescription = stringResource(Res.string.options)
-                    )
-                }
-                DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                org.bibletranslationtools.orature.ui.components.OratureSectionOptionButton(
+                    active = menuExpanded,
+                    onClick = { menuExpanded = true }
+                )
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false },
+                    containerColor = MaterialTheme.colorScheme.surface
+                ) {
                     // JVM: ProjectGroupOptionMenu — Modify Contributors (Delete Project is deferred
                     // with the project-deletion-queue guard).
                     DropdownMenuItem(
                         text = { Text(stringResource(Res.string.modifyContributors)) },
+                        leadingIcon = { Icon(Icons.Filled.Group, contentDescription = null) },
                         enabled = selectedGroup?.books?.isNotEmpty() == true,
                         onClick = {
                             menuExpanded = false
@@ -331,6 +334,7 @@ private fun OratureBookSection(
                     val groupHasProgress = selectedGroup?.books?.any { it.progress > 0.0 } == true
                     DropdownMenuItem(
                         text = { Text(stringResource(Res.string.deleteProject), color = MaterialTheme.colorScheme.error) },
+                        leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
                         enabled = selectedGroup != null && !groupHasProgress,
                         onClick = {
                             menuExpanded = false
@@ -367,13 +371,10 @@ private fun OratureBookSection(
                 modifier = Modifier.weight(1f).padding(start = 4.dp)
             )
 
-            OutlinedTextField(
+            org.bibletranslationtools.orature.ui.components.OratureSearchBar(
                 value = uiState.bookSearchQuery,
                 onValueChange = onBookSearchQueryChange,
-                singleLine = true,
-                placeholder = { Text(stringResource(Res.string.search)) },
-                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = stringResource(Res.string.search)) },
-                modifier = Modifier.width(240.dp)
+                modifier = Modifier.width(280.dp)
             )
         }
 
@@ -407,6 +408,7 @@ private fun OratureBookSection(
                 OratureBookTable(
                     books = uiState.visibleBooks,
                     onBookClick = onBookClick,
+                    onBackupBook = { book -> backupBookId = book.id },
                     onExportBook = { book -> exportBookId = book.id },
                     onDeleteBook = { book ->
                         onDeleteBook(book.id)
@@ -432,6 +434,26 @@ private fun OratureBookSection(
             onDismiss = { exportBookId = null },
             onFinished = { success, location ->
                 exportBookId = null
+                scope.launch {
+                    val withLocation = success && canShowLocation && location != null
+                    val result = snackbarHostState.showSnackbar(
+                        message = if (success) exportSuccessMsg else exportFailMsg,
+                        actionLabel = if (withLocation) showLocationLabel else null
+                    )
+                    if (withLocation && result == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                        org.bibletranslationtools.orature.platform.openInFileManager(location!!)
+                    }
+                }
+            }
+        )
+    }
+
+    backupBookId?.let { id ->
+        org.bibletranslationtools.orature.ui.components.OratureQuickBackup(
+            workbookDescriptorId = id,
+            onCancelled = { backupBookId = null },
+            onFinished = { success, location ->
+                backupBookId = null
                 scope.launch {
                     val withLocation = success && canShowLocation && location != null
                     val result = snackbarHostState.showSnackbar(

@@ -64,7 +64,9 @@ private const val PCM_MAX = 32768f
 fun OratureConsumeScreen(viewModel: OratureConsumeViewModel) {
     val uiState by viewModel.uiState.collectAsState()
 
-    Box(modifier = Modifier.fillMaxSize().background(OratureColors.Background), contentAlignment = Alignment.Center) {
+    // JVM: `.translation-view { -fx-background-color: -wa-foreground; }` (white, not the app's
+    // light-gray page background).
+    Box(modifier = Modifier.fillMaxSize().background(OratureColors.Foreground), contentAlignment = Alignment.Center) {
         when {
             uiState.isLoading -> CircularProgressIndicator(color = OratureColors.Primary)
             uiState.sourceMissing -> Text(
@@ -113,6 +115,7 @@ private fun ConsumeBody(viewModel: OratureConsumeViewModel, isPlaying: Boolean) 
         ) {
             Button(
                 onClick = viewModel::togglePlay,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = OratureColors.Primary)
             ) {
                 Icon(

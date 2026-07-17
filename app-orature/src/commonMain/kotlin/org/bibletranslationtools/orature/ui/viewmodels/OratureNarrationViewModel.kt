@@ -103,7 +103,13 @@ data class OratureNarrationUiState(
     val markersEditable: Boolean = false,
     /** Options-menu restart enabled only once recording has started (JVM: IN_PROGRESS/FINISHED). */
     val canRestartChapter: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    /** True while an external plugin (chapter or verse editor) is open — blocks navigation and
+     *  swaps the whole screen for [org.bibletranslationtools.orature.ui.components.OraturePluginOpenedCover]. */
+    val isPluginOpen: Boolean = false,
+    /** Active chapter's source scripture text, joined for the plugin-opened cover. */
+    val sourceText: String = "",
+    val sourceLicense: String = ""
 )
 
 /**
@@ -114,7 +120,16 @@ data class OratureMarkerInfo(
     val verseIndex: Int,
     val location: Int,
     val label: String,
-    val movable: Boolean
+    val movable: Boolean,
+    /** Per-verse "⋮" menu gating (JVM: `VerseMarkerControl.isPlayingEnabledProperty` /
+     *  `isEditVerseEnabledProperty` / `isRecordAgainEnabledProperty`, bound from the matching
+     *  [NarratableItem]'s `isPlayOptionEnabled`/`isEditVerseOptionEnabled`/`isRecordAgainOptionEnabled`).
+     *  Only narration's marker menu (`OratureAudioWorkspace`) reads these; the other producers of
+     *  this shared type (Consume/Chunking/ChapterReview/VerseMarkerEditor) don't show a menu, so
+     *  their defaults are never consulted. */
+    val isPlayEnabled: Boolean = true,
+    val isEditEnabled: Boolean = false,
+    val isRecordAgainEnabled: Boolean = true
 )
 
 /**
@@ -172,6 +187,7 @@ class OratureNarrationViewModel(
     private val narrationFactory: OratureNarrationFactory by inject()
     private val pluginStore: org.bibletranslationtools.orature.plugins.OraturePluginStore by inject()
     private val verseMarkerEditor: OratureVerseMarkerEditor by inject()
+    private val navigationLock: org.bibletranslationtools.orature.ui.OratureNavigationLock by inject()
 
     private val _uiState = MutableStateFlow(OratureNarrationUiState())
     val uiState: StateFlow<OratureNarrationUiState> = _uiState.asStateFlow()
@@ -309,6 +325,7 @@ class OratureNarrationViewModel(
 
     /** Select a chapter by its sort number (JVM: `NavigateChapterEvent`). */
     fun selectChapter(sort: Int) {
+        if (_uiState.value.isPluginOpen) return
         val chapter = chapters.firstOrNull { it.sort == sort } ?: return
         workbookDataStore.setActiveChapter(chapter, workbookDescriptorId)
         val current = _uiState.value
@@ -413,6 +430,10 @@ class OratureNarrationViewModel(
             chapterTake = chapter.getSelectedTake()
             verseTextByLabel = prepared.textByLabel
             sourceTextByIndex = prepared.textByIndex
+            _uiState.value = _uiState.value.copy(
+                sourceText = prepared.textByIndex.joinToString("\n"),
+                sourceLicense = runCatching { workbook.source.resourceMetadata.license }.getOrDefault("")
+            )
 
             val sm = TeleprompterStateMachine(prepared.narration.totalVerses)
             sm.initialize(prepared.narration.versesWithRecordings())
@@ -539,13 +560,23 @@ class OratureNarrationViewModel(
     private fun updateMarkers() {
         val n = narration ?: return
         val total = n.totalVerses
+        val verseItems = _uiState.value.verses
         // Recorded verse markers with their totalVerses index (for the split-view assignment)
         // and relative chapter-frame location.
         _uiState.value = _uiState.value.copy(
             markerInfos = n.activeVerses.map { m ->
                 val idx = total.indexOfFirst { it.formattedLabel == m.formattedLabel }
+                val item = verseItems.getOrNull(idx)
                 // First marker (index 0) is the chapter/verse-1 anchor and can't be dragged (JVM).
-                OratureMarkerInfo(verseIndex = idx, location = m.location, label = m.label, movable = idx > 0)
+                OratureMarkerInfo(
+                    verseIndex = idx,
+                    location = m.location,
+                    label = m.label,
+                    movable = idx > 0,
+                    isPlayEnabled = item?.isPlayEnabled ?: true,
+                    isEditEnabled = item?.isEditEnabled ?: false,
+                    isRecordAgainEnabled = item?.isRecordAgainEnabled ?: true
+                )
             }
         )
     }
@@ -809,6 +840,25 @@ class OratureNarrationViewModel(
         pluginFor(record = false)?.let { editVerseWithPlugin(index, it) }
     }
 
+    /** Import an existing audio file to replace one verse (JVM: `importVerseAudio` →
+     *  `narration.onEditVerse`) — the same splice-back call [editVerseWithPlugin] uses, just fed a
+     *  user-picked file instead of a plugin-edited one. JVM's importVerseAudio doesn't stop playback
+     *  or take a navigation lock (unlike the plugin path), so this doesn't either. */
+    fun importVerseAudio(index: Int, file: java.io.File) {
+        val n = narration ?: return
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) { n.onEditVerse(index, file).blockingAwait() }
+                refreshVerses()
+                resetNarratableList()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                System.err.println("Import verse audio failed: $e")
+            }
+        }
+    }
+
     private fun markerPlugin(): org.bibletranslationtools.orature.plugins.OratureExternalPlugin? {
         if (!org.bibletranslationtools.orature.plugins.canLaunchPlugins()) return null
         val reg = pluginStore.load()
@@ -891,6 +941,7 @@ class OratureNarrationViewModel(
 
     private fun launchChapterPlugin(plugin: org.bibletranslationtools.orature.plugins.OratureExternalPlugin?) {
         plugin ?: return
+        if (_uiState.value.isPluginOpen) return
         val n = narration ?: return
         stopPlayer()
         _audioScene.value?.clear()
@@ -903,16 +954,31 @@ class OratureNarrationViewModel(
                 }
                 if (take == null) return@launch // nothing recorded yet to compile
                 chapterTake = take
+                beginPluginOpen()
                 org.bibletranslationtools.orature.plugins.launchPlugin(plugin, take.file, narrationPluginParams(0))
+                endPluginOpen()
                 withContext(Dispatchers.IO) { runCatching { n.loadFromSelectedChapterFile().blockingAwait() } }
                 refreshVerses()
                 resetNarratableList()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                endPluginOpen()
                 System.err.println("Chapter external plugin failed: $e")
             }
         }
+    }
+
+    /** Lock navigation + swap in the plugin-opened cover (JVM: PluginOpenedEvent/shouldBlockWindowCloseRequest).
+     *  Narration has no source-audio-player concept, so only the lock/nav-block side applies here. */
+    private fun beginPluginOpen() {
+        _uiState.value = _uiState.value.copy(isPluginOpen = true)
+        navigationLock.lock()
+    }
+
+    private fun endPluginOpen() {
+        _uiState.value = _uiState.value.copy(isPluginOpen = false)
+        navigationLock.unlock()
     }
 
     /** Import an existing audio file as the chapter narration (JVM: onImportChapterAudio). */
@@ -936,19 +1002,23 @@ class OratureNarrationViewModel(
      * (JVM: getSectionAsFile → processWithEditor → onEditVerse + onChapterReturnFromPlugin).
      */
     private fun editVerseWithPlugin(index: Int, plugin: org.bibletranslationtools.orature.plugins.OratureExternalPlugin) {
+        if (_uiState.value.isPluginOpen) return
         val n = narration ?: return
         stopPlayer()
         _audioScene.value?.clear()
         viewModelScope.launch {
             try {
                 val file = withContext(Dispatchers.IO) { n.getSectionAsFile(index) }
+                beginPluginOpen()
                 org.bibletranslationtools.orature.plugins.launchPlugin(plugin, file, narrationPluginParams(index))
+                endPluginOpen()
                 withContext(Dispatchers.IO) { n.onEditVerse(index, file).blockingAwait() }
                 refreshVerses()
                 resetNarratableList()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                endPluginOpen()
                 System.err.println("Narration external edit failed: $e")
             }
         }
@@ -1118,6 +1188,7 @@ class OratureNarrationViewModel(
     }
 
     override fun onCleared() {
+        if (_uiState.value.isPluginOpen) navigationLock.unlock()
         stopPositionTicker()
         waveformTickerJob?.cancel()
         volumeJob?.cancel()

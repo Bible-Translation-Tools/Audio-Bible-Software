@@ -58,6 +58,9 @@ kotlin {
                 implementation(libs.androidx.lifecycle.viewmodel.compose)
                 implementation(libs.androidx.lifecycle.runtime.compose)
                 implementation(libs.androidx.navigation.compose)
+                // koinInject() for reading app-scoped Koin singles (e.g. OratureNavigationLock)
+                // directly in a plain @Composable that isn't itself a ViewModel/KoinComponent.
+                implementation(libs.koin.compose)
             }
         }
 

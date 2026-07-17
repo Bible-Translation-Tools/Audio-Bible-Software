@@ -58,6 +58,19 @@ data class OraturePeerEditUiState(
     val recordingActive: Boolean = false,
     /** True when the current take can be opened in a configured external editor (desktop only). */
     val canEditExternally: Boolean = false,
+    /** True while an external plugin (editor or recorder) has a take open (JVM:
+     *  `pluginOpenedProperty` — shows a plugin-opened cover in place of the normal body). */
+    val isPluginOpen: Boolean = false,
+    /** Mirrors `OratureTranslationUiState`'s book+chapter title/source text/license — needed here
+     *  because the plugin-opened cover shows the chapter's source text itself. */
+    val activeContentTitle: String = "",
+    val sourceText: String = "",
+    val sourceLicense: String = "",
+    /** The source audio's playback rate + duration/position — needed by the plugin-opened cover's
+     *  source player (JVM: `SimpleAudioPlayer` properties). */
+    val sourceRate: Double = 1.0,
+    val sourceDurationMs: Int = 0,
+    val sourcePositionMs: Int = 0,
     val error: String? = null
 )
 
@@ -76,6 +89,7 @@ class OraturePeerEditViewModel(
     private val playerFactory: AudioPlayerConnectionFactory by inject()
     private val recorderFactory: AudioRecorderConnectionFactory by inject()
     private val pluginStore: org.bibletranslationtools.orature.plugins.OraturePluginStore by inject()
+    private val navigationLock: org.bibletranslationtools.orature.ui.OratureNavigationLock by inject()
 
     private val _uiState = MutableStateFlow(OraturePeerEditUiState())
     val uiState: StateFlow<OraturePeerEditUiState> = _uiState.asStateFlow()
@@ -91,6 +105,7 @@ class OraturePeerEditViewModel(
     private var positionFrames: Int = 0
     private var waveformFront: FloatArray = FloatArray(PEER_WAVEFORM_WIDTH * 2)
     private var waveformTickerJob: Job? = null
+    private var sourceTickerJob: Job? = null
 
     // Recording pipeline (same shape as Blind Draft).
     private var recorder: AudioRecorderConnection? = null
@@ -112,6 +127,23 @@ class OraturePeerEditViewModel(
         translationVm.setUndoRedoHandlers(::undo, ::redo)
         viewModelScope.launch {
             workbookDataStore.activeChunk.collect { chunk -> onChunk(chunk) }
+        }
+        // Mirror the shell's book/chapter title + source text/license (JVM: `SourceContent`'s own
+        // properties) so the plugin-opened cover can show them without re-deriving them here.
+        viewModelScope.launch {
+            translationVm.uiState.collect { t ->
+                val title = "${t.bookTitle} ${t.activeChapterTitle}".trim()
+                if (_uiState.value.activeContentTitle != title ||
+                    _uiState.value.sourceText != t.sourceText ||
+                    _uiState.value.sourceLicense != t.sourceLicense
+                ) {
+                    _uiState.value = _uiState.value.copy(
+                        activeContentTitle = title,
+                        sourceText = t.sourceText,
+                        sourceLicense = t.sourceLicense
+                    )
+                }
+            }
         }
     }
 
@@ -140,7 +172,8 @@ class OraturePeerEditViewModel(
                     } finally {
                         runCatching { peakReader.release() }
                     }
-                    Prepared(take, playerReader.totalFrames, sr, peaks, prepareSourcePlayer(chunk))
+                    val sourcePrep = prepareSourcePlayer(chunk)
+                    Prepared(take, playerReader.totalFrames, sr, peaks, sourcePrep?.first, sourcePrep?.second ?: 0)
                 } ?: run {
                     _uiState.value = OraturePeerEditUiState(hasChunk = true, noTake = true)
                     return@launch
@@ -162,9 +195,11 @@ class OraturePeerEditViewModel(
                     hasChunk = true,
                     chunkTitle = "${chunk.sort}",
                     confirmed = chunk.checkingStatus().ordinal >= checkingStatusForStep().ordinal,
-                    canEditExternally = selectedPlugin(recorder = false) != null
+                    canEditExternally = selectedPlugin(recorder = false) != null,
+                    sourceDurationMs = prepared.sourceDurationMs
                 )
                 startWaveformTicker()
+                startSourceTicker()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -178,34 +213,52 @@ class OraturePeerEditViewModel(
         val totalFrames: Int,
         val sampleRate: Int,
         val peaks: PrecomputedWaveform,
-        val sourcePlayer: IAudioPlayer?
+        val sourcePlayer: IAudioPlayer?,
+        val sourceDurationMs: Int
     )
 
-    /** Load the chapter's source audio for the top source player (chunk-level slicing lands later). */
-    private fun prepareSourcePlayer(chunk: Chunk): IAudioPlayer? {
+    /** Load JUST this chunk's slice of the chapter's source audio for the top source player (JVM:
+     *  `AudioDataStore.updateSourceAudio` → `sourceAudioAccessor.getChunk(...)`). */
+    private fun prepareSourcePlayer(chunk: Chunk): Pair<IAudioPlayer, Int>? {
         val wb = workbookDataStore.activeWorkbook.value ?: return null
         val chapterSort = workbookDataStore.activeChapter.value?.sort ?: return null
         val sa = runCatching {
-            wb.sourceAudioAccessor.getUserMarkedChapter(chapterSort, wb.target)
-                ?: wb.sourceAudioAccessor.getChapter(chapterSort, wb.target)
+            wb.sourceAudioAccessor.getChunk(chapterSort, chunk.sort, chunk.start, wb.target)
         }.getOrNull() ?: return null
-        val reader = OratureAudioFile(sa.file).reader().apply { open() }
-        return AudioPlayerConnection(SOURCE_PLAYER_ID, playerFactory, viewModelScope, Dispatchers.Default)
+        val reader = OratureAudioFile(sa.file).reader(sa.start, sa.end).apply { open() }
+        val sr = reader.spec.sampleRate.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
+        val durationMs = (reader.totalFrames.toLong() * 1000 / sr).toInt()
+        val player = AudioPlayerConnection(SOURCE_PLAYER_ID, playerFactory, viewModelScope, Dispatchers.Default)
             .also { it.load(reader) }
+        return player to durationMs
     }
 
+    /** Change the source-audio playback rate (JVM: playback-speed menu — `WaMenuButton`). */
+    fun setSourceRate(rate: Double) {
+        sourcePlayer?.changeRate(rate)
+        _uiState.value = _uiState.value.copy(sourceRate = rate)
+    }
+
+    /** Scrub the source audio to [fraction] (0f..1f) of its duration. */
+    fun seekSource(fraction: Float) {
+        val p = sourcePlayer ?: return
+        val frame = (p.getDurationInFrames() * fraction.coerceIn(0f, 1f)).toInt()
+        p.seek(frame)
+    }
+
+    /** Play/pause the source audio. State isn't written optimistically here — `startWaveformTicker`
+     *  re-derives `isSourcePlaying`/`sourcePositionMs` from the real player each tick (matches
+     *  `OratureBlindDraftViewModel.toggleSource`, avoiding a race with the async player connection). */
     fun toggleSource() {
         val p = sourcePlayer ?: return
         takePlayer?.pause()
         if (p.isPlaying()) p.pause() else p.play()
-        _uiState.value = _uiState.value.copy(isSourcePlaying = p.isPlaying(), isPlaying = false)
     }
 
     fun togglePlay() {
         val p = takePlayer ?: return
         sourcePlayer?.pause()
         if (p.isPlaying()) p.pause() else p.play()
-        _uiState.value = _uiState.value.copy(isPlaying = p.isPlaying(), isSourcePlaying = false)
     }
 
     fun pause() {
@@ -262,17 +315,20 @@ class OraturePeerEditViewModel(
     }
 
     /** Re-record into a new take with the configured external recorder, else native (JVM:
-     *  recordWithExternalPlugin). The new take auto-selects, so the chunk needs confirming again. */
+     *  recordWithExternalPlugin). The new take auto-selects, so the chunk needs confirming again.
+     *  Locks in-app navigation for the duration (see [beginPluginOpen]/[endPluginOpen]). */
     private fun recordWithExternalPlugin(chunk: Chunk) {
+        if (_uiState.value.isPluginOpen) return
         val recorder = selectedPlugin(recorder = true) ?: return
-        stopAll()
         viewModelScope.launch {
+            beginPluginOpen()
             val take = withContext(Dispatchers.IO) {
                 val t = newTake(chunk)
                 OratureAudioFile(t.file, 1, DEFAULT_SAMPLE_RATE, 16)
                 t
             }
             org.bibletranslationtools.orature.plugins.launchPlugin(recorder, take.file, pluginParams(chunk))
+            endPluginOpen()
             val hasAudio = runCatching { OratureAudioFile(take.file).totalFrames > 0 }.getOrDefault(false)
             if (hasAudio) chunk.audio.insertTake(take) else runCatching { take.file.delete() }
             onChunk(chunk)
@@ -280,16 +336,38 @@ class OraturePeerEditViewModel(
         }
     }
 
-    /** Open the chunk's selected take in the configured external editor, then reload (JVM: edit plugin). */
+    /** Open the chunk's selected take in the configured external editor, then reload (JVM: edit
+     *  plugin). Locks in-app navigation for the duration (see [beginPluginOpen]/[endPluginOpen]). */
     fun editTakeExternally() {
+        if (_uiState.value.isPluginOpen) return
         val chunk = activeChunk ?: return
         val take = chunk.audio.getSelectedTake() ?: return
         val editor = selectedPlugin(recorder = false) ?: return
         viewModelScope.launch {
-            stopAll()
+            beginPluginOpen()
             org.bibletranslationtools.orature.plugins.launchPlugin(editor, take.file, pluginParams(chunk))
+            endPluginOpen()
             onChunk(chunk)
         }
+    }
+
+    /** Cancel the waveform ticker + pause/release just the take player (its file is about to be
+     *  handed to a plugin) and flip every "a plugin is open" flag on. The SOURCE player is
+     *  deliberately kept alive so the plugin-opened cover can still offer source playback. Shared
+     *  by [editTakeExternally] and [recordWithExternalPlugin]. */
+    private fun beginPluginOpen() {
+        waveformTickerJob?.cancel()
+        runCatching { takePlayer?.pause(); takePlayer?.release() }
+        takePlayer = null
+        _uiState.value = _uiState.value.copy(isPluginOpen = true)
+        translationVm.setPluginOpen(true)
+        navigationLock.lock()
+    }
+
+    private fun endPluginOpen() {
+        _uiState.value = _uiState.value.copy(isPluginOpen = false)
+        translationVm.setPluginOpen(false)
+        navigationLock.unlock()
     }
 
     /** Translation context handed to a plugin (JVM: PluginParameters). */
@@ -419,17 +497,39 @@ class OraturePeerEditViewModel(
             while (isActive) {
                 val p = takePlayer
                 val peaks = precomputed
+                val current = _uiState.value
+                var playing = current.isPlaying
                 if (p != null && peaks != null) {
                     runCatching {
-                        val playing = p.isPlaying()
+                        playing = p.isPlaying()
                         if (playing) positionFrames = p.getLocationInFrames()
-                        if (_uiState.value.isPlaying != playing) {
-                            _uiState.value = _uiState.value.copy(isPlaying = playing)
-                        }
                         val halfWindow = PEER_SECONDS_ON_SCREEN * sampleRate / 2
                         peaks.window(positionFrames - halfWindow, out)
                         waveformFront = out.copyOf()
                     }.onFailure { System.err.println("[peeredit] waveform render failed: $it") }
+                }
+                if (current.isPlaying != playing) {
+                    _uiState.value = _uiState.value.copy(isPlaying = playing)
+                }
+                delay(33)
+            }
+        }
+    }
+
+    /** Polls ONLY the source player, independent of [startWaveformTicker] — kept running even while
+     *  [waveformTickerJob] is cancelled during an external-plugin edit (see [beginPluginOpen]), since
+     *  the source player is deliberately left alive so the plugin-opened cover can still play it.
+     *  Without this, the cover's play/pause icon and scrubber would freeze once the take-focused
+     *  ticker stops. */
+    private fun startSourceTicker() {
+        sourceTickerJob?.cancel()
+        sourceTickerJob = viewModelScope.launch(Dispatchers.Default) {
+            while (isActive) {
+                val current = _uiState.value
+                val srcPlaying = runCatching { sourcePlayer?.isPlaying() }.getOrDefault(false) ?: false
+                val srcPos = runCatching { sourcePlayer?.getLocationMs() }.getOrNull() ?: current.sourcePositionMs
+                if (current.isSourcePlaying != srcPlaying || current.sourcePositionMs != srcPos) {
+                    _uiState.value = _uiState.value.copy(isSourcePlaying = srcPlaying, sourcePositionMs = srcPos)
                 }
                 delay(33)
             }
@@ -446,6 +546,7 @@ class OraturePeerEditViewModel(
 
     private fun stopAll() {
         waveformTickerJob?.cancel()
+        sourceTickerJob?.cancel()
         runCatching { sourcePlayer?.pause() }
         runCatching { sourcePlayer?.release() }
         runCatching { takePlayer?.pause() }
@@ -463,6 +564,12 @@ class OraturePeerEditViewModel(
 
     public override fun onCleared() {
         translationVm.clearUndoRedoHandlers()
+        // Safety net: normal navigation is blocked while a plugin is open (see beginPluginOpen),
+        // but don't leave the shell's navigation lock stuck on if this VM is ever cleared anyway.
+        if (_uiState.value.isPluginOpen) {
+            translationVm.setPluginOpen(false)
+            navigationLock.unlock()
+        }
         stopAll()
     }
 

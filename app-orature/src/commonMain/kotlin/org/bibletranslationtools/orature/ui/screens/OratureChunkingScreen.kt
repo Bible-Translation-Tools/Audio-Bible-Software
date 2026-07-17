@@ -94,7 +94,9 @@ private val MARKER_GRAB = 24.dp
 fun OratureChunkingScreen(viewModel: OratureChunkingViewModel) {
     val uiState by viewModel.uiState.collectAsState()
 
-    Box(modifier = Modifier.fillMaxSize().background(OratureColors.Background), contentAlignment = Alignment.Center) {
+    // JVM: `.translation-view { -fx-background-color: -wa-foreground; }` (white, not the app's
+    // light-gray page background).
+    Box(modifier = Modifier.fillMaxSize().background(OratureColors.Foreground), contentAlignment = Alignment.Center) {
         when {
             uiState.isLoading -> CircularProgressIndicator(color = OratureColors.Primary)
             uiState.error != null -> Text(uiState.error!!, color = OratureColors.RegularText)
@@ -142,6 +144,7 @@ private fun ChunkingBody(
             Button(
                 onClick = viewModel::placeMarker,
                 enabled = !addDisabled,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = OratureColors.Primary)
             ) {
                 Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))

@@ -21,7 +21,9 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
@@ -29,6 +31,7 @@ import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -54,6 +57,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.bibletranslationtools.orature.resources.Res
+import org.bibletranslationtools.orature.resources.`import`
+import org.bibletranslationtools.orature.resources.openIn
 import org.bibletranslationtools.orature.resources.options
 import org.bibletranslationtools.orature.resources.play
 import org.bibletranslationtools.orature.resources.reRecord
@@ -109,6 +114,8 @@ fun OratureAudioWorkspace(
     onMarkerDragEnd: (verseIndex: Int, deltaFrames: Int) -> Unit,
     onPlayVerse: (verseIndex: Int) -> Unit,
     onRecordAgain: (verseIndex: Int) -> Unit,
+    onEditVerse: (verseIndex: Int) -> Unit = {},
+    onImportVerse: (verseIndex: Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var frameTick by remember { mutableLongStateOf(0L) }
@@ -132,6 +139,8 @@ fun OratureAudioWorkspace(
                 onMarkerDragEnd = onMarkerDragEnd,
                 onPlayVerse = onPlayVerse,
                 onRecordAgain = onRecordAgain,
+                onEditVerse = onEditVerse,
+                onImportVerse = onImportVerse,
                 frameClock = frameClock,
                 frameTick = frameTick,
                 modifier = Modifier.weight(1f).fillMaxHeight()
@@ -186,6 +195,8 @@ private fun WaveformArea(
     onMarkerDragEnd: (verseIndex: Int, deltaFrames: Int) -> Unit,
     onPlayVerse: (verseIndex: Int) -> Unit,
     onRecordAgain: (verseIndex: Int) -> Unit,
+    onEditVerse: (verseIndex: Int) -> Unit,
+    onImportVerse: (verseIndex: Int) -> Unit,
     frameClock: () -> Long,
     frameTick: Long,
     modifier: Modifier
@@ -245,7 +256,9 @@ private fun WaveformArea(
                 onDragStart = { onMarkerDragStart(marker.verseIndex) },
                 onDragEnd = { deltaFrames -> onMarkerDragEnd(marker.verseIndex, deltaFrames) },
                 onPlay = { onPlayVerse(marker.verseIndex) },
-                onRecordAgain = { onRecordAgain(marker.verseIndex) }
+                onRecordAgain = { onRecordAgain(marker.verseIndex) },
+                onEditVerse = { onEditVerse(marker.verseIndex) },
+                onImportVerse = { onImportVerse(marker.verseIndex) }
             )
         }
     }
@@ -267,7 +280,9 @@ private fun VerseMarker(
     onDragStart: () -> Unit,
     onDragEnd: (deltaFrames: Int) -> Unit,
     onPlay: () -> Unit,
-    onRecordAgain: () -> Unit
+    onRecordAgain: () -> Unit,
+    onEditVerse: () -> Unit,
+    onImportVerse: () -> Unit
 ) {
     val density = LocalDensity.current
     val grabHalfPx = with(density) { (MARKER_GRAB_WIDTH / 2).toPx() }
@@ -354,16 +369,35 @@ private fun VerseMarker(
                         .clickable { menuOpen = true }
                         .padding(2.dp)
                 )
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenu(
+                    expanded = menuOpen,
+                    onDismissRequest = { menuOpen = false },
+                    containerColor = MaterialTheme.colorScheme.surface
+                ) {
+                    // JVM VerseMenu: Play / Record Again / Open In / Import (in that order).
                     DropdownMenuItem(
                         leadingIcon = { Icon(Icons.Filled.PlayArrow, contentDescription = null) },
                         text = { Text(stringResource(Res.string.play)) },
+                        enabled = marker.isPlayEnabled,
                         onClick = { menuOpen = false; onPlay() }
                     )
                     DropdownMenuItem(
                         leadingIcon = { Icon(Icons.Filled.FiberManualRecord, contentDescription = null) },
                         text = { Text(stringResource(Res.string.reRecord)) },
+                        enabled = marker.isRecordAgainEnabled,
                         onClick = { menuOpen = false; onRecordAgain() }
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null) },
+                        text = { Text(stringResource(Res.string.openIn)) },
+                        enabled = marker.isEditEnabled,
+                        onClick = { menuOpen = false; onEditVerse() }
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = { Icon(Icons.Filled.Download, contentDescription = null) },
+                        text = { Text(stringResource(Res.string.`import`)) },
+                        enabled = marker.isEditEnabled,
+                        onClick = { menuOpen = false; onImportVerse() }
                     )
                 }
             }

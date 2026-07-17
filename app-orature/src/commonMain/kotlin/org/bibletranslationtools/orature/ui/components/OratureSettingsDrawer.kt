@@ -137,8 +137,8 @@ fun OratureSettingsDrawer(
 
     Surface(
         modifier = modifier.width(550.dp).fillMaxHeight(),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 4.dp
+        // No tonalElevation — see OratureInfoDrawer for why (avoids the M3 blue-gray tint on white).
+        color = MaterialTheme.colorScheme.surface
     ) {
         Column(
             modifier = Modifier
@@ -310,7 +310,8 @@ private fun OratureDropdown(
             )
             ExposedDropdownMenu(
                 expanded = expanded && hasOptions,
-                onDismissRequest = { expanded = false }
+                onDismissRequest = { expanded = false },
+                containerColor = MaterialTheme.colorScheme.surface
             ) {
                 options.forEach { (id, name) ->
                     androidx.compose.material3.DropdownMenuItem(
@@ -390,7 +391,8 @@ private fun LanguageNamesSection(
                     onSetUrl(urlField)
                     onCheckForUpdates()
                 },
-                enabled = !inProgress
+                enabled = !inProgress,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
             ) {
                 if (inProgress) {
                     CircularProgressIndicator(
@@ -406,10 +408,13 @@ private fun LanguageNamesSection(
                 Text(stringResource(Res.string.checkForUpdates))
             }
             if (isCustom && !inProgress) {
-                OutlinedButton(onClick = {
-                    urlField = AppSettings.DEFAULT_LANG_NAMES_URL
-                    onReset()
-                }) {
+                OutlinedButton(
+                    onClick = {
+                        urlField = AppSettings.DEFAULT_LANG_NAMES_URL
+                        onReset()
+                    },
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                ) {
                     Text(stringResource(Res.string.reset))
                 }
             }

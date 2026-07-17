@@ -84,8 +84,10 @@ fun OratureInfoDrawer(
 
     Surface(
         modifier = modifier.width(550.dp).fillMaxHeight(),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 4.dp
+        // No tonalElevation: Compose Material3 blends primary color into the surface at elevation
+        // ("tonal elevation"), which tints white toward blue-gray. JVM's dialog-background is a flat
+        // -wa-foreground (pure white in light theme) with no such tint.
+        color = MaterialTheme.colorScheme.surface
     ) {
         Column(
             modifier = Modifier
@@ -162,7 +164,11 @@ fun OratureInfoDrawer(
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                OutlinedButton(onClick = viewModel::browseLogs, enabled = viewModel.canViewLogs) {
+                OutlinedButton(
+                    onClick = viewModel::browseLogs,
+                    enabled = viewModel.canViewLogs,
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                ) {
                     Icon(Icons.Filled.Description, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(stringResource(Res.string.viewLogs))
@@ -210,7 +216,8 @@ fun OratureInfoDrawer(
                             errorDescription = ""
                         }
                     },
-                    enabled = errorDescription.isNotBlank()
+                    enabled = errorDescription.isNotBlank(),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
                 ) {
                     Icon(Icons.Filled.Send, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))

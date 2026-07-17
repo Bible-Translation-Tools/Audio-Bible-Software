@@ -44,6 +44,7 @@ import org.bibletranslationtools.orature.resources.play
 import org.bibletranslationtools.orature.resources.playSource
 import org.bibletranslationtools.orature.resources.record
 import org.bibletranslationtools.orature.ui.OratureColors
+import org.bibletranslationtools.orature.ui.components.OraturePluginOpenedCover
 import org.bibletranslationtools.orature.ui.viewmodels.OraturePeerEditViewModel
 import org.jetbrains.compose.resources.stringResource
 
@@ -57,11 +58,25 @@ import org.jetbrains.compose.resources.stringResource
 fun OraturePeerEditScreen(viewModel: OraturePeerEditViewModel) {
     val uiState by viewModel.uiState.collectAsState()
 
-    Box(modifier = Modifier.fillMaxSize().background(OratureColors.Background), contentAlignment = Alignment.Center) {
+    // JVM: `.translation-view { -fx-background-color: -wa-foreground; }` (white, not the app's
+    // light-gray page background).
+    Box(modifier = Modifier.fillMaxSize().background(OratureColors.Foreground), contentAlignment = Alignment.Center) {
         when {
             uiState.isLoading -> CircularProgressIndicator(color = OratureColors.Primary)
             !uiState.hasChunk || uiState.noTake -> Text(stringResource(Res.string.chunk), color = OratureColors.RegularText)
             uiState.error != null -> Text(uiState.error!!, color = OratureColors.RegularText)
+            uiState.isPluginOpen -> OraturePluginOpenedCover(
+                contentTitle = uiState.activeContentTitle,
+                sourceText = uiState.sourceText,
+                sourceLicense = uiState.sourceLicense,
+                isSourcePlaying = uiState.isSourcePlaying,
+                sourcePositionMs = uiState.sourcePositionMs,
+                sourceDurationMs = uiState.sourceDurationMs,
+                sourceRate = uiState.sourceRate,
+                onToggleSource = viewModel::toggleSource,
+                onSeekSource = viewModel::seekSource,
+                onSetSourceRate = viewModel::setSourceRate
+            )
             uiState.recording -> RecordingSection(
                 waveformProvider = viewModel::currentRecordingWaveform,
                 isActive = uiState.recordingActive,
@@ -90,7 +105,7 @@ private fun PeerEditBody(
                 fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = OratureColors.RegularText
             )
             Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = viewModel::toggleSource) {
+            OutlinedButton(onClick = viewModel::toggleSource, shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)) {
                 Icon(if (uiState.isSourcePlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = null)
                 Text(
                     if (uiState.isSourcePlaying) stringResource(Res.string.pause) else stringResource(Res.string.playSource),
@@ -128,6 +143,7 @@ private fun PeerEditBody(
         ) {
             Button(
                 onClick = viewModel::togglePlay,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = OratureColors.Primary)
             ) {
                 Icon(if (uiState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = null)
@@ -137,20 +153,32 @@ private fun PeerEditBody(
                 )
             }
             if (!uiState.isPlaying) {
-                OutlinedButton(onClick = viewModel::confirmChunk, enabled = !uiState.confirmed) {
+                OutlinedButton(
+                    onClick = viewModel::confirmChunk,
+                    enabled = !uiState.confirmed,
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                ) {
                     Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
                     Text(stringResource(Res.string.confirm), modifier = Modifier.padding(start = 6.dp))
                 }
             }
             Spacer(Modifier.weight(1f))
             if (uiState.canEditExternally) {
-                OutlinedButton(onClick = viewModel::editTakeExternally, enabled = !uiState.isPlaying) {
+                OutlinedButton(
+                    onClick = viewModel::editTakeExternally,
+                    enabled = !uiState.isPlaying,
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                ) {
                     Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
                     Text(stringResource(Res.string.edit), modifier = Modifier.padding(start = 6.dp))
                 }
                 Spacer(Modifier.size(8.dp))
             }
-            OutlinedButton(onClick = viewModel::onRecordNew, enabled = !uiState.isPlaying) {
+            OutlinedButton(
+                onClick = viewModel::onRecordNew,
+                enabled = !uiState.isPlaying,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+            ) {
                 Icon(Icons.Filled.Mic, contentDescription = null, modifier = Modifier.size(18.dp))
                 Text(stringResource(Res.string.record), modifier = Modifier.padding(start = 6.dp))
             }

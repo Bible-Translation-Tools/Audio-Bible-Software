@@ -173,6 +173,8 @@
     <string name="noPlugins">No Audio Plugins</string>
     <string name="noRecorder">No audio recording helper application found.</string>
     <string name="noEditor">No audio editing helper application found.</string>
+    <string name="zoomIn">Zoom in</string>
+    <string name="zoomOut">Zoom out</string>
     <string name="thirdPartySupport">3rd Party Support</string>
     <string name="addApp">Add Helper Application</string>
     <string name="addAppDescription">Add a helper application to record or edit content in.</string>

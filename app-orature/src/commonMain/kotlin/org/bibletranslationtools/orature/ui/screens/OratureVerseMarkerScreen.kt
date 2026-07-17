@@ -124,9 +124,13 @@ private fun MarkerHeader(
             Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = stringResource(Res.string.redo), tint = OratureColors.RegularText)
         }
         Spacer(Modifier.width(8.dp))
-        OutlinedButton(onClick = onCancel) { Text(stringResource(Res.string.cancel)) }
+        OutlinedButton(onClick = onCancel, shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)) { Text(stringResource(Res.string.cancel)) }
         Spacer(Modifier.width(8.dp))
-        Button(onClick = onSave, colors = ButtonDefaults.buttonColors(containerColor = OratureColors.Primary)) {
+        Button(
+            onClick = onSave,
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = OratureColors.Primary)
+        ) {
             Text(stringResource(Res.string.save))
         }
     }
@@ -176,6 +180,7 @@ private fun MarkerBody(
             ) {
                 Button(
                     onClick = viewModel::placeMarker,
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = OratureColors.Primary)
                 ) {
                     Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))

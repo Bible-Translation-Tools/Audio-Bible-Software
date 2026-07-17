@@ -59,6 +59,21 @@ data class OratureTranslationUiState(
     val canRedo: Boolean = false,
     /** Source scripture text for the right-hand drawer. */
     val sourceText: String = "",
+    /** The source resource's title (JVM: `SourceTextDrawer.sourceInfoProperty`), e.g.
+     *  "English Unlocked Literal Bible (Audio)" — shown as the drawer's content heading. */
+    val sourceTitle: String = "",
+    /** The source resource's license identifier (JVM: `licenseProperty`), e.g. "CC BY-SA 4.0". */
+    val sourceLicense: String = "",
+    /** The verse label (e.g. "3" or "3-4") to highlight in the source-text drawer, tracking
+     *  whichever step's playhead is active right now (JVM: `SourceTextDrawer.highlightedChunk`,
+     *  fed via `TranslationViewModel2.currentMarkerProperty` from Consume/Final Review). Null when
+     *  no step with a full-chapter source view is active, or the playhead precedes any verse. */
+    val highlightedVerseLabel: String? = null,
+    /** True while an external editor plugin has a take open (JVM: `shouldBlockWindowCloseRequest`/
+     *  `externalPluginOpenedProperty` — there it blocks the OS window close; here, since there's no
+     *  separate window, it blocks in-app navigation instead: switching steps, chapters, or leaving
+     *  the translation page). Set by whichever step has a plugin open (currently Final Review). */
+    val pluginOpen: Boolean = false,
     val error: String? = null
 )
 
@@ -88,7 +103,9 @@ class OratureTranslationViewModel(
         val mode: ProjectMode,
         val chapters: List<Chapter>,
         val completed: Map<Int, Boolean>,
-        val noSourceAudio: Boolean
+        val noSourceAudio: Boolean,
+        val sourceTitle: String,
+        val sourceLicense: String
     )
 
     /** True when the source has no audio for [sort] (drives Consume → SourceAudioMissing). */
@@ -151,7 +168,11 @@ class OratureTranslationViewModel(
                         activeSort != null &&
                             workbook.sourceAudioAccessor.getChapter(activeSort, workbook.target) == null
                     }.getOrDefault(true)
-                    LoadResult(title, descriptor.mode, chapterList, completed, noSource)
+                    LoadResult(
+                        title, descriptor.mode, chapterList, completed, noSource,
+                        sourceTitle = workbook.source.resourceMetadata.title,
+                        sourceLicense = workbook.source.resourceMetadata.license
+                    )
                 }
 
                 chapters = loaded.chapters
@@ -167,7 +188,9 @@ class OratureTranslationViewModel(
                     chapters = buildGrid(active?.sort, loaded.completed),
                     hasPreviousChapter = hasNeighbor(active?.sort, step = -1),
                     hasNextChapter = hasNeighbor(active?.sort, step = +1),
-                    noSourceAudio = loaded.noSourceAudio
+                    noSourceAudio = loaded.noSourceAudio,
+                    sourceTitle = loaded.sourceTitle,
+                    sourceLicense = loaded.sourceLicense
                 )
                 updateReachableStep()
             } catch (e: CancellationException) {
@@ -201,6 +224,35 @@ class OratureTranslationViewModel(
     fun onUndo() { undoHandler?.invoke() }
     fun onRedo() { redoHandler?.invoke() }
 
+    // Final Review registers its "open in external editor" action here so the header's Open-In
+    // button (JVM: OpenInPluginEvent) drives it, mirroring the undo/redo handler pattern above.
+    private var openInHandler: (() -> Unit)? = null
+
+    fun setOpenInHandler(handler: () -> Unit) {
+        openInHandler = handler
+    }
+
+    fun clearOpenInHandler() {
+        openInHandler = null
+    }
+
+    fun onOpenIn() { openInHandler?.invoke() }
+
+    /** Lock/unlock in-app navigation while an external editor plugin has a take open (JVM:
+     *  the window-close guard, adapted — see [OratureTranslationUiState.pluginOpen]). */
+    fun setPluginOpen(open: Boolean) {
+        _uiState.value = _uiState.value.copy(pluginOpen = open)
+    }
+
+    /** Set by whichever step tracks a full-chapter playhead (JVM: binding `currentMarkerProperty`
+     *  to that step's `highlightedMarkerIndexProperty`) so the source-text drawer's highlight
+     *  follows along. Pass null to clear (e.g. when that step unmounts). */
+    fun setHighlightedVerse(label: String?) {
+        if (_uiState.value.highlightedVerseLabel != label) {
+            _uiState.value = _uiState.value.copy(highlightedVerseLabel = label)
+        }
+    }
+
     // The active Chunking VM registers an awaited save here so leaving the step persists its chunks
     // (and they're committed + readable) BEFORE the next step loads — matching Orature's undock save.
     private var chunkSaveHandler: (suspend () -> Unit)? = null
@@ -213,9 +265,10 @@ class OratureTranslationViewModel(
         load()
     }
 
-    /** Navigate to a step (JVM: navigateStep) — only if it is reachable. */
+    /** Navigate to a step (JVM: navigateStep) — only if it is reachable and no plugin is open. */
     fun selectStep(step: ChunkingStep) {
         val s = _uiState.value
+        if (s.pluginOpen) return
         if (step.ordinal > s.reachableStep.ordinal) return
         // Leaving Chunking: persist its chunks and WAIT before switching, so the next step reads
         // committed chunk content (JVM saves synchronously in undock before navigating).
@@ -328,6 +381,7 @@ class OratureTranslationViewModel(
 
     /** Select a chunk by sort (JVM: selectChunk) — drives the Blind Draft / later step bodies. */
     fun selectChunk(sort: Int) {
+        if (_uiState.value.pluginOpen) return
         val chapterSort = _uiState.value.activeChapterSort ?: return
         val chapter = chapters.firstOrNull { it.sort == chapterSort } ?: return
         viewModelScope.launch {
@@ -343,6 +397,7 @@ class OratureTranslationViewModel(
     }
 
     fun selectChapter(sort: Int) {
+        if (_uiState.value.pluginOpen) return
         val chapter = chapters.firstOrNull { it.sort == sort } ?: return
         workbookDataStore.setActiveChapter(chapter, workbookDescriptorId)
         val current = _uiState.value

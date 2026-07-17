@@ -1,5 +1,7 @@
 package org.bibletranslationtools.otter.common.domain.translation
 
+import kotlin.reflect.KClass
+import org.bibletranslationtools.otter.common.data.audio.AudioMarker
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
 import org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio
 import org.bibletranslationtools.otter.common.data.workbook.DateHolder
@@ -8,14 +10,17 @@ import org.bibletranslationtools.otter.common.data.workbook.TakeCheckingState
 import org.bibletranslationtools.otter.common.domain.IUndoable
 import org.bibletranslationtools.otter.common.domain.model.MarkerPlacementModel
 
+/** [ofType] optionally targets a SPECIFIC marker type (e.g. Book or Chapter) instead of just the
+ *  next-in-sequence marker (JVM: `AddOptionalMarkerAction` — the "Add Marker" split-button menu). */
 class AddMarkerAction(
     private val markerModel: MarkerPlacementModel,
-    private val location: Int
+    private val location: Int,
+    private val ofType: KClass<out AudioMarker>? = null
 ) : IUndoable {
     private var markerId: Int? = null
 
     override fun execute() {
-        markerId = markerModel.addMarker(location)
+        markerId = markerModel.addMarker(location, ofType)
     }
 
     override fun undo() {

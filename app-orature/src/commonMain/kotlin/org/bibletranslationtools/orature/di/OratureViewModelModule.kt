@@ -7,6 +7,7 @@ import org.bibletranslationtools.orature.ui.viewmodels.OratureProjectWizardViewM
 import org.bibletranslationtools.orature.ui.viewmodels.OratureSettingsViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureVerseMarkerEditor
 import org.bibletranslationtools.orature.ui.narration.OratureNarrationFactory
+import org.bibletranslationtools.orature.ui.OratureNavigationLock
 import org.bibletranslationtools.orature.ui.workbook.OratureWorkbookDataStore
 import org.koin.core.parameter.parametersOf
 import org.koin.dsl.module
@@ -27,6 +28,9 @@ val oratureViewModelModule = module {
     // App-scoped handoff for the built-in Verse Marker editor (JVM: the marker plugin's parameter
     // scope). A host compiles the chapter take, fills a Request, then navigates to the marker route.
     single { OratureVerseMarkerEditor() }
+    // App-scoped in-app navigation lock (JVM: the OS window-close guard, adapted) — set while an
+    // external editor plugin has a take open; read by OratureRootShell to disable the nav rail.
+    single { OratureNavigationLock() }
     // Shared open-project state (JVM: WorkbookDataStore) — written by the narration VM,
     // read by the mode-page components. Single so it survives across the mode screens.
     single { OratureWorkbookDataStore(get()) }

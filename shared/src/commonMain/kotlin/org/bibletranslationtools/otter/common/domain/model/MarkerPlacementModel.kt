@@ -21,6 +21,7 @@ package org.bibletranslationtools.otter.common.domain.model
 import io.reactivex.Completable
 import io.reactivex.Single
 import java.util.*
+import kotlin.reflect.KClass
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.audio.AudioCue
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
@@ -80,11 +81,30 @@ class MarkerPlacementModel(
     val markerTotal: Int
         get() = markers.size
 
+    /**
+     * Index (into [markers], the fixed original-order blueprint) of the next marker still needing
+     * placement. Found by formattedLabel membership rather than `markerItems.size` so it stays
+     * correct even when a marker was placed OUT of blueprint order (JVM: `AddOptionalMarkerAction`
+     * lets Book/Chapter markers be placed ahead of or behind verse markers via the "Add Marker"
+     * split-button menu, instead of only ever filling in strict sequence).
+     */
     private val labelIndex
         get(): Int {
-            val unplacedIndex = markerItems.indexOfFirst { !it.placed }
-            return if (unplacedIndex != -1) unplacedIndex else markerItems.size
+            val nextIndex = markers.indices.firstOrNull { i ->
+                markerItems.none { it.marker.formattedLabel == markers[i].formattedLabel }
+            }
+            return nextIndex ?: markers.size
         }
+
+    /** True when [ofType] appears in this model's marker blueprint and isn't placed yet (JVM:
+     *  `isBookMarkerPlacedProperty`/`isChapterMarkerPlacedProperty`, inverted — gates the
+     *  Book/Chapter options in the "Add Marker" split-button menu). */
+    fun hasUnplacedMarkerOfType(ofType: KClass<out AudioMarker>): Boolean {
+        return markers.any { ofType.isInstance(it) } &&
+            markers.filter { ofType.isInstance(it) }.any { blueprint ->
+                markerItems.none { it.marker.formattedLabel == blueprint.formattedLabel }
+            }
+    }
 
     private inline fun <reified T : AudioMarker> getTitlesAsModels(
         audio: OratureAudioFile,
@@ -153,8 +173,21 @@ class MarkerPlacementModel(
         refreshMarkers()
     }
 
-    fun addMarker(location: Int): Int {
-        val marker = markers.getOrNull(labelIndex) ?: return - 1
+    /**
+     * Place the next unplaced marker at [location]. If [ofType] is given, places the next unplaced
+     * marker of THAT specific type instead of strictly the next one in blueprint order (JVM:
+     * `AddOptionalMarkerAction` — the "Add Marker" split-button's Book/Chapter Marker options).
+     */
+    fun addMarker(location: Int, ofType: KClass<out AudioMarker>? = null): Int {
+        val index = if (ofType == null) {
+            labelIndex
+        } else {
+            markers.indices.firstOrNull { i ->
+                ofType.isInstance(markers[i]) &&
+                    markerItems.none { it.marker.formattedLabel == markers[i].formattedLabel }
+            } ?: return -1
+        }
+        val marker = markers.getOrNull(index) ?: return - 1
         val markerModel = MarkerItem(marker.clone(location), true)
 
         val op = Add(markerModel)

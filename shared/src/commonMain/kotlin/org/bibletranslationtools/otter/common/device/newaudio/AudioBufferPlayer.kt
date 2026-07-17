@@ -86,18 +86,49 @@ class AudioBufferPlayer(
 
                     if (currentReader == null || !currentReader.hasRemaining()) break
 
-                    val inputBuffer = ByteArray(processor.inputBufferSize * currentReader.spec.bytesPerFrame)
+                    val bytesPerFrame = currentReader.spec.bytesPerFrame.coerceAtLeast(1)
+                    val inputBuffer = ByteArray(processor.inputBufferSize * bytesPerFrame)
+
+                    // WSOLA is designed to be fed a SLIDING, overlapping analysis window, not
+                    // disjoint forward-only chunks: rewind by `processor.overlap` frames before each
+                    // read (after the first) so this window re-reads the tail of the previous one.
+                    // Mirrors the original JVM AudioBufferPlayer.play() exactly (same rewind-then-read,
+                    // same `supportsTimeShifting()` gate). Without this, WSOLA's own `sampleReq`
+                    // floor-clamp for tempo < 1.0 means the reader still advances a normal-speed
+                    // amount per iteration — slow rates end up mistimed rather than actually slower.
+                    if (processor.playbackRate != 1.0 && currentReader.supportsTimeShifting()) {
+                        val bufferFrames = inputBuffer.size / bytesPerFrame
+                        if (currentReader.framePosition > bufferFrames) {
+                            currentReader.seek((currentReader.framePosition - processor.overlap).toLong())
+                        }
+                    }
+
                     val read = currentReader.getPcmBuffer(inputBuffer)
 
                     if (read > 0) {
-                        val output = inputBuffer //processor.process(inputBuffer.copyOf(read))
-                        currentSink.write(output, 0, read)
-                        val readerFrame = currentReader.framePosition.toLong()
-                        if (readerFrame > 0L) {
-                            lastKnownLocationInFrames = readerFrame
+                        // Only pay for WSOLA time-stretching when the rate actually differs from
+                        // normal speed, so the default (1.0x) playback path is unaffected. Time-
+                        // stretching changes the byte count (that's the point — it changes how much
+                        // audio-time a buffer covers), so the write length must track the PROCESSED
+                        // buffer's own size, not the pre-processing `read` count.
+                        if (processor.playbackRate == 1.0) {
+                            currentSink.write(inputBuffer, 0, read)
+                            val readerFrame = currentReader.framePosition.toLong()
+                            if (readerFrame > 0L) {
+                                lastKnownLocationInFrames = readerFrame
+                            } else {
+                                val framesRead = read / bytesPerFrame
+                                lastKnownLocationInFrames += framesRead.toLong()
+                            }
                         } else {
-                            val framesRead = read / currentReader.spec.bytesPerFrame.coerceAtLeast(1)
-                            lastKnownLocationInFrames += framesRead.toLong()
+                            val output = processor.process(inputBuffer.copyOf(read))
+                            currentSink.write(output, 0, output.size)
+                            // The reader's raw position no longer tracks true progress once we're
+                            // rewinding it for the sliding window, so derive position from what the
+                            // sink has actually played, scaled by the rate (JVM:
+                            // `player.framePosition * playbackRate` in getLocationInFrames).
+                            lastKnownLocationInFrames = sessionStartFrame +
+                                (currentSink.framePosition * processor.playbackRate).toLong()
                         }
                     }
                 }
@@ -159,7 +190,14 @@ class AudioBufferPlayer(
     fun getLocationInFrames(): Long {
         val sink = _sink
         return if (sink.isRunning) {
-            (sessionStartFrame + sink.framePosition).coerceAtMost(lastKnownLocationInFrames)
+            if (processor.playbackRate == 1.0) {
+                (sessionStartFrame + sink.framePosition).coerceAtMost(lastKnownLocationInFrames)
+            } else {
+                // At a stretched rate, one sink-frame played corresponds to `rate` source-frames
+                // (JVM: `player.framePosition * playbackRate`) — no `lastKnownLocationInFrames`
+                // clamp here since the play loop keeps it in lockstep with this exact formula.
+                sessionStartFrame + (sink.framePosition * processor.playbackRate).toLong()
+            }
         } else {
             lastKnownLocationInFrames
         }

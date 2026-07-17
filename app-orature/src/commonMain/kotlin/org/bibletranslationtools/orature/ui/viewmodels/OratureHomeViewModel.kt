@@ -43,6 +43,8 @@ data class OratureBookUiModel(
     val anthology: Anthology,
     val progress: Double,
     val sort: Int,
+    /** True when the book has source audio available (JVM: shows the speaker status icon). */
+    val hasSourceAudio: Boolean,
     /** The project mode — routes book-open to the narration vs translation page. */
     val mode: ProjectMode
 )
@@ -260,6 +262,7 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
             anthology = anthology,
             progress = resolvedProgress,
             sort = sort,
+            hasSourceAudio = hasSourceAudio,
             mode = mode
         )
     }

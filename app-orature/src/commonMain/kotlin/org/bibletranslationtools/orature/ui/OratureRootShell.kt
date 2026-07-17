@@ -8,12 +8,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
@@ -24,6 +26,7 @@ import org.bibletranslationtools.orature.ui.components.OratureNavRail
 import org.bibletranslationtools.orature.ui.components.OratureSettingsDrawer
 import org.bibletranslationtools.orature.ui.navigation.OratureHomeRoute
 import org.bibletranslationtools.orature.ui.navigation.OratureSplashRoute
+import org.koin.compose.koinInject
 
 /** Which left drawer (if any) is currently open over the content. */
 private enum class OpenDrawer { NONE, SETTINGS, INFO }
@@ -45,6 +48,11 @@ fun OratureRootShell(
 ) {
     var openDrawer by remember { mutableStateOf(OpenDrawer.NONE) }
 
+    // Locked while an external editor plugin has a take open (currently set by Final Review) — the
+    // rail lives outside the nav graph entirely, so this app-scoped lock is how that reaches it.
+    val navigationLock = koinInject<OratureNavigationLock>()
+    val locked by navigationLock.locked.collectAsState()
+
     val backStackEntry by navController.currentBackStackEntryAsState()
     val destination = backStackEntry?.destination
     val isSplash = destination?.hasRoute(OratureSplashRoute::class) == true
@@ -59,9 +67,13 @@ fun OratureRootShell(
 
     Row(modifier = Modifier.fillMaxSize()) {
         if (!isSplash) {
+            // Dimmed (not hidden) + inert while locked — visible for context, same treatment as
+            // the translation page's own steps drawer/chapter selector under the same lock.
             OratureNavRail(
+                modifier = Modifier.alpha(if (locked) 0.5f else 1f),
                 selected = selected,
                 onHomeClick = {
+                    if (locked) return@OratureNavRail
                     openDrawer = OpenDrawer.NONE
                     if (!isHome) {
                         navController.navigate(OratureHomeRoute) {
@@ -71,9 +83,11 @@ fun OratureRootShell(
                     }
                 },
                 onSettingsClick = {
+                    if (locked) return@OratureNavRail
                     openDrawer = if (openDrawer == OpenDrawer.SETTINGS) OpenDrawer.NONE else OpenDrawer.SETTINGS
                 },
                 onInfoClick = {
+                    if (locked) return@OratureNavRail
                     openDrawer = if (openDrawer == OpenDrawer.INFO) OpenDrawer.NONE else OpenDrawer.INFO
                 }
             )

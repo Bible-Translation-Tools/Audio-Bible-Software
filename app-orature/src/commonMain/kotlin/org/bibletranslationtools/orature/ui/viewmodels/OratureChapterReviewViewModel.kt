@@ -15,23 +15,36 @@ import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.orature.ui.workbook.OratureWorkbookDataStore
 import org.bibletranslationtools.orature.ui.workbook.PrecomputedWaveform
+import org.bibletranslationtools.otter.common.audio.AudioFileFormat
 import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
+import org.bibletranslationtools.otter.common.data.audio.BookMarker
+import org.bibletranslationtools.otter.common.data.audio.ChapterMarker
+import org.bibletranslationtools.otter.common.data.audio.VerseMarker
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
+import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnection
 import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
 import org.bibletranslationtools.otter.common.device.newaudio.IAudioPlayer
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.content.ChapterTranslationBuilder
+import org.bibletranslationtools.otter.common.domain.content.TakeCreator
+import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
 import org.bibletranslationtools.otter.common.domain.model.MarkerItem
 import org.bibletranslationtools.otter.common.domain.model.MarkerPlacementModel
 import org.bibletranslationtools.otter.common.domain.model.MarkerPlacementType
+import org.bibletranslationtools.otter.common.domain.plugins.PluginParameters
 import org.bibletranslationtools.otter.common.domain.translation.AddMarkerAction
 import org.bibletranslationtools.otter.common.domain.translation.DeleteMarkerAction
 import org.bibletranslationtools.otter.common.domain.translation.MoveMarkerAction
+import org.bibletranslationtools.otter.common.domain.translation.TakeEditAction
 import org.bibletranslationtools.otter.common.domain.model.UndoableActionHistory
 import org.bibletranslationtools.otter.common.domain.IUndoable
+import org.bibletranslationtools.orature.plugins.OraturePluginStore
+import org.bibletranslationtools.orature.plugins.OratureExternalPlugin
+import org.bibletranslationtools.orature.plugins.canLaunchPlugins
+import org.bibletranslationtools.orature.plugins.launchPlugin
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -43,14 +56,36 @@ data class OratureChapterReviewUiState(
     val isLoading: Boolean = true,
     val hasChapter: Boolean = false,
     val chapterTitle: String = "",
+    /** Book + chapter, e.g. "Titus 1" (JVM: `PluginOpenedPage.sourceContentTitleProperty` ←
+     *  `workbookDataStore.activeTitleBinding()`) — the plugin-opened cover's heading; distinct
+     *  from [chapterTitle], which is just the chapter number. */
+    val activeContentTitle: String = "",
+    /** Mirrors `OratureTranslationUiState.sourceText`/`sourceLicense` (JVM: `SourceContent`'s own
+     *  `sourceTextProperty`/`licenseProperty`) — needed here because the plugin-opened cover shows
+     *  the full source text + license itself, matching JVM's `PluginOpenedPage`. */
+    val sourceText: String = "",
+    val sourceLicense: String = "",
     val isSourcePlaying: Boolean = false,
     val isPlaying: Boolean = false,
+    /** The source audio's playback rate (JVM: `SimpleAudioPlayer.audioPlaybackRateProperty`). */
+    val sourceRate: Double = 1.0,
+    val sourceDurationMs: Int = 0,
+    /** Source playhead position (ms) — kept live whether playing or paused. */
+    val sourcePositionMs: Int = 0,
     /** Placed verse markers on the compiled chapter take. */
     val markers: List<OratureMarkerInfo> = emptyList(),
     /** True when every required (source) marker is placed and there is a next chapter to go to. */
     val canGoNextChapter: Boolean = false,
+    /** Whether the "Add Marker" split-button's Book/Chapter options are enabled (JVM:
+     *  `canAddBookMarkerProperty`/`canAddChapterMarkerProperty`) — only offered when that marker
+     *  type is required for this chapter and isn't already placed. */
+    val canAddBookMarker: Boolean = false,
+    val canAddChapterMarker: Boolean = false,
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
+    /** True while an external editor plugin has the (duplicated) chapter take open (JVM:
+     *  `pluginOpenedProperty` — shows `PluginOpenedPage` in place of the normal review body). */
+    val isPluginOpen: Boolean = false,
     val error: String? = null
 )
 
@@ -60,8 +95,9 @@ data class OratureChapterReviewUiState(
  * all undoable), plays source (top) and the compiled take (center), and advances to the next chapter
  * once all required markers are placed. Markers are written back to the take on leaving the step.
  *
- * Book/chapter optional markers are not editable here — the shared MarkerPlacementModel in this port
- * has no optional-marker action API (existing ones still load/save); verse markers are the focus.
+ * The "Add Marker" control is a split button (JVM: `AddMarkerSplitButton`): the primary action
+ * places the next verse marker; a menu on the side offers Book Marker (chapter 1 only, once) and
+ * Chapter Marker (every chapter, once), each placeable independent of verse-marker sequence.
  */
 class OratureChapterReviewViewModel(
     private val translationVm: OratureTranslationViewModel
@@ -70,6 +106,9 @@ class OratureChapterReviewViewModel(
     private val workbookDataStore: OratureWorkbookDataStore by inject()
     private val playerFactory: AudioPlayerConnectionFactory by inject()
     private val chapterTranslationBuilder: ChapterTranslationBuilder by inject()
+    private val takeCreator: TakeCreator by inject()
+    private val pluginStore: OraturePluginStore by inject()
+    private val navigationLock: org.bibletranslationtools.orature.ui.OratureNavigationLock by inject()
 
     private val _uiState = MutableStateFlow(OratureChapterReviewUiState())
     val uiState: StateFlow<OratureChapterReviewUiState> = _uiState.asStateFlow()
@@ -87,6 +126,7 @@ class OratureChapterReviewViewModel(
     private var markerInfos: List<OratureMarkerInfo> = emptyList()
     private var waveformFront: FloatArray = FloatArray(REVIEW_WAVEFORM_WIDTH * 2)
     private var waveformTickerJob: Job? = null
+    private var sourceTickerJob: Job? = null
 
     private val actionHistory = UndoableActionHistory<IUndoable>()
 
@@ -97,8 +137,19 @@ class OratureChapterReviewViewModel(
 
     init {
         translationVm.setUndoRedoHandlers(::undo, ::redo)
+        translationVm.setOpenInHandler(::processWithPlugin)
         viewModelScope.launch {
             workbookDataStore.activeChapter.collect { chap -> onChapter(chap) }
+        }
+        // Mirror the shell's source text/license (JVM: `PluginOpenedPage.sourceTextProperty`/
+        // `licenseProperty`, bound from `WorkbookDataStore`) so the plugin-opened cover can show
+        // the chapter's full source text without re-deriving it here.
+        viewModelScope.launch {
+            translationVm.uiState.collect { t ->
+                if (_uiState.value.sourceText != t.sourceText || _uiState.value.sourceLicense != t.sourceLicense) {
+                    _uiState.value = _uiState.value.copy(sourceText = t.sourceText, sourceLicense = t.sourceLicense)
+                }
+            }
         }
     }
 
@@ -128,44 +179,9 @@ class OratureChapterReviewViewModel(
                     workbook = wb
                     // Compile (or reuse) the chapter take from the chunk takes (JVM: getOrCompile).
                     val take = chapterTranslationBuilder.getOrCompile(wb, chap).await()
-                    val takeAudio = OratureAudioFile(take.file)
-
-                    // Reserved marker set = source verse/title markers; placed markers = those already
-                    // on the compiled take (JVM: loadVerseMarkers).
-                    val sourceMarkers = sourceMarkers(wb, chap)
-                    val model = MarkerPlacementModel(
-                        MarkerPlacementType.VERSE,
-                        takeAudio,
-                        sourceMarkers.map { it.clone(0) }
-                    ).apply {
-                        loadMarkers(takeAudio.getVerseAndTitleMarkers().map { MarkerItem(it, true) })
-                    }
-
-                    val playerReader = takeAudio.reader().apply { open() }
-                    val sr = playerReader.spec.sampleRate.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
-                    val peakReader = takeAudio.reader().apply { open() }
-                    val peaks = try {
-                        PrecomputedWaveform.build(peakReader, REVIEW_WAVEFORM_WIDTH, REVIEW_SECONDS_ON_SCREEN, sr)
-                    } finally {
-                        runCatching { peakReader.release() }
-                    }
-                    Prepared(model, take.file, playerReader.totalFrames, sr, peaks, prepareSourcePlayer(wb, chap))
+                    prepareFromTake(wb, chap, take)
                 }
-
-                markerModel = prepared.model
-                sampleRate = prepared.sampleRate
-                totalFrames = prepared.totalFrames
-                positionFrames = 0
-                precomputed = prepared.peaks
-                sourcePlayer = prepared.sourcePlayer
-
-                val p = AudioPlayerConnection(TAKE_PLAYER_ID, playerFactory, viewModelScope, Dispatchers.Default)
-                p.load(OratureAudioFile(prepared.takeFile).reader().apply { open() })
-                takePlayer = p
-
-                refreshMarkers()
-                _uiState.value = _uiState.value.copy(isLoading = false, chapterTitle = chap.title)
-                startWaveformTicker()
+                applyPrepared(prepared, chap)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -176,47 +192,257 @@ class OratureChapterReviewViewModel(
         }
     }
 
+    /** Build the marker model / waveform peaks / source-player prep from a GIVEN take file, with no
+     *  compile step — used both by the normal load path (after `getOrCompile` resolves a take) and
+     *  by the post-plugin-edit reload path (which already knows exactly which take is now selected
+     *  and must NOT re-compile from chunks, or a plugin's edits to the compiled audio would be
+     *  overwritten by a fresh chunk-concatenation on the next reload). */
+    private fun prepareFromTake(wb: Workbook, chap: Chapter, take: Take): Prepared {
+        val takeAudio = OratureAudioFile(take.file)
+
+        // Reserved marker set = source verse/title markers; placed markers = those already
+        // on the compiled take (JVM: loadVerseMarkers).
+        val sourceMarkers = sourceMarkers(wb, chap)
+        val model = MarkerPlacementModel(
+            MarkerPlacementType.VERSE,
+            takeAudio,
+            sourceMarkers.map { it.clone(0) }
+        ).apply {
+            loadMarkers(takeAudio.getVerseAndTitleMarkers().map { MarkerItem(it, true) })
+        }
+
+        val playerReader = takeAudio.reader().apply { open() }
+        val sr = playerReader.spec.sampleRate.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
+        val peakReader = takeAudio.reader().apply { open() }
+        val peaks = try {
+            PrecomputedWaveform.build(peakReader, REVIEW_WAVEFORM_WIDTH, REVIEW_SECONDS_ON_SCREEN, sr)
+        } finally {
+            runCatching { peakReader.release() }
+        }
+        val sourcePrep = if (sourcePlayer == null) prepareSourcePlayer(wb, chap) else null
+        return Prepared(model, take.file, playerReader.totalFrames, sr, peaks, sourcePrep?.first, sourcePrep?.second ?: 0)
+    }
+
+    /** Apply a [Prepared] result to VM state, (re)connect the take player, and (re)start the
+     *  waveform ticker. If a source player was already running (kept alive across a plugin-edit
+     *  reload), it's left untouched instead of being replaced. */
+    private fun applyPrepared(prepared: Prepared, chap: Chapter) {
+        markerModel = prepared.model
+        sampleRate = prepared.sampleRate
+        totalFrames = prepared.totalFrames
+        positionFrames = 0
+        precomputed = prepared.peaks
+        if (prepared.sourcePlayer != null) sourcePlayer = prepared.sourcePlayer
+
+        runCatching { takePlayer?.pause(); takePlayer?.release() }
+        val p = AudioPlayerConnection(TAKE_PLAYER_ID, playerFactory, viewModelScope, Dispatchers.Default)
+        p.load(OratureAudioFile(prepared.takeFile).reader().apply { open() })
+        takePlayer = p
+
+        refreshMarkers()
+        _uiState.value = _uiState.value.copy(
+            isLoading = false,
+            chapterTitle = chap.title,
+            activeContentTitle = "${workbook?.target?.title.orEmpty()} ${chap.title}".trim(),
+            sourceDurationMs = if (prepared.sourcePlayer != null) prepared.sourceDurationMs else _uiState.value.sourceDurationMs
+        )
+        startWaveformTicker()
+        startSourceTicker()
+    }
+
     private data class Prepared(
         val model: MarkerPlacementModel,
         val takeFile: java.io.File,
         val totalFrames: Int,
         val sampleRate: Int,
         val peaks: PrecomputedWaveform,
-        val sourcePlayer: IAudioPlayer?
+        val sourcePlayer: IAudioPlayer?,
+        val sourceDurationMs: Int
     )
 
-    /** Source verse/title markers used as the required marker set (JVM: getSourceMarkers). */
+    /**
+     * Source verse/title markers used as the required marker set (JVM: `getSourceMarkers` +
+     * `loadVerseMarkers`'s `optionalMarkers`). Book/Chapter markers are TARGET-recorded, not
+     * inherited from source — a Book marker is required for chapter 1 (and only chapter 1) if the
+     * source doesn't already carry one, and a Chapter marker is always required if the source
+     * doesn't carry one, so both are added here as unplaced (`location = -1`) placeholders even
+     * when absent from source, matching JVM's `optionalMarkers` construction exactly.
+     */
     private fun sourceMarkers(wb: Workbook, chap: Chapter): List<AudioMarker> {
         val sa = runCatching { wb.sourceAudioAccessor.getChapter(chap.sort, wb.target) }.getOrNull()
-        return if (sa != null) {
+        val fromSource = if (sa != null) {
             runCatching { OratureAudioFile(sa.file).getVerseAndTitleMarkers() }.getOrDefault(emptyList())
         } else {
             emptyList()
         }
+        val optional = buildList {
+            if (fromSource.none { it is BookMarker } && chap.sort == 1) {
+                add(BookMarker(wb.target.slug, -1))
+            }
+            if (fromSource.none { it is ChapterMarker }) {
+                add(ChapterMarker(chap.sort, -1))
+            }
+        }
+        return fromSource + optional
     }
 
-    private fun prepareSourcePlayer(wb: Workbook, chap: Chapter): IAudioPlayer? {
+    private fun prepareSourcePlayer(wb: Workbook, chap: Chapter): Pair<IAudioPlayer, Int>? {
         val sa = runCatching {
             wb.sourceAudioAccessor.getUserMarkedChapter(chap.sort, wb.target)
                 ?: wb.sourceAudioAccessor.getChapter(chap.sort, wb.target)
         }.getOrNull() ?: return null
         val reader = OratureAudioFile(sa.file).reader().apply { open() }
-        return AudioPlayerConnection(SOURCE_PLAYER_ID, playerFactory, viewModelScope, Dispatchers.Default)
+        val sr = reader.spec.sampleRate.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
+        val durationMs = (reader.totalFrames.toLong() * 1000 / sr).toInt()
+        val player = AudioPlayerConnection(SOURCE_PLAYER_ID, playerFactory, viewModelScope, Dispatchers.Default)
             .also { it.load(reader) }
+        return player to durationMs
     }
 
+    /** The configured default editor plugin, if external editing is available (desktop + one
+     *  selected) — same lookup as `OratureBlindDraftViewModel.selectedEditor`. */
+    private fun selectedEditor(): OratureExternalPlugin? {
+        if (!canLaunchPlugins()) return null
+        val reg = pluginStore.load()
+        return reg.plugins.firstOrNull { it.id == reg.selectedEditorId && it.canEdit }
+    }
+
+    /** Translation context handed to the plugin (JVM: `PluginParameters`) — chapter-scoped, no
+     *  chunk fields, since Final Review edits the whole compiled chapter take. */
+    private fun pluginParams(wb: Workbook, chap: Chapter): PluginParameters {
+        val sourceAudio = runCatching { wb.sourceAudioAccessor.getChapter(chap.sort, wb.target)?.file }.getOrNull()
+        return PluginParameters(
+            languageName = wb.target.language.name,
+            bookSlug = wb.target.slug,
+            bookTitle = wb.target.title.ifEmpty { wb.target.slug },
+            chapterLabel = chap.title,
+            chapterNumber = chap.sort,
+            verseTotal = null,
+            sourceChapterAudio = sourceAudio,
+            sourceLanguageName = wb.source.language.name
+        )
+    }
+
+    /**
+     * Open the compiled chapter take in the configured external editor (JVM: `OpenInPluginEvent` →
+     * `processWithPlugin`). Markers are saved first, then the CURRENT take is duplicated into a new
+     * one (JVM: `createDuplicateTake`) so a cancelled/failed edit leaves the original untouched; the
+     * new take is what's handed to the plugin. While the plugin runs, `isPluginOpen` shows the
+     * plugin-opened cover (JVM: `PluginOpenedPage`) in place of the normal review body — the take
+     * player is released (its file is being edited externally) but the SOURCE player is deliberately
+     * left running so the cover can still offer source playback, matching JVM's page. On success the
+     * edit is wrapped as an undoable [TakeEditAction] (undo/redo restore the corresponding take and
+     * reload from it); on failure/no-plugin the original take is re-selected. No-ops if no editor is
+     * configured (same silent-no-op precedent as `OratureBlindDraftViewModel.editTakeExternally`).
+     */
+    fun processWithPlugin() {
+        if (_uiState.value.isPluginOpen) return // already open; ignore a re-click
+        val wb = workbook ?: return
+        val chap = chapter ?: return
+        val editor = selectedEditor() ?: return
+        val existingTake = chap.audio.getSelectedTake() ?: return
+
+        viewModelScope.launch {
+            writeMarkersBlocking()
+            waveformTickerJob?.cancel()
+            runCatching { takePlayer?.pause(); takePlayer?.release() }
+            takePlayer = null
+            _uiState.value = _uiState.value.copy(isPluginOpen = true)
+            // Lock in-app navigation (step/chapter switching, back, AND the app rail's Home/
+            // Settings/Info — the rail sits outside the translation page entirely, hence the
+            // separate app-scoped lock) while the plugin has a take open — leaving mid-edit would
+            // clear this VM (cancelling viewModelScope) with the external process still running
+            // and the edit never wrapped in an undo action.
+            translationVm.setPluginOpen(true)
+            navigationLock.lock()
+
+            val newTake = withContext(Dispatchers.IO) {
+                val namer = WorkbookFileNamerBuilder.createFileNamer(
+                    workbook = wb, chapter = chap, chunk = null, recordable = chap, rcSlug = wb.sourceMetadataSlug
+                )
+                val chapterAudioDir = wb.projectFilesAccessor.audioDir
+                    .resolve(namer.formatChapterNumber())
+                    .apply { mkdirs() }
+                val takeNumber = chap.audio.getNewTakeNumberSuspend()
+                takeCreator.createNewTake(
+                    takeNumber,
+                    namer.generateName(takeNumber, AudioFileFormat.WAV),
+                    chapterAudioDir,
+                    createEmpty = false
+                ).also { existingTake.file.copyTo(it.file, overwrite = true) }
+            }
+            chap.audio.insertTake(newTake)
+            chap.audio.selectTake(newTake)
+
+            val success = withContext(Dispatchers.IO) {
+                runCatching { launchPlugin(editor, newTake.file, pluginParams(wb, chap)) }.getOrDefault(false)
+            }
+
+            if (success) {
+                val action = TakeEditAction(chap.audio, newTake, existingTake).apply {
+                    setUndoCallback { reloadFromSelectedTake(chap) }
+                    setRedoCallback { reloadFromSelectedTake(chap) }
+                }
+                actionHistory.execute(action)
+                onUndoableAction()
+            } else {
+                chap.audio.selectTake(existingTake)
+            }
+
+            _uiState.value = _uiState.value.copy(isPluginOpen = false)
+            translationVm.setPluginOpen(false)
+            navigationLock.unlock()
+            reloadFromSelectedTake(chap)
+        }
+    }
+
+    /** Rebuild the marker model / waveform / take player from whichever take is CURRENTLY selected
+     *  (post plugin-edit, or its undo/redo) — deliberately bypasses `getOrCompile` (see
+     *  [prepareFromTake]'s doc). */
+    private fun reloadFromSelectedTake(chap: Chapter) {
+        val wb = workbook ?: return
+        val take = chap.audio.getSelectedTake() ?: return
+        viewModelScope.launch {
+            try {
+                val prepared = withContext(Dispatchers.IO) { prepareFromTake(wb, chap, take) }
+                applyPrepared(prepared, chap)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = e.message ?: "Unknown error")
+            }
+        }
+    }
+
+    /** Change the source-audio playback rate (JVM: playback-speed menu — `WaMenuButton`). */
+    fun setSourceRate(rate: Double) {
+        sourcePlayer?.changeRate(rate)
+        _uiState.value = _uiState.value.copy(sourceRate = rate)
+    }
+
+    /** Scrub the source audio to [fraction] (0f..1f) of its duration. */
+    fun seekSource(fraction: Float) {
+        val p = sourcePlayer ?: return
+        val frame = (p.getDurationInFrames() * fraction.coerceIn(0f, 1f)).toInt()
+        p.seek(frame)
+    }
+
+    /**
+     * Play/pause the source audio. State isn't written optimistically here — `startWaveformTicker`
+     * re-derives `isSourcePlaying`/`isPlaying`/`sourcePositionMs` from the real player each tick
+     * (matches `OratureBlindDraftViewModel.toggleSource`, avoiding a race with the async player
+     * connection and keeping a paused slider from snapping back).
+     */
     fun toggleSource() {
         val p = sourcePlayer ?: return
         takePlayer?.pause()
         if (p.isPlaying()) p.pause() else p.play()
-        _uiState.value = _uiState.value.copy(isSourcePlaying = p.isPlaying(), isPlaying = false)
     }
 
     fun togglePlay() {
         val p = takePlayer ?: return
         sourcePlayer?.pause()
         if (p.isPlaying()) p.pause() else p.play()
-        _uiState.value = _uiState.value.copy(isPlaying = p.isPlaying(), isSourcePlaying = false)
     }
 
     fun pause() {
@@ -242,6 +468,25 @@ class OratureChapterReviewViewModel(
     fun placeMarker() {
         val model = markerModel ?: return
         actionHistory.execute(AddMarkerAction(model, positionFrames))
+        onUndoableAction()
+        refreshMarkers()
+    }
+
+    /** Add a Book marker at the playhead (JVM: `AddMarkerSplitButton`'s "Add Book Marker" menu
+     *  item → `AddOptionalMarkerAction(model, BOOK, location)`). No-op if not required/available. */
+    fun addBookMarker() {
+        val model = markerModel ?: return
+        if (!model.hasUnplacedMarkerOfType(BookMarker::class)) return
+        actionHistory.execute(AddMarkerAction(model, positionFrames, BookMarker::class))
+        onUndoableAction()
+        refreshMarkers()
+    }
+
+    /** Add a Chapter marker at the playhead ("Add Chapter Marker" menu item). */
+    fun addChapterMarker() {
+        val model = markerModel ?: return
+        if (!model.hasUnplacedMarkerOfType(ChapterMarker::class)) return
+        actionHistory.execute(AddMarkerAction(model, positionFrames, ChapterMarker::class))
         onUndoableAction()
         refreshMarkers()
     }
@@ -296,7 +541,9 @@ class OratureChapterReviewViewModel(
             markers = markerInfos,
             canUndo = actionHistory.canUndo(),
             canRedo = actionHistory.canRedo(),
-            canGoNextChapter = allPlaced && translationVm.uiState.value.hasNextChapter
+            canGoNextChapter = allPlaced && translationVm.uiState.value.hasNextChapter,
+            canAddBookMarker = model?.hasUnplacedMarkerOfType(BookMarker::class) ?: false,
+            canAddChapterMarker = model?.hasUnplacedMarkerOfType(ChapterMarker::class) ?: false
         )
     }
 
@@ -307,21 +554,60 @@ class OratureChapterReviewViewModel(
             while (isActive) {
                 val p = takePlayer
                 val peaks = precomputed
+                val current = _uiState.value
+                var playing = current.isPlaying
                 if (p != null && peaks != null) {
                     runCatching {
-                        val playing = p.isPlaying()
+                        playing = p.isPlaying()
                         if (playing) positionFrames = p.getLocationInFrames()
-                        if (_uiState.value.isPlaying != playing) {
-                            _uiState.value = _uiState.value.copy(isPlaying = playing)
-                        }
                         val halfWindow = REVIEW_SECONDS_ON_SCREEN * sampleRate / 2
                         peaks.window(positionFrames - halfWindow, out)
                         waveformFront = out.copyOf()
                     }.onFailure { System.err.println("[review] waveform render failed: $it") }
                 }
+                if (current.isPlaying != playing) {
+                    _uiState.value = _uiState.value.copy(isPlaying = playing)
+                }
+                updateHighlightedVerse()
                 delay(33)
             }
         }
+    }
+
+    /** Polls ONLY the source player, independent of [startWaveformTicker] — kept running even while
+     *  [waveformTickerJob] is cancelled during an external-plugin edit (see [processWithPlugin]),
+     *  since the source player is deliberately left alive so the plugin-opened cover can still play
+     *  it. Without this, the cover's play/pause icon and scrubber would freeze once the take-focused
+     *  ticker stops. */
+    private fun startSourceTicker() {
+        sourceTickerJob?.cancel()
+        sourceTickerJob = viewModelScope.launch(Dispatchers.Default) {
+            while (isActive) {
+                val current = _uiState.value
+                val srcPlaying = runCatching { sourcePlayer?.isPlaying() }.getOrDefault(false) ?: false
+                val srcPos = runCatching { sourcePlayer?.getLocationMs() }.getOrNull() ?: current.sourcePositionMs
+                if (current.isSourcePlaying != srcPlaying || current.sourcePositionMs != srcPos) {
+                    _uiState.value = _uiState.value.copy(isSourcePlaying = srcPlaying, sourcePositionMs = srcPos)
+                }
+                delay(33)
+            }
+        }
+    }
+
+    /**
+     * Push the verse label at (or immediately before) the playhead to the shell so the source-text
+     * drawer can highlight it (JVM: `ChapterReviewViewModel` binds `translationViewModel.
+     * currentMarkerProperty` to its own `highlightedMarkerIndexProperty`). Only VERSE-type markers
+     * are considered — Book/Chapter marker labels ("1", the chapter number) can coincidentally
+     * collide with a verse number and would otherwise mis-highlight verse 1.
+     */
+    private fun updateHighlightedVerse() {
+        val model = markerModel
+        val label = model?.markerItems
+            ?.filter { it.placed && it.marker is VerseMarker && it.frame <= positionFrames }
+            ?.maxByOrNull { it.frame }
+            ?.label
+        translationVm.setHighlightedVerse(label)
     }
 
     /** Persist the placed verse markers back to the compiled chapter take (JVM: undock writeMarkers). */
@@ -333,6 +619,7 @@ class OratureChapterReviewViewModel(
 
     private fun stopAll() {
         waveformTickerJob?.cancel()
+        sourceTickerJob?.cancel()
         runCatching { sourcePlayer?.pause() }
         runCatching { sourcePlayer?.release() }
         runCatching { takePlayer?.pause() }
@@ -344,6 +631,12 @@ class OratureChapterReviewViewModel(
 
     public override fun onCleared() {
         translationVm.clearUndoRedoHandlers()
+        translationVm.clearOpenInHandler()
+        translationVm.setHighlightedVerse(null)
+        // Safety net: normal navigation is blocked while a plugin is open (see processWithPlugin),
+        // but don't leave the shell's navigation lock stuck on if this VM is ever cleared anyway.
+        translationVm.setPluginOpen(false)
+        navigationLock.unlock()
         writeMarkersBlocking()
         stopAll()
         markerModel = null

@@ -1,10 +1,13 @@
 package org.bibletranslationtools.orature
 
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
+import androidx.compose.ui.window.rememberWindowState
 import org.bibletranslationtools.orature.di.oratureDirectoryProviderModule
 import org.bibletranslationtools.orature.di.oratureViewModelModule
 import org.bibletranslationtools.orature.ui.OratureApp
+import org.bibletranslationtools.orature.ui.OratureNavigationLock
 import org.bibletranslationtools.otter.common.persistence.DesktopDirectoryProvider
 import org.bibletranslationtools.otter.common.device.newaudio.AudioDeviceSelector
 import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
@@ -52,8 +55,25 @@ fun main() {
     selector.getOutputDevices(defaultSpec).firstOrNull()?.let(selector::selectOutputDevice)
     selector.getInputDevices(defaultSpec).firstOrNull()?.let(selector::selectInputDevice)
 
+    val navigationLock = koin.get<OratureNavigationLock>()
+
     application {
-        Window(onCloseRequest = ::exitApplication, title = "Orature") {
+        // JVM Orature opens maximized (OtterApp.start: stage.isMaximized = true), not at a fixed
+        // pixel size.
+        val windowState = rememberWindowState(placement = WindowPlacement.Maximized)
+        Window(
+            // JVM: `OtterApp`'s `setOnCloseRequest` — veto the close (and show a snackbar) while
+            // an external editor plugin is open, instead of exiting normally.
+            onCloseRequest = {
+                if (navigationLock.locked.value) {
+                    navigationLock.notifyCloseBlocked()
+                } else {
+                    exitApplication()
+                }
+            },
+            title = "Orature",
+            state = windowState
+        ) {
             OratureApp()
         }
     }

@@ -1,19 +1,24 @@
 package org.bibletranslationtools.orature.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Button
@@ -43,6 +48,7 @@ import org.bibletranslationtools.orature.platform.openUrl
 import org.bibletranslationtools.orature.resources.Res
 import org.bibletranslationtools.orature.resources.addContributor
 import org.bibletranslationtools.orature.resources.close
+import org.bibletranslationtools.orature.resources.contributorDescription
 import org.bibletranslationtools.orature.resources.contributorName
 import org.bibletranslationtools.orature.resources.delete
 import org.bibletranslationtools.orature.resources.exportLicenseDescription
@@ -54,11 +60,14 @@ import org.bibletranslationtools.orature.ui.viewmodels.OratureContributorViewMod
 import org.jetbrains.compose.resources.stringResource
 
 private const val CC_BY_SA_URL = "https://creativecommons.org/licenses/by-sa/4.0/"
+private val FieldShape = RoundedCornerShape(16.dp)
+private val FieldHeight = 60.dp
 
 /**
- * The "Modify Contributors" modal (JVM: `ContributorDialog`): list the project's contributors, add /
- * edit / remove them, and Save (persists to the project manifest). Includes the export-license notice
- * and a CC BY-SA link.
+ * The "Modify Contributors" modal (JVM: `ContributorDialog` + `ContributorInfo`): a description, an
+ * add-contributor row (pill text field + filled "+" button), a scrollable list of editable
+ * contributor rows (each with a trailing delete icon), the export-license notice + CC BY-SA link,
+ * and a full-width primary Save button.
  */
 @Composable
 fun OratureContributorDialog(
@@ -71,23 +80,36 @@ fun OratureContributorDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            modifier = Modifier.width(560.dp),
-            shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp
+            // JVM: .contributor-dialog { -fx-pref-width: 720px; }
+            modifier = Modifier.width(720.dp),
+            shape = RoundedCornerShape(16.dp),
+            // No tonalElevation — see OratureInfoDrawer for why (avoids the M3 blue-gray tint on white).
+            color = MaterialTheme.colorScheme.surface
         ) {
             Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                // Header
+                // Header: title + a filled circular close button (JVM: btn--tertiary borderless, but
+                // rendered here as a dark filled circle with a white X to match the reference design).
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = stringResource(Res.string.modifyContributors),
-                        fontSize = 22.sp,
+                        fontSize = 26.sp,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = OratureColors.RegularText,
                         modifier = Modifier.weight(1f)
                     )
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Filled.Close, contentDescription = stringResource(Res.string.close), tint = MaterialTheme.colorScheme.onSurface)
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .background(OratureColors.RegularText, CircleShape)
+                            .clickable(onClick = onDismiss),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.Close,
+                            contentDescription = stringResource(Res.string.close),
+                            tint = OratureColors.Foreground,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 }
 
@@ -96,58 +118,93 @@ fun OratureContributorDialog(
                         CircularProgressIndicator(color = OratureColors.Primary)
                     }
                 } else {
-                    // Existing contributors (editable rows).
-                    Column(
-                        modifier = Modifier.fillMaxWidth().heightIn(max = 220.dp).verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        state.contributors.forEachIndexed { index, name ->
-                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                OutlinedTextField(
-                                    value = name,
-                                    onValueChange = { vm.editContributor(index, it) },
-                                    singleLine = true,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                IconButton(onClick = { vm.removeContributor(index) }) {
-                                    Icon(Icons.Filled.Delete, contentDescription = stringResource(Res.string.delete), tint = OratureColors.NoteText)
-                                }
-                            }
-                        }
-                    }
+                    Text(
+                        text = stringResource(Res.string.contributorDescription),
+                        fontSize = 16.sp,
+                        color = OratureColors.RegularText
+                    )
 
-                    // Add-contributor row.
-                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    // Add-contributor row: pill text field + filled primary "+" square button.
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
                         OutlinedTextField(
                             value = newName,
                             onValueChange = { newName = it },
                             singleLine = true,
                             placeholder = { Text(stringResource(Res.string.contributorName)) },
+                            shape = FieldShape,
                             keyboardActions = KeyboardActions(onDone = {
                                 vm.addContributor(newName); newName = ""
                             }),
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f).height(FieldHeight)
                         )
-                        IconButton(onClick = { vm.addContributor(newName); newName = "" }) {
-                            Icon(Icons.Filled.Add, contentDescription = stringResource(Res.string.addContributor), tint = OratureColors.Primary)
+                        Box(
+                            modifier = Modifier
+                                .size(FieldHeight)
+                                .background(OratureColors.Primary, FieldShape)
+                                .clickable { vm.addContributor(newName); newName = "" },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Filled.Add,
+                                contentDescription = stringResource(Res.string.addContributor),
+                                tint = OratureColors.Foreground
+                            )
+                        }
+                    }
+
+                    // Existing contributors (editable rows), a fixed-height scrollable area (JVM:
+                    // contributor-dialog .contributor__list pref-height 400px).
+                    Column(
+                        modifier = Modifier.fillMaxWidth().height(320.dp).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        state.contributors.forEachIndexed { index, name ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = name,
+                                    onValueChange = { vm.editContributor(index, it) },
+                                    singleLine = true,
+                                    shape = FieldShape,
+                                    modifier = Modifier.weight(1f).height(FieldHeight)
+                                )
+                                IconButton(onClick = { vm.removeContributor(index) }) {
+                                    Icon(Icons.Filled.Delete, contentDescription = stringResource(Res.string.delete), tint = OratureColors.RegularText)
+                                }
+                            }
                         }
                     }
 
                     // License notice + CC BY-SA link.
-                    Text(stringResource(Res.string.exportLicenseDescription), fontSize = 13.sp, color = OratureColors.NoteText)
+                    Text(stringResource(Res.string.exportLicenseDescription), fontSize = 14.sp, color = OratureColors.RegularText)
                     Text(
                         text = stringResource(Res.string.licenseCCBYSA),
-                        fontSize = 13.sp,
+                        fontSize = 14.sp,
                         color = OratureColors.Primary,
                         textDecoration = TextDecoration.Underline,
                         modifier = Modifier.clickable { openUrl(CC_BY_SA_URL) }
                     )
 
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        Button(
-                            onClick = { vm.save(); onDismiss() },
-                            colors = ButtonDefaults.buttonColors(containerColor = OratureColors.Primary)
-                        ) { Text(stringResource(Res.string.save)) }
+                    Button(
+                        onClick = { vm.save(); onDismiss() },
+                        shape = RoundedCornerShape(20.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = OratureColors.Primary),
+                        modifier = Modifier.fillMaxWidth().height(FieldHeight)
+                    ) {
+                        Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = OratureColors.Foreground)
+                        Text(
+                            stringResource(Res.string.save),
+                            fontSize = 18.sp,
+                            color = OratureColors.Foreground,
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
                     }
                 }
             }

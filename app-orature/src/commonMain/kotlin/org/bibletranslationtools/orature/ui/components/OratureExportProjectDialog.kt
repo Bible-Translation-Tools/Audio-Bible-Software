@@ -81,8 +81,8 @@ fun OratureExportProjectDialog(
         Surface(
             modifier = Modifier.width(560.dp),
             shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp
+            // No tonalElevation — see OratureInfoDrawer for why (avoids the M3 blue-gray tint on white).
+            color = MaterialTheme.colorScheme.surface
         ) {
             Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 // Header
@@ -146,6 +146,7 @@ fun OratureExportProjectDialog(
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                             Button(
                                 onClick = { vm.acknowledgeError(); dirPicker.launch() },
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = OratureColors.Primary)
                             ) { Text(stringResource(Res.string.exportProject)) }
                         }

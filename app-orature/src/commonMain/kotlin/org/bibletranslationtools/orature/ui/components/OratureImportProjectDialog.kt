@@ -76,8 +76,8 @@ fun OratureImportProjectDialog(onDismiss: () -> Unit) {
         Surface(
             modifier = Modifier.width(560.dp),
             shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp
+            // No tonalElevation — see OratureInfoDrawer for why (avoids the M3 blue-gray tint on white).
+            color = MaterialTheme.colorScheme.surface
         ) {
             Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
                 // ── Header ─────────────────────────────────────────────────
@@ -123,6 +123,7 @@ fun OratureImportProjectDialog(onDismiss: () -> Unit) {
                             Text(stringResource(Res.string.importProjectSuccessfulMessage), color = OratureColors.RegularText)
                             Button(
                                 onClick = { importVm.acknowledge(); onDismiss() },
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = OratureColors.Primary)
                             ) { Text(stringResource(Res.string.close)) }
                         }
@@ -130,6 +131,7 @@ fun OratureImportProjectDialog(onDismiss: () -> Unit) {
                             Text(stringResource(Res.string.dragToImport), color = OratureColors.NoteText)
                             Button(
                                 onClick = { picker.launch() },
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = OratureColors.Primary)
                             ) { Text(stringResource(Res.string.choose_file)) }
                         }

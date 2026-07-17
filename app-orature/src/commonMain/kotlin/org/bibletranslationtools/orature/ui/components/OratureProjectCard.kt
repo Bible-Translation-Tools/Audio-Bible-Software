@@ -1,28 +1,38 @@
 package org.bibletranslationtools.orature.ui.components
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Hearing
+import androidx.compose.material.icons.filled.KeyboardDoubleArrowRight
+import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import org.bibletranslationtools.orature.ui.OratureColors
 import org.bibletranslationtools.orature.ui.viewmodels.OratureProjectGroupUiModel
 import org.jetbrains.compose.resources.stringResource
@@ -36,6 +46,10 @@ import org.bibletranslationtools.orature.resources.sourceLanguage
 import org.bibletranslationtools.orature.resources.targetLanguage
 import org.bibletranslationtools.orature.resources.translation
 
+// JVM translation-card-2.css dimensions.
+private val CardShape = RoundedCornerShape(16.dp)
+private val CardBorderWidth = 2.dp
+
 /** Localized label for a [ProjectMode], mirroring the JVM app's `messages[mode.titleKey]`. */
 @Composable
 fun projectModeLabel(mode: ProjectMode): String = when (mode) {
@@ -45,9 +59,14 @@ fun projectModeLabel(mode: ProjectMode): String = when (mode) {
 }
 
 /**
- * A project-GROUP card for the projects pane, matching TranslationCard2: title is
- * "{resourceSlug} {mode}" (e.g. "ULB Narration"), with source/target language rows below.
- * Selected group gets a highlighted primary border.
+ * A project-GROUP card for the projects pane (JVM: `TranslationCard2`). The card title is
+ * "{resourceSlug} {mode}" (e.g. "ULB Narration"). The visual has two states, matching the JVM's
+ * two skins:
+ *  - **inactive** (`TranslationCardSkin2`): a grey 2px border and a compact body — source slug,
+ *    a centered double-chevron, target slug.
+ *  - **active/selected** (`ActiveTranslationCardSkin`): a primary-blue 2px border, an info icon in
+ *    the header, and a detailed body — "Source Language" + name w/ ear icon, a divider, then
+ *    "Target Language" + name w/ voice icon.
  */
 @Composable
 fun OratureProjectGroupCard(
@@ -56,76 +75,119 @@ fun OratureProjectGroupCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val border = if (isSelected) {
-        BorderStroke(2.dp, OratureColors.Primary)
-    } else {
-        BorderStroke(1.dp, MaterialTheme.colorScheme.surfaceVariant)
-    }
+    val borderColor = if (isSelected) OratureColors.Primary else OratureColors.SurfaceTertiary
+    val title = "${group.resourceSlug.uppercase()} ${projectModeLabel(group.mode)}"
 
-    Card(
+    Column(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = border,
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            .clip(CardShape)
+            .clickable(onClick = onClick)
+            .background(OratureColors.Foreground, CardShape)
+            .border(BorderStroke(CardBorderWidth, borderColor), CardShape)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-            Text(
-                text = "${group.resourceSlug.uppercase()} ${projectModeLabel(group.mode)}",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface
+        if (isSelected) ActiveCardContent(title, group) else InactiveCardContent(title, group)
+    }
+}
+
+@Composable
+private fun InactiveCardContent(title: String, group: OratureProjectGroupUiModel) {
+    Text(title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = OratureColors.RegularText)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(group.key.sourceLanguageSlug, fontSize = 20.sp, color = OratureColors.RegularText)
+        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+            Icon(
+                Icons.Filled.KeyboardDoubleArrowRight,
+                contentDescription = null,
+                tint = OratureColors.RegularText,
+                modifier = Modifier.size(22.dp)
             )
-            Text(
-                text = "${stringResource(Res.string.sourceLanguage)}: ${group.sourceLanguageName}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 6.dp)
-            )
-            Text(
-                text = "${stringResource(Res.string.targetLanguage)}: ${group.targetLanguageName}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp)
-            )
+        }
+        Text(group.key.targetLanguageSlug, fontSize = 20.sp, color = OratureColors.RegularText)
+    }
+}
+
+@Composable
+private fun ActiveCardContent(title: String, group: OratureProjectGroupUiModel) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = OratureColors.RegularText, modifier = Modifier.weight(1f))
+        Icon(Icons.Outlined.Info, contentDescription = null, tint = OratureColors.RegularText, modifier = Modifier.size(22.dp))
+    }
+    LanguageRow(stringResource(Res.string.sourceLanguage), group.sourceLanguageName, Icons.Filled.Hearing)
+    HorizontalDivider(color = OratureColors.SurfaceTertiary)
+    LanguageRow(stringResource(Res.string.targetLanguage), group.targetLanguageName, Icons.Filled.RecordVoiceOver)
+}
+
+@Composable
+private fun LanguageRow(subtitle: String, languageName: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(subtitle, fontSize = 14.sp, color = OratureColors.RegularText)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, contentDescription = null, tint = OratureColors.RegularText, modifier = Modifier.size(22.dp))
+            Text(languageName, fontSize = 20.sp, color = OratureColors.RegularText, modifier = Modifier.padding(start = 8.dp))
         }
     }
 }
 
-/** The dashed "new project" affordance card pinned at the top of the projects pane. */
+/**
+ * The "new project" affordance (JVM: `TranslationCreationCard`): a filled grey rounded card with
+ * placeholder graphic bars on the left and a primary-blue "+" button on the right.
+ */
 @Composable
 fun OratureNewProjectCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Card(
+    Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, OratureColors.Primary),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            .height(80.dp)
+            .clip(CardShape)
+            .background(OratureColors.CardPlaceholderBackground, CardShape)
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(PaddingValues(vertical = 14.dp, horizontal = 12.dp)),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
+        // Placeholder graphic bars (JVM card-graphic rects): a 140-wide bar, then a row of
+        // 80 + small + 80. Pill-shaped (arc 20 on 16-tall rects), filled #E5E8EB.
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            PlaceholderBar(width = 140.dp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                PlaceholderBar(width = 80.dp)
+                PlaceholderBar(width = 15.dp, height = 15.dp)
+                PlaceholderBar(width = 80.dp)
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        // Primary "+" button (JVM: btn btn--primary with MDI_PLUS).
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(OratureColors.Primary)
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center
         ) {
-            Icon(imageVector = Icons.Filled.Add, contentDescription = null, tint = OratureColors.Primary)
-            Text(
-                text = stringResource(Res.string.newProject),
-                color = OratureColors.Primary,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.padding(start = 8.dp)
-            )
+            Icon(Icons.Filled.Add, contentDescription = stringResource(Res.string.newProject), tint = OratureColors.OnPrimary)
         }
     }
 }
 
-/** Secondary-style "Import" button pinned at the bottom of the projects pane. */
+@Composable
+private fun PlaceholderBar(width: androidx.compose.ui.unit.Dp, height: androidx.compose.ui.unit.Dp = 16.dp) {
+    Box(
+        modifier = Modifier
+            .width(width)
+            .height(height)
+            .background(OratureColors.CardGraphic, RoundedCornerShape(percent = 50))
+    )
+}
+
+/**
+ * Secondary-style "Import" button pinned at the bottom of the projects pane (JVM: `btn btn--secondary`):
+ * white surface, 2px primary-blue border, 12dp radius, blue icon + text, full width and tall.
+ */
 @Composable
 fun OratureImportButton(
     onClick: () -> Unit,
@@ -133,9 +195,19 @@ fun OratureImportButton(
 ) {
     OutlinedButton(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth()
+        modifier = modifier.fillMaxWidth().height(56.dp),
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(2.dp, OratureColors.Primary),
+        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+            containerColor = OratureColors.Foreground,
+            contentColor = OratureColors.Primary
+        )
     ) {
-        Icon(imageVector = Icons.Filled.Download, contentDescription = null)
-        Text(text = stringResource(Res.string.`import`), modifier = Modifier.padding(start = 8.dp))
+        Icon(imageVector = Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(24.dp))
+        Text(
+            text = stringResource(Res.string.`import`),
+            fontSize = 20.sp,
+            modifier = Modifier.padding(start = 10.dp)
+        )
     }
 }
