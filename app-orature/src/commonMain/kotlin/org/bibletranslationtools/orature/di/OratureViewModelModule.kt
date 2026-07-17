@@ -5,6 +5,7 @@ import org.bibletranslationtools.orature.ui.viewmodels.OratureImportEvents
 import org.bibletranslationtools.orature.ui.viewmodels.OratureProjectDeletion
 import org.bibletranslationtools.orature.ui.viewmodels.OratureProjectWizardViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureSettingsViewModel
+import org.bibletranslationtools.orature.ui.viewmodels.OratureVerseMarkerEditor
 import org.bibletranslationtools.orature.ui.narration.OratureNarrationFactory
 import org.bibletranslationtools.orature.ui.workbook.OratureWorkbookDataStore
 import org.koin.core.parameter.parametersOf
@@ -23,6 +24,9 @@ val oratureViewModelModule = module {
     single { OratureProjectDeletion() }
     // App-scoped registry of external-editor plugins (Settings → plugins; desktop-only).
     single { org.bibletranslationtools.orature.plugins.OraturePluginStore() }
+    // App-scoped handoff for the built-in Verse Marker editor (JVM: the marker plugin's parameter
+    // scope). A host compiles the chapter take, fills a Request, then navigates to the marker route.
+    single { OratureVerseMarkerEditor() }
     // Shared open-project state (JVM: WorkbookDataStore) — written by the narration VM,
     // read by the mode-page components. Single so it survives across the mode screens.
     single { OratureWorkbookDataStore(get()) }

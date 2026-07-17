@@ -66,9 +66,16 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun OratureNarrationScreen(
     viewModel: OratureNarrationViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenVerseMarkerEditor: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
+
+    // The built-in Verse Marker editor opens as its own route once the VM has compiled the chapter
+    // take and populated the handoff (JVM: the marker plugin window opening).
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        viewModel.openVerseMarkerEditor.collect { onOpenVerseMarkerEditor() }
+    }
 
     Column(
         modifier = Modifier
@@ -98,7 +105,7 @@ fun OratureNarrationScreen(
             onRedo = viewModel::onRedo,
             onRestartChapter = viewModel::onRestartChapter,
             onOpenChapterInEditor = viewModel::openChapterInEditor,
-            onEditVerseMarkers = viewModel::editVerseMarkersExternally,
+            onEditVerseMarkers = viewModel::editVerseMarkers,
             onImportChapterAudio = viewModel::onImportChapterAudio,
             onPrevious = viewModel::selectPreviousChapter,
             onNext = viewModel::selectNextChapter,

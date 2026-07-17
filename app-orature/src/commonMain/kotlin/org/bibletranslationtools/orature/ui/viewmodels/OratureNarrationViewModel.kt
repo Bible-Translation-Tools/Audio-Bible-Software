@@ -26,6 +26,9 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IWork
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
 import org.bibletranslationtools.otter.common.data.audio.MarkerType
+import org.bibletranslationtools.orature.resources.Res
+import org.bibletranslationtools.orature.resources.editVerseMarkers
+import org.jetbrains.compose.resources.getString
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.domain.narration.Narration
@@ -168,9 +171,15 @@ class OratureNarrationViewModel(
     private val workbookDataStore: OratureWorkbookDataStore by inject()
     private val narrationFactory: OratureNarrationFactory by inject()
     private val pluginStore: org.bibletranslationtools.orature.plugins.OraturePluginStore by inject()
+    private val verseMarkerEditor: OratureVerseMarkerEditor by inject()
 
     private val _uiState = MutableStateFlow(OratureNarrationUiState())
     val uiState: StateFlow<OratureNarrationUiState> = _uiState.asStateFlow()
+
+    /** Fires when the built-in Verse Marker editor is ready to open (handoff populated); the screen
+     *  collects this and navigates to the marker route (JVM: launching the marker plugin window). */
+    private val _openVerseMarkerEditor = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val openVerseMarkerEditor: kotlinx.coroutines.flow.SharedFlow<Unit> = _openVerseMarkerEditor
 
     /** Sorted chapters for the active workbook, cached for prev/next stepping. */
     private var chapters: List<Chapter> = emptyList()
@@ -810,13 +819,75 @@ class OratureNarrationViewModel(
      *  enabled once shown: the chapter take is compiled on demand (JVM: Open Chapter In has no
      *  enableWhen; processChapterWithPlugin compiles via createChapterTakeWithAudio if needed). */
     fun editorConfiguredForChapter(): Boolean = pluginFor(record = false) != null
-    fun markerConfigured(): Boolean = markerPlugin() != null
+
+    /** Edit Verse Markers is always available now: the built-in marker editor is in-app (works on
+     *  every platform), and a configured external MARKER plugin augments it (desktop only). */
+    fun markerConfigured(): Boolean = true
 
     /** Open the chapter take in the external editor, then reload (JVM: processChapterWithPlugin). */
     fun openChapterInEditor() = launchChapterPlugin(pluginFor(record = false))
 
-    /** Open the chapter take in the external marker tool, then reload (JVM: MARKER plugin). */
-    fun editVerseMarkersExternally() = launchChapterPlugin(markerPlugin())
+    /**
+     * Edit verse markers on the chapter take. If an external MARKER plugin is selected, launch it
+     * (JVM: MARKER plugin); otherwise open the built-in Verse Marker editor by compiling/reusing the
+     * chapter take, populating the handoff, and signaling the screen to navigate.
+     */
+    fun editVerseMarkers() {
+        markerPlugin()?.let { launchChapterPlugin(it); return }
+        openBuiltInVerseMarkerEditor()
+    }
+
+    private fun openBuiltInVerseMarkerEditor() {
+        val n = narration ?: return
+        stopPlayer()
+        _audioScene.value?.clear()
+        viewModelScope.launch {
+            try {
+                // Reuse the compiled chapter take, or compile one from what's recorded (JVM:
+                // chapterTakeProperty ?: createChapterTakeWithAudio) — same as launchChapterPlugin.
+                val take = chapterTake ?: withContext(Dispatchers.IO) {
+                    runCatching { n.createChapterTakeWithAudio().await() }.getOrNull()
+                }
+                if (take == null) return@launch // nothing recorded yet to mark
+                chapterTake = take
+
+                val wb = workbookDataStore.activeWorkbook.value
+                val chap = workbookDataStore.activeChapter.value
+                val actionTitle = getString(Res.string.editVerseMarkers)
+                val contentTitle = listOfNotNull(wb?.target?.title, chap?.title).joinToString(" ")
+                // Source-text rows for the left panel, indexed by verse (CONTENT-marker) position so
+                // the editor's highlightedIndex lines up (title markers are excluded, they sort first).
+                val sourceText = n.totalVerses
+                    .filter { it.type != MarkerType.TITLE }
+                    .mapIndexed { i, m -> OratureVerseText(i, m.label, verseTextByLabel[m.label] ?: "") }
+
+                verseMarkerEditor.open(
+                    OratureVerseMarkerEditor.Request(
+                        takeFile = take.file,
+                        reservedMarkers = n.totalVerses,
+                        actionTitle = actionTitle,
+                        contentTitle = contentTitle,
+                        sourceText = sourceText,
+                        onSaved = { reloadAfterMarkerEdit() }
+                    )
+                )
+                _openVerseMarkerEditor.emit(Unit)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                System.err.println("Open built-in verse marker editor failed: $e")
+            }
+        }
+    }
+
+    /** Reload the chapter from the edited take so narration reflects the new markers
+     *  (JVM: onChapterReturnFromPlugin → loadFromSelectedChapterFile). */
+    private suspend fun reloadAfterMarkerEdit() {
+        val n = narration ?: return
+        withContext(Dispatchers.IO) { runCatching { n.loadFromSelectedChapterFile().blockingAwait() } }
+        refreshVerses()
+        resetNarratableList()
+    }
 
     private fun launchChapterPlugin(plugin: org.bibletranslationtools.orature.plugins.OratureExternalPlugin?) {
         plugin ?: return

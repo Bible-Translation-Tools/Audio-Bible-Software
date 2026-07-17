@@ -14,6 +14,8 @@ import org.bibletranslationtools.orature.ui.screens.OratureHomeScreen
 import org.bibletranslationtools.orature.ui.screens.OratureNarrationScreen
 import org.bibletranslationtools.orature.ui.screens.OratureSplashScreen
 import org.bibletranslationtools.orature.ui.screens.OratureTranslationScreen
+import org.bibletranslationtools.orature.ui.screens.OratureVerseMarkerScreen
+import org.bibletranslationtools.orature.ui.viewmodels.OratureVerseMarkerViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureHomeViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureNarrationViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureProjectWizardViewModel
@@ -79,7 +81,19 @@ fun OratureNavigation(navController: NavHostController) {
             }
             OratureNarrationScreen(
                 viewModel = vm,
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onOpenVerseMarkerEditor = { navController.navigate(OratureVerseMarkerRoute) }
+            )
+        }
+
+        // The built-in Verse Marker editor (JVM: the standalone marker plugin, built in). Its inputs
+        // are handed off via the OratureVerseMarkerEditor singleton before navigation; the VM reads
+        // them on open. Closing (save or cancel) pops back to the launching mode page, which reloads.
+        composable<OratureVerseMarkerRoute> {
+            val vm = viewModel { OratureVerseMarkerViewModel() }
+            OratureVerseMarkerScreen(
+                viewModel = vm,
+                onClose = { navController.popBackStack() }
             )
         }
 
