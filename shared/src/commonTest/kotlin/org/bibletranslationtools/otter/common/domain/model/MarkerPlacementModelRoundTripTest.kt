@@ -4,6 +4,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.test.runTest
+import org.bibletranslationtools.otter.common.data.audio.BookMarker
+import org.bibletranslationtools.otter.common.data.audio.ChapterMarker
 import org.bibletranslationtools.otter.common.data.audio.OratureCueType
 import org.bibletranslationtools.otter.common.data.audio.VerseMarker
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
@@ -62,6 +64,87 @@ class MarkerPlacementModelRoundTripTest {
 
         val reread = OratureAudioFile(wav).getMarker(OratureCueType.VERSE).sortedBy { it.location }
         assertEquals(listOf(0, 60_000), reread.map { it.location }, "moved marker frame should persist")
+    }
+
+    /**
+     * Regression test: placing a Chapter marker alone (no verses placed yet) must not be silently
+     * turned into a Book marker. [MarkerPlacementModel.addMarker]'s `ofType` lets Book/Chapter be
+     * placed independently of verse sequence (Final Review's "Add Marker" split-button), but
+     * [MarkerPlacementModel.refreshMarkers] used to re-label EVERY marker item by its GLOBAL sorted
+     * position against the full blueprint (`[Book, Chapter, verse1, verse2, ...]`) — so a lone
+     * Chapter marker, being the only item, was rank 0 and got overwritten with `markers[0]` (Book).
+     */
+    @Test
+    fun placingAChapterMarkerAloneDoesNotBecomeABookMarker() = runTest {
+        val wav = writeTwoSecondWav(this)
+        val reserved = listOf(
+            BookMarker("gen", 0),
+            ChapterMarker(1, 0),
+            VerseMarker(1, 1, 0),
+            VerseMarker(2, 2, 0)
+        )
+        val model = MarkerPlacementModel(MarkerPlacementType.VERSE, OratureAudioFile(wav), reserved)
+
+        // No verses placed yet — place ONLY a chapter marker, matching the reported repro.
+        val id = model.addMarker(20_000, ChapterMarker::class)
+        assertTrue(id >= 0, "chapter marker should have placed successfully")
+        assertEquals(1, model.markerItems.size, "exactly one marker should be placed")
+        assertTrue(
+            model.markerItems.single().marker is ChapterMarker,
+            "the placed marker must still be a ChapterMarker, not silently swapped to BookMarker"
+        )
+
+        model.writeMarkers().blockingAwait()
+
+        val reread = OratureAudioFile(wav)
+        assertEquals(0, reread.getMarker(OratureCueType.BOOK_TITLE).size, "no book marker should be persisted")
+        val chapterMarkers = reread.getMarker(OratureCueType.CHAPTER_TITLE)
+        assertEquals(1, chapterMarkers.size, "the chapter marker should be persisted")
+        assertEquals(20_000, chapterMarkers.first().location)
+    }
+
+    /**
+     * Regression test: after placing a Chapter marker alone, placing an ordinary verse marker (the
+     * plain "add marker" path, `ofType == null`) must place a VERSE marker, not silently fall back
+     * to the still-unplaced Book marker slot. [MarkerPlacementModel.labelIndex] used to scan the
+     * WHOLE blueprint (`[Book, Chapter, verse1, verse2, ...]`) for the first slot whose label wasn't
+     * yet placed — since Book (index 0) was still unplaced, it matched Book instead of skipping to
+     * the first unplaced VERSE slot.
+     */
+    @Test
+    fun placingAVerseMarkerAfterAChapterMarkerDoesNotBecomeABookMarker() = runTest {
+        val wav = writeTwoSecondWav(this)
+        val reserved = listOf(
+            BookMarker("gen", 0),
+            ChapterMarker(1, 0),
+            VerseMarker(1, 1, 0),
+            VerseMarker(2, 2, 0)
+        )
+        val model = MarkerPlacementModel(MarkerPlacementType.VERSE, OratureAudioFile(wav), reserved)
+
+        model.addMarker(20_000, ChapterMarker::class)
+        val verseId = model.addMarker(30_000) // plain "add marker" — ofType == null
+        assertTrue(verseId >= 0, "verse marker should have placed successfully")
+
+        assertEquals(2, model.markerItems.size, "chapter + one verse should be placed")
+        assertTrue(
+            model.markerItems.any { it.marker is ChapterMarker },
+            "the chapter marker placed earlier must still be present"
+        )
+        assertTrue(
+            model.markerItems.any { it.marker is VerseMarker },
+            "the second placement must be a VerseMarker, not a BookMarker"
+        )
+        assertTrue(
+            model.markerItems.none { it.marker is BookMarker },
+            "no book marker should have been placed"
+        )
+
+        model.writeMarkers().blockingAwait()
+        val reread = OratureAudioFile(wav)
+        assertEquals(0, reread.getMarker(OratureCueType.BOOK_TITLE).size, "no book marker should be persisted")
+        assertEquals(1, reread.getMarker(OratureCueType.CHAPTER_TITLE).size, "the chapter marker should persist")
+        assertEquals(1, reread.getMarker(OratureCueType.VERSE).size, "the verse marker should persist")
     }
 
     /** Creates a finalized ~2s mono 44.1k/16-bit WAV (mirrors WavFileWriterTest's harness). */

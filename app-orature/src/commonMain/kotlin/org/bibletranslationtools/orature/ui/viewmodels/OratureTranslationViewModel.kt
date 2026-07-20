@@ -193,11 +193,38 @@ class OratureTranslationViewModel(
                     sourceLicense = loaded.sourceLicense
                 )
                 updateReachableStep()
+                if (active != null) resumeStepForChapter(active, active.sort)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 _uiState.value = OratureTranslationUiState(isLoading = false, error = e.message ?: "Unknown error")
             }
+        }
+    }
+
+    /**
+     * Jump to the furthest step this chapter's chunks have actually reached (JVM: navigateChapter →
+     * `updateStep { selectedStepProperty.set(if (reachable == CHUNKING) CONSUME_AND_VERBALIZE else
+     * reachable) }`), instead of always opening on Consume. Runs ONCE per chapter (re)load — not on
+     * every later [updateReachableStep] recomputation — so it doesn't yank the user back to an
+     * earlier step mid-work just because chunk progress changed underneath them.
+     */
+    private fun resumeStepForChapter(chapter: Chapter, sort: Int) {
+        viewModelScope.launch {
+            val reachable = withContext(Dispatchers.IO) {
+                val chunkList = runCatching {
+                    chapter.chunks.blockingGet().filter { it.contentType == ContentType.TEXT }
+                }.getOrDefault(emptyList())
+                computeReachableStep(chunkList)
+            }
+            if (_uiState.value.activeChapterSort != sort) return@launch // chapter changed again meanwhile
+            val resumedStep = if (reachable == ChunkingStep.CHUNKING) {
+                ChunkingStep.CONSUME_AND_VERBALIZE
+            } else {
+                reachable
+            }
+            _uiState.value = _uiState.value.copy(selectedStep = resumedStep)
+            if (resumedStep.ordinal >= ChunkingStep.BLIND_DRAFT.ordinal) loadChunks()
         }
     }
 
@@ -407,7 +434,10 @@ class OratureTranslationViewModel(
             chapters = current.chapters.map { it.copy(selected = it.sort == sort) },
             hasPreviousChapter = hasNeighbor(sort, step = -1),
             hasNextChapter = hasNeighbor(sort, step = +1),
-            // Reset the workflow to the first step for the newly-selected chapter.
+            // Transient placeholder while the resumed step is computed below (JVM: navigateChapter
+            // clears selectedStepProperty, then updateStep's callback sets it once chunk progress
+            // is known) — resumeStepForChapter corrects this to wherever the chapter's progress
+            // actually left off, matching JVM instead of always reopening on Consume.
             selectedStep = ChunkingStep.CONSUME_AND_VERBALIZE
         )
         updateReachableStep()
@@ -417,6 +447,7 @@ class OratureTranslationViewModel(
                 _uiState.value = _uiState.value.copy(noSourceAudio = noSource)
             }
         }
+        resumeStepForChapter(chapter, sort)
     }
 
     fun selectPreviousChapter() = stepChapter(step = -1)

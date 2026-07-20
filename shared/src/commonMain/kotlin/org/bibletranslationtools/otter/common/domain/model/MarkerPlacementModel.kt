@@ -82,16 +82,20 @@ class MarkerPlacementModel(
         get() = markers.size
 
     /**
-     * Index (into [markers], the fixed original-order blueprint) of the next marker still needing
-     * placement. Found by formattedLabel membership rather than `markerItems.size` so it stays
-     * correct even when a marker was placed OUT of blueprint order (JVM: `AddOptionalMarkerAction`
-     * lets Book/Chapter markers be placed ahead of or behind verse markers via the "Add Marker"
-     * split-button menu, instead of only ever filling in strict sequence).
+     * Index (into [markers], the fixed original-order blueprint) of the next PRIMARY-type
+     * (verse/chunk) marker still needing placement — this is the plain "add marker" path (JVM: the
+     * split-button's primary action, `ofType == null`), so it must only ever consider verse/chunk
+     * slots, never Book/Chapter. Restricted to `primaryType` so an unplaced Book/Chapter marker
+     * (which can now be placed independently — see [addMarker]'s `ofType`) doesn't get mistaken for
+     * "the next marker" just because it comes first in blueprint order and happens to still be
+     * unplaced. Found by formattedLabel membership rather than `markerItems.size` so it stays
+     * correct even when a verse/chunk marker was placed out of strict sequence.
      */
     private val labelIndex
         get(): Int {
             val nextIndex = markers.indices.firstOrNull { i ->
-                markerItems.none { it.marker.formattedLabel == markers[i].formattedLabel }
+                primaryType.isInstance(markers[i]) &&
+                    markerItems.none { it.marker.formattedLabel == markers[i].formattedLabel }
             }
             return nextIndex ?: markers.size
         }
@@ -270,11 +274,22 @@ class MarkerPlacementModel(
 
     private fun refreshMarkers() {
         markerItems.sortBy { it.frame }
-        markerItems.forEachIndexed { index, chunkMarker ->
-            if (index < markers.size) {
-                // We want the marker from the index, but the position of chunkMarker
-                // This keeps the markers in verse/chunk order and may "swap" markers around
-                chunkMarker.marker = markers[index].clone(chunkMarker.frame)
+        // Re-label only markers of the PRIMARY type (verse/chunk) by their sorted position — this
+        // is what keeps sequential numbering correct when markers are dragged past each other
+        // ("swapping" which verse/chunk label a position holds). Book/Chapter markers are unique,
+        // fixed identities (at most one of each ever exists) and must NOT be folded into this same
+        // position→blueprint-index mapping: since they can now be placed independently of verse
+        // sequence (see addMarker's `ofType`), a lone Chapter marker placed before any verses would
+        // sit at global sorted-index 0 and get overwritten with `markers[0]` — the BOOK marker
+        // blueprint entry — even though a real ChapterMarker was what got placed.
+        val primaryBlueprint = markers.filter { primaryType.isInstance(it) }
+        var primaryIndex = 0
+        markerItems.forEach { item ->
+            if (primaryType.isInstance(item.marker)) {
+                if (primaryIndex < primaryBlueprint.size) {
+                    item.marker = primaryBlueprint[primaryIndex].clone(item.frame)
+                }
+                primaryIndex++
             }
         }
     }
