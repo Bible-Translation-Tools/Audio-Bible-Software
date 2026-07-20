@@ -292,7 +292,13 @@ class OratureTranslationViewModel(
         load()
     }
 
-    /** Navigate to a step (JVM: navigateStep) — only if it is reachable and no plugin is open. */
+    /**
+     * Navigate to a step (JVM: navigateStep) — only if it is reachable and no plugin is open. Always
+     * resets the active chunk back to the first one: switching steps (e.g. Blind Draft chunk 3 →
+     * Peer Edit) should start fresh at chunk 1 rather than carry over whichever chunk the previous
+     * step happened to be on (clearing `activeChunkSort` makes [applyChunkState]'s fallback resolve
+     * to the first chunk once [loadChunks] re-subscribes).
+     */
     fun selectStep(step: ChunkingStep) {
         val s = _uiState.value
         if (s.pluginOpen) return
@@ -304,11 +310,11 @@ class OratureTranslationViewModel(
         if (leavingChunking) {
             viewModelScope.launch {
                 runCatching { chunkSaveHandler?.invoke() }
-                _uiState.value = _uiState.value.copy(selectedStep = step)
+                _uiState.value = _uiState.value.copy(selectedStep = step, activeChunkSort = null)
                 if (step.ordinal >= ChunkingStep.BLIND_DRAFT.ordinal) loadChunks()
             }
         } else {
-            _uiState.value = s.copy(selectedStep = step)
+            _uiState.value = s.copy(selectedStep = step, activeChunkSort = null)
             if (step.ordinal >= ChunkingStep.BLIND_DRAFT.ordinal) loadChunks()
         }
     }
