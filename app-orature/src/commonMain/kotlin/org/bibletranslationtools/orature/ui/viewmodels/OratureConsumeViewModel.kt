@@ -13,19 +13,23 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.orature.ui.workbook.OratureWorkbookDataStore
-import org.bibletranslationtools.orature.ui.workbook.PrecomputedWaveform
+import org.bibletranslationtools.shared.ui.playback.AudioTimeline
+import org.bibletranslationtools.shared.ui.playback.FilePcmSource
+import org.bibletranslationtools.shared.ui.playback.PcmSource
+import org.bibletranslationtools.shared.ui.playback.WaveformPeakCache
+import org.bibletranslationtools.shared.ui.playback.buildPeakCache
 import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
 import org.bibletranslationtools.otter.common.data.audio.VerseMarker
 import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
 import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnection
 import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
+import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerEvent
 import org.bibletranslationtools.otter.common.device.newaudio.IAudioPlayer
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
+import org.bibletranslationtools.shared.ui.playback.PlaybackDisplayClock
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
-private const val CONSUME_WAVEFORM_WIDTH = 960
-private const val CONSUME_SECONDS_ON_SCREEN = 10
 
 /** UI state for the Consume step (JVM: `ConsumeViewModel`). */
 data class OratureConsumeUiState(
@@ -54,18 +58,32 @@ class OratureConsumeViewModel(
     val uiState: StateFlow<OratureConsumeUiState> = _uiState.asStateFlow()
 
     private var player: IAudioPlayer? = null
-    private var precomputed: PrecomputedWaveform? = null
+    // Shared waveform engine (see OratureChapterReviewViewModel): single-segment timeline + an
+    // in-memory peak cache filled once off-thread; the draw samples it per pixel.
+    private var timeline: AudioTimeline? = null
+    private var peakCache: WaveformPeakCache? = null
+    private var peakSource: PcmSource? = null
+    private var peakBuildJob: Job? = null
+    // Rate-locked display clock (see OratureChapterReviewViewModel) — the screen advances it each
+    // display frame so the waveform scrolls smoothly instead of in the ticker's 30 fps steps.
+    val clock = PlaybackDisplayClock(
+        positionSource = { player?.getLocationInFrames()?.toLong() ?: 0L },
+        positionReliable = { player?.isPositionReliable() ?: false }
+    )
+    private var clockEventsJob: Job? = null
 
     private var sampleRate: Int = DEFAULT_SAMPLE_RATE
     private var totalFrames: Int = 0
     private var positionFrames: Int = 0
     private var markerInfos: List<OratureMarkerInfo> = emptyList()
-    private var waveformFront: FloatArray = FloatArray(CONSUME_WAVEFORM_WIDTH * 2)
 
     private var waveformTickerJob: Job? = null
 
     // Providers read by the Consume screen each display frame.
-    fun currentWaveform(): FloatArray = waveformFront
+    fun currentTimeline(): AudioTimeline? = timeline
+    fun peakCacheFor(source: PcmSource): WaveformPeakCache? =
+        if (source.id == peakSource?.id) peakCache else null
+    fun waveformSampleRate(): Int = sampleRate
     fun currentPosition(): Int = positionFrames
     fun currentTotalFrames(): Int = totalFrames
     fun currentMarkers(): List<OratureMarkerInfo> = markerInfos
@@ -87,14 +105,12 @@ class OratureConsumeViewModel(
                     val verseMarkers = audioFile.getMarker<VerseMarker>()
                     val playerReader = audioFile.reader().apply { open() }
                     val sr = playerReader.spec.sampleRate.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
-                    // Decode the whole file's peaks ONCE (off the main thread); the ticker slices it.
-                    val peakReader = audioFile.reader().apply { open() }
-                    val peaks = try {
-                        PrecomputedWaveform.build(peakReader, CONSUME_WAVEFORM_WIDTH, CONSUME_SECONDS_ON_SCREEN, sr)
-                    } finally {
-                        runCatching { peakReader.release() }
-                    }
-                    Prepared(playerReader, sr, peaks, verseMarkers)
+                    // Single-segment timeline + empty peak cache for the shared renderer (filled
+                    // off-thread below); the draw samples it per pixel, no per-tick decode.
+                    val source = FilePcmSource(sa.file)
+                    val tl = AudioTimeline.ofWholeSource(source)
+                    val cache = WaveformPeakCache(source.totalFrames)
+                    Prepared(playerReader, sr, source, tl, cache, verseMarkers)
                 } ?: run {
                     _uiState.value = OratureConsumeUiState(isLoading = false, sourceMissing = true)
                     return@launch
@@ -102,7 +118,13 @@ class OratureConsumeViewModel(
 
                 sampleRate = prepared.sampleRate
                 totalFrames = prepared.playerReader.totalFrames
-                precomputed = prepared.peaks
+                timeline = prepared.timeline
+                peakCache = prepared.cache
+                peakSource = prepared.source
+                peakBuildJob?.cancel()
+                peakBuildJob = viewModelScope.launch(Dispatchers.IO) {
+                    runCatching { buildPeakCache(prepared.source, prepared.cache) }
+                }
                 markerInfos = prepared.markers.mapIndexed { i, m ->
                     OratureMarkerInfo(verseIndex = i, location = m.location, label = m.label, movable = false)
                 }
@@ -110,6 +132,11 @@ class OratureConsumeViewModel(
                 val p = AudioPlayerConnection(PLAYER_ID, playerFactory, viewModelScope, Dispatchers.Default)
                 p.load(prepared.playerReader)
                 player = p
+                clock.sampleRate = sampleRate
+                clock.durationFrames = totalFrames.toLong()
+                clock.advancing = false
+                clock.snapTo(0L)
+                observePlayerForClock(p)
 
                 _uiState.value = OratureConsumeUiState(isLoading = false)
                 startWaveformTicker()
@@ -124,7 +151,9 @@ class OratureConsumeViewModel(
     private data class Prepared(
         val playerReader: AudioFileReader,
         val sampleRate: Int,
-        val peaks: PrecomputedWaveform,
+        val source: PcmSource,
+        val timeline: AudioTimeline,
+        val cache: WaveformPeakCache,
         val markers: List<VerseMarker>
     )
 
@@ -144,6 +173,24 @@ class OratureConsumeViewModel(
         val clamped = frame.coerceIn(0, totalFrames)
         player?.seek(clamped)
         positionFrames = clamped
+        clock.snapTo(clamped.toLong())
+    }
+
+    /** Drive the display clock from the player's transport events (main thread). */
+    private fun observePlayerForClock(p: IAudioPlayer) {
+        clockEventsJob?.cancel()
+        clockEventsJob = viewModelScope.launch {
+            p.events.collect { e ->
+                when (e) {
+                    AudioPlayerEvent.Play -> clock.advancing = true
+                    AudioPlayerEvent.Pause -> clock.advancing = false
+                    AudioPlayerEvent.Stop -> { clock.advancing = false; clock.snapTo(clock.displayFrame) }
+                    AudioPlayerEvent.Complete -> { clock.advancing = false; clock.snapTo(clock.durationFrames) }
+                    is AudioPlayerEvent.Error -> clock.advancing = false
+                    else -> Unit
+                }
+            }
+        }
     }
 
     /** Jump to the previous / next verse marker (JVM: seekPrevious/seekNext). */
@@ -157,26 +204,22 @@ class OratureConsumeViewModel(
         seekToFrame(target)
     }
 
+    /** Polls the player for the playhead position + play/pause state. The waveform itself is drawn
+     *  by the shared renderer sampling the peak cache in the draw pass, so this no longer computes
+     *  or allocates a waveform window each tick. */
     private fun startWaveformTicker() {
         waveformTickerJob?.cancel()
         waveformTickerJob = viewModelScope.launch(Dispatchers.Default) {
-            val out = FloatArray(CONSUME_WAVEFORM_WIDTH * 2)
             while (isActive) {
                 val p = player
-                val peaks = precomputed
-                if (p != null && peaks != null) {
+                if (p != null) {
                     runCatching {
                         val playing = p.isPlaying()
                         if (playing) positionFrames = p.getLocationInFrames()
                         if (_uiState.value.isPlaying != playing) {
                             _uiState.value = _uiState.value.copy(isPlaying = playing)
                         }
-                        // Playhead is drawn at center, so slice starting half a window before the
-                        // position (negative frames zero-padded). Keeps the wave aligned with markers.
-                        val halfWindow = CONSUME_SECONDS_ON_SCREEN * sampleRate / 2
-                        peaks.window(positionFrames - halfWindow, out)
-                        waveformFront = out.copyOf()
-                    }.onFailure { System.err.println("[consume] waveform render failed: $it") }
+                    }.onFailure { System.err.println("[consume] player state poll failed: $it") }
                 }
                 delay(33)
             }
@@ -185,10 +228,15 @@ class OratureConsumeViewModel(
 
     public override fun onCleared() {
         waveformTickerJob?.cancel()
+        peakBuildJob?.cancel()
+        clockEventsJob?.cancel()
+        clock.advancing = false
         runCatching { player?.pause() }
         runCatching { player?.release() }
         player = null
-        precomputed = null
+        timeline = null
+        peakCache = null
+        peakSource = null
     }
 
     companion object {

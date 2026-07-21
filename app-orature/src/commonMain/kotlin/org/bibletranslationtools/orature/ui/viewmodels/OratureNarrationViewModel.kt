@@ -18,7 +18,13 @@ import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
 import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
 import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerEvent
 import org.bibletranslationtools.otter.common.domain.narration.AudioScene
+import org.bibletranslationtools.otter.common.domain.narration.Narration
 import org.bibletranslationtools.otter.common.domain.narration.teleprompter.NarrationStateTransition
+import org.bibletranslationtools.shared.ui.playback.AudioTimeline
+import org.bibletranslationtools.shared.ui.playback.PcmSource
+import org.bibletranslationtools.shared.ui.playback.PlaybackDisplayClock
+import org.bibletranslationtools.shared.ui.playback.WaveformPeakCache
+import org.bibletranslationtools.shared.ui.playback.buildPeakCache
 import kotlin.math.max
 import org.bibletranslationtools.orature.ui.narration.OratureNarrationFactory
 import org.bibletranslationtools.orature.ui.workbook.OratureWorkbookDataStore
@@ -31,7 +37,6 @@ import org.bibletranslationtools.orature.resources.editVerseMarkers
 import org.jetbrains.compose.resources.getString
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Take
-import org.bibletranslationtools.otter.common.domain.narration.Narration
 import org.bibletranslationtools.otter.common.domain.narration.teleprompter.NarratableItem
 import org.bibletranslationtools.otter.common.domain.narration.teleprompter.NarrationStateType
 import org.bibletranslationtools.otter.common.domain.narration.teleprompter.TeleprompterItemState
@@ -40,7 +45,10 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
 /** Pixel resolution of the live-record waveform ring buffer (drawn scaled to the workspace). */
-private const val NARRATION_WAVEFORM_WIDTH = 960
+// AudioScene buffer columns. Kept wider than any real screen so the workspace draw down-samples to
+// crisp 1px lines instead of up-sampling a low-res buffer into fat blocks (framesToPixels scales
+// with this, so the on-screen time span is unchanged — only the resolution increases).
+private const val NARRATION_WAVEFORM_WIDTH = 4096
 
 /** Minimum spacing kept between adjacent verse markers when dragging (~0.1s), to avoid crossing. */
 private const val MIN_MARKER_GAP_FRAMES = 4410
@@ -269,6 +277,61 @@ class OratureNarrationViewModel(
     fun currentAudioPosition(): Int = audioPositionFrames
     fun currentTotalFrames(): Int = totalAudioFrames
 
+    // ---- frame-stable PLAYBACK renderer (shared engine, like the translation surfaces) ----------
+    // During playback/idle the workspace draws the chapter from this immutable peak cache via
+    // AudioTimeline.fillWindow + the display clock (absolute-frame-grid columns → no re-bin/crawl,
+    // smooth per-frame scroll). During RECORDING it falls back to the live AudioScene. The cache is
+    // rebuilt off-thread whenever the active verses change (record/re-record/edit finalize).
+    private var timeline: AudioTimeline? = null
+    private var peakCache: WaveformPeakCache? = null
+    private var peakSource: PcmSource? = null
+    private var peakBuildJob: Job? = null
+    private var peakRevision: Int = 0
+    // Set when play-all runs to the end (Complete). Consumed by the next onPlayAll so a replay
+    // snaps the clock to 0 (audio rewinds), instead of the stale end position. Cleared by any
+    // explicit position change (seek / play-verse) so mid-chapter resume isn't hijacked.
+    private var playbackReachedEnd = false
+    val clock = PlaybackDisplayClock(
+        positionSource = { narration?.getLocationInFrames()?.toLong() ?: 0L },
+        positionReliable = { narration?.getPlayer()?.isPositionReliable() ?: false }
+    )
+    fun currentTimeline(): AudioTimeline? = timeline
+    fun peakCacheFor(source: PcmSource): WaveformPeakCache? =
+        if (source.id == peakSource?.id) peakCache else null
+    fun waveformSampleRate(): Int = DEFAULT_SAMPLE_RATE
+
+    /** True while a recording is in progress/paused — the workspace shows the live AudioScene then,
+     *  not the (stale, being-rebuilt) peak cache. */
+    fun isRecordingView(): Boolean = when (stateMachine?.getNarrationContext()) {
+        NarrationStateType.RECORDING,
+        NarrationStateType.RECORDING_AGAIN,
+        NarrationStateType.RECORDING_PAUSED,
+        NarrationStateType.RECORDING_AGAIN_PAUSED -> true
+        else -> false
+    }
+
+    /** (Re)build the chapter peak cache off-thread. Cheap enough to run on every active-verse change;
+     *  a new revisioned [PcmSource] id makes any in-flight draw fall back cleanly until it completes. */
+    private fun buildChapterPeakCache() {
+        val n = narration ?: return
+        peakBuildJob?.cancel()
+        val total = n.getDurationInFrames()
+        if (total <= 0) {
+            timeline = null; peakCache = null; peakSource = null
+            return
+        }
+        val source = NarrationChapterPcmSource(n, ++peakRevision)
+        val cache = WaveformPeakCache(total)
+        timeline = AudioTimeline.ofWholeSource(source)
+        peakCache = cache
+        peakSource = source
+        clock.durationFrames = total.toLong()
+        peakBuildJob = viewModelScope.launch(Dispatchers.IO) {
+            runCatching { buildPeakCache(source, cache) }
+                .onFailure { System.err.println("[narration] peak cache build failed: $it") }
+        }
+    }
+
     init {
         load()
     }
@@ -388,6 +451,12 @@ class OratureNarrationViewModel(
         _audioScene.value = null
         runCatching { sceneReader?.release() }
         sceneReader = null
+        peakBuildJob?.cancel()
+        peakBuildJob = null
+        timeline = null
+        peakCache = null
+        peakSource = null
+        clock.advancing = false
         lastViewports = emptyList()
         waveformFront = FloatArray(NARRATION_WAVEFORM_WIDTH * 2)
         volumeLevel = 0f
@@ -459,6 +528,7 @@ class OratureNarrationViewModel(
                 recordingSampleRate = DEFAULT_SAMPLE_RATE
             )
             startWaveformTicker()
+            buildChapterPeakCache()
 
             // Live mic level for the volume bar (JVM: VolumeBar over the recorder stream) — the
             // max sample of each incoming chunk, so it rises AND falls with the voice.
@@ -470,7 +540,22 @@ class OratureNarrationViewModel(
             playerEventsJob = viewModelScope.launch {
                 prepared.narration.getPlayer().events.collect { event ->
                     if (event is AudioPlayerEvent.Complete) {
+                        System.err.println("[narr-diag] COMPLETE loc=${prepared.narration.getLocationInFrames()} dur=${prepared.narration.getDurationInFrames()} clock=${clock.displayFrame} playingVerse=$playingVerseIndex")
                         prepared.narration.onPlaybackFinished()
+                        playbackReachedEnd = true
+                        clock.advancing = false
+                        // Land the playhead on the CANONICAL end. Do NOT trust the player's completion
+                        // position: on some platforms the sink stops reporting ~one audio-buffer short
+                        // (~19 ms), leaving the waveform shy of its drawn end. Play-all ends at the
+                        // chapter end (getDurationInFrames — the audio-read trace proved every frame
+                        // reaches the sink); a finished single verse ends at that verse's chapter-space
+                        // end (start of the next verse, else chapter end) so its waveform reaches the
+                        // verse boundary instead of stopping short.
+                        if (playingVerseIndex < 0) {
+                            clock.snapTo(clock.durationFrames)
+                        } else {
+                            clock.snapTo(verseEndFrame(playingVerseIndex).toLong())
+                        }
                         stopPositionTicker()
                         performTransition(NarrationStateTransition.PAUSE_AUDIO_PLAYBACK, playingVerseIndex.takeIf { it >= 0 })
                         _uiState.value = _uiState.value.copy(isPlaying = false, highlightedVerseIndex = -1)
@@ -481,7 +566,14 @@ class OratureNarrationViewModel(
             // The domain re-emits active verses after a record/finalize; refresh markers + verses
             // (the record transitions already advanced the state machine).
             activeVersesDisposable = prepared.narration.onActiveVersesUpdated
-                .subscribe({ viewModelScope.launch { refreshVerses(); updateMarkers(); syncChapterTake() } }, { })
+                .subscribe({
+                    viewModelScope.launch {
+                        refreshVerses(); updateMarkers(); syncChapterTake()
+                        // The chapter audio changed (new/re-recorded/edited verse) — rebuild the
+                        // frame-stable playback cache so the next play reflects it.
+                        buildChapterPeakCache()
+                    }
+                }, { })
 
             _uiState.value = _uiState.value.copy(actionsEnabled = true)
             refreshVerses()
@@ -1076,13 +1168,69 @@ class OratureNarrationViewModel(
     fun onPlayVerse(index: Int) {
         val n = narration ?: return
         _audioScene.value?.clear() // playback shows only recorded audio (no stale live take)
-        playingVerseIndex = index
         val player = n.getPlayer()
-        player.pause()
-        n.loadSectionIntoPlayer(n.totalVerses[index])
-        player.play()
+
+        // The verse play/pause button toggles onPausePlayback <-> onPlayVerse. Distinguish RESUMING the
+        // same verse that was paused mid-play from a FRESH start (a different verse, the first play, or
+        // one that reached its end -> playbackReachedEnd).
+        //  - RESUME: just play() again and let the clock continue from where it froze at pause. Do NOT
+        //    reload the section (that re-locks + seeks to the section start) and do NOT re-snap the
+        //    clock -- the audio resumes from the player's own paused position and the frozen clock IS
+        //    the pause point. Reloading here was the "jumps instead of resuming" bug.
+        //  - FRESH: reload the section and snap to the verse's KNOWN chapter-space start
+        //    (activeVerses[..].location). We must NOT read getLocationInFrames() here: pause()'s async
+        //    `lastPosition = workerPosition` can land after loadSectionIntoPlayer's synchronous
+        //    seek(0), clobbering the position back to the previous playhead (the stale 29100/55775/...
+        //    values in the logs).
+        val resuming = playingVerseIndex == index && !playbackReachedEnd
+        playbackReachedEnd = false
+        playingVerseIndex = index
+
+        val start: Int
+        if (resuming) {
+            start = clock.displayFrame.toInt()
+            // Seek to the verse-RELATIVE resume position before play(). The section reader is locked
+            // to this verse, so its seek/position/totalFrames are verse-relative; without this seek,
+            // AudioPlayerConnection.play() sees the paused worker position >= the verse length and
+            // auto-rewinds to 0 ("jumps back to the beginning" when paused near the verse end).
+            val relStart = (start - verseStartFrame(index)).coerceAtLeast(0)
+            System.err.println("[narr-diag] PLAY VERSE index=$index RESUME start=$start rel=$relStart label=${n.totalVerses.getOrNull(index)?.label}")
+            n.seek(relStart)
+            player.play()
+        } else {
+            player.pause()
+            n.loadSectionIntoPlayer(n.totalVerses[index])
+            start = verseStartFrame(index)
+            System.err.println("[narr-diag] PLAY VERSE index=$index FRESH start=$start label=${n.totalVerses.getOrNull(index)?.label}")
+            player.play()
+            clock.snapTo(start.toLong())
+        }
+        clock.advancing = true
         performTransition(NarrationStateTransition.PLAY_AUDIO, index)
         startPositionTicker()
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(150)
+            System.err.println("[narr-diag] PLAY VERSE +150ms index=$index resuming=$resuming loc=${n.getLocationInFrames()} clock=${clock.displayFrame}")
+        }
+    }
+
+    /** The chapter-space start frame of a verse, taken from its recorded marker (deterministic — no
+     *  racy getLocationInFrames() read after an async section load). activeVerses locations are in the
+     *  same chapter space as the display clock. */
+    private fun verseStartFrame(index: Int): Int {
+        val n = narration ?: return 0
+        val label = n.totalVerses.getOrNull(index)?.formattedLabel ?: return 0
+        return n.activeVerses.firstOrNull { it.formattedLabel == label }?.location ?: 0
+    }
+
+    /** The chapter-space END frame of a verse: the next active verse's start after this one, else the
+     *  chapter end. Verses are contiguous, so verse[i].end == verse[i+1].start. Used to rest the
+     *  playhead exactly on the verse boundary when a single verse finishes (the player under-reports
+     *  its completion position by ~one audio buffer). */
+    private fun verseEndFrame(index: Int): Int {
+        val n = narration ?: return 0
+        val start = verseStartFrame(index)
+        return n.activeVerses.map { it.location }.filter { it > start }.minOrNull() ?: n.getDurationInFrames()
     }
 
     fun onPlayAll() {
@@ -1091,8 +1239,20 @@ class OratureNarrationViewModel(
         playingVerseIndex = -1
         val player = n.getPlayer()
         player.pause()
-        n.loadChapterIntoPlayer()
+        n.loadChapterIntoPlayer() // unlock + clear verse bounds
+        // The display clock is the trustworthy playback position — it tracks real playback at the
+        // sample rate on the wall clock and, unlike n.getLocationInFrames(), does NOT double after a
+        // resume (the player re-anchors sessionStartFrame to an already-inflated position). So resume
+        // from the clock (or 0 if the last playback ran to the end), and SEEK the player there
+        // explicitly so both the audio and the player's own sessionStart are re-anchored accurately —
+        // this is what breaks the per-cycle "jump ahead" compounding.
+        val resume = if (playbackReachedEnd) 0 else clock.displayFrame.toInt()
+        System.err.println("[narr-diag] PLAY resume=$resume clockDisplay=${clock.displayFrame} reachedEnd=$playbackReachedEnd loc=${n.getLocationInFrames()}")
+        playbackReachedEnd = false
+        n.seek(resume)
         player.play()
+        clock.snapTo(resume.toLong())
+        clock.advancing = true
         // The state machine rejects PLAY_AUDIO (all) while any verse is mid/paused-recording;
         // skip the transition in that case (the audio still plays) instead of logging an error.
         if (canTransitionToPlay()) performTransition(NarrationStateTransition.PLAY_AUDIO)
@@ -1111,8 +1271,10 @@ class OratureNarrationViewModel(
 
     fun onPausePlayback() {
         val n = narration ?: return
+        System.err.println("[narr-diag] PAUSE clock=${clock.displayFrame} loc=${n.getLocationInFrames()}")
         performTransition(NarrationStateTransition.PAUSE_AUDIO_PLAYBACK, playingVerseIndex.takeIf { it >= 0 })
         n.getPlayer().pause()
+        clock.advancing = false
         stopPositionTicker()
         _uiState.value = _uiState.value.copy(isPlaying = false)
     }
@@ -1121,17 +1283,23 @@ class OratureNarrationViewModel(
         val n = narration ?: return
         val frame = (fraction.coerceIn(0f, 1f) * n.getDurationInFrames()).toInt()
         n.seek(frame, true)
+        clock.snapTo(frame.toLong())
+        playbackReachedEnd = false
         syncHighlightNow()
     }
 
     /** Toolbar prev/next: jump the playhead to the previous / next verse marker (JVM seekTo*). */
     fun onSeekPreviousMarker() {
         narration?.seekToPrevious()
+        narration?.let { clock.snapTo(it.getLocationInFrames().toLong()) }
+        playbackReachedEnd = false
         syncHighlightNow()
     }
 
     fun onSeekNextMarker() {
         narration?.seekToNext()
+        narration?.let { clock.snapTo(it.getLocationInFrames().toLong()) }
+        playbackReachedEnd = false
         syncHighlightNow()
     }
 
@@ -1144,6 +1312,8 @@ class OratureNarrationViewModel(
         val clamped = frame.coerceIn(0, n.getTotalFrames())
         n.seek(clamped, true)
         audioPositionFrames = clamped
+        clock.snapTo(clamped.toLong())
+        playbackReachedEnd = false
         syncHighlightNow()
     }
 
@@ -1155,6 +1325,7 @@ class OratureNarrationViewModel(
 
     private fun stopPlayer() {
         narration?.getPlayer()?.pause()
+        clock.advancing = false
         stopPositionTicker()
         _uiState.value = _uiState.value.copy(isPlaying = false)
     }
@@ -1163,10 +1334,23 @@ class OratureNarrationViewModel(
         stopPositionTicker()
         _uiState.value = _uiState.value.copy(isPlaying = true)
         positionTickerJob = viewModelScope.launch {
+            var prevClock = clock.displayFrame
+            var tick = 0
             while (isActive) {
                 val n = narration ?: break
                 // The waveform ticker scrolls the view; here we only track the highlighted verse.
                 _uiState.value = _uiState.value.copy(highlightedVerseIndex = highlightIndexAt(n.getLocationInFrames()))
+                // Catch a sudden backward jump of the clock (the "jumps to the beginning" symptom):
+                // log whenever the display clock drops by more than ~0.5s between ticks, plus a
+                // periodic heartbeat.
+                val now = clock.displayFrame
+                if (now < prevClock - 22050) {
+                    System.err.println("[narr-diag] CLOCK JUMP BACK ${prevClock} -> ${now} (loc=${n.getLocationInFrames()})")
+                }
+                if (tick++ % 20 == 0) {
+                    System.err.println("[narr-diag] TICK clock=$now loc=${n.getLocationInFrames()}")
+                }
+                prevClock = now
                 delay(50)
             }
         }
@@ -1191,6 +1375,8 @@ class OratureNarrationViewModel(
         if (_uiState.value.isPluginOpen) navigationLock.unlock()
         stopPositionTicker()
         waveformTickerJob?.cancel()
+        peakBuildJob?.cancel()
+        clock.advancing = false
         volumeJob?.cancel()
         playerEventsJob?.cancel()
         _audioScene.value?.close()
@@ -1212,4 +1398,22 @@ class OratureNarrationViewModel(
         val textByLabel: Map<String, String>,
         val textByIndex: List<String>
     )
+}
+
+/**
+ * A [PcmSource] over the WHOLE active-verse chapter, so the shared peak-cache engine can render
+ * narration playback frame-stably (like the translation surfaces). [openReader] returns a fresh
+ * composite [Narration.audioReader] connection — sequentially readable from frame 0 to
+ * [Narration.getDurationInFrames], in the same relative-chapter frame space as the playhead
+ * ([Narration.getLocationInFrames]) and the verse markers. [revision] tags each rebuild so a stale
+ * in-flight draw's cache lookup misses cleanly until the new cache is built.
+ */
+private class NarrationChapterPcmSource(
+    private val narration: Narration,
+    revision: Int
+) : PcmSource {
+    override val id: String = "narration-chapter-$revision"
+    override val totalFrames: Int get() = narration.getDurationInFrames()
+    override val sampleRate: Int = DEFAULT_SAMPLE_RATE
+    override fun openReader(): AudioFileReader = narration.audioReader
 }

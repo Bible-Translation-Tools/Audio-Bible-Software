@@ -241,14 +241,20 @@ internal fun RecordingSection(
             val scale = size.height / 2f / 32768f
             val buffer = waveformProvider()
             val columns = buffer.size / 2
-            for (col in 0 until columns) {
-                val x = col.toFloat() / columns * size.width
-                drawLine(
-                    androidx.compose.ui.graphics.Color(0xFFD32F2F),
-                    androidx.compose.ui.geometry.Offset(x, midY - buffer[col * 2] * scale),
-                    androidx.compose.ui.geometry.Offset(x, midY - buffer[col * 2 + 1] * scale),
-                    strokeWidth = 1f
-                )
+            if (columns > 0) {
+                // Pixel-driven + hairline (default strokeWidth) at a half-pixel x, matching the
+                // recorder's live WaveformView — one crisp 1px line per screen pixel, no gaps, no
+                // fat/soft strokes (was column-driven with strokeWidth = 1f).
+                val w = size.width.toInt().coerceAtLeast(1)
+                for (px in 0 until w) {
+                    val col = (px.toLong() * columns / w).toInt().coerceIn(0, columns - 1)
+                    val fx = px + 0.5f
+                    drawLine(
+                        androidx.compose.ui.graphics.Color(0xFFD32F2F),
+                        androidx.compose.ui.geometry.Offset(fx, midY - buffer[col * 2] * scale),
+                        androidx.compose.ui.geometry.Offset(fx, midY - buffer[col * 2 + 1] * scale)
+                    )
+                }
             }
         }
         Row(

@@ -117,7 +117,7 @@ private fun VerseRow(
         contentAlignment = Alignment.TopCenter
     ) {
         Row(
-            modifier = Modifier.widthIn(max = 1160.dp).fillMaxWidth().padding(horizontal = 24.dp),
+            modifier = Modifier.widthIn(max = 1260.dp).fillMaxWidth().padding(horizontal = 24.dp),
             verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -157,7 +157,7 @@ private fun VerseRow(
             }
 
             // Right: the record/next/save buttons for this verse's state.
-            Box(modifier = Modifier.width(332.dp), contentAlignment = Alignment.TopCenter) {
+            Box(modifier = Modifier.width(350.dp), contentAlignment = Alignment.TopCenter) {
                 VerseButtons(verse, isLast, actions, actionsEnabled, canEditExternally)
             }
         }
@@ -211,34 +211,34 @@ private fun VerseButtons(
         TeleprompterItemState.RECORD ->
             NarrationButton(
                 stringResource(Res.string.record), Icons.Filled.Mic, NarrationButtonStyle.PRIMARY,
-                onClick = { actions.onRecord(i) }, enabled = actionsEnabled, modifier = Modifier.width(316.dp)
+                onClick = { actions.onRecord(i) }, enabled = actionsEnabled, modifier = Modifier.width(336.dp)
             )
 
         TeleprompterItemState.RECORD_DISABLED ->
             NarrationButton(
                 stringResource(Res.string.record), Icons.Filled.Mic, NarrationButtonStyle.PRIMARY,
-                onClick = {}, enabled = false, modifier = Modifier.width(316.dp)
+                onClick = {}, enabled = false, modifier = Modifier.width(336.dp)
             )
 
         TeleprompterItemState.RECORD_ACTIVE -> ButtonPair {
             NarrationButton(stringResource(Res.string.pause), Icons.Filled.Pause, NarrationButtonStyle.SECONDARY,
-                onClick = { actions.onPauseRecording(i) }, enabled = actionsEnabled, active = true, modifier = Modifier.width(150.dp))
+                onClick = { actions.onPauseRecording(i) }, enabled = actionsEnabled, active = true, modifier = Modifier.width(160.dp))
             NarrationButton(nextOrSaveText, nextOrSaveIcon, NarrationButtonStyle.SECONDARY,
-                onClick = nextOrSave, enabled = actionsEnabled, modifier = Modifier.width(150.dp))
+                onClick = nextOrSave, enabled = actionsEnabled, modifier = Modifier.width(160.dp))
         }
 
         TeleprompterItemState.RECORDING_PAUSED -> ButtonPair {
             NarrationButton(stringResource(Res.string.resume), Icons.Filled.Mic, NarrationButtonStyle.PRIMARY,
-                onClick = { actions.onResumeRecording(i) }, enabled = actionsEnabled, modifier = Modifier.width(150.dp))
+                onClick = { actions.onResumeRecording(i) }, enabled = actionsEnabled, modifier = Modifier.width(160.dp))
             NarrationButton(nextOrSaveText, nextOrSaveIcon, NarrationButtonStyle.SECONDARY,
-                onClick = nextOrSave, enabled = actionsEnabled, modifier = Modifier.width(150.dp))
+                onClick = nextOrSave, enabled = actionsEnabled, modifier = Modifier.width(160.dp))
         }
 
         TeleprompterItemState.PLAYING_WHILE_RECORDING_PAUSED -> ButtonPair {
             NarrationButton(stringResource(Res.string.resume), Icons.Filled.Mic, NarrationButtonStyle.PRIMARY,
-                onClick = {}, enabled = false, modifier = Modifier.width(150.dp))
+                onClick = {}, enabled = false, modifier = Modifier.width(160.dp))
             NarrationButton(nextOrSaveText, nextOrSaveIcon, NarrationButtonStyle.SECONDARY,
-                onClick = {}, enabled = false, modifier = Modifier.width(150.dp))
+                onClick = {}, enabled = false, modifier = Modifier.width(160.dp))
         }
 
         TeleprompterItemState.RECORD_AGAIN,
@@ -247,37 +247,37 @@ private fun VerseButtons(
                 NarrationButton(
                     stringResource(Res.string.reRecord), Icons.Filled.Mic, NarrationButtonStyle.SECONDARY,
                     onClick = { actions.onRecordAgain(i) },
-                    enabled = actionsEnabled && verse.isRecordAgainEnabled, modifier = Modifier.width(150.dp)
+                    enabled = actionsEnabled && verse.isRecordAgainEnabled, modifier = Modifier.width(160.dp)
                 )
                 NarrationButton(
                     stringResource(Res.string.edit), Icons.Filled.Edit, NarrationButtonStyle.SECONDARY,
                     onClick = { actions.onEditExternally(i) },
-                    enabled = actionsEnabled && verse.isRecordAgainEnabled, modifier = Modifier.width(150.dp)
+                    enabled = actionsEnabled && verse.isRecordAgainEnabled, modifier = Modifier.width(160.dp)
                 )
             } else NarrationButton(
                 stringResource(Res.string.reRecord), Icons.Filled.Mic, NarrationButtonStyle.SECONDARY,
                 onClick = { actions.onRecordAgain(i) },
-                enabled = actionsEnabled && verse.isRecordAgainEnabled, modifier = Modifier.width(316.dp)
+                enabled = actionsEnabled && verse.isRecordAgainEnabled, modifier = Modifier.width(336.dp)
             )
 
         TeleprompterItemState.RECORD_AGAIN_DISABLED ->
             NarrationButton(
                 stringResource(Res.string.reRecord), Icons.Filled.Mic, NarrationButtonStyle.SECONDARY,
-                onClick = {}, enabled = false, modifier = Modifier.width(316.dp)
+                onClick = {}, enabled = false, modifier = Modifier.width(336.dp)
             )
 
         TeleprompterItemState.RECORD_AGAIN_ACTIVE -> ButtonPair {
             NarrationButton(stringResource(Res.string.pause), Icons.Filled.Pause, NarrationButtonStyle.SECONDARY,
-                onClick = { actions.onPauseRecording(i) }, enabled = actionsEnabled, active = true, modifier = Modifier.width(150.dp))
+                onClick = { actions.onPauseRecording(i) }, enabled = actionsEnabled, active = true, modifier = Modifier.width(160.dp))
             NarrationButton(stringResource(Res.string.save), Icons.Filled.CheckCircle, NarrationButtonStyle.PRIMARY,
-                onClick = { actions.onSave(i) }, enabled = actionsEnabled, modifier = Modifier.width(150.dp))
+                onClick = { actions.onSave(i) }, enabled = actionsEnabled, modifier = Modifier.width(160.dp))
         }
 
         TeleprompterItemState.RECORD_AGAIN_PAUSED -> ButtonPair {
             NarrationButton(stringResource(Res.string.resume), Icons.Filled.Mic, NarrationButtonStyle.SECONDARY,
-                onClick = { actions.onResumeRecording(i) }, enabled = actionsEnabled, modifier = Modifier.width(150.dp))
+                onClick = { actions.onResumeRecording(i) }, enabled = actionsEnabled, modifier = Modifier.width(160.dp))
             NarrationButton(stringResource(Res.string.save), Icons.Filled.CheckCircle, NarrationButtonStyle.PRIMARY,
-                onClick = { actions.onSave(i) }, enabled = actionsEnabled, modifier = Modifier.width(150.dp))
+                onClick = { actions.onSave(i) }, enabled = actionsEnabled, modifier = Modifier.width(160.dp))
         }
     }
 }

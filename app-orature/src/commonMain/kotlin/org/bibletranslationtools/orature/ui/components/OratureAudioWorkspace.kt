@@ -65,12 +65,20 @@ import org.bibletranslationtools.orature.resources.reRecord
 import org.jetbrains.compose.resources.stringResource
 import org.bibletranslationtools.orature.ui.OratureColors
 import org.bibletranslationtools.orature.ui.viewmodels.OratureMarkerInfo
+import org.bibletranslationtools.shared.ui.playback.AudioTimeline
+import org.bibletranslationtools.shared.ui.playback.PcmSource
+import org.bibletranslationtools.shared.ui.playback.PlaybackDisplayClock
+import org.bibletranslationtools.shared.ui.playback.WaveformPeakCache
+import org.bibletranslationtools.shared.ui.playback.fillWindow
+import kotlin.math.floor
 import kotlin.math.roundToInt
 
-private val WaveColor = Color(0xFF8A94A6)
+// JVM WAV_COLOR_LIGHT (wave amplitude lines) / WAV_BACKGROUND_COLOR_LIGHT (white behind them),
+// from common/data/ColorTheme.kt. (Dark theme is #808080 on #343434 — not wired here yet.)
+private val WaveColor = Color(0xFF66768B)
 private val CursorColor = Color(0xFFD32F2F)
-// JVM WaveformLayer waveform background (#E5E8EB) + volume-bar background (#001533).
-private val WaveformBg = Color(0xFFE5E8EB)
+// JVM waveform image background is white; the volume-bar strip is the dark navy below.
+private val WaveformBg = Color(0xFFFFFFFF)
 private val VolumeBarBg = Color(0xFF001533)
 private const val PCM_MAX = 32768f
 
@@ -107,6 +115,14 @@ fun OratureAudioWorkspace(
     volumeProvider: () -> Float,
     positionProvider: () -> Int,
     totalFramesProvider: () -> Int,
+    // Frame-stable PLAYBACK renderer (shared engine). When [isRecordingView] is false the waveform is
+    // drawn from the peak cache via fillWindow at the smooth [clock] position; when true it falls
+    // back to the live AudioScene [waveformProvider] buffer above.
+    timelineProvider: () -> AudioTimeline?,
+    peakCacheFor: (PcmSource) -> WaveformPeakCache?,
+    clock: PlaybackDisplayClock,
+    waveformSampleRate: Int,
+    isRecordingView: () -> Boolean,
     scrollEnabled: Boolean,
     markersEditable: Boolean,
     onSeekToFrame: (Int) -> Unit,
@@ -119,7 +135,9 @@ fun OratureAudioWorkspace(
     modifier: Modifier = Modifier
 ) {
     var frameTick by remember { mutableLongStateOf(0L) }
-    LaunchedEffect(Unit) { while (true) withFrameNanos { frameTick = it } }
+    // Advance the display clock every frame (it no-ops unless playing) AND keep frameTick moving for
+    // the recording view.
+    LaunchedEffect(Unit) { while (true) withFrameNanos { frameTick = it; clock.onFrame(it) } }
     // A lambda that reads frameTick (a snapshot state); calling it inside a layout/offset block
     // subscribes that block to per-frame updates so markers reposition as the waveform scrolls.
     val frameClock: () -> Long = { frameTick }
@@ -132,6 +150,11 @@ fun OratureAudioWorkspace(
                 splitPivotProvider = splitPivotProvider,
                 markerInfos = markerInfos,
                 positionProvider = positionProvider,
+                timelineProvider = timelineProvider,
+                peakCacheFor = peakCacheFor,
+                clock = clock,
+                waveformSampleRate = waveformSampleRate,
+                isRecordingView = isRecordingView,
                 scrollEnabled = scrollEnabled,
                 markersEditable = markersEditable,
                 onSeekToFrame = onSeekToFrame,
@@ -188,6 +211,11 @@ private fun WaveformArea(
     splitPivotProvider: () -> Int?,
     markerInfos: List<OratureMarkerInfo>,
     positionProvider: () -> Int,
+    timelineProvider: () -> AudioTimeline?,
+    peakCacheFor: (PcmSource) -> WaveformPeakCache?,
+    clock: PlaybackDisplayClock,
+    waveformSampleRate: Int,
+    isRecordingView: () -> Boolean,
     scrollEnabled: Boolean,
     markersEditable: Boolean,
     onSeekToFrame: (Int) -> Unit,
@@ -204,6 +232,23 @@ private fun WaveformArea(
     BoxWithConstraints(modifier = modifier.background(WaveformBg)) {
         val density = LocalDensity.current
         val widthPx = with(density) { maxWidth.toPx() }
+        val framesOnScreen = (waveformSampleRate * 10).coerceAtLeast(1)
+
+        // Per-pixel min/max scratch for the frame-stable playback path (reused across frames).
+        val colCount = widthPx.toInt().coerceAtLeast(1) + 1
+        val colMins = remember(colCount) { FloatArray(colCount) }
+        val colMaxs = remember(colCount) { FloatArray(colCount) }
+
+        // Markers ride the SMOOTH clock during playback (single viewport recentered on the clock);
+        // during recording they use the scene's own (possibly split) viewports.
+        val markerViewports: () -> List<IntRange> = {
+            if (isRecordingView()) viewportsProvider()
+            else {
+                val half = framesOnScreen / 2
+                val c = clock.displayFrame.toInt()
+                listOf((c - half) until (c + half))
+            }
+        }
 
         // Scrub: dragging the background seeks (JVM setOnLayerScroll). Cache the position at drag
         // start; each move seeks by the accumulated pixel delta (drag left → forward).
@@ -212,7 +257,10 @@ private fun WaveformArea(
                 var startPos = 0
                 var accDx = 0f
                 detectDragGestures(
-                    onDragStart = { startPos = positionProvider(); accDx = 0f },
+                    onDragStart = {
+                        startPos = if (isRecordingView()) positionProvider() else clock.displayFrame.toInt()
+                        accDx = 0f
+                    },
                     onDrag = { change, delta ->
                         accDx += delta.x
                         onSeekToFrame(startPos - pixelsToFrames(accDx, size.width.toFloat()))
@@ -223,25 +271,49 @@ private fun WaveformArea(
         } else Modifier
 
         Canvas(modifier = Modifier.fillMaxSize().then(scrubModifier)) {
-            @Suppress("UNUSED_EXPRESSION") frameTick // read to redraw each frame
             val midY = size.height / 2f
             val scale = size.height / 2f / PCM_MAX
+            val tl = timelineProvider()
 
-            val buffer = waveformProvider()
-            if (buffer.size >= 2) {
+            if (!isRecordingView() && tl != null && tl.totalFrames > 0) {
+                // FRAME-STABLE PLAYBACK: sample the peak cache on the absolute frame grid at the
+                // smooth clock position (identical approach to the translation surfaces). Columns
+                // never re-bin as the window scrolls, so the wave glides instead of crawling.
+                clock.displayFrame // subscribe: redraw each frame while playing
+                val widthF = size.width.coerceAtLeast(1f)
+                val fppD = framesOnScreen.toDouble() / widthF
+                val leftFrame = clock.displayFrame.toDouble() - framesOnScreen / 2.0
+                val firstCol = floor(leftFrame / fppD).toLong()
+                val xShift = kotlin.math.round((firstCol * fppD - leftFrame) / fppD).toFloat() + 0.5f
+                tl.fillWindow(firstCol, colCount, fppD, peakCacheFor, colMins, colMaxs)
+                for (i in 0 until colCount) {
+                    val mn = colMins[i]
+                    if (mn.isNaN()) continue
+                    val x = i + xShift
+                    drawLine(WaveColor, Offset(x, midY - colMaxs[i] * scale), Offset(x, midY - mn * scale))
+                }
+            } else {
+                // RECORDING (or cache not ready): the live AudioScene composite, pixel-driven so a
+                // low-res buffer never leaves gaps. @Suppress reads frameTick to redraw each frame.
+                @Suppress("UNUSED_EXPRESSION") frameTick
+                val buffer = waveformProvider()
                 val columns = buffer.size / 2
-                for (col in 0 until columns) {
-                    val minV = buffer[col * 2]
-                    val maxV = buffer[col * 2 + 1]
-                    if (minV == 0f && maxV == 0f) continue
-                    val x = col.toFloat() / columns * size.width
-                    drawLine(WaveColor, Offset(x, midY - minV * scale), Offset(x, midY - maxV * scale), strokeWidth = 1f)
+                if (columns > 0) {
+                    val w = size.width.toInt().coerceAtLeast(1)
+                    for (x in 0 until w) {
+                        val col = (x.toLong() * columns / w).toInt().coerceIn(0, columns - 1)
+                        val minV = buffer[col * 2]
+                        val maxV = buffer[col * 2 + 1]
+                        if (minV == 0f && maxV == 0f) continue
+                        val px = x + 0.5f
+                        drawLine(WaveColor, Offset(px, midY - minV * scale), Offset(px, midY - maxV * scale))
+                    }
                 }
             }
-            drawLine(OratureColors.SurfaceTertiary, Offset(0f, midY), Offset(size.width, midY), strokeWidth = 1f)
+            drawLine(OratureColors.SurfaceTertiary, Offset(0f, midY), Offset(size.width, midY))
             // Playhead: the current position sits at the viewport center in every mode.
             val cursorX = size.width / 2f
-            drawLine(CursorColor, Offset(cursorX, 0f), Offset(cursorX, size.height), strokeWidth = 2f)
+            drawLine(CursorColor, Offset(cursorX, 0f), Offset(cursorX, size.height))
         }
 
         // Verse markers overlaid as interactive nodes, each repositioned per frame as the wave scrolls.
@@ -249,7 +321,7 @@ private fun WaveformArea(
             VerseMarker(
                 marker = marker,
                 widthPx = widthPx,
-                viewportsProvider = viewportsProvider,
+                viewportsProvider = markerViewports,
                 splitPivotProvider = splitPivotProvider,
                 editable = markersEditable,
                 frameClock = frameClock,

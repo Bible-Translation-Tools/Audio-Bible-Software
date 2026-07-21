@@ -656,7 +656,11 @@ class OratureBlindDraftViewModel(
         private const val SOURCE_PLAYER_ID = 90_010
         private const val TAKE_PLAYER_ID = 90_011
         private const val RECORDER_ID = 90_012
-        private const val RECORD_WIDTH = 480
+        // Buffer columns for the live-record waveform. Kept wider than any real screen so the draw
+        // DOWN-samples (one crisp 1px line per pixel, like the recorder) instead of up-sampling a
+        // low-res buffer into fat multi-pixel blocks. framesToCompress scales with this, so the
+        // 10-second window is unchanged — only the resolution increases.
+        private const val RECORD_WIDTH = 4096
         private const val RECORD_SECONDS = 10
     }
 }
