@@ -119,7 +119,7 @@ fun OratureTheme(content: @Composable () -> Unit) {
  * backend/engine. The rail stays present on every screen (JVM: RootView's AppBar).
  */
 @Composable
-fun OratureApp() {
+fun OratureApp(startWithSplash: Boolean = true) {
     val navController = rememberNavController()
     val appPreferences = remember { getKoin().get<IAppPreferences>() }
     val navigationLock = remember { getKoin().get<OratureNavigationLock>() }
@@ -163,7 +163,7 @@ fun OratureApp() {
         ) {
             Box(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
                 OratureRootShell(navController) {
-                    OratureNavigation(navController)
+                    OratureNavigation(navController, startWithSplash = startWithSplash)
                 }
 
                 SnackbarHost(

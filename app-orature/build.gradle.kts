@@ -133,6 +133,15 @@ compose.desktop {
             packageName = "Orature"
             packageVersion = "1.0.0"
             modules("java.sql", "java.naming", "java.xml", "jdk.unsupported")
+            macOS {
+                iconFile.set(project.file("src/desktopMain/resources/icons/ic_launcher.icns"))
+            }
+            windows {
+                iconFile.set(project.file("src/desktopMain/resources/icons/ic_launcher.ico"))
+            }
+            linux {
+                iconFile.set(project.file("src/desktopMain/resources/icons/ic_launcher.png"))
+            }
         }
     }
 }

@@ -1,13 +1,30 @@
 package org.bibletranslationtools.orature
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPlacement
+import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import java.awt.Taskbar
+import java.awt.Toolkit
+import kotlinx.coroutines.awaitCancellation
 import org.bibletranslationtools.orature.di.oratureDirectoryProviderModule
 import org.bibletranslationtools.orature.di.oratureViewModelModule
 import org.bibletranslationtools.orature.ui.OratureApp
 import org.bibletranslationtools.orature.ui.OratureNavigationLock
+import org.bibletranslationtools.orature.ui.OratureTheme
+import org.bibletranslationtools.orature.ui.screens.OratureSplashScreen
+import org.bibletranslationtools.orature.ui.viewmodels.OratureSplashViewModel
 import org.bibletranslationtools.otter.common.persistence.DesktopDirectoryProvider
 import org.bibletranslationtools.otter.common.device.newaudio.AudioDeviceSelector
 import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
@@ -55,26 +72,82 @@ fun main() {
     selector.getOutputDevices(defaultSpec).firstOrNull()?.let(selector::selectOutputDevice)
     selector.getInputDevices(defaultSpec).firstOrNull()?.let(selector::selectInputDevice)
 
+    // Set the macOS Dock / taskbar icon before the application loop starts. Window(icon=...) only
+    // affects the window decoration; Taskbar controls the Dock (mirrors the recorder's main()).
+    runCatching {
+        if (Taskbar.isTaskbarSupported()) {
+            val taskbar = Taskbar.getTaskbar()
+            if (taskbar.isSupported(Taskbar.Feature.ICON_IMAGE)) {
+                val iconUrl = Thread.currentThread().contextClassLoader
+                    .getResource("icons/ic_launcher.png")
+                taskbar.iconImage = Toolkit.getDefaultToolkit().getImage(iconUrl)
+            }
+        }
+    }
+
     val navigationLock = koin.get<OratureNavigationLock>()
 
     application {
-        // JVM Orature opens maximized (OtterApp.start: stage.isMaximized = true), not at a fixed
-        // pixel size.
-        val windowState = rememberWindowState(placement = WindowPlacement.Maximized)
-        Window(
-            // JVM: `OtterApp`'s `setOnCloseRequest` — veto the close (and show a snackbar) while
-            // an external editor plugin is open, instead of exiting normally.
-            onCloseRequest = {
-                if (navigationLock.locked.value) {
-                    navigationLock.notifyCloseBlocked()
-                } else {
-                    exitApplication()
-                }
-            },
-            title = "Orature",
-            state = windowState
-        ) {
-            OratureApp()
+        // JVM Orature shows the splash in a SEPARATE undecorated window while the main (maximized)
+        // window stays hidden, then reveals the main window once InitializeApp completes
+        // (OtterApp: shouldShowPrimaryStage=false; SplashScreen.finish → primaryStage.show()).
+        var initialized by remember { mutableStateOf(false) }
+
+        if (!initialized) {
+            Window(
+                onCloseRequest = ::exitApplication,
+                title = "Orature",
+                icon = painterResource("icons/ic_launcher.png"),
+                undecorated = true,
+                resizable = false,
+                // Fixed to the splash art's size (orature_splash.png is 576×480), centered.
+                state = rememberWindowState(
+                    size = DpSize(576.dp, 480.dp),
+                    position = WindowPosition(Alignment.Center)
+                )
+            ) {
+                OratureSplashWindow(onFinished = { initialized = true })
+            }
+        } else {
+            // JVM Orature opens maximized (OtterApp.start: stage.isMaximized = true).
+            val windowState = rememberWindowState(placement = WindowPlacement.Maximized)
+            Window(
+                // JVM: `OtterApp`'s `setOnCloseRequest` — veto the close (and show a snackbar) while
+                // an external editor plugin is open, instead of exiting normally.
+                onCloseRequest = {
+                    if (navigationLock.locked.value) {
+                        navigationLock.notifyCloseBlocked()
+                    } else {
+                        exitApplication()
+                    }
+                },
+                title = "Orature",
+                icon = painterResource("icons/ic_launcher.png"),
+                state = windowState
+            ) {
+                // The splash already ran InitializeApp; the main window starts straight at Home.
+                OratureApp(startWithSplash = false)
+            }
         }
+    }
+}
+
+/**
+ * Splash window content: runs the backend init (DB migrate + seed) showing progress, then signals
+ * [onFinished] so main.kt can swap in the maximized main window (JVM SplashScreen.finish()).
+ */
+@Composable
+private fun OratureSplashWindow(onFinished: () -> Unit) {
+    val vm = remember { OratureSplashViewModel() }
+    LaunchedEffect(Unit) {
+        val disposable = vm.initApp().subscribe({ onFinished() }, { onFinished() })
+        try {
+            awaitCancellation()
+        } finally {
+            disposable.dispose()
+        }
+    }
+    OratureTheme {
+        OratureSplashScreen(vm)
     }
 }

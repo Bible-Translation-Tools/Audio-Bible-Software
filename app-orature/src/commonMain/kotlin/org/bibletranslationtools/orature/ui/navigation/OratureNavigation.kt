@@ -25,10 +25,15 @@ import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.koin.mp.KoinPlatform.getKoin
 
 @Composable
-fun OratureNavigation(navController: NavHostController) {
+fun OratureNavigation(navController: NavHostController, startWithSplash: Boolean = true) {
     val scope = rememberCoroutineScope()
 
-    NavHost(navController = navController, startDestination = OratureSplashRoute) {
+    // Desktop runs the branded splash in its own dedicated window (see main.kt) and starts the main
+    // window straight at Home; Android has no separate window, so the splash is the first route.
+    NavHost(
+        navController = navController,
+        startDestination = if (startWithSplash) OratureSplashRoute else OratureHomeRoute
+    ) {
         composable<OratureSplashRoute> {
             val vm = viewModel { OratureSplashViewModel() }
             LaunchedEffect(Unit) {
