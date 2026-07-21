@@ -274,8 +274,13 @@ class OratureNarrationViewModel(
     // scrub-drag (JVM: audioPositionProperty / totalAudioSizeProperty).
     private var audioPositionFrames: Int = 0
     private var totalAudioFrames: Int = 0
-    fun currentAudioPosition(): Int = audioPositionFrames
-    fun currentTotalFrames(): Int = totalAudioFrames
+    // The scrollbar thumb (size = window/total, offset = position/total). During RECORDING the write
+    // head is tracked by the waveform ticker (audioPositionFrames); during playback/idle the position
+    // is the smooth display clock and the total must come straight from the chapter (the ticker only
+    // updates totalAudioFrames while an AudioScene render is running, so it stays 0 during pure
+    // playback — which collapsed the thumb to full width and made the scrollbar look absent).
+    fun currentAudioPosition(): Int = if (isRecordingView()) audioPositionFrames else clock.displayFrame.toInt()
+    fun currentTotalFrames(): Int = narration?.getTotalFrames() ?: totalAudioFrames
 
     // ---- frame-stable PLAYBACK renderer (shared engine, like the translation surfaces) ----------
     // During playback/idle the workspace draws the chapter from this immutable peak cache via
@@ -1247,7 +1252,7 @@ class OratureNarrationViewModel(
         // explicitly so both the audio and the player's own sessionStart are re-anchored accurately —
         // this is what breaks the per-cycle "jump ahead" compounding.
         val resume = if (playbackReachedEnd) 0 else clock.displayFrame.toInt()
-        System.err.println("[narr-diag] PLAY resume=$resume clockDisplay=${clock.displayFrame} reachedEnd=$playbackReachedEnd loc=${n.getLocationInFrames()}")
+        System.err.println("[narr-diag] PLAY resume=$resume clockDisplay=${clock.displayFrame} reachedEnd=$playbackReachedEnd loc=${n.getLocationInFrames()} total=${n.getTotalFrames()} dur=${n.getDurationInFrames()} windowFrames=441000 (~${n.getTotalFrames() / 44100.0}s vs 10s window)")
         playbackReachedEnd = false
         n.seek(resume)
         player.play()

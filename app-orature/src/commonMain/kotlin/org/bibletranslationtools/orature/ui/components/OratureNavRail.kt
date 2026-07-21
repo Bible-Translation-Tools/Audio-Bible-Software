@@ -57,7 +57,7 @@ fun OratureNavRail(
 ) {
     Column(
         modifier = modifier
-            .width(72.dp)
+            .width(80.dp)
             .fillMaxHeight()
             .background(OratureColors.Primary)
             .padding(vertical = 12.dp),

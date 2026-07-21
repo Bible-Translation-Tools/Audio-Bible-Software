@@ -22,8 +22,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.ArrowLeft
+import androidx.compose.material.icons.filled.ArrowRight
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
@@ -45,6 +48,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -170,7 +174,7 @@ fun OratureAudioWorkspace(
             )
             VolumeBar(volumeProvider = volumeProvider, frameTick = frameTick)
         }
-        WaveformScrollbar(
+        OratureWaveformScrollbar(
             positionProvider = positionProvider,
             totalFramesProvider = totalFramesProvider,
             enabled = scrollEnabled,
@@ -529,60 +533,5 @@ private fun VolumeBar(volumeProvider: () -> Float, frameTick: Long) {
 }
 
 /**
- * A real horizontal scrollbar (JVM `ScrollBar` bottom of the borderpane): the thumb spans the
- * visible window over the total, positioned by the playhead; dragging it seeks. Disabled while
- * recording/playing.
+ * The narration audio scrollbar is the shared [OratureWaveformScrollbar].
  */
-@Composable
-private fun WaveformScrollbar(
-    positionProvider: () -> Int,
-    totalFramesProvider: () -> Int,
-    enabled: Boolean,
-    onSeekToFrame: (Int) -> Unit,
-    frameClock: () -> Long
-) {
-    val trackColor = OratureColors.SurfaceSecondary
-    val thumbColor = Color(0xFFB3B9C2)
-
-    BoxWithConstraints(
-        modifier = Modifier.fillMaxWidth().height(14.dp).background(trackColor)
-    ) {
-        val density = LocalDensity.current
-        val trackPx = with(density) { maxWidth.toPx() }
-
-        // Thumb spans the on-screen window over the total (full width when it all fits). total
-        // changes rarely (only while recording, when the bar is disabled), so read it here.
-        val total0 = totalFramesProvider().coerceAtLeast(1)
-        val thumbFraction = (FRAMES_ON_SCREEN.toFloat() / total0).coerceIn(0.08f, 1f)
-        val thumbWidthPx = trackPx * thumbFraction
-        val thumbWidthDp = with(density) { thumbWidthPx.toDp() }
-        // The full 0..total position range maps to this pixel travel — the scale for dragging.
-        val travelPx = (trackPx - thumbWidthPx).coerceAtLeast(1f)
-
-        val dragModifier = if (enabled) {
-            Modifier.pointerInput(Unit) {
-                detectDragGestures { change, delta ->
-                    val total = totalFramesProvider().coerceAtLeast(1)
-                    onSeekToFrame(positionProvider() + (delta.x / travelPx * total).roundToInt())
-                    change.consume()
-                }
-            }
-        } else Modifier
-
-        Box(
-            modifier = Modifier
-                .offset {
-                    frameClock() // follow the playhead each frame
-                    val total = totalFramesProvider().coerceAtLeast(1)
-                    val pos = positionProvider().coerceIn(0, total)
-                    val off = (pos.toFloat() / total * travelPx).coerceIn(0f, travelPx)
-                    IntOffset(off.roundToInt(), 0)
-                }
-                .width(thumbWidthDp)
-                .fillMaxHeight()
-                .alpha(if (enabled) 1f else 0.5f)
-                .background(thumbColor)
-                .then(dragModifier)
-        )
-    }
-}
