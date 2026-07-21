@@ -57,24 +57,72 @@ class WorkbookDescriptorRepository @Inject constructor(
             .fromCallable {
                 workbookDescriptorDao.fetchById(id)
             }
-            .map {
-                buildWorkbookDescriptor(it)
+            .map { entity ->
+                val target = collectionRepository.getProject(entity.targetFk).blockingGet()
+                val source = collectionRepository.getProject(entity.sourceFk).blockingGet()
+                buildWorkbookDescriptor(entity, source, target, sourceAudioFor(listOf(source)), HashMap())
             }
             .subscribeOn(Schedulers.io())
     }
 
-    override fun getAll(): Single<List<WorkbookDescriptor>> {
+    override fun getAll(computeSourceAudio: Boolean): Single<List<WorkbookDescriptor>> {
         return Single
             .fromCallable {
-                workbookDescriptorDao.fetchAll()
-                    .map {
-                        buildWorkbookDescriptor(it)
-                    }
+                // Batch-resolve every referenced source/target collection in ~3 queries (vs ~3 per
+                // descriptor). With many projects the per-descriptor getProject chain (collection +
+                // dublin_core + language fetchById, on one SQLite connection) dominated the home-page
+                // load. When [computeSourceAudio] is true, source audio is resolved by opening each
+                // unique source resource container (a zip) ONCE; that RC open is still ~hundreds of ms
+                // each, so callers that render a list first (Orature home) pass false and resolve it
+                // later via [getSourceAudioSuspend], off the critical path.
+                val entities = workbookDescriptorDao.fetchAll()
+                val projectIds = entities.flatMap { listOf(it.sourceFk, it.targetFk) }
+                val projectsById = collectionRepository.getProjects(projectIds).blockingGet()
+                val sourceAudioCache: Map<String, Boolean> =
+                    if (computeSourceAudio) sourceAudioFor(entities.mapNotNull { projectsById[it.sourceFk] })
+                    else emptyMap()
+                val typeCache = HashMap<Int, ProjectMode>()
+                entities.mapNotNull { entity ->
+                    val source = projectsById[entity.sourceFk] ?: return@mapNotNull null
+                    val target = projectsById[entity.targetFk] ?: return@mapNotNull null
+                    buildWorkbookDescriptor(entity, source, target, sourceAudioCache, typeCache)
+                }
             }
             .subscribeOn(Schedulers.io())
             .doOnError {
                 logger.error("Error getting workbook descriptors.", it)
             }
+    }
+
+    /** Resolve hasSourceAudio (descriptorId -> has) for the given descriptors, opening each unique
+     *  source resource container once. Runs on the IO scheduler. */
+    private fun resolveSourceAudio(descriptors: List<WorkbookDescriptor>): Single<Map<Int, Boolean>> {
+        return Single
+            .fromCallable {
+                val byKey = sourceAudioFor(descriptors.map { it.sourceCollection })
+                descriptors.associate { d ->
+                    val rc = d.sourceCollection.resourceContainer
+                    d.id to (rc?.let { byKey["${it.path}|${d.sourceCollection.slug}"] } ?: false)
+                }
+            }
+            .subscribeOn(Schedulers.io())
+            .doOnError { logger.error("Error resolving source audio.", it) }
+    }
+
+    /** Resolve hasSourceAudio for a set of source collections, opening each unique resource container
+     *  (zip) only ONCE. Keyed by "rcPath|slug". */
+    private fun sourceAudioFor(sources: List<Collection>): Map<String, Boolean> {
+        val out = HashMap<String, Boolean>()
+        sources
+            .filter { it.resourceContainer != null }
+            .distinctBy { "${it.resourceContainer!!.path}|${it.slug}" }
+            .groupBy { it.resourceContainer!!.path }
+            .forEach { (_, group) ->
+                val meta = group.first().resourceContainer!!
+                val results = SourceAudioAccessor.hasSourceAudio(meta, group.map { it.slug })
+                group.forEach { out["${meta.path}|${it.slug}"] = results[it.slug] ?: false }
+            }
+        return out
     }
 
     override fun delete(list: List<WorkbookDescriptor>): Completable {
@@ -92,14 +140,21 @@ class WorkbookDescriptorRepository @Inject constructor(
             }
     }
 
-    private fun buildWorkbookDescriptor(entity: WorkbookDescriptorEntity): WorkbookDescriptor {
-        val targetCollection = collectionRepository.getProject(entity.targetFk).blockingGet()
-        val sourceCollection = collectionRepository.getProject(entity.sourceFk).blockingGet()
-        val hasSourceAudio = SourceAudioAccessor.hasSourceAudio(
-            sourceCollection.resourceContainer!!,
-            sourceCollection.slug
-        )
-        val mode = workbookTypeDao.fetchById(entity.typeFk)!!
+    private fun buildWorkbookDescriptor(
+        entity: WorkbookDescriptorEntity,
+        sourceCollection: Collection,
+        targetCollection: Collection,
+        // Per-batch memo caches (getAll passes shared maps; getById passes fresh ones, so a single
+        // lookup behaves exactly as before). hasSourceAudio opens the source resource container (a
+        // zip) and the same source RC + type recur across descriptors.
+        sourceAudioCache: Map<String, Boolean>,
+        typeCache: MutableMap<Int, ProjectMode>
+    ): WorkbookDescriptor {
+        val sourceRc = sourceCollection.resourceContainer!!
+        // Read from the prefilled cache only — never open the RC here (that zip open is the expensive
+        // part callers may defer). Absent → false until resolved via getSourceAudioSuspend.
+        val hasSourceAudio = sourceAudioCache["${sourceRc.path}|${sourceCollection.slug}"] ?: false
+        val mode = typeCache.getOrPut(entity.typeFk) { workbookTypeDao.fetchById(entity.typeFk)!! }
         val progress = Single
             .fromCallable {
                 getProgress(sourceCollection, targetCollection, mode)
@@ -162,7 +217,10 @@ class WorkbookDescriptorRepository @Inject constructor(
     }
 
     override suspend fun getByIdSuspend(id: Int): WorkbookDescriptor? = getById(id).awaitSingleOrNull()
-    override suspend fun getAllSuspend(): List<WorkbookDescriptor> = getAll().await()
+    override suspend fun getAllSuspend(computeSourceAudio: Boolean): List<WorkbookDescriptor> =
+        getAll(computeSourceAudio).await()
+    override suspend fun getSourceAudioSuspend(descriptors: List<WorkbookDescriptor>): Map<Int, Boolean> =
+        resolveSourceAudio(descriptors).await()
     override suspend fun deleteSuspend(list: List<WorkbookDescriptor>) = delete(list).await()
 
     private fun mapToEntity(obj: WorkbookDescriptor): WorkbookDescriptorEntity {

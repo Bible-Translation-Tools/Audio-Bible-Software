@@ -129,6 +129,18 @@ class CollectionDao(
             }
     }
 
+    /** Batch fetch by id (single IN query) — used to build many project descriptors at once. */
+    fun fetchByIds(ids: List<Int>, dsl: DSLContext = instanceDsl): List<CollectionEntity> {
+        if (ids.isEmpty()) return emptyList()
+        return dsl
+            .select()
+            .from(COLLECTION_ENTITY)
+            .where(COLLECTION_ENTITY.ID.`in`(ids))
+            .fetch {
+                RecordMappers.mapToCollectionEntity(it)
+            }
+    }
+
     fun fetchByLabel(label: String, dsl: DSLContext = instanceDsl): List<CollectionEntity> {
         return dsl
             .select()

@@ -11,6 +11,8 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IWork
 import org.bibletranslationtools.otter.common.persistence.database.daos.WorkbookDescriptorDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.WorkbookTypeDao
 import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.WorkbookDescriptorEntity
+import org.bibletranslationtools.otter.common.data.primitives.Collection
+import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -47,14 +49,28 @@ class WorkbookDescriptorRepositoryTest {
     @Test
     fun testGetAllSuspend() = runTest {
         val entity = mockk<WorkbookDescriptorEntity>(relaxed = true)
-        
+
         every { workbookDescriptorDao.fetchAll() } returns listOf(entity)
-        
+        // getAll now batch-resolves the referenced collections up front.
+        val collection = mockk<Collection>(relaxed = true)
+        every { collectionRepository.getProjects(any()) } returns
+            Single.just(mapOf(entity.sourceFk to collection, entity.targetFk to collection))
+
         val spy = spyk(repository, recordPrivateCalls = true)
         val descriptor = mockk<WorkbookDescriptor>()
-        every { spy["buildWorkbookDescriptor"](any<WorkbookDescriptorEntity>()) } returns descriptor
-        
-        val result = spy.getAllSuspend()
+        every {
+            spy["buildWorkbookDescriptor"](
+                any<WorkbookDescriptorEntity>(),
+                any<Collection>(),
+                any<Collection>(),
+                any<Map<String, Boolean>>(),
+                any<MutableMap<Int, ProjectMode>>()
+            )
+        } returns descriptor
+
+        // computeSourceAudio=false skips the resource-container open (the relaxed mock has no real
+        // RC to load); the mapping/fetch behavior under test is identical.
+        val result = spy.getAllSuspend(computeSourceAudio = false)
         assertEquals(1, result.size)
         verify { workbookDescriptorDao.fetchAll() }
     }

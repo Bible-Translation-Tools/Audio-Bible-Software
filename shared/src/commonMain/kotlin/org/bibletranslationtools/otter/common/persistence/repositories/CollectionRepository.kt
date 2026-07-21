@@ -314,6 +314,37 @@ class CollectionRepository @Inject constructor(
             .subscribeOn(Schedulers.io())
     }
 
+    override fun getProjects(ids: List<Int>): Single<Map<Int, Collection>> {
+        return Single
+            .fromCallable { buildCollections(ids) }
+            .doOnError { e -> log.error("Error in getProjects", e) }
+            .subscribeOn(Schedulers.io())
+    }
+
+    /**
+     * Build many collections in ~3 queries instead of ~3-per-id. Batch-fetch the collection rows,
+     * then their (shared) dublin_core metadata rows, then those metadata's (shared) language rows,
+     * and assemble in memory with the same mappers [buildCollection] uses. Returns id -> Collection
+     * (missing ids simply absent).
+     */
+    private fun buildCollections(ids: List<Int>): Map<Int, Collection> {
+        if (ids.isEmpty()) return emptyMap()
+        val collectionEntities = collectionDao.fetchByIds(ids.distinct())
+        val metadataIds = collectionEntities.mapNotNull { it.dublinCoreFk }.distinct()
+        val metadataEntities = resourceMetadataDao.fetchByIds(metadataIds)
+        val languageIds = metadataEntities.map { it.languageFk }.distinct()
+        val languageById = languageDao.fetchByIds(languageIds).associateBy { it.id }
+
+        val metadataById = metadataEntities.associate { me ->
+            val language = languageMapper.mapFromEntity(languageById.getValue(me.languageFk))
+            me.id to metadataMapper.mapFromEntity(me, language)
+        }
+        return collectionEntities.associate { ce ->
+            val metadata = ce.dublinCoreFk?.let { metadataById[it] }
+            ce.id to collectionMapper.mapFromEntity(ce, metadata)
+        }
+    }
+
     override fun getSourceProjects(): Single<List<Collection>> {
         return Single
             .fromCallable {

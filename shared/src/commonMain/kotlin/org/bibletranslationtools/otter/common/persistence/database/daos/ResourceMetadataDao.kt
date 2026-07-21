@@ -175,6 +175,18 @@ class ResourceMetadataDao(
             }
     }
 
+    /** Batch fetch by id (single IN query). */
+    fun fetchByIds(ids: List<Int>, dsl: DSLContext = instanceDsl): List<ResourceMetadataEntity> {
+        if (ids.isEmpty()) return emptyList()
+        return dsl
+            .select()
+            .from(DUBLIN_CORE_ENTITY)
+            .where(DUBLIN_CORE_ENTITY.ID.`in`(ids))
+            .fetch {
+                RecordMappers.mapToResourceMetadataEntity(it)
+            }
+    }
+
     fun fetchLatestVersion(
         languageSlug: String,
         identifier: String,
