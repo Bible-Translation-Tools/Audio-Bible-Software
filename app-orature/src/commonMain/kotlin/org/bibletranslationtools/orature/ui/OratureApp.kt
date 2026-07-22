@@ -20,9 +20,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.flow.first
+import org.bibletranslationtools.orature.crash.OratureCrashReporter
 import org.bibletranslationtools.orature.resources.Res
 import org.bibletranslationtools.orature.resources.applicationCloseBlocked
 import org.bibletranslationtools.orature.ui.navigation.OratureNavigation
+import org.bibletranslationtools.orature.ui.screens.OratureCrashScreen
 import org.bibletranslationtools.otter.common.device.newaudio.AudioDeviceSelector
 import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
 import org.bibletranslationtools.shared.preferences.AppSettings
@@ -171,6 +173,11 @@ fun OratureApp(startWithSplash: Boolean = true) {
                     modifier = Modifier.align(Alignment.BottomCenter)
                 )
             }
+
+            // Global crash overlay (JVM: OtterExceptionHandler -> ExceptionDialog). Sits above
+            // everything — including safe-drawing padding — when an uncaught exception is captured.
+            val crash by OratureCrashReporter.crash.collectAsState()
+            crash?.let { OratureCrashScreen(it) }
         }
     }
 }

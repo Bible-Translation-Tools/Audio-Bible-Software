@@ -240,6 +240,18 @@ fun OratureSettingsDrawer(
             // ── Keyboard Shortcuts (static reference) ───────────────────────
             SectionTitle(stringResource(Res.string.keyboardShortcutsSettings))
             KeyboardShortcutsSection()
+
+            // ── Developer: exercise the global crash handler ────────────────
+            // TEMPORARY test affordance: throws on a background thread so the default uncaught-
+            // exception handler (OratureCrashReporter) catches it and shows the crash screen.
+            SectionTitle("Developer")
+            OutlinedButton(
+                onClick = {
+                    Thread { throw RuntimeException("Test crash from Settings — global handler check") }.start()
+                }
+            ) {
+                Text("Throw test exception")
+            }
         }
     }
 }

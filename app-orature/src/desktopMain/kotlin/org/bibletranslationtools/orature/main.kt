@@ -72,6 +72,23 @@ fun main() {
     selector.getOutputDevices(defaultSpec).firstOrNull()?.let(selector::selectOutputDevice)
     selector.getInputDevices(defaultSpec).firstOrNull()?.let(selector::selectInputDevice)
 
+    // Install the global crash handler (JVM: Thread.setDefaultUncaughtExceptionHandler(OtterExceptionHandler)).
+    // Reports upload to GitHub only if a github.properties is on the classpath; otherwise the crash
+    // screen still shows (send disabled). Close = quit the process.
+    run {
+        val directoryProvider = koin.get<org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider>()
+        org.bibletranslationtools.orature.crash.OratureCrashReporter.install(
+            uploaders = listOfNotNull(
+                org.bibletranslationtools.orature.crash.GithubCrashReportUploader.fromClasspath(),
+                org.bibletranslationtools.orature.crash.SentryCrashReporter.fromClasspath()
+            ),
+            logProvider = {
+                runCatching { java.io.File(directoryProvider.logsDirectory, "orature.log").readText() }.getOrNull()
+            },
+            closeApp = { kotlin.system.exitProcess(1) }
+        )
+    }
+
     // Set the macOS Dock / taskbar icon before the application loop starts. Window(icon=...) only
     // affects the window decoration; Taskbar controls the Dock (mirrors the recorder's main()).
     runCatching {
