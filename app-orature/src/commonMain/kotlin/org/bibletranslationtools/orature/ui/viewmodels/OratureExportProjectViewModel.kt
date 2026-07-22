@@ -27,9 +27,11 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.io.File
 
-/** One chapter row in the export dialog (JVM: `ChapterDescriptor`). */
+/** One chapter row in the export dialog (JVM: `ChapterDescriptor`). Progress is binary in the JVM
+ *  (1.0 when the chapter has selected audio, else 0.0). */
 data class OratureExportChapter(
     val sort: Int,
+    val progress: Double,
     val selectable: Boolean,
     val selected: Boolean
 )
@@ -92,8 +94,13 @@ class OratureExportProjectViewModel(
                     val chapters = wb.target.chapters.toList().blockingGet()
                         .sortedBy { it.sort }
                         .map { chapter ->
-                            val hasAudio = chapter.hasSelectedAudio()
-                            OratureExportChapter(chapter.sort, selectable = hasAudio, selected = hasAudio)
+                            // JVM: progress is 1.0 when the chapter has selected audio, else 0.0.
+                            OratureExportChapter(
+                                sort = chapter.sort,
+                                progress = if (chapter.hasSelectedAudio()) 1.0 else 0.0,
+                                selectable = false,
+                                selected = false
+                            )
                         }
                     val title = wb.target.title.ifEmpty { wb.target.slug.uppercase() }
                     title to chapters
@@ -101,7 +108,8 @@ class OratureExportProjectViewModel(
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     bookTitle = loaded.first,
-                    chapters = loaded.second
+                    // Derive selectability for the default type and pre-select all selectable.
+                    chapters = applySelectability(loaded.second, _uiState.value.selectedType)
                 )
                 recomputeEstimate()
             } catch (e: CancellationException) {
@@ -114,7 +122,12 @@ class OratureExportProjectViewModel(
 
     fun selectType(type: ExportType) {
         if (_uiState.value.selectedType == type) return
-        _uiState.value = _uiState.value.copy(selectedType = type)
+        // JVM onSelectExportType: re-derive which chapters are selectable for this type and
+        // pre-select all of them.
+        _uiState.value = _uiState.value.copy(
+            selectedType = type,
+            chapters = applySelectability(_uiState.value.chapters, type)
+        )
         recomputeEstimate()
     }
 
@@ -125,6 +138,27 @@ class OratureExportProjectViewModel(
             }
         )
         recomputeEstimate()
+    }
+
+    /** Select-all / deselect-all toggle for the table header checkbox (only affects selectable rows). */
+    fun toggleAll(selected: Boolean) {
+        _uiState.value = _uiState.value.copy(
+            chapters = _uiState.value.chapters.map {
+                if (it.selectable) it.copy(selected = selected) else it
+            }
+        )
+        recomputeEstimate()
+    }
+
+    /** JVM onSelectExportType selectability rule: Backup includes any chapter with progress > 0;
+     *  every other type only fully-complete chapters (progress == 1.0). Selectable rows start
+     *  pre-selected. */
+    private fun applySelectability(
+        chapters: List<OratureExportChapter>,
+        type: ExportType
+    ): List<OratureExportChapter> = chapters.map { ch ->
+        val selectable = if (type == ExportType.BACKUP) ch.progress > 0.0 else ch.progress >= 1.0
+        ch.copy(selectable = selectable, selected = selectable)
     }
 
     private fun selectedChapters(): List<Int> = _uiState.value.chapters.filter { it.selected }.map { it.sort }
