@@ -6,8 +6,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -23,8 +25,13 @@ import kotlinx.coroutines.flow.first
 import org.bibletranslationtools.orature.crash.OratureCrashReporter
 import org.bibletranslationtools.orature.resources.Res
 import org.bibletranslationtools.orature.resources.applicationCloseBlocked
+import org.bibletranslationtools.orature.resources.openBook
+import org.bibletranslationtools.orature.ui.navigation.OratureNarrationRoute
 import org.bibletranslationtools.orature.ui.navigation.OratureNavigation
+import org.bibletranslationtools.orature.ui.navigation.OratureTranslationRoute
 import org.bibletranslationtools.orature.ui.screens.OratureCrashScreen
+import org.bibletranslationtools.orature.ui.viewmodels.OratureImportEvents
+import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.device.newaudio.AudioDeviceSelector
 import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
 import org.bibletranslationtools.shared.preferences.AppSettings
@@ -133,6 +140,29 @@ fun OratureApp(startWithSplash: Boolean = true) {
     LaunchedEffect(navigationLock) {
         navigationLock.closeBlockedEvents.collect {
             snackbarHostState.showSnackbar(getString(Res.string.applicationCloseBlocked))
+        }
+    }
+
+    // Import result messages (JVM: SnackbarHandler.showNotification at the app root) — success/failure
+    // are snackbars here, not dialogs. A successful project import offers an "Open Book" action that
+    // navigates to the imported book (JVM: the notification's Open Book action).
+    val importEvents = remember { getKoin().get<OratureImportEvents>() }
+    LaunchedEffect(importEvents) {
+        importEvents.notifications.collect { n ->
+            val actionLabel = if (n.workbookDescriptorId != null) getString(Res.string.openBook) else null
+            val result = snackbarHostState.showSnackbar(
+                message = n.message,
+                actionLabel = actionLabel,
+                duration = SnackbarDuration.Long
+            )
+            if (result == SnackbarResult.ActionPerformed && n.workbookDescriptorId != null) {
+                val route = if (n.mode == ProjectMode.TRANSLATION) {
+                    OratureTranslationRoute(n.workbookDescriptorId)
+                } else {
+                    OratureNarrationRoute(n.workbookDescriptorId)
+                }
+                navController.navigate(route)
+            }
         }
     }
 
