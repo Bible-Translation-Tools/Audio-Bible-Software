@@ -105,6 +105,8 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
     private var loadedDescriptors: List<WorkbookDescriptor> = emptyList()
     private val pendingDeleteKeys = mutableSetOf<OratureProjectGroupKey>()
     private val deleteJobs = mutableMapOf<OratureProjectGroupKey, Job>()
+    // In-flight per-book progress computations from the current load (cancelled on the next reload).
+    private val progressJobs = mutableListOf<Job>()
 
     init {
         loadProjects()
@@ -133,19 +135,38 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
     private fun reloadProjects(
         select: (List<OratureProjectGroupUiModel>) -> OratureProjectGroupKey?
     ) {
+        // Cancel any background computations still running from a previous load.
+        progressJobs.forEach { it.cancel() }
+        progressJobs.clear()
+
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {
-                val descriptors = workbookDescriptorRepository.getAllSuspend()
+                // Skip source audio here: resolving it opens each source resource container (a zip),
+                // ~hundreds of ms each, which blocked the list. Resolve it in the background below.
+                // (getAllSuspend already runs its DB work on the Rx IO scheduler.)
+                val t0 = System.currentTimeMillis()
+                val descriptors = workbookDescriptorRepository.getAllSuspend(computeSourceAudio = false)
+                System.err.println("[home-perf] getAllSuspend (${descriptors.size}, no source-audio) took ${System.currentTimeMillis() - t0}ms")
+                // Phase A: build + publish the list IMMEDIATELY with progress (0.0) and source audio
+                // (false) unresolved. The per-book progress scans and the source-RC zip opens are the
+                // expensive parts; keeping them off the critical path is what makes the home page
+                // appear at once. Mirrors the JVM HomePageViewModel2, which renders the list first.
                 val groups = buildProjectGroups(descriptors)
                 loadedDescriptors = descriptors
                 allGroups = groups
                 val visible = groups.filter { it.key !in pendingDeleteKeys }
+                val selectedKey = select(visible)
                 _uiState.value = OratureHomeUiState(
                     isLoading = false,
                     projectGroups = visible,
-                    selectedGroupKey = select(visible)
+                    selectedGroupKey = selectedKey
                 )
+                // Phase B: resolve each book's progress in parallel and patch each ring as it resolves.
+                computeProgressInBackground(descriptors)
+                // Phase C: resolve source audio in the background — the selected (in-view) group's
+                // books first so their speaker icons appear soonest, then the rest.
+                resolveSourceAudioInBackground(descriptors, selectedKey)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -155,6 +176,84 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
                 )
             }
         }
+    }
+
+    /**
+     * Resolve hasSourceAudio off the critical path, in-view group first. The repository opens each
+     * unique source resource container once per call, so this is at most a few zip opens total —
+     * done here in the background instead of blocking the initial render.
+     */
+    private fun resolveSourceAudioInBackground(
+        descriptors: List<WorkbookDescriptor>,
+        selectedKey: OratureProjectGroupKey?
+    ) {
+        val (inView, rest) = descriptors.partition { it.groupKey() == selectedKey }
+        val tStart = System.currentTimeMillis()
+        listOf(inView to "in-view", rest to "rest").filter { it.first.isNotEmpty() }.forEach { (batch, label) ->
+            val job = viewModelScope.launch {
+                val byId = try {
+                    workbookDescriptorRepository.getSourceAudioSuspend(batch) // resolves on Rx IO
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    emptyMap()
+                }
+                System.err.println("[home-perf] source-audio $label (${batch.size}) resolved at +${System.currentTimeMillis() - tStart}ms")
+                applyBookSourceAudio(byId)
+            }
+            progressJobs.add(job)
+        }
+    }
+
+    /**
+     * Compute each descriptor's progress concurrently (each [WorkbookDescriptor.progress] is a
+     * Single that subscribes on the Rx IO pool, so N awaits run in parallel), then patch that book's
+     * ring into the published state on the main dispatcher (serialized — no race on [allGroups]).
+     */
+    private fun computeProgressInBackground(descriptors: List<WorkbookDescriptor>) {
+        descriptors.forEach { descriptor ->
+            val job = viewModelScope.launch {
+                val resolved = try {
+                    descriptor.progress.await() // Single subscribes on the Rx IO scheduler
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    0.0
+                }
+                applyBookProgress(descriptor.id, resolved)
+            }
+            progressJobs.add(job)
+        }
+    }
+
+    /** Patch a single book's resolved progress into [allGroups] and republish (main dispatcher). */
+    private fun applyBookProgress(bookId: Int, progress: Double) {
+        var changed = false
+        allGroups = allGroups.map { group ->
+            if (group.books.none { it.id == bookId }) return@map group
+            changed = true
+            group.copy(
+                books = group.books.map { if (it.id == bookId) it.copy(progress = progress) else it }
+            )
+        }
+        if (!changed) return
+        val visible = allGroups.filter { it.key !in pendingDeleteKeys }
+        _uiState.value = _uiState.value.copy(projectGroups = visible)
+    }
+
+    /** Patch resolved source-audio flags (bookId -> has) into [allGroups] and republish. */
+    private fun applyBookSourceAudio(byId: Map<Int, Boolean>) {
+        if (byId.isEmpty()) return
+        allGroups = allGroups.map { group ->
+            if (group.books.none { it.id in byId }) return@map group
+            group.copy(
+                books = group.books.map { book ->
+                    byId[book.id]?.let { book.copy(hasSourceAudio = it) } ?: book
+                }
+            )
+        }
+        val visible = allGroups.filter { it.key !in pendingDeleteKeys }
+        _uiState.value = _uiState.value.copy(projectGroups = visible)
     }
 
     private fun publishVisibleGroups() {
@@ -206,7 +305,7 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
         }
     }
 
-    private suspend fun buildProjectGroups(
+    private fun buildProjectGroups(
         descriptors: List<WorkbookDescriptor>
     ): List<OratureProjectGroupUiModel> {
         val bookModels = descriptors.map { it to it.toBookUiModel() }
@@ -247,25 +346,20 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
         )
     }
 
-    private suspend fun WorkbookDescriptor.toBookUiModel(): OratureBookUiModel {
-        val resolvedProgress = try {
-            progress.await()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            0.0
-        }
-        return OratureBookUiModel(
+    /** Build the display model WITHOUT resolving progress — progress is computed off the critical
+     *  path in [computeProgressInBackground] and patched in as it completes. Starts at 0.0 (ring
+     *  empty) so the list can render immediately. */
+    private fun WorkbookDescriptor.toBookUiModel(): OratureBookUiModel =
+        OratureBookUiModel(
             id = id,
             slug = slug,
             title = title,
             anthology = anthology,
-            progress = resolvedProgress,
+            progress = 0.0,
             sort = sort,
             hasSourceAudio = hasSourceAudio,
             mode = mode
         )
-    }
 
     fun onSelectProjectGroup(key: OratureProjectGroupKey) {
         _uiState.value = _uiState.value.copy(selectedGroupKey = key, bookSearchQuery = "")

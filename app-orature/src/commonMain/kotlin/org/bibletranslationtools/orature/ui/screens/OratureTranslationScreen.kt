@@ -91,6 +91,7 @@ import org.bibletranslationtools.orature.resources.cancel
 import org.bibletranslationtools.orature.resources.close
 import org.bibletranslationtools.orature.resources.`continue`
 import org.bibletranslationtools.orature.resources.overridingSource
+import org.bibletranslationtools.orature.resources.rechunk_data_loss_warning
 import org.bibletranslationtools.orature.resources.warning
 import org.bibletranslationtools.orature.resources.collapse
 import org.bibletranslationtools.orature.resources.drag_drop_or_browse_import__template
@@ -229,6 +230,26 @@ fun OratureTranslationScreen(
                 },
                 title = { Text(stringResource(Res.string.importFailed)) },
                 text = { Text(err.message) }
+            )
+        }
+        // Re-chunk data-loss warning (JVM: `ChunkingViewModel.requestToNavigate`'s ConfirmDialog):
+        // moving forward out of Chunking with unsaved chunk edits will delete this chapter's
+        // recordings. Cancelling keeps the edits unsaved so they can be undone and the takes kept.
+        if (uiState.pendingChunkNavStep != null) {
+            AlertDialog(
+                onDismissRequest = viewModel::cancelPendingChunkNav,
+                confirmButton = {
+                    TextButton(onClick = viewModel::confirmPendingChunkNav) {
+                        Text(stringResource(Res.string.`continue`))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = viewModel::cancelPendingChunkNav) {
+                        Text(stringResource(Res.string.cancel))
+                    }
+                },
+                title = { Text(stringResource(Res.string.warning)) },
+                text = { Text(stringResource(Res.string.rechunk_data_loss_warning)) }
             )
         }
     }

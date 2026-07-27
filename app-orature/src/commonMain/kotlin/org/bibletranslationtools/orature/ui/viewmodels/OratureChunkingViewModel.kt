@@ -16,7 +16,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.orature.ui.workbook.OratureWorkbookDataStore
-import org.bibletranslationtools.orature.ui.workbook.PrecomputedWaveform
+import org.bibletranslationtools.shared.ui.playback.AudioTimeline
+import org.bibletranslationtools.shared.ui.playback.FilePcmSource
+import org.bibletranslationtools.shared.ui.playback.PcmSource
+import org.bibletranslationtools.shared.ui.playback.WaveformPeakCache
+import org.bibletranslationtools.shared.ui.playback.buildPeakCache
 import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
 import org.bibletranslationtools.otter.common.data.audio.ChunkMarker
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
@@ -24,22 +28,23 @@ import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
 import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnection
 import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
+import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerEvent
 import org.bibletranslationtools.otter.common.device.newaudio.IAudioPlayer
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
+import org.bibletranslationtools.shared.ui.playback.PlaybackDisplayClock
 import org.bibletranslationtools.otter.common.domain.content.CreateChunks
 import org.bibletranslationtools.otter.common.domain.content.ResetChunks
 import org.bibletranslationtools.otter.common.domain.model.DEFAULT_CHUNK_MARKER_TOTAL
 import org.bibletranslationtools.otter.common.domain.model.MarkerItem
 import org.bibletranslationtools.otter.common.domain.model.MarkerPlacementModel
 import org.bibletranslationtools.otter.common.domain.model.MarkerPlacementType
+import org.bibletranslationtools.orature.ui.translation.ChunkingStep
 import org.bibletranslationtools.otter.common.domain.translation.ChunkAudioUseCase
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.io.File
 
-private const val CHUNK_WAVEFORM_WIDTH = 960
-private const val CHUNK_SECONDS_ON_SCREEN = 10
 // Minimum gap (frames) between the playhead and an existing marker for "Add Chunk" to be allowed
 // (JVM: MARKER_WIDTH_APPROX in pixels). ~0.25s keeps markers from stacking.
 private const val CHUNK_MIN_GAP_FRAMES = 11_025
@@ -78,7 +83,17 @@ class OratureChunkingViewModel(
     val uiState: StateFlow<OratureChunkingUiState> = _uiState.asStateFlow()
 
     private var player: IAudioPlayer? = null
-    private var precomputed: PrecomputedWaveform? = null
+    // Shared waveform engine (see OratureChapterReviewViewModel).
+    private var timeline: AudioTimeline? = null
+    private var peakCache: WaveformPeakCache? = null
+    private var peakSource: PcmSource? = null
+    private var peakBuildJob: Job? = null
+    // Rate-locked display clock (see OratureChapterReviewViewModel) for smooth waveform scroll.
+    val clock = PlaybackDisplayClock(
+        positionSource = { player?.getLocationInFrames()?.toLong() ?: 0L },
+        positionReliable = { player?.isPositionReliable() ?: false }
+    )
+    private var clockEventsJob: Job? = null
     private var markerModel: MarkerPlacementModel? = null
 
     private var workbook: Workbook? = null
@@ -89,7 +104,6 @@ class OratureChunkingViewModel(
     private var totalFrames: Int = 0
     private var positionFrames: Int = 0
     private var markerInfos: List<OratureMarkerInfo> = emptyList()
-    private var waveformFront: FloatArray = FloatArray(CHUNK_WAVEFORM_WIDTH * 2)
 
     private var waveformTickerJob: Job? = null
     // Save must outlive the VM (it's triggered as the VM is torn down on navigate).
@@ -100,7 +114,10 @@ class OratureChunkingViewModel(
     // the already-committed chunks — the "persists then vanishes on restart" bug).
     private var dirty = false
 
-    fun currentWaveform(): FloatArray = waveformFront
+    fun currentTimeline(): AudioTimeline? = timeline
+    fun peakCacheFor(source: PcmSource): WaveformPeakCache? =
+        if (source.id == peakSource?.id) peakCache else null
+    fun waveformSampleRate(): Int = sampleRate
     fun currentPosition(): Int = positionFrames
     fun currentTotalFrames(): Int = totalFrames
     fun currentMarkers(): List<OratureMarkerInfo> = markerInfos
@@ -163,15 +180,12 @@ class OratureChunkingViewModel(
                     ).apply { loadMarkers(existing) }
                     val playerReader = audioFile.reader().apply { open() }
                     val sr = playerReader.spec.sampleRate.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
-                    // Decode the whole file's peaks ONCE here (off the main thread) so the ticker never
-                    // re-decodes per frame. A separate reader is used + released after the single pass.
-                    val peakReader = audioFile.reader().apply { open() }
-                    val peaks = try {
-                        PrecomputedWaveform.build(peakReader, CHUNK_WAVEFORM_WIDTH, CHUNK_SECONDS_ON_SCREEN, sr)
-                    } finally {
-                        runCatching { peakReader.release() }
-                    }
-                    Prepared(wb, chap, file, playerReader, sr, peaks, model)
+                    // Single-segment timeline + empty peak cache for the shared renderer (filled
+                    // off-thread below); the draw samples it per pixel, no per-tick decode.
+                    val source = FilePcmSource(file)
+                    val tl = AudioTimeline.ofWholeSource(source)
+                    val cache = WaveformPeakCache(source.totalFrames)
+                    Prepared(wb, chap, file, playerReader, sr, source, tl, cache, model)
                 }
 
                 workbook = prepared.workbook
@@ -180,10 +194,21 @@ class OratureChunkingViewModel(
                 markerModel = prepared.model
                 sampleRate = prepared.sampleRate
                 totalFrames = prepared.playerReader.totalFrames
-                precomputed = prepared.peaks
+                timeline = prepared.timeline
+                peakCache = prepared.cache
+                peakSource = prepared.source
+                peakBuildJob?.cancel()
+                peakBuildJob = viewModelScope.launch(Dispatchers.IO) {
+                    runCatching { buildPeakCache(prepared.source, prepared.cache) }
+                }
                 val p = AudioPlayerConnection(PLAYER_ID, playerFactory, viewModelScope, Dispatchers.Default)
                 p.load(prepared.playerReader)
                 player = p
+                clock.sampleRate = sampleRate
+                clock.durationFrames = totalFrames.toLong()
+                clock.advancing = false
+                clock.snapTo(0L)
+                observePlayerForClock(p)
 
                 refreshMarkers()
                 _uiState.value = _uiState.value.copy(isLoading = false)
@@ -202,7 +227,9 @@ class OratureChunkingViewModel(
         val file: File,
         val playerReader: AudioFileReader,
         val sampleRate: Int,
-        val peaks: PrecomputedWaveform,
+        val source: PcmSource,
+        val timeline: AudioTimeline,
+        val cache: WaveformPeakCache,
         val model: MarkerPlacementModel
     )
 
@@ -254,7 +281,25 @@ class OratureChunkingViewModel(
         val clamped = frame.coerceIn(0, totalFrames)
         player?.seek(clamped)
         positionFrames = clamped
+        clock.snapTo(clamped.toLong())
         updateAddDisabled()
+    }
+
+    /** Drive the display clock from the player's transport events (main thread). */
+    private fun observePlayerForClock(p: IAudioPlayer) {
+        clockEventsJob?.cancel()
+        clockEventsJob = viewModelScope.launch {
+            p.events.collect { e ->
+                when (e) {
+                    AudioPlayerEvent.Play -> clock.advancing = true
+                    AudioPlayerEvent.Pause -> clock.advancing = false
+                    AudioPlayerEvent.Stop -> { clock.advancing = false; clock.snapTo(clock.displayFrame) }
+                    AudioPlayerEvent.Complete -> { clock.advancing = false; clock.snapTo(clock.durationFrames) }
+                    is AudioPlayerEvent.Error -> clock.advancing = false
+                    else -> Unit
+                }
+            }
+        }
     }
 
     fun seekNext() {
@@ -284,14 +329,15 @@ class OratureChunkingViewModel(
         }
     }
 
+    /** Polls the player for the playhead position + play/pause state (and the add-disabled gate). The
+     *  waveform is drawn by the shared renderer sampling the peak cache in the draw pass — no per-tick
+     *  window/allocation here anymore. */
     private fun startWaveformTicker() {
         waveformTickerJob?.cancel()
         waveformTickerJob = viewModelScope.launch(Dispatchers.Default) {
-            val out = FloatArray(CHUNK_WAVEFORM_WIDTH * 2)
             while (isActive) {
                 val p = player
-                val peaks = precomputed
-                if (p != null && peaks != null) {
+                if (p != null) {
                     runCatching {
                         val playing = p.isPlaying()
                         if (playing) {
@@ -301,11 +347,7 @@ class OratureChunkingViewModel(
                         if (_uiState.value.isPlaying != playing) {
                             _uiState.value = _uiState.value.copy(isPlaying = playing)
                         }
-                        // Slice the visible window from the in-memory peaks (µs) — no per-tick decode.
-                        val halfWindow = CHUNK_SECONDS_ON_SCREEN * sampleRate / 2
-                        peaks.window(positionFrames - halfWindow, out)
-                        waveformFront = out.copyOf()
-                    }.onFailure { System.err.println("[chunking] waveform render failed: $it") }
+                    }.onFailure { System.err.println("[chunking] player state poll failed: $it") }
                 }
                 delay(33)
             }
@@ -336,15 +378,26 @@ class OratureChunkingViewModel(
     public override fun onCleared() {
         translationVm.clearUndoRedoHandlers()
         translationVm.clearChunkSaveHandler()
-        // Only save if there are unsaved edits. After a step-leave save (awaited saveSuspend) dirty is
-        // false, so we do NOT re-run the destructive reset+insert here — which, abandoned mid-delete on
-        // app-close, was wiping the committed chunks.
-        if (dirty) save()
+        // Only save if there are unsaved edits AND we're being torn down because the user moved
+        // FORWARD past Chunking — the JVM's `undock()` condition
+        // (`selectedStep.ordinal > CHUNKING.ordinal`). The save is destructive (resetChapter deletes
+        // this chapter's takes), so tearing down any other way — cancelling the re-chunk warning and
+        // going back, closing the chapter — must leave the takes and the committed chunks alone.
+        // After a step-leave save (awaited saveSuspend) dirty is already false, so this never re-runs
+        // the reset+insert over already-committed chunks.
+        val movedPastChunking =
+            translationVm.uiState.value.selectedStep.ordinal > ChunkingStep.CHUNKING.ordinal
+        if (dirty && movedPastChunking) save()
         waveformTickerJob?.cancel()
+        peakBuildJob?.cancel()
+        clockEventsJob?.cancel()
+        clock.advancing = false
         runCatching { player?.pause() }
         runCatching { player?.release() }
         player = null
-        precomputed = null
+        timeline = null
+        peakCache = null
+        peakSource = null
         markerModel = null
     }
 

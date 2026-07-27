@@ -164,6 +164,18 @@ class LanguageDao(
             }
     }
 
+    /** Batch fetch by id (single IN query). */
+    fun fetchByIds(ids: List<Int>, dsl: DSLContext = instanceDsl): List<LanguageEntity> {
+        if (ids.isEmpty()) return emptyList()
+        return dsl
+            .select()
+            .from(LANGUAGE_ENTITY)
+            .where(LANGUAGE_ENTITY.ID.`in`(ids))
+            .fetch {
+                RecordMappers.mapToLanguageEntity(it)
+            }
+    }
+
     fun fetchAll(dsl: DSLContext = instanceDsl): List<LanguageEntity> {
         return dsl
             .select()

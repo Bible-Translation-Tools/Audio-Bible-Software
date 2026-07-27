@@ -381,3 +381,7 @@ DerivedData/
 # End of https://www.gitignore.io/api/xcode,macos,kotlin,android,windows,intellij,androidstudio
 /composeApp/old/
 Makefile
+
+# Crash-report upload credentials (see *.template alongside). Never commit real tokens/DSNs.
+**/resources/github.properties
+**/resources/sentry.properties

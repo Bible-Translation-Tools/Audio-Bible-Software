@@ -1,0 +1,6 @@
+# Crash-report GitHub upload config (JVM parity: github.properties).
+# Copy this file to `github.properties` (same directory) and fill in real values to enable
+# opening a GitHub issue on crash. `github.properties` is gitignored so tokens never get committed.
+# repo-url is the full GitHub Issues API endpoint for the target repo.
+repo-url=https://api.github.com/repos/OWNER/REPO/issues
+oauth-token=YOUR_GITHUB_PERSONAL_ACCESS_TOKEN

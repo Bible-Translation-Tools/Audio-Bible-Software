@@ -179,6 +179,11 @@ private fun NarrationBody(
             volumeProvider = viewModel::currentVolume,
             positionProvider = viewModel::currentAudioPosition,
             totalFramesProvider = viewModel::currentTotalFrames,
+            timelineProvider = viewModel::currentTimeline,
+            peakCacheFor = viewModel::peakCacheFor,
+            clock = viewModel.clock,
+            waveformSampleRate = viewModel.waveformSampleRate(),
+            isRecordingView = viewModel::isRecordingView,
             scrollEnabled = uiState.scrollEnabled,
             markersEditable = uiState.markersEditable,
             onSeekToFrame = viewModel::seekToFrame,
@@ -277,11 +282,21 @@ private fun NarrationHeader(
         Spacer(Modifier.weight(1f))
 
         // Undo / redo enabled by history + narration state (JVM: hasUndo/hasRedo && not mid-record).
+        // Tint theme-aware (like the back arrow) so the icons stay visible on the dark header; dimmed
+        // when disabled.
         IconButton(onClick = onUndo, enabled = canUndo) {
-            Icon(Icons.Filled.Undo, contentDescription = stringResource(Res.string.undo))
+            Icon(
+                Icons.Filled.Undo,
+                contentDescription = stringResource(Res.string.undo),
+                tint = if (canUndo) OratureColors.RegularText else OratureColors.Disabled
+            )
         }
         IconButton(onClick = onRedo, enabled = canRedo) {
-            Icon(Icons.Filled.Redo, contentDescription = stringResource(Res.string.redo))
+            Icon(
+                Icons.Filled.Redo,
+                contentDescription = stringResource(Res.string.redo),
+                tint = if (canRedo) OratureColors.RegularText else OratureColors.Disabled
+            )
         }
 
         // Options menu (JVM: NarrationMenu). The button always opens; items gate themselves.
@@ -294,7 +309,11 @@ private fun NarrationHeader(
             ) { file -> file?.let { onImportChapterAudio(it.path) } }
 
             IconButton(onClick = { menuOpen = true }) {
-                Icon(Icons.Filled.MoreVert, contentDescription = stringResource(Res.string.options))
+                Icon(
+                    Icons.Filled.MoreVert,
+                    contentDescription = stringResource(Res.string.options),
+                    tint = OratureColors.RegularText
+                )
             }
             DropdownMenu(
                 expanded = menuOpen,

@@ -117,14 +117,15 @@ private fun PeerEditBody(
         // Target take waveform (read-only, playhead-centered).
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             OratureSourceWaveform(
-                waveformProvider = viewModel::currentWaveform,
-                positionProvider = viewModel::currentPosition,
+                timelineProvider = viewModel::currentTimeline,
+                peakCacheFor = viewModel::peakCacheFor,
+                clock = viewModel.clock,
+                sampleRate = viewModel.waveformSampleRate(),
                 totalFramesProvider = viewModel::currentTotalFrames,
                 markers = emptyList(),
                 editable = false,
                 onSeek = viewModel::seekToFrame,
                 onClick = viewModel::pause,
-                frameClock = { frameTick },
                 modifier = Modifier.fillMaxSize()
             )
         }

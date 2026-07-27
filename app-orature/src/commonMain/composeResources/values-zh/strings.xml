@@ -394,4 +394,14 @@
     <string name="languagesImportError">无效的验证码</string>
     <string name="tip">Tip</string>
     <string name="tipInfo">Press the down key on your keyboard to navigate to the next verse.</string>
+    <string name="addBookMarker">添加书卷标注</string>
+    <string name="addChapterMarker">添加章标注</string>
+    <string name="burritoWrapper">Burrito Wrapper</string>
+    <string name="chooseExecutable">选择应用程序</string>
+    <string name="external_apps">外部应用</string>
+    <string name="noAppsConfigured">未配置外部应用程序。</string>
+    <string name="noDevicesFound">未找到设备</string>
+    <string name="systemDefault">系统默认</string>
+    <string name="zoomIn">放大</string>
+    <string name="zoomOut">缩小</string>
 </resources>

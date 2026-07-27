@@ -394,4 +394,14 @@
     <string name="languagesImportError">Url non valide, veuillez réessayer.</string>
     <string name="tip">Conseil</string>
     <string name="tipInfo">Appuyez sur la touche bas de votre clavier pour accéder au verset suivant.</string>
+    <string name="addBookMarker">Ajouter un marqueur de livre</string>
+    <string name="addChapterMarker">Ajouter un marqueur de chapitre</string>
+    <string name="burritoWrapper">Burrito Wrapper</string>
+    <string name="chooseExecutable">Choisir une application</string>
+    <string name="external_apps">Applications externes</string>
+    <string name="noAppsConfigured">Aucune application externe configurée.</string>
+    <string name="noDevicesFound">Aucun périphérique trouvé</string>
+    <string name="systemDefault">Paramètre par défaut du système</string>
+    <string name="zoomIn">Zoom avant</string>
+    <string name="zoomOut">Zoom arrière</string>
 </resources>

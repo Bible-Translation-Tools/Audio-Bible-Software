@@ -23,6 +23,7 @@ import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
@@ -36,6 +37,8 @@ import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -44,12 +47,21 @@ import org.bibletranslationtools.orature.resources.Res
 import org.bibletranslationtools.orature.resources.delete
 import org.bibletranslationtools.orature.ui.OratureColors
 import org.bibletranslationtools.orature.ui.viewmodels.OratureMarkerInfo
+import org.bibletranslationtools.shared.ui.playback.AudioTimeline
+import org.bibletranslationtools.shared.ui.playback.PcmSource
+import org.bibletranslationtools.shared.ui.playback.WaveformPeakCache
+import org.bibletranslationtools.shared.ui.playback.PlaybackDisplayClock
+import org.bibletranslationtools.shared.ui.playback.fillWindow
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
+import kotlinx.coroutines.isActive
 import org.jetbrains.compose.resources.stringResource
+import kotlin.math.floor
 import kotlin.math.roundToInt
 
-private const val SOURCE_FRAMES_ON_SCREEN = 10 * 44100
-private val WaveColor = Color(0xFF8A94A6)
-private val WaveBgColor = Color(0xFFE5E8EB)
+private const val SECONDS_ON_SCREEN = 10
+// Wave line + background are theme-aware (OratureColors.WaveformLine / WaveformBackground, from JVM
+// common/data/ColorTheme.kt: #66768B on #FFFFFF light, #808080 on #343434 dark).
 private val CursorColor = Color(0xFFD32F2F)
 private const val PCM_MAX = 32768f
 
@@ -62,20 +74,42 @@ private const val PCM_MAX = 32768f
  */
 @Composable
 fun OratureSourceWaveform(
-    waveformProvider: () -> FloatArray,
-    positionProvider: () -> Int,
+    timelineProvider: () -> AudioTimeline?,
+    peakCacheFor: (PcmSource) -> WaveformPeakCache?,
+    clock: PlaybackDisplayClock,
+    sampleRate: Int,
     totalFramesProvider: () -> Int,
     markers: List<OratureMarkerInfo>,
     editable: Boolean,
     onSeek: (frame: Int) -> Unit,
     onClick: () -> Unit,
-    frameClock: () -> Long,
     onMoveMarker: (id: Int, newFrame: Int) -> Unit = { _, _ -> },
     onDeleteMarker: (id: Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    BoxWithConstraints(modifier = modifier.fillMaxSize().background(WaveBgColor)) {
+    // Frames spanned by the visible window (JVM: SECONDS_ON_SCREEN * sampleRate). Drives both the
+    // waveform zoom and the frame↔pixel math for the scrub + marker positioning.
+    val framesOnScreen = (sampleRate * SECONDS_ON_SCREEN).coerceAtLeast(1)
+
+    // Advance the display clock once per display frame (matching the recorder's PlaybackScreen). The
+    // clock interpolates the playhead at the sample rate and slew-corrects toward the real player
+    // position, so the waveform scrolls smoothly at the full refresh rate instead of jumping in the
+    // ~30 fps steps of the VM's position ticker (the source of the stutter/shimmer).
+    LaunchedEffect(clock) {
+        while (isActive) withFrameNanos { clock.onFrame(it) }
+    }
+
+    // Audio time flows left→right regardless of UI language — keep this surface LTR so markers don't
+    // mirror under RTL languages (the Canvas draws in absolute coords already).
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+    BoxWithConstraints(modifier = modifier.fillMaxSize().background(OratureColors.WaveformBackground)) {
         val widthPx = with(LocalDensity.current) { maxWidth.toPx() }
+
+        // Per-pixel min/max scratch, reused across frames (reallocated only on resize) — this is
+        // what keeps the per-frame fill allocation-free, matching the recorder's playback renderer.
+        val colCount = widthPx.toInt().coerceAtLeast(1) + 1
+        val colMins = remember(colCount) { FloatArray(colCount) }
+        val colMaxs = remember(colCount) { FloatArray(colCount) }
 
         // Live scrub: seek on every move (JVM setOnLayerScroll). Marker drag handles consume their own.
         Box(
@@ -83,33 +117,45 @@ fun OratureSourceWaveform(
                 var startPos = 0
                 var accDx = 0f
                 detectDragGestures(
-                    onDragStart = { startPos = positionProvider(); accDx = 0f; onClick() },
+                    onDragStart = { startPos = clock.displayFrame.toInt(); accDx = 0f; onClick() },
                     onDrag = { change, delta ->
                         accDx += delta.x
-                        onSeek(startPos - (accDx * SOURCE_FRAMES_ON_SCREEN / widthPx).roundToInt())
+                        onSeek(startPos - (accDx * framesOnScreen / widthPx).roundToInt())
                         change.consume()
                     }
                 )
             }
         )
 
+        // Pixel-driven waveform: one crisp 1px line per screen pixel, sampled from the shared
+        // WaveformPeakCache via AudioTimeline.fillWindow — no gaps regardless of window width, no
+        // per-tick allocation. Reading clock.displayFrame (snapshot state) here both positions the
+        // window AND invalidates the draw each frame while playing — draw-only, no recomposition.
         Canvas(modifier = Modifier.fillMaxSize()) {
-            frameClock()
             val midY = size.height / 2f
             val scale = size.height / 2f / PCM_MAX
-            val buffer = waveformProvider()
-            if (buffer.size >= 2) {
-                val columns = buffer.size / 2
-                for (col in 0 until columns) {
-                    val minV = buffer[col * 2]
-                    val maxV = buffer[col * 2 + 1]
-                    if (minV == 0f && maxV == 0f) continue
-                    val x = col.toFloat() / columns * size.width
-                    drawLine(WaveColor, Offset(x, midY - minV * scale), Offset(x, midY - maxV * scale), strokeWidth = 1f)
+            val widthF = size.width.coerceAtLeast(1f)
+            val tl = timelineProvider()
+            if (tl != null && tl.totalFrames > 0) {
+                // Column k covers absolute frames [floor(k*fpp), floor((k+1)*fpp)); the playhead
+                // sits at viewport center. xShift snaps the window to whole pixels (+0.5 = crisp
+                // hairline centers) — the recorder's approach for flicker-free scrolling.
+                val fppD = framesOnScreen.toDouble() / widthF
+                val leftFrame = clock.displayFrame.toDouble() - framesOnScreen / 2.0
+                val firstCol = floor(leftFrame / fppD).toLong()
+                val xShift = kotlin.math.round((firstCol * fppD - leftFrame) / fppD).toFloat() + 0.5f
+                tl.fillWindow(firstCol, colCount, fppD, peakCacheFor, colMins, colMaxs)
+                for (i in 0 until colCount) {
+                    val mn = colMins[i]
+                    if (mn.isNaN()) continue
+                    val x = i + xShift
+                    // Hairline (default strokeWidth 0f) — always exactly 1 physical pixel, crisp on
+                    // any density, matching the recorder's waveform draw.
+                    drawLine(OratureColors.WaveformLine, Offset(x, midY - colMaxs[i] * scale), Offset(x, midY - mn * scale))
                 }
             }
-            drawLine(OratureColors.SurfaceTertiary, Offset(0f, midY), Offset(size.width, midY), strokeWidth = 1f)
-            drawLine(CursorColor, Offset(size.width / 2f, 0f), Offset(size.width / 2f, size.height), strokeWidth = 2f)
+            drawLine(OratureColors.SurfaceTertiary, Offset(0f, midY), Offset(size.width, midY))
+            drawLine(CursorColor, Offset(size.width / 2f, 0f), Offset(size.width / 2f, size.height))
         }
 
         // Marker nodes. Keyed by (id, location) so an edit (which re-sorts) recreates the node
@@ -119,14 +165,15 @@ fun OratureSourceWaveform(
                 SourceMarkerNode(
                     marker = marker,
                     widthPx = widthPx,
+                    framesOnScreen = framesOnScreen,
                     editable = editable,
-                    positionProvider = positionProvider,
-                    frameClock = frameClock,
+                    clock = clock,
                     onMove = { newFrame -> onMoveMarker(marker.verseIndex, newFrame) },
                     onDelete = { onDeleteMarker(marker.verseIndex) }
                 )
             }
         }
+    }
     }
 }
 
@@ -134,9 +181,9 @@ fun OratureSourceWaveform(
 private fun SourceMarkerNode(
     marker: OratureMarkerInfo,
     widthPx: Float,
+    framesOnScreen: Int,
     editable: Boolean,
-    positionProvider: () -> Int,
-    frameClock: () -> Long,
+    clock: PlaybackDisplayClock,
     onMove: (newFrame: Int) -> Unit,
     onDelete: () -> Unit
 ) {
@@ -147,10 +194,12 @@ private fun SourceMarkerNode(
     Box(
         modifier = Modifier
             .offset {
-                frameClock()
-                val half = SOURCE_FRAMES_ON_SCREEN / 2
-                val vpStart = positionProvider() - half
-                val vpEnd = positionProvider() + half
+                // Reading clock.displayFrame (snapshot) repositions the marker each frame as the
+                // waveform scrolls, in lockstep with the smooth playhead.
+                val pos = clock.displayFrame.toInt()
+                val half = framesOnScreen / 2
+                val vpStart = pos - half
+                val vpEnd = pos + half
                 val span = (vpEnd - vpStart).toFloat()
                 if (marker.location in vpStart..vpEnd && span > 0) {
                     val x = (marker.location - vpStart) / span * widthPx
@@ -198,7 +247,7 @@ private fun SourceMarkerNode(
                             onDragStart = { dragDx = 0f },
                             onDrag = { change, delta -> dragDx += delta.x; change.consume() },
                             onDragEnd = {
-                                onMove(marker.location + (dragDx * SOURCE_FRAMES_ON_SCREEN / widthPx).roundToInt())
+                                onMove(marker.location + (dragDx * framesOnScreen / widthPx).roundToInt())
                                 dragDx = 0f
                             },
                             onDragCancel = { dragDx = 0f }

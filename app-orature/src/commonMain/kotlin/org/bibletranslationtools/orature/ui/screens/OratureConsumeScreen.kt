@@ -44,6 +44,7 @@ import org.bibletranslationtools.orature.resources.audioNotAvailable
 import org.bibletranslationtools.orature.resources.pause
 import org.bibletranslationtools.orature.resources.playSource
 import org.bibletranslationtools.orature.ui.OratureColors
+import org.bibletranslationtools.orature.ui.components.OratureWaveformScrollbar
 import org.bibletranslationtools.orature.ui.viewmodels.OratureConsumeViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureMarkerInfo
 import org.jetbrains.compose.resources.stringResource
@@ -89,14 +90,15 @@ private fun ConsumeBody(viewModel: OratureConsumeViewModel, isPlaying: Boolean) 
         // Waveform area — shared source waveform, read-only markers (JVM MarkerWaveform canMove/Delete=false).
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             OratureSourceWaveform(
-                waveformProvider = viewModel::currentWaveform,
-                positionProvider = viewModel::currentPosition,
+                timelineProvider = viewModel::currentTimeline,
+                peakCacheFor = viewModel::peakCacheFor,
+                clock = viewModel.clock,
+                sampleRate = viewModel.waveformSampleRate(),
                 totalFramesProvider = viewModel::currentTotalFrames,
                 markers = viewModel.currentMarkers(),
                 editable = false,
                 onSeek = viewModel::seekToFrame,
                 onClick = viewModel::pause,
-                frameClock = { frameTick },
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -131,7 +133,9 @@ private fun ConsumeBody(viewModel: OratureConsumeViewModel, isPlaying: Boolean) 
     }
 }
 
-/** Shared read-only audio scrollbar (used by Consume + Chunking). */
+/** Shared read-only audio scrollbar (used by Consume, Chunking, ChapterReview, PeerEdit, VerseMarker).
+ *  Delegates to the shared [OratureWaveformScrollbar] so it renders identically to narration's
+ *  (end-arrow buttons + grip thumb + JVM colors). */
 @Composable
 internal fun WaveformScrollbarReadOnly(
     positionProvider: () -> Int,
@@ -139,32 +143,11 @@ internal fun WaveformScrollbarReadOnly(
     onSeekToFrame: (Int) -> Unit,
     frameClock: () -> Long
 ) {
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth().height(14.dp).background(OratureColors.SurfaceSecondary)) {
-        val trackPx = with(androidx.compose.ui.platform.LocalDensity.current) { maxWidth.toPx() }
-        val total0 = totalFramesProvider().coerceAtLeast(1)
-        val thumbFraction = (CONSUME_FRAMES_ON_SCREEN.toFloat() / total0).coerceIn(0.08f, 1f)
-        val thumbWidthPx = trackPx * thumbFraction
-        val thumbWidthDp = with(androidx.compose.ui.platform.LocalDensity.current) { thumbWidthPx.toDp() }
-        val travelPx = (trackPx - thumbWidthPx).coerceAtLeast(1f)
-
-        Box(
-            modifier = Modifier
-                .offset {
-                    frameClock()
-                    val total = totalFramesProvider().coerceAtLeast(1)
-                    val pos = positionProvider().coerceIn(0, total)
-                    androidx.compose.ui.unit.IntOffset((pos.toFloat() / total * travelPx).roundToInt(), 0)
-                }
-                .width(thumbWidthDp)
-                .fillMaxHeight()
-                .background(Color(0xFFB3B9C2))
-                .pointerInput(Unit) {
-                    detectDragGestures { change, delta ->
-                        val total = totalFramesProvider().coerceAtLeast(1)
-                        onSeekToFrame(positionProvider() + (delta.x / travelPx * total).roundToInt())
-                        change.consume()
-                    }
-                }
-        )
-    }
+    OratureWaveformScrollbar(
+        positionProvider = positionProvider,
+        totalFramesProvider = totalFramesProvider,
+        onSeekToFrame = onSeekToFrame,
+        frameClock = frameClock,
+        framesOnScreen = CONSUME_FRAMES_ON_SCREEN
+    )
 }

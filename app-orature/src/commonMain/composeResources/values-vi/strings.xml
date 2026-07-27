@@ -394,4 +394,14 @@
     <string name="languagesImportError">URLkhông hợp lệ. Vui lòng thử lại.</string>
     <string name="tip">Gợi ý</string>
     <string name="tipInfo">Bấm nút mũi tên xuống trên bàn phím để đi đến Câu tiếp theo.</string>
+    <string name="addBookMarker">Thêm đánh số Sách</string>
+    <string name="addChapterMarker">Thêm đánh số Chương</string>
+    <string name="burritoWrapper">Burrito Wrapper</string>
+    <string name="chooseExecutable">Chọn một ứng dụng</string>
+    <string name="external_apps">Ứng dụng bên ngoài</string>
+    <string name="noAppsConfigured">Chưa cấu hình ứng dụng bên ngoài.</string>
+    <string name="noDevicesFound">Không tìm thấy thiết bị</string>
+    <string name="systemDefault">Mặc định hệ thống</string>
+    <string name="zoomIn">Phóng to</string>
+    <string name="zoomOut">Thu nhỏ</string>
 </resources>

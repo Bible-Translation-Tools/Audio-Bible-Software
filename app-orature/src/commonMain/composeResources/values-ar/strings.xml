@@ -394,4 +394,14 @@
     <string name="languagesImportError">عنوان الموقع غير متوفر; الرجاء المحاولة مرة أخرى.</string>
     <string name="tip">Tip</string>
     <string name="tipInfo">Press the down key on your keyboard to navigate to the next verse.</string>
+    <string name="addBookMarker">إضافة علامة للكتاب</string>
+    <string name="addChapterMarker">إضافة علامة للأصحاح</string>
+    <string name="burritoWrapper">Burrito Wrapper</string>
+    <string name="chooseExecutable">اختر تطبيقًا</string>
+    <string name="external_apps">التطبيقات الخارجية</string>
+    <string name="noAppsConfigured">لم يتم تكوين أي تطبيقات خارجية.</string>
+    <string name="noDevicesFound">لم يتم العثور على أجهزة</string>
+    <string name="systemDefault">الافتراضي للنظام</string>
+    <string name="zoomIn">تكبير</string>
+    <string name="zoomOut">تصغير</string>
 </resources>

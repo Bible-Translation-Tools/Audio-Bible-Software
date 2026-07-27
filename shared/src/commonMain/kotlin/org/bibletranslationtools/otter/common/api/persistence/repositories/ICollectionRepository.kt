@@ -29,6 +29,8 @@ import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 interface ICollectionRepository : IRepository<Collection> {
     fun insert(collection: Collection): Single<Int>
     fun getProject(id: Int): Maybe<Collection>
+    /** Batch-build project collections by id in a handful of queries (vs one getProject per id). */
+    fun getProjects(ids: List<Int>): Single<Map<Int, Collection>>
     fun getDerivedProject(sourceProject: Collection): Maybe<Collection>
     fun getDerivedProjects(): Single<List<Collection>>
     fun getSourceProjects(): Single<List<Collection>>

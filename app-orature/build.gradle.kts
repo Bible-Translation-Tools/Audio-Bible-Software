@@ -29,6 +29,9 @@ kotlin {
                 implementation(compose.preview)
                 implementation(libs.androidx.activity.compose)
                 implementation(libs.koin.compose)
+                // Crash reporting (JVM: Sentry). Disabled at runtime unless a sentry.properties DSN
+                // is on the classpath.
+                implementation(libs.sentry)
             }
         }
 
@@ -68,6 +71,9 @@ kotlin {
             dependencies {
                 implementation(compose.desktop.currentOs)
                 implementation(libs.kotlinx.coroutines.swing)
+                // Crash reporting (JVM: Sentry). Disabled at runtime unless a sentry.properties DSN
+                // is on the classpath.
+                implementation(libs.sentry)
             }
         }
     }
@@ -133,6 +139,15 @@ compose.desktop {
             packageName = "Orature"
             packageVersion = "1.0.0"
             modules("java.sql", "java.naming", "java.xml", "jdk.unsupported")
+            macOS {
+                iconFile.set(project.file("src/desktopMain/resources/icons/ic_launcher.icns"))
+            }
+            windows {
+                iconFile.set(project.file("src/desktopMain/resources/icons/ic_launcher.ico"))
+            }
+            linux {
+                iconFile.set(project.file("src/desktopMain/resources/icons/ic_launcher.png"))
+            }
         }
     }
 }

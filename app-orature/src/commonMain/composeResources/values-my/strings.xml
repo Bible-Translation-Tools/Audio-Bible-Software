@@ -394,4 +394,14 @@
     <string name="languagesImportError">ကျေးဇူးပြု၍ နောက်တကြိမ်ထပ်မံကြိုးစားပါ။.</string>
     <string name="tip">Tip</string>
     <string name="tipInfo">Press the down key on your keyboard to navigate to the next verse.</string>
+    <string name="addBookMarker">Add Book Marker</string>
+    <string name="addChapterMarker">Add Chapter Marker</string>
+    <string name="burritoWrapper">Burrito Wrapper</string>
+    <string name="chooseExecutable">Choose an application</string>
+    <string name="external_apps">External Apps</string>
+    <string name="noAppsConfigured">No external applications configured.</string>
+    <string name="noDevicesFound">No devices found</string>
+    <string name="systemDefault">System default</string>
+    <string name="zoomIn">Zoom in</string>
+    <string name="zoomOut">Zoom out</string>
 </resources>

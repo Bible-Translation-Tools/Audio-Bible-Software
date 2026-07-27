@@ -32,6 +32,14 @@ class AudioBufferPlayer(
     // anchor to the sink's relative position. Reset on play() and seek().
     @Volatile
     private var sessionStartFrame: Long = 0
+    // The sink's framePosition at the moment this play session started. We report
+    // sessionStartFrame + (sink.framePosition - sinkFrameBaseline), i.e. only the frames
+    // played SINCE play() — so if the sink's counter did NOT reset to 0 on resume (it
+    // still carries the prior session's frames), the position doesn't double-count the
+    // anchor. Baseline is 0 when the sink reset cleanly, leaving the fresh-play path
+    // unchanged.
+    @Volatile
+    private var sinkFrameBaseline: Long = 0
 
     /**
      * Updates the hardware sink safely.
@@ -77,7 +85,13 @@ class AudioBufferPlayer(
                 // framePosition is about to start counting from 0.
                 sessionStartFrame = lastKnownLocationInFrames
                 // Start sink immediately on play so transport state is observable without race.
-                mutex.withLock { _sink.start() }
+                // Capture the sink's frame counter NOW as the session baseline: whether it reset to
+                // 0 (normal) or still carries the prior session's frames (resume), our reported
+                // position stays anchored at sessionStartFrame and only adds frames played since.
+                mutex.withLock {
+                    _sink.start()
+                    sinkFrameBaseline = _sink.framePosition
+                }
 
                 while (isActive && !isPaused) {
                     val (currentReader, currentSink) = mutex.withLock {
@@ -128,7 +142,7 @@ class AudioBufferPlayer(
                             // sink has actually played, scaled by the rate (JVM:
                             // `player.framePosition * playbackRate` in getLocationInFrames).
                             lastKnownLocationInFrames = sessionStartFrame +
-                                (currentSink.framePosition * processor.playbackRate).toLong()
+                                ((currentSink.framePosition - sinkFrameBaseline).coerceAtLeast(0L) * processor.playbackRate).toLong()
                         }
                     }
                 }
@@ -190,13 +204,17 @@ class AudioBufferPlayer(
     fun getLocationInFrames(): Long {
         val sink = _sink
         return if (sink.isRunning) {
+            // Frames played since THIS session began (see sinkFrameBaseline) — never the sink's raw
+            // counter, which on resume still holds the prior session's frames and would double the
+            // anchor.
+            val playedThisSession = (sink.framePosition - sinkFrameBaseline).coerceAtLeast(0L)
             if (processor.playbackRate == 1.0) {
-                (sessionStartFrame + sink.framePosition).coerceAtMost(lastKnownLocationInFrames)
+                (sessionStartFrame + playedThisSession).coerceAtMost(lastKnownLocationInFrames)
             } else {
                 // At a stretched rate, one sink-frame played corresponds to `rate` source-frames
                 // (JVM: `player.framePosition * playbackRate`) — no `lastKnownLocationInFrames`
                 // clamp here since the play loop keeps it in lockstep with this exact formula.
-                sessionStartFrame + (sink.framePosition * processor.playbackRate).toLong()
+                sessionStartFrame + (playedThisSession * processor.playbackRate).toLong()
             }
         } else {
             lastKnownLocationInFrames

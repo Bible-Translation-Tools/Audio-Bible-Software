@@ -1,0 +1,4 @@
+# Crash-report Sentry config (JVM parity: sentry.properties).
+# Copy this file to `sentry.properties` (same directory) and set your project DSN to enable
+# Sentry crash reporting. `sentry.properties` is gitignored. Blank/absent dsn disables Sentry.
+dsn=YOUR_SENTRY_DSN

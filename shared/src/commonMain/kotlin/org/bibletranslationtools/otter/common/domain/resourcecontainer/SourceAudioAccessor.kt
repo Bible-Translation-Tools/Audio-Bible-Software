@@ -201,5 +201,35 @@ class SourceAudioAccessor(
                 return hasAudioFile
             }
         }
+
+        /**
+         * Batch variant: answer hasSourceAudio for MANY project slugs against the SAME resource
+         * container by opening it (a zip) and listing its media directory ONCE. Building many project
+         * descriptors otherwise re-opens the same source RC once per book, which dominated the
+         * home-page load. Slugs not present in the container map to false.
+         */
+        fun hasSourceAudio(
+            metadata: ResourceMetadata,
+            projectSlugs: List<String>
+        ): Map<String, Boolean> {
+            if (projectSlugs.isEmpty()) return emptyMap()
+            ResourceContainer.load(metadata.path).use { rc ->
+                val pathsInRC = rc.accessor.list(RcConstants.SOURCE_MEDIA_DIR)
+                return projectSlugs.distinct().associateWith { slug ->
+                    val mediaTemplatePaths = rc.media?.projects
+                        ?.find { it.identifier == slug }
+                        ?.media
+                        ?.filter { AudioFileFormat.isSupported(it.identifier) }
+                        ?.map { it.chapterUrl } ?: return@associateWith false
+
+                    val fileNameRegex = mediaTemplatePaths
+                        .map { File(it).nameWithoutExtension.replace("{chapter}", "\\d{1,3}") }
+                        .joinToString("|")
+                        .let { Regex(it) }
+
+                    pathsInRC.any { File(it).nameWithoutExtension.matches(fileNameRegex) }
+                }
+            }
+        }
     }
 }

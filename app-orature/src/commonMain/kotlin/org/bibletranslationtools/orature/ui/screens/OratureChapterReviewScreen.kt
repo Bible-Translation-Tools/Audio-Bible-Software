@@ -133,14 +133,15 @@ private fun ReviewBody(
         // Compiled chapter take waveform with editable verse markers.
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             OratureSourceWaveform(
-                waveformProvider = viewModel::currentWaveform,
-                positionProvider = viewModel::currentPosition,
+                timelineProvider = viewModel::currentTimeline,
+                peakCacheFor = viewModel::peakCacheFor,
+                clock = viewModel.clock,
+                sampleRate = viewModel.waveformSampleRate(),
                 totalFramesProvider = viewModel::currentTotalFrames,
                 markers = uiState.markers,
                 editable = true,
                 onSeek = viewModel::seekToFrame,
                 onClick = viewModel::pause,
-                frameClock = { frameTick },
                 onMoveMarker = viewModel::moveMarker,
                 onDeleteMarker = viewModel::deleteMarker
             )

@@ -14,7 +14,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.orature.ui.translation.ChunkingStep
 import org.bibletranslationtools.orature.ui.workbook.OratureWorkbookDataStore
-import org.bibletranslationtools.orature.ui.workbook.PrecomputedWaveform
+import org.bibletranslationtools.shared.ui.playback.AudioTimeline
+import org.bibletranslationtools.shared.ui.playback.FilePcmSource
+import org.bibletranslationtools.shared.ui.playback.PcmSource
+import org.bibletranslationtools.shared.ui.playback.WaveformPeakCache
+import org.bibletranslationtools.shared.ui.playback.buildPeakCache
 import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
 import org.bibletranslationtools.otter.common.data.primitives.MimeType
@@ -27,7 +31,9 @@ import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnect
 import org.bibletranslationtools.otter.common.device.newaudio.AudioRecorderConnection
 import org.bibletranslationtools.otter.common.device.newaudio.AudioRecorderConnectionFactory
 import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
+import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerEvent
 import org.bibletranslationtools.otter.common.device.newaudio.IAudioPlayer
+import org.bibletranslationtools.shared.ui.playback.PlaybackDisplayClock
 import org.bibletranslationtools.otter.common.domain.IUndoable
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
@@ -39,8 +45,6 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.time.LocalDate
 
-private const val PEER_WAVEFORM_WIDTH = 960
-private const val PEER_SECONDS_ON_SCREEN = 10
 
 /** UI state for the Peer Edit step (JVM: `PeerEditViewModel`). */
 data class OraturePeerEditUiState(
@@ -98,12 +102,21 @@ class OraturePeerEditViewModel(
     private var selectedTake: Take? = null
     private var sourcePlayer: IAudioPlayer? = null
     private var takePlayer: IAudioPlayer? = null
-    private var precomputed: PrecomputedWaveform? = null
+    // Shared waveform engine for the target-take waveform (see OratureChapterReviewViewModel).
+    private var timeline: AudioTimeline? = null
+    private var peakCache: WaveformPeakCache? = null
+    private var peakSource: PcmSource? = null
+    private var peakBuildJob: Job? = null
+    // Rate-locked display clock (see OratureChapterReviewViewModel) for the take-waveform scroll.
+    val clock = PlaybackDisplayClock(
+        positionSource = { takePlayer?.getLocationInFrames()?.toLong() ?: 0L },
+        positionReliable = { takePlayer?.isPositionReliable() ?: false }
+    )
+    private var clockEventsJob: Job? = null
 
     private var sampleRate: Int = DEFAULT_SAMPLE_RATE
     private var totalFrames: Int = 0
     private var positionFrames: Int = 0
-    private var waveformFront: FloatArray = FloatArray(PEER_WAVEFORM_WIDTH * 2)
     private var waveformTickerJob: Job? = null
     private var sourceTickerJob: Job? = null
 
@@ -118,7 +131,10 @@ class OraturePeerEditViewModel(
     private val actionHistory = UndoableActionHistory<IUndoable>()
 
     // Waveform providers read by the screen each display frame.
-    fun currentWaveform(): FloatArray = waveformFront
+    fun currentTimeline(): AudioTimeline? = timeline
+    fun peakCacheFor(source: PcmSource): WaveformPeakCache? =
+        if (source.id == peakSource?.id) peakCache else null
+    fun waveformSampleRate(): Int = sampleRate
     fun currentPosition(): Int = positionFrames
     fun currentTotalFrames(): Int = totalFrames
     fun currentRecordingWaveform(): FloatArray = activeRenderer?.floatBuffer?.array ?: emptyWave
@@ -166,14 +182,13 @@ class OraturePeerEditViewModel(
                     val audioFile = OratureAudioFile(take.file)
                     val playerReader = audioFile.reader().apply { open() }
                     val sr = playerReader.spec.sampleRate.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
-                    val peakReader = audioFile.reader().apply { open() }
-                    val peaks = try {
-                        PrecomputedWaveform.build(peakReader, PEER_WAVEFORM_WIDTH, PEER_SECONDS_ON_SCREEN, sr)
-                    } finally {
-                        runCatching { peakReader.release() }
-                    }
+                    // Single-segment timeline + empty peak cache for the shared renderer (the target
+                    // take's waveform); filled off-thread below, sampled per pixel in the draw.
+                    val source = FilePcmSource(take.file)
+                    val tl = AudioTimeline.ofWholeSource(source)
+                    val cache = WaveformPeakCache(source.totalFrames)
                     val sourcePrep = prepareSourcePlayer(chunk)
-                    Prepared(take, playerReader.totalFrames, sr, peaks, sourcePrep?.first, sourcePrep?.second ?: 0)
+                    Prepared(take, playerReader.totalFrames, sr, source, tl, cache, sourcePrep?.first, sourcePrep?.second ?: 0)
                 } ?: run {
                     _uiState.value = OraturePeerEditUiState(hasChunk = true, noTake = true)
                     return@launch
@@ -183,12 +198,23 @@ class OraturePeerEditViewModel(
                 sampleRate = prepared.sampleRate
                 totalFrames = prepared.totalFrames
                 positionFrames = 0
-                precomputed = prepared.peaks
+                timeline = prepared.timeline
+                peakCache = prepared.cache
+                peakSource = prepared.source
+                peakBuildJob?.cancel()
+                peakBuildJob = viewModelScope.launch(Dispatchers.IO) {
+                    runCatching { buildPeakCache(prepared.source, prepared.cache) }
+                }
                 sourcePlayer = prepared.sourcePlayer
                 val takeAudio = OratureAudioFile(prepared.take.file)
                 val p = AudioPlayerConnection(TAKE_PLAYER_ID, playerFactory, viewModelScope, Dispatchers.Default)
                 p.load(takeAudio.reader().apply { open() })
                 takePlayer = p
+                clock.sampleRate = sampleRate
+                clock.durationFrames = totalFrames.toLong()
+                clock.advancing = false
+                clock.snapTo(0L)
+                observePlayerForClock(p)
 
                 _uiState.value = OraturePeerEditUiState(
                     isLoading = false,
@@ -212,7 +238,9 @@ class OraturePeerEditViewModel(
         val take: Take,
         val totalFrames: Int,
         val sampleRate: Int,
-        val peaks: PrecomputedWaveform,
+        val source: PcmSource,
+        val timeline: AudioTimeline,
+        val cache: WaveformPeakCache,
         val sourcePlayer: IAudioPlayer?,
         val sourceDurationMs: Int
     )
@@ -270,6 +298,24 @@ class OraturePeerEditViewModel(
         val clamped = frame.coerceIn(0, totalFrames)
         takePlayer?.seek(clamped)
         positionFrames = clamped
+        clock.snapTo(clamped.toLong())
+    }
+
+    /** Drive the display clock from the take player's transport events (main thread). */
+    private fun observePlayerForClock(p: IAudioPlayer) {
+        clockEventsJob?.cancel()
+        clockEventsJob = viewModelScope.launch {
+            p.events.collect { e ->
+                when (e) {
+                    AudioPlayerEvent.Play -> clock.advancing = true
+                    AudioPlayerEvent.Pause -> clock.advancing = false
+                    AudioPlayerEvent.Stop -> { clock.advancing = false; clock.snapTo(clock.displayFrame) }
+                    AudioPlayerEvent.Complete -> { clock.advancing = false; clock.snapTo(clock.durationFrames) }
+                    is AudioPlayerEvent.Error -> clock.advancing = false
+                    else -> Unit
+                }
+            }
+        }
     }
 
     /** The checking status this step confirms to (JVM: checkingStatusFromStep). The one screen serves
@@ -490,23 +536,20 @@ class OraturePeerEditViewModel(
         translationVm.updateChunkUndoRedo(canUndo = true, canRedo = false)
     }
 
+    /** Polls the take player for the playhead position + play/pause state. The target-take waveform
+     *  is drawn by the shared renderer sampling the peak cache in the draw pass. */
     private fun startWaveformTicker() {
         waveformTickerJob?.cancel()
         waveformTickerJob = viewModelScope.launch(Dispatchers.Default) {
-            val out = FloatArray(PEER_WAVEFORM_WIDTH * 2)
             while (isActive) {
                 val p = takePlayer
-                val peaks = precomputed
                 val current = _uiState.value
                 var playing = current.isPlaying
-                if (p != null && peaks != null) {
+                if (p != null) {
                     runCatching {
                         playing = p.isPlaying()
                         if (playing) positionFrames = p.getLocationInFrames()
-                        val halfWindow = PEER_SECONDS_ON_SCREEN * sampleRate / 2
-                        peaks.window(positionFrames - halfWindow, out)
-                        waveformFront = out.copyOf()
-                    }.onFailure { System.err.println("[peeredit] waveform render failed: $it") }
+                    }.onFailure { System.err.println("[peeredit] take state poll failed: $it") }
                 }
                 if (current.isPlaying != playing) {
                     _uiState.value = _uiState.value.copy(isPlaying = playing)
@@ -547,13 +590,18 @@ class OraturePeerEditViewModel(
     private fun stopAll() {
         waveformTickerJob?.cancel()
         sourceTickerJob?.cancel()
+        peakBuildJob?.cancel()
+        clockEventsJob?.cancel()
+        clock.advancing = false
         runCatching { sourcePlayer?.pause() }
         runCatching { sourcePlayer?.release() }
         runCatching { takePlayer?.pause() }
         runCatching { takePlayer?.release() }
         sourcePlayer = null
         takePlayer = null
-        precomputed = null
+        timeline = null
+        peakCache = null
+        peakSource = null
         if (writer != null || recorder != null) {
             recordingActiveFlow.value = false
             runCatching { writer?.close() }
@@ -577,7 +625,9 @@ class OraturePeerEditViewModel(
         private const val SOURCE_PLAYER_ID = 90_020
         private const val TAKE_PLAYER_ID = 90_021
         private const val RECORDER_ID = 90_022
-        private const val RECORD_WIDTH = 480
+        // See OratureBlindDraftViewModel: kept wider than any real screen so the live-record
+        // waveform down-samples to crisp 1px lines instead of up-sampling into fat blocks.
+        private const val RECORD_WIDTH = 4096
         private const val RECORD_SECONDS = 10
     }
 }

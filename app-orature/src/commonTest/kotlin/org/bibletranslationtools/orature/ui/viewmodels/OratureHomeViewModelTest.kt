@@ -41,10 +41,14 @@ class OratureHomeViewModelTest : KoinTest {
     @BeforeTest
     fun setup() {
         Dispatchers.setMain(testDispatcher)
+        // Source audio is resolved in a background pass; default it to none for all tests.
+        coEvery { workbookDescriptorRepository.getSourceAudioSuspend(any()) } returns emptyMap()
         startKoin {
             modules(
                 module {
                     single { workbookDescriptorRepository }
+                    single { OratureImportEvents() }
+                    single { mockk<OratureProjectDeletion>(relaxed = true) }
                 }
             )
         }
@@ -124,7 +128,7 @@ class OratureHomeViewModelTest : KoinTest {
             // Different resource slug -> separate group even with same languages/mode.
             fakeDescriptor(3, "mat", "Matthew", english, spanish, 0.2, resourceSlug = "udb")
         )
-        coEvery { workbookDescriptorRepository.getAllSuspend() } returns descriptors
+        coEvery { workbookDescriptorRepository.getAllSuspend(any()) } returns descriptors
 
         val viewModel = OratureHomeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
@@ -149,7 +153,7 @@ class OratureHomeViewModelTest : KoinTest {
         val descriptors = listOf(
             fakeDescriptor(1, "gen", "Genesis", english, spanish, 0.5, resourceSlug = "ulb")
         )
-        coEvery { workbookDescriptorRepository.getAllSuspend() } returns descriptors
+        coEvery { workbookDescriptorRepository.getAllSuspend(any()) } returns descriptors
 
         val viewModel = OratureHomeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
@@ -171,7 +175,7 @@ class OratureHomeViewModelTest : KoinTest {
             fakeDescriptor(1, "gen", "Genesis", english, spanish, 0.5, resourceSlug = "ulb", modifiedTs = older),
             fakeDescriptor(2, "mat", "Matthew", english, spanish, 0.2, resourceSlug = "udb", modifiedTs = newer)
         )
-        coEvery { workbookDescriptorRepository.getAllSuspend() } returns descriptors
+        coEvery { workbookDescriptorRepository.getAllSuspend(any()) } returns descriptors
 
         val viewModel = OratureHomeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
@@ -189,7 +193,7 @@ class OratureHomeViewModelTest : KoinTest {
             fakeDescriptor(1, "gen", "Genesis", english, spanish, 0.5, resourceSlug = "ulb"),
             fakeDescriptor(2, "exo", "Exodus", english, spanish, 0.0, resourceSlug = "ulb")
         )
-        coEvery { workbookDescriptorRepository.getAllSuspend() } returns descriptors
+        coEvery { workbookDescriptorRepository.getAllSuspend(any()) } returns descriptors
 
         val viewModel = OratureHomeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
@@ -208,7 +212,7 @@ class OratureHomeViewModelTest : KoinTest {
 
     @Test
     fun `isEmptyGroups is true when repository returns no projects`() = runTest(testDispatcher) {
-        coEvery { workbookDescriptorRepository.getAllSuspend() } returns emptyList()
+        coEvery { workbookDescriptorRepository.getAllSuspend(any()) } returns emptyList()
 
         val viewModel = OratureHomeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
@@ -225,7 +229,7 @@ class OratureHomeViewModelTest : KoinTest {
         val descriptors = listOf(
             fakeDescriptor(1, "gen", "Genesis", english, english, 0.75, resourceSlug = "ulb")
         )
-        coEvery { workbookDescriptorRepository.getAllSuspend() } returns descriptors
+        coEvery { workbookDescriptorRepository.getAllSuspend(any()) } returns descriptors
 
         val viewModel = OratureHomeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
@@ -244,7 +248,7 @@ class OratureHomeViewModelTest : KoinTest {
             fakeDescriptor(1, "gen", "Genesis", english, spanish, 0.5, resourceSlug = "ulb"),
             fakeDescriptor(2, "mat", "Matthew", english, spanish, 0.2, resourceSlug = "udb")
         )
-        coEvery { workbookDescriptorRepository.getAllSuspend() } returns descriptors
+        coEvery { workbookDescriptorRepository.getAllSuspend(any()) } returns descriptors
 
         val viewModel = OratureHomeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()

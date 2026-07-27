@@ -26,10 +26,15 @@ import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 
 interface IWorkbookDescriptorRepository {
     fun getById(id: Int): Maybe<WorkbookDescriptor>
-    fun getAll(): Single<List<WorkbookDescriptor>>
+    /** [computeSourceAudio] false skips the per-source resource-container (zip) opens, leaving
+     *  hasSourceAudio=false to be resolved later via [getSourceAudioSuspend] off the critical path. */
+    fun getAll(computeSourceAudio: Boolean = true): Single<List<WorkbookDescriptor>>
     fun delete(list: List<WorkbookDescriptor>): Completable
 
     suspend fun getByIdSuspend(id: Int): WorkbookDescriptor?
-    suspend fun getAllSuspend(): List<WorkbookDescriptor>
+    suspend fun getAllSuspend(computeSourceAudio: Boolean = true): List<WorkbookDescriptor>
+    /** Resolve hasSourceAudio (descriptorId -> has) for the given descriptors, opening each unique
+     *  source resource container only once. */
+    suspend fun getSourceAudioSuspend(descriptors: List<WorkbookDescriptor>): Map<Int, Boolean>
     suspend fun deleteSuspend(list: List<WorkbookDescriptor>)
 }
