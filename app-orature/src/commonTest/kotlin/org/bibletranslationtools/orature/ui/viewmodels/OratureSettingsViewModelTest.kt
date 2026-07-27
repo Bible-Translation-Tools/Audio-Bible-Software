@@ -154,10 +154,20 @@ class OratureSettingsViewModelTest {
     }
 
     @Test
-    fun `default language options include system default and English`() = runTest(testDispatcher) {
+    fun `default language options offer system default plus every shipped locale`() = runTest(testDispatcher) {
         val vm = createViewModel()
         val tags = vm.uiState.value.languageOptions.map { it.tag }
-        assertEquals(listOf(null, "en"), tags)
+        // "System default" (null) first, then one entry per composeResources/values-<lang> bundle we
+        // ship translations for. Keep in sync when a locale is added/removed.
+        assertEquals(
+            listOf(null, "en", "ar", "es", "fr", "id", "my", "pt", "ru", "sw", "te", "vi", "zh"),
+            tags
+        )
+        // Each real language is labelled in its own autonym so users can find their language.
+        val displayNames = vm.uiState.value.languageOptions.associate { it.tag to it.displayName }
+        assertEquals("العربية", displayNames["ar"])
+        assertEquals("Français", displayNames["fr"])
+        assertEquals("中文", displayNames["zh"])
     }
 
     @Test

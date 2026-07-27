@@ -38,6 +38,7 @@ import org.bibletranslationtools.otter.common.domain.model.DEFAULT_CHUNK_MARKER_
 import org.bibletranslationtools.otter.common.domain.model.MarkerItem
 import org.bibletranslationtools.otter.common.domain.model.MarkerPlacementModel
 import org.bibletranslationtools.otter.common.domain.model.MarkerPlacementType
+import org.bibletranslationtools.orature.ui.translation.ChunkingStep
 import org.bibletranslationtools.otter.common.domain.translation.ChunkAudioUseCase
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.koin.core.component.KoinComponent
@@ -377,10 +378,16 @@ class OratureChunkingViewModel(
     public override fun onCleared() {
         translationVm.clearUndoRedoHandlers()
         translationVm.clearChunkSaveHandler()
-        // Only save if there are unsaved edits. After a step-leave save (awaited saveSuspend) dirty is
-        // false, so we do NOT re-run the destructive reset+insert here — which, abandoned mid-delete on
-        // app-close, was wiping the committed chunks.
-        if (dirty) save()
+        // Only save if there are unsaved edits AND we're being torn down because the user moved
+        // FORWARD past Chunking — the JVM's `undock()` condition
+        // (`selectedStep.ordinal > CHUNKING.ordinal`). The save is destructive (resetChapter deletes
+        // this chapter's takes), so tearing down any other way — cancelling the re-chunk warning and
+        // going back, closing the chapter — must leave the takes and the committed chunks alone.
+        // After a step-leave save (awaited saveSuspend) dirty is already false, so this never re-runs
+        // the reset+insert over already-committed chunks.
+        val movedPastChunking =
+            translationVm.uiState.value.selectedStep.ordinal > ChunkingStep.CHUNKING.ordinal
+        if (dirty && movedPastChunking) save()
         waveformTickerJob?.cancel()
         peakBuildJob?.cancel()
         clockEventsJob?.cancel()
