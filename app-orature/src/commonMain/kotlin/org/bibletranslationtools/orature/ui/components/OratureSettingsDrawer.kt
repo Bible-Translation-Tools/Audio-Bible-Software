@@ -186,7 +186,8 @@ fun OratureSettingsDrawer(
                 OratureDropdown(
                     label = stringResource(Res.string.language),
                     leadingIcon = Icons.Filled.Public,
-                    options = ui.languageOptions.map { (it.tag ?: "") to it.displayName },
+                    // Real languages show in their own autonym; the null-tag "System default" is localized.
+                    options = ui.languageOptions.map { (it.tag ?: "") to (if (it.tag == null) systemDefaultText else it.displayName) },
                     selectedId = currentLang?.tag ?: "",
                     placeholder = systemDefaultText,
                     emptyText = systemDefaultText,

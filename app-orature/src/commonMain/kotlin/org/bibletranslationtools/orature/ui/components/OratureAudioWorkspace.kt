@@ -37,6 +37,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -56,6 +57,8 @@ import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -77,12 +80,10 @@ import org.bibletranslationtools.shared.ui.playback.fillWindow
 import kotlin.math.floor
 import kotlin.math.roundToInt
 
-// JVM WAV_COLOR_LIGHT (wave amplitude lines) / WAV_BACKGROUND_COLOR_LIGHT (white behind them),
-// from common/data/ColorTheme.kt. (Dark theme is #808080 on #343434 — not wired here yet.)
-private val WaveColor = Color(0xFF66768B)
+// Wave line + background are theme-aware (OratureColors.WaveformLine / WaveformBackground, from JVM
+// common/data/ColorTheme.kt: #66768B on #FFFFFF light, #808080 on #343434 dark).
 private val CursorColor = Color(0xFFD32F2F)
-// JVM waveform image background is white; the volume-bar strip is the dark navy below.
-private val WaveformBg = Color(0xFFFFFFFF)
+// The volume-bar strip stays the dark navy in both themes.
 private val VolumeBarBg = Color(0xFF001533)
 private const val PCM_MAX = 32768f
 
@@ -146,7 +147,11 @@ fun OratureAudioWorkspace(
     // subscribes that block to per-frame updates so markers reposition as the waveform scrolls.
     val frameClock: () -> Long = { frameTick }
 
-    Column(modifier = modifier.fillMaxSize().background(WaveformBg)) {
+    // Audio time always flows left→right, so keep the waveform, markers, and scrollbar LTR even when
+    // the UI language is right-to-left (otherwise marker offsets / scrollbar mirror — the flipped
+    // markers bug). The Canvas already draws in absolute coords; this fixes the Compose-layout parts.
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+    Column(modifier = modifier.fillMaxSize().background(OratureColors.WaveformBackground)) {
         Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
             WaveformArea(
                 waveformProvider = waveformProvider,
@@ -181,6 +186,7 @@ fun OratureAudioWorkspace(
             onSeekToFrame = onSeekToFrame,
             frameClock = frameClock
         )
+    }
     }
 }
 
@@ -233,7 +239,7 @@ private fun WaveformArea(
     frameTick: Long,
     modifier: Modifier
 ) {
-    BoxWithConstraints(modifier = modifier.background(WaveformBg)) {
+    BoxWithConstraints(modifier = modifier.background(OratureColors.WaveformBackground)) {
         val density = LocalDensity.current
         val widthPx = with(density) { maxWidth.toPx() }
         val framesOnScreen = (waveformSampleRate * 10).coerceAtLeast(1)
@@ -294,7 +300,7 @@ private fun WaveformArea(
                     val mn = colMins[i]
                     if (mn.isNaN()) continue
                     val x = i + xShift
-                    drawLine(WaveColor, Offset(x, midY - colMaxs[i] * scale), Offset(x, midY - mn * scale))
+                    drawLine(OratureColors.WaveformLine, Offset(x, midY - colMaxs[i] * scale), Offset(x, midY - mn * scale))
                 }
             } else {
                 // RECORDING (or cache not ready): the live AudioScene composite, pixel-driven so a
@@ -310,7 +316,7 @@ private fun WaveformArea(
                         val maxV = buffer[col * 2 + 1]
                         if (minV == 0f && maxV == 0f) continue
                         val px = x + 0.5f
-                        drawLine(WaveColor, Offset(px, midY - minV * scale), Offset(px, midY - maxV * scale))
+                        drawLine(OratureColors.WaveformLine, Offset(px, midY - minV * scale), Offset(px, midY - maxV * scale))
                     }
                 }
             }

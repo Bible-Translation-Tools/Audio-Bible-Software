@@ -394,4 +394,14 @@
     <string name="languagesImportError">URL tidak valid; coba lagi.</string>
     <string name="tip">Tip</string>
     <string name="tipInfo">Tekan tombol down di keyboard Anda untuk menuju ke ayat berikutnya.</string>
+    <string name="addBookMarker">Tambahkan Penanda Buku</string>
+    <string name="addChapterMarker">Tambahkan Penanda Bab</string>
+    <string name="burritoWrapper">Burrito Wrapper</string>
+    <string name="chooseExecutable">Pilih aplikasi</string>
+    <string name="external_apps">Aplikasi eksternal</string>
+    <string name="noAppsConfigured">Tidak ada aplikasi eksternal yang dikonfigurasi.</string>
+    <string name="noDevicesFound">Tidak ada perangkat ditemukan</string>
+    <string name="systemDefault">Bawaan sistem</string>
+    <string name="zoomIn">Perbesar</string>
+    <string name="zoomOut">Perkecil</string>
 </resources>

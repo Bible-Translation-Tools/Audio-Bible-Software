@@ -120,13 +120,11 @@ class OratureSettingsViewModel(
     }
 
     fun setAppLanguage(tag: String?) {
-        // Persist, then apply to the JVM default locale (both targets are JVM-based).
-        // Visible UI re-localization additionally requires bundled translations and,
-        // on some platforms, an app restart.
-        viewModelScope.launch {
-            appPreferences.setAppLanguageTag(tag)
-            applyLocale(tag)
-        }
+        // Apply the JVM default locale SYNCHRONOUSLY first, before the persisted-settings flow emits
+        // and the UI re-keys on the new language (OratureTheme). Otherwise the recomposition can read
+        // the old Locale.current and Compose resources would resolve to the previous language.
+        applyLocale(tag)
+        viewModelScope.launch { appPreferences.setAppLanguageTag(tag) }
     }
 
     private fun applyLocale(tag: String?) {
@@ -175,12 +173,24 @@ class OratureSettingsViewModel(
     }
 
     companion object {
-        // The set of selectable UI languages is whatever we ship translations for.
-        // Today that's only the default (English); as values-<lang>/strings.xml files
-        // are added, extend this list. "System default" is always offered.
+        // The selectable UI languages = every locale we ship string resources for
+        // (composeResources/values-<lang>). Shown in each language's own autonym so users
+        // recognize their language. "System default" (null tag) is always offered first and is
+        // localized in the drawer. Keep in sync with the values-<lang> folders.
         val DEFAULT_LANGUAGE_OPTIONS = listOf(
             OratureLanguageOption(tag = null, displayName = "System default"),
-            OratureLanguageOption(tag = "en", displayName = "English")
+            OratureLanguageOption(tag = "en", displayName = "English"),
+            OratureLanguageOption(tag = "ar", displayName = "العربية"),
+            OratureLanguageOption(tag = "es", displayName = "Español"),
+            OratureLanguageOption(tag = "fr", displayName = "Français"),
+            OratureLanguageOption(tag = "id", displayName = "Bahasa Indonesia"),
+            OratureLanguageOption(tag = "my", displayName = "မြန်မာ"),
+            OratureLanguageOption(tag = "pt", displayName = "Português"),
+            OratureLanguageOption(tag = "ru", displayName = "Русский"),
+            OratureLanguageOption(tag = "sw", displayName = "Kiswahili"),
+            OratureLanguageOption(tag = "te", displayName = "తెలుగు"),
+            OratureLanguageOption(tag = "vi", displayName = "Tiếng Việt"),
+            OratureLanguageOption(tag = "zh", displayName = "中文")
         )
 
         private inline fun <reified T : Any> koinGet(): T =

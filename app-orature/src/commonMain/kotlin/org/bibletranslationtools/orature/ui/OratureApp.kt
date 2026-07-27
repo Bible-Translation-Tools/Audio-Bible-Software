@@ -15,11 +15,15 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.flow.first
 import org.bibletranslationtools.orature.crash.OratureCrashReporter
@@ -41,37 +45,48 @@ import org.jetbrains.compose.resources.getString
 import org.koin.mp.KoinPlatform.getKoin
 import java.util.Locale
 
-// Orature's own light palette (from the real JVM app's -wa- light-theme CSS vars),
-// deliberately distinct from the recorder's branding.
+// Orature's semantic palette, mapped from the JVM app's -wa- light-theme.css / dark-theme.css vars.
+// The whole UI reads these directly (not just via MaterialTheme.colorScheme), so each color resolves
+// light/dark from [darkTheme] — set by OratureTheme, which re-keys the tree on theme change so these
+// getters are re-read. This makes dark mode apply everywhere, not only the few color-scheme roles.
 object OratureColors {
-    val Primary = Color(0xFF015AD9)
-    val PrimaryDark = Color(0xFF0040A0)
-    val PrimaryDarkest = Color(0xFF001847)
-    val PrimaryLight = Color(0xFFEEF0FF)
-    val Background = Color(0xFFF4F4F4)
-    val Foreground = Color(0xFFFFFFFF)
-    val SurfaceSecondary = Color(0xFFF2F2F2)
-    val SurfaceTertiary = Color(0xFFE6E6E6) // also the standard border color (-wa-surface-border)
-    val CardPlaceholderBackground = Color(0xFFF2F3F5) // -wa-card-image-placeholder-background
-    val CardGraphic = Color(0xFFE5E8EB) // creation-card placeholder bars
-    val TableHeaderBackground = Color(0xFFDCE0E5) // -wa-table-header-background
-    val OnPrimary = Color(0xFFFFFFFF)
-    val RegularText = Color(0xFF001533)
-    val RegularText80 = Color(0xFF33445C)
-    val NoteText = Color(0xB3001533) // rgba(0,21,51,0.7)
-    val Disabled = Color(0x661A1A1A) // rgba(26,26,26,0.4)
-    val BorderLight = Color(0x1A1A1A1A) // -wa-border-light: rgba(26,26,26,0.1)
-    val BtnIconBorderColor = Color(0x33001533) // -wa-btn-icon-border-color: -wa-black-20 = rgba(0,21,51,0.2)
-    val StatusComplete = Color(0xFF82A93F)
-    val Accent = Color(0xFFFFB100)
+    /** Set by OratureTheme before (re)composing the app; see the key(dark) there. */
+    var darkTheme: Boolean = false
 
-    // Orature DARK -wa- palette.
+    private fun pick(light: Long, dark: Long) = Color(if (darkTheme) dark else light)
+
+    val Primary get() = pick(0xFF015AD9, 0xFF88A9FF)
+    val PrimaryDark get() = pick(0xFF0040A0, 0xFFB2C5FF)
+    val PrimaryDarkest get() = pick(0xFF001847, 0xFFDAE2FF)
+    val PrimaryLight get() = pick(0xFFEEF0FF, 0xFF00102E)
+    val Background get() = pick(0xFFF4F4F4, 0xFF1F1F1F)            // -wa-background
+    val Foreground get() = pick(0xFFFFFFFF, 0xFF343434)           // -wa-foreground / surface-primary
+    val SurfaceSecondary get() = pick(0xFFF2F2F2, 0xFF1F1F1F)     // -wa-surface-secondary
+    val SurfaceTertiary get() = pick(0xFFE6E6E6, 0xFF4D4D4D)      // surfaces + standard borders/dividers
+    val CardPlaceholderBackground get() = pick(0xFFF2F3F5, 0xFF3A3A3A)
+    val CardGraphic get() = pick(0xFFE5E8EB, 0xFF4D4D4D)          // creation-card placeholder bars
+    val TableHeaderBackground get() = pick(0xFFDCE0E5, 0xFF4D4D4D) // -wa-table-header-background
+    val OnPrimary get() = pick(0xFFFFFFFF, 0xFF001533)           // text on the primary fill
+    val RegularText get() = pick(0xFF001533, 0xFFE6E6E6)         // -wa-regular-text
+    val RegularText80 get() = pick(0xFF33445C, 0xFFCCCCCC)
+    val NoteText get() = pick(0xB3001533, 0xFFC0BFBF)            // -wa-note-text
+    val Disabled get() = pick(0x661A1A1A, 0x66FFFFFF)            // -wa-disabled-text
+    val BorderLight get() = pick(0x1A1A1A1A, 0x1AFFFFFF)         // -wa-border-light
+    val BtnIconBorderColor get() = pick(0x33001533, 0x33FFFFFF)  // -wa-btn-icon-border-color
+    val StatusComplete get() = pick(0xFF82A93F, 0xFF2EC144)      // -wa-status-complete
+    val Accent get() = pick(0xFFFFB100, 0xFFF39422)             // -wa-accent
+
+    // Waveform rendering (JVM common/data/ColorTheme.kt: WAV_COLOR_* / WAV_BACKGROUND_COLOR_*).
+    val WaveformLine get() = pick(0xFF66768B, 0xFF808080)        // WAV_COLOR_LIGHT / WAV_COLOR_DARK
+    val WaveformBackground get() = pick(0xFFFFFFFF, 0xFF343434)  // WAV_BACKGROUND_COLOR_LIGHT / _DARK
+
+    // Explicit dark values for the dark color scheme below (JVM dark-theme.css).
     val DarkPrimary = Color(0xFF88A9FF)
-    val DarkBackground = Color(0xFF1C2031)
-    val DarkForeground = Color(0xFF373949)
+    val DarkBackground = Color(0xFF1F1F1F)   // -wa-background (was #1C2031)
+    val DarkForeground = Color(0xFF343434)   // -wa-foreground (was #373949)
     val DarkSurfaceSecondary = Color(0xFF1F1F1F)
     val DarkOnPrimary = Color(0xFF001533)
-    val DarkRegularText = Color(0xFFF4F4F4)
+    val DarkRegularText = Color(0xFFE6E6E6)  // -wa-regular-text (was #F4F4F4)
 }
 
 private val OratureLightColors = lightColorScheme(
@@ -116,10 +131,30 @@ fun OratureTheme(content: @Composable () -> Unit) {
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
     }
-    MaterialTheme(
-        colorScheme = if (dark) OratureDarkColors else OratureLightColors,
-        content = content
-    )
+    // Flip the whole UI to RTL for right-to-left UI languages (JVM: setAppOrientation ->
+    // NodeOrientation.RIGHT_TO_LEFT). Driven by the selected UI language so changing it in the
+    // settings drawer re-lays-out the app live.
+    val layoutDirection = if (isRtlLanguage(settings.appLanguageTag)) LayoutDirection.Rtl else LayoutDirection.Ltr
+    // The UI reads OratureColors.* directly; point them at the light/dark set for this theme.
+    OratureColors.darkTheme = dark
+    MaterialTheme(colorScheme = if (dark) OratureDarkColors else OratureLightColors) {
+        // Re-key the whole tree on language AND theme: Compose caches stringResource() by Locale.current
+        // (so a Locale.setDefault language change wouldn't otherwise re-translate live), and our
+        // OratureColors.* getters read the plain `darkTheme` flag (not Compose state), so a theme flip
+        // needs a forced recompose to re-read them. Keying on both rebuilds against the current values.
+        key(settings.appLanguageTag, dark) {
+            CompositionLocalProvider(LocalLayoutDirection provides layoutDirection, content = content)
+        }
+    }
+}
+
+// The UI languages Orature ships that are written right-to-left (today only Arabic; the rest guard
+// against future additions). Compared on the language subtag so region variants still match.
+private val RTL_LANGUAGES = setOf("ar", "he", "iw", "fa", "ur", "ps", "sd", "yi", "dv")
+
+private fun isRtlLanguage(tag: String?): Boolean {
+    val lang = if (tag.isNullOrBlank()) Locale.getDefault().language else Locale.forLanguageTag(tag).language
+    return lang.lowercase() in RTL_LANGUAGES
 }
 
 /**

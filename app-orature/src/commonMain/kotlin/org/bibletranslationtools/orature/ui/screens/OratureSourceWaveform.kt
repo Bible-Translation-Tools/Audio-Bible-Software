@@ -23,6 +23,7 @@ import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
@@ -36,6 +37,8 @@ import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -57,10 +60,8 @@ import kotlin.math.floor
 import kotlin.math.roundToInt
 
 private const val SECONDS_ON_SCREEN = 10
-// JVM WAV_COLOR_LIGHT (wave lines) on WAV_BACKGROUND_COLOR_LIGHT (white), from
-// common/data/ColorTheme.kt. (Dark theme is #808080 on #343434 — not wired here yet.)
-private val WaveColor = Color(0xFF66768B)
-private val WaveBgColor = Color(0xFFFFFFFF)
+// Wave line + background are theme-aware (OratureColors.WaveformLine / WaveformBackground, from JVM
+// common/data/ColorTheme.kt: #66768B on #FFFFFF light, #808080 on #343434 dark).
 private val CursorColor = Color(0xFFD32F2F)
 private const val PCM_MAX = 32768f
 
@@ -98,7 +99,10 @@ fun OratureSourceWaveform(
         while (isActive) withFrameNanos { clock.onFrame(it) }
     }
 
-    BoxWithConstraints(modifier = modifier.fillMaxSize().background(WaveBgColor)) {
+    // Audio time flows left→right regardless of UI language — keep this surface LTR so markers don't
+    // mirror under RTL languages (the Canvas draws in absolute coords already).
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+    BoxWithConstraints(modifier = modifier.fillMaxSize().background(OratureColors.WaveformBackground)) {
         val widthPx = with(LocalDensity.current) { maxWidth.toPx() }
 
         // Per-pixel min/max scratch, reused across frames (reallocated only on resize) — this is
@@ -147,7 +151,7 @@ fun OratureSourceWaveform(
                     val x = i + xShift
                     // Hairline (default strokeWidth 0f) — always exactly 1 physical pixel, crisp on
                     // any density, matching the recorder's waveform draw.
-                    drawLine(WaveColor, Offset(x, midY - colMaxs[i] * scale), Offset(x, midY - mn * scale))
+                    drawLine(OratureColors.WaveformLine, Offset(x, midY - colMaxs[i] * scale), Offset(x, midY - mn * scale))
                 }
             }
             drawLine(OratureColors.SurfaceTertiary, Offset(0f, midY), Offset(size.width, midY))
@@ -169,6 +173,7 @@ fun OratureSourceWaveform(
                 )
             }
         }
+    }
     }
 }
 

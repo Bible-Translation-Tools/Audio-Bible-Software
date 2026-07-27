@@ -394,4 +394,14 @@
     <string name="languagesImportError">Неверный url; Повторите попытку.</string>
     <string name="tip">Кончик</string>
     <string name="tipInfo">Нажмите клавишу вниз на клавиатуре, чтобы перейти к следующему стиху.</string>
+    <string name="addBookMarker">Добавить маркер книги</string>
+    <string name="addChapterMarker">Добавить маркер главы</string>
+    <string name="burritoWrapper">Burrito Wrapper</string>
+    <string name="chooseExecutable">Выбрать приложение</string>
+    <string name="external_apps">Внешние приложения</string>
+    <string name="noAppsConfigured">Внешние приложения не настроены.</string>
+    <string name="noDevicesFound">Устройства не найдены</string>
+    <string name="systemDefault">Системное по умолчанию</string>
+    <string name="zoomIn">Приблизить</string>
+    <string name="zoomOut">Отдалить</string>
 </resources>

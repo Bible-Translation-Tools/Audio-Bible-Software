@@ -394,4 +394,14 @@
     <string name="languagesImportError">URL Inválida, por favor tente novamente.</string>
     <string name="tip">Dica</string>
     <string name="tipInfo">Pressione a tecla para baixo no seu teclado para navegar para o próximo versículo.</string>
+    <string name="addBookMarker">Adicionar Marcador de Livro</string>
+    <string name="addChapterMarker">Adicionar Marcador de Capítulo</string>
+    <string name="burritoWrapper">Burrito Wrapper</string>
+    <string name="chooseExecutable">Escolher um aplicativo</string>
+    <string name="external_apps">Aplicativos externos</string>
+    <string name="noAppsConfigured">Nenhum aplicativo externo configurado.</string>
+    <string name="noDevicesFound">Nenhum dispositivo encontrado</string>
+    <string name="systemDefault">Padrão do sistema</string>
+    <string name="zoomIn">Ampliar</string>
+    <string name="zoomOut">Reduzir</string>
 </resources>
