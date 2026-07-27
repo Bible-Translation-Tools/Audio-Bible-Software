@@ -62,4 +62,6 @@ dependencyResolutionManagement {
 
 }
 
-include(":composeApp")
+include(":shared")
+include(":app-recorder")
+include(":app-orature")

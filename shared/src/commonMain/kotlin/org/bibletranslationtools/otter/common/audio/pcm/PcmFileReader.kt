@@ -1,0 +1,137 @@
+/**
+ * Copyright (C) 2020-2024 Wycliffe Associates
+ *
+ * This file is part of Orature.
+ *
+ * Orature is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * Orature is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Orature.  If not, see <https://www.gnu.org/licenses/>.
+ */
+package org.bibletranslationtools.otter.common.audio.pcm
+
+import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
+import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
+import java.io.RandomAccessFile
+import java.lang.Exception
+import java.lang.IllegalStateException
+import java.nio.ByteBuffer
+import java.nio.MappedByteBuffer
+import java.nio.channels.FileChannel
+
+internal class PcmFileReader(
+    val pcm: PcmFile,
+    start: Int? = null,
+    end: Int? = null,
+    override val spec: AudioSpec = AudioSpec(sampleRate = pcm.sampleRate, bitDepth = pcm.bitsPerSample, channels = pcm.channels)
+) : AudioFileReader {
+    val sampleRate: Int
+        get() = spec.sampleRate
+    val channels: Int
+        get() = spec.channels
+
+    override val framePosition: Int
+        get() = (mappedFile?.position() ?: 0) / pcm.frameSizeInBytes
+    override val totalFrames: Int
+        get() = end - start
+
+    val start = start ?: 0
+    val end = end ?: pcm.totalFrames
+
+    private var mappedFile: MappedByteBuffer? = null
+    private var channel: FileChannel? = null
+    private var isEmptyMapping: Boolean = false
+
+    override fun hasRemaining(): Boolean {
+        if (isEmptyMapping) return false
+        return mappedFile?.hasRemaining() ?: throw IllegalStateException("hasRemaining called before opening file")
+    }
+
+    override fun getPcmBuffer(bytes: ByteArray): Int {
+        if (isEmptyMapping) return 0
+        mappedFile?.let { _mappedFile ->
+            val written = _mappedFile.remaining().coerceAtMost(bytes.size)
+            _mappedFile.get(bytes, 0, written)
+            return written
+        } ?: run {
+            throw IllegalStateException("Tried to get pcm buffer before opening file")
+        }
+    }
+
+    @Throws(ArrayIndexOutOfBoundsException::class)
+    override fun seek(sample: Long) {
+        if (isEmptyMapping) return
+        mappedFile?.let { _mappedFile ->
+            val index = Integer.min(pcm.sampleIndex(sample.toInt()), _mappedFile.limit())
+            _mappedFile.position(index)
+        } ?: run {
+            throw IllegalStateException("Tried to seek before opening file")
+        }
+    }
+
+    override fun open() {
+        mappedFile?.let { release() }
+        isEmptyMapping = false
+        val (begin, end) = computeBounds()
+        val mapSize = end - begin
+        if (mapSize <= 0) {
+            isEmptyMapping = true
+            return
+        }
+        mappedFile =
+            RandomAccessFile(pcm.file, "r").use {
+                channel = it.channel
+                channel!!.map(
+                    FileChannel.MapMode.READ_ONLY,
+                    begin.toLong(),
+                    mapSize.toLong()
+                )
+            }
+    }
+
+    override fun release() {
+        isEmptyMapping = false
+        if (mappedFile != null) {
+            try {
+                // https://stackoverflow.com/questions/25238110/how-to-properly-close-mappedbytebuffer/25239834#25239834
+                // TODO: Replace with https://docs.oracle.com/en/java/javase/14/docs/api/jdk.incubator.foreign/jdk/incubator/foreign/MemorySegment.html#ofByteBuffer(java.nio.ByteBuffer)
+                val unsafeClass = Class.forName("sun.misc.Unsafe")
+                val unsafeField = unsafeClass.getDeclaredField("theUnsafe")
+                unsafeField.isAccessible = true
+                val unsafe: Any = unsafeField.get(null)
+                val invokeCleaner = unsafeClass.getMethod("invokeCleaner", ByteBuffer::class.java)
+                invokeCleaner.invoke(unsafe, mappedFile)
+            } catch (e: Exception) {
+
+            }
+            channel?.close()
+            mappedFile = null
+            channel = null
+            System.gc()
+        }
+    }
+
+    override fun close() {
+        release()
+    }
+
+    private fun computeBounds(): Pair<Int, Int> {
+        val fileLength = pcm.file.length().toInt()
+        var begin = if (start != null) Integer.min(Integer.max(0, start), fileLength) else 0
+        var end = if (end != null) Integer.min(Integer.max(begin, end), fileLength) else fileLength
+
+        begin *= pcm.frameSizeInBytes
+        end *= pcm.frameSizeInBytes
+
+        return Pair(begin, end)
+    }
+
+}

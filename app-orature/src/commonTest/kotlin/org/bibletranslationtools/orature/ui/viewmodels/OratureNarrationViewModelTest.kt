@@ -1,0 +1,205 @@
+package org.bibletranslationtools.orature.ui.viewmodels
+
+import io.mockk.coEvery
+import io.mockk.every
+import io.mockk.mockk
+import io.reactivex.Observable
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withTimeout
+import org.bibletranslationtools.orature.ui.workbook.OratureTakeAudio
+import org.bibletranslationtools.orature.ui.workbook.OratureWorkbookDataStore
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
+import org.bibletranslationtools.otter.common.data.primitives.Collection
+import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
+import org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio
+import org.bibletranslationtools.otter.common.data.workbook.Book
+import org.bibletranslationtools.otter.common.data.workbook.Chapter
+import org.bibletranslationtools.otter.common.data.workbook.Take
+import org.bibletranslationtools.otter.common.data.workbook.Workbook
+import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
+import org.koin.core.context.startKoin
+import org.koin.core.context.stopKoin
+import org.koin.dsl.module
+import org.koin.test.KoinTest
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class OratureNarrationViewModelTest : KoinTest {
+
+    private val descriptorRepo: IWorkbookDescriptorRepository = mockk(relaxed = true)
+    private val workbookRepo: IWorkbookRepository = mockk(relaxed = true)
+
+    private val testDispatcher = StandardTestDispatcher()
+
+    private val descriptorId = 7
+
+    @BeforeTest
+    fun setup() {
+        Dispatchers.setMain(testDispatcher)
+        startKoin {
+            modules(
+                module {
+                    single { descriptorRepo }
+                    single { workbookRepo }
+                    single { OratureWorkbookDataStore(get()) }
+                }
+            )
+        }
+    }
+
+    @AfterTest
+    fun tearDown() {
+        stopKoin()
+        Dispatchers.resetMain()
+    }
+
+    // ---- helpers ------------------------------------------------------------------------
+
+    private fun chapter(sort: Int, completed: Boolean = false): Chapter = mockk {
+        every { this@mockk.sort } returns sort
+        every { title } returns sort.toString()
+        every { hasSelectedAudio() } returns completed
+    }
+
+    /** Wire the descriptor→workbook→chapters chain used by the VM's load(). */
+    private fun stubWorkbook(chapters: List<Chapter>, mode: ProjectMode = ProjectMode.NARRATION) {
+        val sourceCol: Collection = mockk(relaxed = true)
+        val targetCol: Collection = mockk(relaxed = true)
+        val descriptor: WorkbookDescriptor = mockk {
+            every { sourceCollection } returns sourceCol
+            every { targetCollection } returns targetCol
+            every { this@mockk.mode } returns mode
+        }
+        val targetBook: Book = mockk {
+            every { title } returns "Matthew"
+            every { slug } returns "mat"
+            every { this@mockk.chapters } returns Observable.fromIterable(chapters)
+        }
+        val workbook: Workbook = mockk(relaxed = true) {
+            every { target } returns targetBook
+        }
+        coEvery { descriptorRepo.getByIdSuspend(descriptorId) } returns descriptor
+        every { workbookRepo.get(sourceCol, targetCol) } returns workbook
+    }
+
+    private fun newVm() = OratureNarrationViewModel(descriptorId)
+
+    private suspend fun OratureNarrationViewModel.awaitLoaded(): OratureNarrationUiState =
+        withTimeout(5000) { uiState.first { !it.isLoading } }
+
+    private fun runReal(block: suspend () -> Unit) {
+        Dispatchers.resetMain()
+        try {
+            runBlocking { withTimeout(10_000) { block() } }
+        } finally {
+            Dispatchers.setMain(testDispatcher)
+        }
+    }
+
+    // ---- load ---------------------------------------------------------------------------
+
+    @Test
+    fun `loads workbook and builds chapter grid with first chapter active`() = runReal {
+        stubWorkbook(listOf(chapter(1), chapter(2, completed = true), chapter(3)))
+
+        val state = newVm().awaitLoaded()
+
+        assertNull(state.error)
+        assertEquals("Matthew", state.bookTitle)
+        assertEquals(3, state.chapters.size)
+        assertEquals(1, state.activeChapterSort)
+        assertTrue(state.chapters.first { it.sort == 1 }.selected)
+        assertTrue(state.chapters.first { it.sort == 2 }.completed)
+        assertFalse(state.chapters.first { it.sort == 1 }.completed)
+        assertFalse(state.hasPreviousChapter)
+        assertTrue(state.hasNextChapter)
+    }
+
+    @Test
+    fun `selecting a chapter updates active selection and neighbor availability`() = runReal {
+        stubWorkbook(listOf(chapter(1), chapter(2), chapter(3)))
+        val vm = newVm()
+        vm.awaitLoaded()
+
+        vm.selectChapter(3)
+        val state = vm.uiState.value
+
+        assertEquals(3, state.activeChapterSort)
+        assertEquals("3", state.activeChapterTitle)
+        assertTrue(state.chapters.first { it.sort == 3 }.selected)
+        assertFalse(state.chapters.first { it.sort == 1 }.selected)
+        assertTrue(state.hasPreviousChapter)
+        assertFalse(state.hasNextChapter)
+    }
+
+    @Test
+    fun `next and previous step through chapters within bounds`() = runReal {
+        stubWorkbook(listOf(chapter(1), chapter(2), chapter(3)))
+        val vm = newVm()
+        vm.awaitLoaded()
+
+        vm.selectNextChapter()
+        assertEquals(2, vm.uiState.value.activeChapterSort)
+
+        vm.selectNextChapter()
+        assertEquals(3, vm.uiState.value.activeChapterSort)
+
+        // At the last chapter, next is a no-op.
+        vm.selectNextChapter()
+        assertEquals(3, vm.uiState.value.activeChapterSort)
+
+        vm.selectPreviousChapter()
+        assertEquals(2, vm.uiState.value.activeChapterSort)
+    }
+
+    @Test
+    fun `remembers the last-viewed chapter when the workbook is reopened`() = runReal {
+        stubWorkbook(listOf(chapter(1), chapter(2), chapter(3)))
+
+        val first = newVm()
+        first.awaitLoaded()
+        first.selectChapter(2)
+
+        // A second VM over the same descriptor shares the datastore's recent-chapter map.
+        val second = newVm().awaitLoaded()
+        assertEquals(2, second.activeChapterSort)
+    }
+
+    @Test
+    fun `error state when the descriptor is missing`() = runReal {
+        coEvery { descriptorRepo.getByIdSuspend(descriptorId) } returns null
+
+        val state = newVm().awaitLoaded()
+
+        assertEquals(0, state.chapters.size)
+        assertTrue(state.error != null)
+    }
+
+    // ---- take → audio adapter -----------------------------------------------------------
+
+    @Test
+    fun `adapter yields no timeline when nothing is selected`() {
+        val audio: AssociatedAudio = mockk { every { getSelectedTake() } returns null }
+        assertNull(OratureTakeAudio.timelineForSelected(audio))
+    }
+
+    @Test
+    fun `adapter yields no timeline for a soft-deleted take`() {
+        val deleted: Take = mockk { every { isDeleted() } returns true }
+        val audio: AssociatedAudio = mockk { every { getSelectedTake() } returns deleted }
+        assertNull(OratureTakeAudio.timelineForSelected(audio))
+    }
+}

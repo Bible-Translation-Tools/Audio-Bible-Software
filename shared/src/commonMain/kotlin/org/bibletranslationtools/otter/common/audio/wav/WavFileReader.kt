@@ -1,0 +1,165 @@
+/**
+ * Copyright (C) 2020-2024 Wycliffe Associates
+ *
+ * This file is part of Orature.
+ *
+ * Orature is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * Orature is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Orature.  If not, see <https://www.gnu.org/licenses/>.
+ */
+package org.bibletranslationtools.otter.common.audio.wav
+
+import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
+import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
+import org.slf4j.LoggerFactory
+import java.io.RandomAccessFile
+import java.lang.Exception
+import java.lang.IllegalStateException
+import java.lang.Integer.max
+import java.lang.Integer.min
+import java.nio.ByteBuffer
+import java.nio.MappedByteBuffer
+import java.nio.channels.FileChannel
+
+internal class WavFileReader(
+    val wav: WavFile,
+    start: Int? = null,
+    end: Int? = null,
+    override val spec: AudioSpec = AudioSpec(sampleRate = wav.sampleRate, bitDepth = wav.bitsPerSample, channels = wav.channels)
+) :
+    AudioFileReader {
+
+    private val logger = LoggerFactory.getLogger(WavFileReader::class.java)
+
+    override val totalFrames: Int
+        get() = end - start
+    val sampleRate: Int
+        get() = spec.sampleRate
+    val channels: Int
+        get() = spec.channels
+    val sampleSizeBits: Int = wav.bitsPerSample
+
+    override val framePosition: Int
+        get() = (mappedFile?.position() ?: 0) / wav.frameSizeInBytes
+
+    val start = start ?: 0
+    val end = end ?: wav.totalFrames
+
+    private var mappedFile: MappedByteBuffer? = null
+    private var channel: FileChannel? = null
+    private var isEmptyMapping: Boolean = false
+
+    override fun open() {
+        mappedFile?.let { release() }
+        isEmptyMapping = false
+        val (begin, end) = computeBounds(wav)
+        val mapSize = end - begin
+        if (mapSize <= 0) {
+            isEmptyMapping = true
+            return
+        }
+        mappedFile =
+            RandomAccessFile(wav.file, "r").use {
+                channel = it.channel
+                channel!!.map(
+                    FileChannel.MapMode.READ_ONLY,
+                    begin.toLong(),
+                    mapSize.toLong()
+                )
+            }
+    }
+
+    fun computeBounds(wav: WavFile): Pair<Int, Int> {
+        val headerSize = wav.headerSize
+
+        if (wav.file.length() <= headerSize) {
+            logger.info("Wav file ${wav.file.name} is just a header or empty, size is ${wav.file.length()}")
+            return Pair(0, 0)
+        }
+
+        val totalFrames = wav.totalFrames
+        var begin = min(max(0, start), totalFrames)
+        var end = min(max(begin, end), totalFrames)
+
+
+        // Convert from frames to array index
+        begin *= wav.frameSizeInBytes
+        begin += headerSize
+        end *= wav.frameSizeInBytes
+        end += headerSize
+
+        // Should be clamped between header size, computed beginning, and the file length
+        val clampedBegin = max(headerSize, min(begin, max(wav.file.length().toInt(), headerSize)))
+        val clampedEnd = max(clampedBegin, min(end, max(wav.file.length().toInt(), headerSize)))
+
+        if (clampedBegin != begin || clampedEnd != end) {
+            logger.error("Error in file ${wav.file.name}")
+            logger.error("Wanted to open for bounds: $begin to $end; file length is ${wav.file.length()}")
+            logger.error("Bounds clamped to: $clampedBegin to $clampedEnd")
+        }
+
+        return Pair(clampedBegin, clampedEnd)
+    }
+
+    override fun getPcmBuffer(bytes: ByteArray): Int {
+        if (isEmptyMapping) return 0
+        mappedFile?.let { _mappedFile ->
+            val written = _mappedFile.remaining().coerceAtMost(bytes.size)
+            _mappedFile.get(bytes, 0, written)
+            return written
+        } ?: run {
+            throw IllegalStateException("Tried to get pcm buffer before opening file")
+        }
+    }
+
+    @Throws(ArrayIndexOutOfBoundsException::class)
+    override fun seek(sample: Long) {
+        if (isEmptyMapping) return
+        mappedFile?.let { _mappedFile ->
+            val index = min(wav.sampleIndex(sample.toInt()), _mappedFile.limit())
+            _mappedFile.position(index)
+        } ?: run {
+            throw IllegalStateException("Tried to seek before opening file")
+        }
+    }
+
+    override fun hasRemaining(): Boolean {
+        if (isEmptyMapping) return false
+        return mappedFile?.hasRemaining() ?: throw IllegalStateException("hasRemaining called before opening file")
+    }
+
+    override fun release() {
+        isEmptyMapping = false
+        if (mappedFile != null) {
+            try {
+                // https://stackoverflow.com/questions/25238110/how-to-properly-close-mappedbytebuffer/25239834#25239834
+                // TODO: Replace with https://docs.oracle.com/en/java/javase/14/docs/api/jdk.incubator.foreign/jdk/incubator/foreign/MemorySegment.html#ofByteBuffer(java.nio.ByteBuffer)
+                val unsafeClass = Class.forName("sun.misc.Unsafe")
+                val unsafeField = unsafeClass.getDeclaredField("theUnsafe")
+                unsafeField.isAccessible = true
+                val unsafe: Any = unsafeField.get(null)
+                val invokeCleaner = unsafeClass.getMethod("invokeCleaner", ByteBuffer::class.java)
+                invokeCleaner.invoke(unsafe, mappedFile)
+            } catch (e: Exception) {
+                logger.error("Error releasing memory mapped file: ${wav.file.name}", e)
+            }
+            channel?.close()
+            mappedFile = null
+            channel = null
+            System.gc()
+        }
+    }
+
+    override fun close() {
+        release()
+    }
+}
