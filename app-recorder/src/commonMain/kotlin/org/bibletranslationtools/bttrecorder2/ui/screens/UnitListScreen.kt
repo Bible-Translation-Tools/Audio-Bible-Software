@@ -195,6 +195,7 @@ fun UnitListContent(
                             currentTake = currentTake,
                             currentIndex = currentIndex,
                             takes = takes,
+                            selectedTake = unitHolder.selectedTake,
                             isExpanded = expandedUnitSort == unit.sort,
                             onExpandClick = {
                                 expandedUnitSort = if (expandedUnitSort == unit.sort) null else unit.sort
@@ -230,6 +231,9 @@ fun UnitCard(
     currentTake: Take?,
     currentIndex: Int,
     takes: List<Take>,
+    /** The unit's selected take, passed in from UI state so the checkmark repaints when it changes
+     *  (reading `unit.audio.getSelectedTake()` here instead is invisible to Compose). */
+    selectedTake: Take?,
     isExpanded: Boolean,
     onExpandClick: () -> Unit,
     isPlaying: Boolean,
@@ -243,7 +247,6 @@ fun UnitCard(
     onOpenPlayback: () -> Unit,
     onRecord: () -> Unit
 ) {
-    val selectedTake = unit.audio.getSelectedTake()
     val hasTakes = takes.isNotEmpty()
 
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -436,6 +439,7 @@ fun UnitCardPreview() {
         currentTake = takes.first(),
         currentIndex = 0,
         takes = takes,
+        selectedTake = takes.first(),
         isExpanded = true,
         onExpandClick = {},
         isPlaying = false,
