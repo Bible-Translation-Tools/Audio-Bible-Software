@@ -98,6 +98,10 @@ import org.bibletranslationtools.shared.resources.action_back
 import org.bibletranslationtools.shared.resources.cd_verse_marker_mode
 import org.bibletranslationtools.shared.resources.cd_rerecord
 import org.bibletranslationtools.shared.resources.cd_insert_recording
+import org.bibletranslationtools.shared.resources.action_pause
+import org.bibletranslationtools.shared.resources.action_save
+import org.bibletranslationtools.shared.resources.action_cancel
+import org.bibletranslationtools.shared.resources.cd_record
 import org.bibletranslationtools.shared.resources.cd_minimap
 import org.bibletranslationtools.shared.resources.cd_source_audio
 import org.bibletranslationtools.shared.resources.cd_skip_backward
@@ -233,8 +237,21 @@ fun PlaybackScreen(
                 onBackClick = viewModel::onBackRequested,
                 onVerseMarkerMode = viewModel::enterVerseMarkerMode,
                 onRerecord = viewModel::onRerecord,
-                onInsert = viewModel::onInsert,
+                onInsert = { viewModel.beginInsertAtPlayhead(INSERT_WAVEFORM_WIDTH) },
                 hasTake = ui.selectedTake != null
+            )
+        }
+
+        // ── Insert-at-playhead controls (in-place recording) ─────────────────
+        if (ui.isInsertActive) {
+            InsertRecordingBar(
+                isRecording = ui.isInsertRecording,
+                onToggleRecord = {
+                    if (ui.isInsertRecording) viewModel.pauseInsertRecording()
+                    else viewModel.startInsertRecording()
+                },
+                onAccept = viewModel::commitInsert,
+                onCancel = viewModel::cancelInsert
             )
         }
 
@@ -251,6 +268,9 @@ fun PlaybackScreen(
                 timeline = viewModel::renderTimeline,
                 peakCacheFor = viewModel::peakCacheFor,
                 timelineGeneration = viewModel.timelineGeneration,
+                isInsertActive = ui.isInsertActive,
+                insertWaveform = viewModel::insertWaveform,
+                insertWaveformGeneration = viewModel.insertWaveformGen,
                 clock = viewModel.clock,
                 markerFrames = ui.markerFrames,
                 markerLabels = ui.markerLabels,
@@ -447,6 +467,66 @@ private fun PlaybackFileBar(
     }
 }
 
+/**
+ * Buffer width for the live insert waveform. Wider than any real screen so the draw down-samples
+ * rather than stretching (same reasoning as narration's NARRATION_WAVEFORM_WIDTH).
+ */
+private const val INSERT_WAVEFORM_WIDTH = 4096
+
+/**
+ * Controls for an open insert-at-playhead session: arm/pause the mic, then accept (splice the clip
+ * in at the playhead) or cancel (discard it). Mirrors the record screen's transport so recording in
+ * place feels the same as re-record.
+ */
+@Composable
+private fun InsertRecordingBar(
+    isRecording: Boolean,
+    onToggleRecord: () -> Unit,
+    onAccept: () -> Unit,
+    onCancel: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp)
+            .background(TranslationRecorderTheme.veryDarkGray1)
+            .padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = stringResource(Res.string.cd_insert_recording),
+            color = Color.White,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f)
+        )
+        // Record / pause the clip.
+        IconButton(onClick = onToggleRecord, modifier = Modifier.size(44.dp)) {
+            Icon(
+                imageVector = if (isRecording) Icons.Default.Pause else Icons.Default.Mic,
+                contentDescription = if (isRecording) stringResource(Res.string.action_pause)
+                else stringResource(Res.string.cd_record),
+                tint = if (isRecording) Color.White else TranslationRecorderTheme.vividRed
+            )
+        }
+        // Splice it in.
+        IconButton(onClick = onAccept, modifier = Modifier.size(44.dp)) {
+            Icon(
+                Icons.Default.Check,
+                contentDescription = stringResource(Res.string.action_save),
+                tint = Color.White
+            )
+        }
+        // Throw it away.
+        IconButton(onClick = onCancel, modifier = Modifier.size(44.dp)) {
+            Icon(
+                Icons.Default.Close,
+                contentDescription = stringResource(Res.string.action_cancel),
+                tint = Color.White
+            )
+        }
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Waveform
 // ─────────────────────────────────────────────────────────────────────────────
@@ -456,6 +536,10 @@ private fun PlaybackWaveform(
     timeline: () -> AudioTimeline?,
     peakCacheFor: (PcmSource) -> WaveformPeakCache?,
     timelineGeneration: IntState,
+    /** While an insert session is capturing, draw the live composite instead of the peak cache. */
+    isInsertActive: Boolean = false,
+    insertWaveform: () -> FloatArray = { FloatArray(0) },
+    insertWaveformGeneration: IntState? = null,
     clock: PlaybackDisplayClock,
     markerFrames: List<Int>,
     markerLabels: List<String>,
@@ -637,7 +721,24 @@ private fun PlaybackWaveform(
             // the playhead, so column contents never re-bin as we scroll. Grid math in
             // Double (Float loses frame precision past ~6 min of audio). fillWindow is
             // the allocation-free hot path.
-            if (tl != null && tl.totalFrames > 0) {
+            if (isInsertActive) {
+                // Live composite (existing take + incoming mic), published by the VM's scene ticker.
+                // Reading the generation subscribes this draw to each published frame.
+                insertWaveformGeneration?.value
+                val buffer = insertWaveform()
+                val columns = buffer.size / 2
+                if (columns > 0) {
+                    val w = widthF.toInt().coerceAtLeast(1)
+                    for (x in 0 until w) {
+                        val col = (x.toLong() * columns / w).toInt().coerceIn(0, columns - 1)
+                        val minV = buffer[col * 2]
+                        val maxV = buffer[col * 2 + 1]
+                        if (minV == 0f && maxV == 0f) continue
+                        val px = x + 0.5f
+                        drawLine(Color.White, Offset(px, midY - minV * scale), Offset(px, midY - maxV * scale))
+                    }
+                }
+            } else if (tl != null && tl.totalFrames > 0) {
                 val fppD = sampleRateState.value * 10.0 / widthF
                 val leftFrame = clock.displayFrame.toDouble() - sampleRateState.value * 5.0
                 val firstCol = kotlin.math.floor(leftFrame / fppD).toLong()

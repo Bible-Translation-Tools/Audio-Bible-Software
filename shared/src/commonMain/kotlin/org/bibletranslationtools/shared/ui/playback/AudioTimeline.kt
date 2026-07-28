@@ -134,6 +134,64 @@ class AudioTimeline(val segments: List<Segment>) {
         return AudioTimeline(out)
     }
 
+    /**
+     * Splices [source]'s [sourceFrames] into the timeline at [atFrame], shifting everything from
+     * [atFrame] onward later by the inserted length. Returns a NEW timeline. [atFrame] is clamped to
+     * [0, totalFrames] (so 0 prepends and totalFrames appends); an empty [sourceFrames] is a no-op.
+     *
+     * The segment containing [atFrame] is split in two, with the new segment placed between — the
+     * same split-and-rebuild approach as [cut], so frames on either side keep pointing at exactly the
+     * source audio they did before (nothing is re-sampled or re-bucketed).
+     */
+    fun insert(
+        atFrame: Int,
+        source: PcmSource,
+        sourceFrames: IntRange = 0 until source.totalFrames
+    ): AudioTimeline {
+        if (sourceFrames.isEmpty()) return AudioTimeline(segments.toList())
+        val at = atFrame.coerceIn(0, totalFrames)
+        val inserted = Segment(source, sourceFrames)
+
+        val out = ArrayList<Segment>(segments.size + 2)
+        var placed = false
+        for (i in segments.indices) {
+            val seg = segments[i]
+            val segStart = segStarts[i]
+            val segLen = seg.sourceFrames.count()
+            val segEnd = segStart + segLen // exclusive, timeline space
+
+            if (placed || segEnd <= at) {
+                // Entirely before the insertion point (or we're already past it): keep as-is.
+                out.add(seg)
+                // An insert exactly on this segment's end boundary goes here, before the next one.
+                if (!placed && segEnd == at) {
+                    out.add(inserted)
+                    placed = true
+                }
+                continue
+            }
+
+            if (segStart >= at) {
+                // This segment starts at/after the insertion point: the clip goes first.
+                out.add(inserted)
+                placed = true
+                out.add(seg)
+                continue
+            }
+
+            // The insertion point falls strictly inside this segment: split it around the clip.
+            val headFrames = at - segStart
+            val srcStart = seg.sourceFrames.first
+            out.add(Segment(seg.source, srcStart until (srcStart + headFrames)))
+            out.add(inserted)
+            placed = true
+            out.add(Segment(seg.source, (srcStart + headFrames)..seg.sourceFrames.last))
+        }
+        // Appending at the very end (or inserting into an empty timeline).
+        if (!placed) out.add(inserted)
+        return AudioTimeline(out)
+    }
+
     companion object {
         fun ofWholeSource(source: PcmSource): AudioTimeline =
             AudioTimeline(
