@@ -134,11 +134,29 @@ compose.desktop {
             "-Dapple.awt.application.name=Orature"
         )
 
+        // ProGuard is off for release packaging — same reasoning as :app-recorder (it aborts on
+        // unresolved references to optional deps absent on desktop, and minifying would break the
+        // reflective jOOQ/Jackson/JNA/SQLite paths without a large, well-tested set of keep rules).
+        buildTypes.release.proguard {
+            isEnabled.set(false)
+        }
+
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "Orature"
             packageVersion = "1.0.0"
-            modules("java.sql", "java.naming", "java.xml", "jdk.unsupported")
+            // jpackage trims the bundled JRE to the declared modules only. UNION of
+            // suggestRuntimeModules (static scan) + modules reached reflectively / via ServiceLoader
+            // that the scan can't see (java.naming for jackson-yaml, java.xml for XML parsing).
+            modules(
+                "java.compiler",
+                "java.instrument",
+                "java.naming",
+                "java.sql",
+                "java.xml",
+                "jdk.security.auth",
+                "jdk.unsupported"
+            )
             macOS {
                 iconFile.set(project.file("src/desktopMain/resources/icons/ic_launcher.icns"))
             }
