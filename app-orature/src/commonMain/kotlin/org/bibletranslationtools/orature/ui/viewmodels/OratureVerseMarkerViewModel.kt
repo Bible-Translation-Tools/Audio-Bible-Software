@@ -10,7 +10,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.shared.ui.playback.AudioTimeline
 import org.bibletranslationtools.shared.ui.playback.FilePcmSource
@@ -125,7 +124,7 @@ class OratureVerseMarkerViewModel : ViewModel(), KoinComponent {
     }
 
     private fun load(req: OratureVerseMarkerEditor.Request) {
-        viewModelScope.launch {
+        launchLogged {
             try {
                 val prepared = withContext(Dispatchers.IO) {
                     val takeAudio = OratureAudioFile(req.takeFile)
@@ -158,7 +157,7 @@ class OratureVerseMarkerViewModel : ViewModel(), KoinComponent {
                 peakCache = prepared.cache
                 peakSource = prepared.source
                 peakBuildJob?.cancel()
-                peakBuildJob = viewModelScope.launch(Dispatchers.IO) {
+                peakBuildJob = launchLogged(Dispatchers.IO) {
                     runCatching { buildPeakCache(prepared.source, prepared.cache) }
                 }
 
@@ -177,6 +176,7 @@ class OratureVerseMarkerViewModel : ViewModel(), KoinComponent {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("loading the verse marker screen", e)
                 _uiState.value = _uiState.value.copy(isLoading = false, error = e.message ?: "Unknown error")
             }
         }
@@ -213,7 +213,7 @@ class OratureVerseMarkerViewModel : ViewModel(), KoinComponent {
     /** Drive the display clock from the take player's transport events (main thread). */
     private fun observePlayerForClock(p: IAudioPlayer) {
         clockEventsJob?.cancel()
-        clockEventsJob = viewModelScope.launch {
+        clockEventsJob = launchLogged {
             p.events.collect { e ->
                 when (e) {
                     AudioPlayerEvent.Play -> clock.advancing = true
@@ -269,7 +269,7 @@ class OratureVerseMarkerViewModel : ViewModel(), KoinComponent {
 
     /** Write the placed cues back into the take, run the host reload, then clear the handoff. */
     fun saveAndClose(onClosed: () -> Unit) {
-        viewModelScope.launch {
+        launchLogged {
             stopPlayback()
             withContext(Dispatchers.IO) { writeMarkersBlocking() }
             runCatching { request?.onSaved?.invoke() }
@@ -323,7 +323,7 @@ class OratureVerseMarkerViewModel : ViewModel(), KoinComponent {
      *  waveform is drawn by the shared renderer sampling the peak cache in the draw pass. */
     private fun startWaveformTicker() {
         waveformTickerJob?.cancel()
-        waveformTickerJob = viewModelScope.launch(Dispatchers.Default) {
+        waveformTickerJob = launchLogged(Dispatchers.Default) {
             while (isActive) {
                 val p = takePlayer
                 if (p != null) {

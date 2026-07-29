@@ -152,7 +152,7 @@ class OratureChunkingViewModel(
     }
 
     private fun load() {
-        viewModelScope.launch {
+        launchLogged {
             _uiState.value = OratureChunkingUiState(isLoading = true)
             try {
                 val prepared = withContext(Dispatchers.IO) {
@@ -198,7 +198,7 @@ class OratureChunkingViewModel(
                 peakCache = prepared.cache
                 peakSource = prepared.source
                 peakBuildJob?.cancel()
-                peakBuildJob = viewModelScope.launch(Dispatchers.IO) {
+                peakBuildJob = launchLogged(Dispatchers.IO) {
                     runCatching { buildPeakCache(prepared.source, prepared.cache) }
                 }
                 val p = AudioPlayerConnection(PLAYER_ID, playerFactory, viewModelScope, Dispatchers.Default)
@@ -216,6 +216,7 @@ class OratureChunkingViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("loading the chunking screen", e)
                 _uiState.value = OratureChunkingUiState(isLoading = false, error = e.message ?: "Unknown error")
             }
         }
@@ -288,7 +289,7 @@ class OratureChunkingViewModel(
     /** Drive the display clock from the player's transport events (main thread). */
     private fun observePlayerForClock(p: IAudioPlayer) {
         clockEventsJob?.cancel()
-        clockEventsJob = viewModelScope.launch {
+        clockEventsJob = launchLogged {
             p.events.collect { e ->
                 when (e) {
                     AudioPlayerEvent.Play -> clock.advancing = true
@@ -334,7 +335,7 @@ class OratureChunkingViewModel(
      *  window/allocation here anymore. */
     private fun startWaveformTicker() {
         waveformTickerJob?.cancel()
-        waveformTickerJob = viewModelScope.launch(Dispatchers.Default) {
+        waveformTickerJob = launchLogged(Dispatchers.Default) {
             while (isActive) {
                 val p = player
                 if (p != null) {

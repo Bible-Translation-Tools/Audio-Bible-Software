@@ -13,7 +13,6 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
 import org.bibletranslationtools.orature.ui.workbook.OratureTakeAudio
-import org.bibletranslationtools.orature.ui.workbook.OratureWorkbookDataStore
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.data.primitives.Collection
@@ -24,6 +23,7 @@ import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
+import org.bibletranslationtools.orature.di.oratureViewModelModule
 import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
 import org.koin.dsl.module
@@ -51,10 +51,14 @@ class OratureNarrationViewModelTest : KoinTest {
         Dispatchers.setMain(testDispatcher)
         startKoin {
             modules(
+                // Compose the REAL app-scoped module so the graph under test is the production
+                // one. Hand-listing app singles here is what let OratureProjectDeletion go
+                // unbound: Koin's `by inject()` is lazy, so the omission surfaced only as
+                // create-path tests timing out. Stub ONLY the backend ports below.
+                oratureViewModelModule,
                 module {
                     single { descriptorRepo }
                     single { workbookRepo }
-                    single { OratureWorkbookDataStore(get()) }
                 }
             )
         }

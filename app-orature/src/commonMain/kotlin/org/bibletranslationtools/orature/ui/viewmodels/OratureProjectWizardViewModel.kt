@@ -1,7 +1,6 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -10,7 +9,6 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
@@ -163,7 +161,7 @@ class OratureProjectWizardViewModel(
 
     /** Source languages = root-source RC languages ∪ available gateway sources (VM.loadSourceLanguages). */
     fun loadSourceLanguages() {
-        viewModelScope.launch {
+        launchLogged {
             val languages = withContext(Dispatchers.IO) {
                 // Union of every "available source" signal, each fetched independently so
                 // one failing path can't wipe the others (and errors are logged, not
@@ -196,13 +194,14 @@ class OratureProjectWizardViewModel(
 
     /** Target languages = all languages (VM.loadTargetLanguages). */
     private fun loadTargetLanguages() {
-        viewModelScope.launch {
+        launchLogged {
             try {
                 val languages = withContext(Dispatchers.IO) { languageRepo.getAll().await() }
                 _uiState.value = _uiState.value.copy(targetLanguages = languages)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("loading target languages", e)
                 _uiState.value = _uiState.value.copy(targetLanguages = emptyList())
             }
         }
@@ -225,7 +224,7 @@ class OratureProjectWizardViewModel(
 
         _uiState.value = state.copy(isLoading = true)
 
-        viewModelScope.launch {
+        launchLogged {
             try {
                 val versions = if (sourceLanguage == null) {
                     getResourceVersions(language)
@@ -280,6 +279,7 @@ class OratureProjectWizardViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("handling the wizard language selection", e)
                 _uiState.value = _uiState.value.copy(isLoading = false)
             }
         }
@@ -291,12 +291,13 @@ class OratureProjectWizardViewModel(
         val source = state.selectedSourceLanguage ?: return
         val target = state.selectedTargetLanguage ?: return
         _uiState.value = state.copy(isLoading = true)
-        viewModelScope.launch {
+        launchLogged {
             try {
                 createProject(source, target, version)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("creating the project for the selected resource version", e)
                 _uiState.value = _uiState.value.copy(isLoading = false)
             }
         }

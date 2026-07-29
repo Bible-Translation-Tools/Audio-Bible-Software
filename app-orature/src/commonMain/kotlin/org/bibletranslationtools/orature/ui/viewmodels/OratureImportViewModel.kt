@@ -1,7 +1,6 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.readBytes
@@ -12,7 +11,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.orature.resources.Res
@@ -88,7 +86,7 @@ class OratureImportViewModel : ViewModel(), KoinComponent {
         successBookId = null
         successBookMode = null
         _importState.value = OratureImportState.InProgress()
-        viewModelScope.launch {
+        launchLogged {
             var staged: File? = null
             try {
                 logger.info("Importing ${platformFile.name}")

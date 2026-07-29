@@ -1,14 +1,12 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import io.reactivex.Single
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
@@ -84,7 +82,7 @@ class OratureExportProjectViewModel(
     }
 
     private fun load() {
-        viewModelScope.launch {
+        launchLogged {
             try {
                 val loaded = withContext(Dispatchers.IO) {
                     val descriptor = workbookDescriptorRepo.getByIdSuspend(workbookDescriptorId)
@@ -115,6 +113,7 @@ class OratureExportProjectViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("loading export options", e)
                 _uiState.value = _uiState.value.copy(isLoading = false, error = e.message ?: "Unknown error")
             }
         }
@@ -167,7 +166,7 @@ class OratureExportProjectViewModel(
         val wb = workbook ?: return
         val type = _uiState.value.selectedType
         val chapters = selectedChapters()
-        viewModelScope.launch {
+        launchLogged {
             val size = withContext(Dispatchers.IO) {
                 runCatching { exporterFor(type).estimateExportSize(wb, chapters) }.getOrDefault(0L)
             }
@@ -182,7 +181,7 @@ class OratureExportProjectViewModel(
         val chapters = selectedChapters().takeIf { type != ExportType.BACKUP && it.isNotEmpty() }
         exportedFile = directory
         _uiState.value = _uiState.value.copy(progress = 0f, error = null)
-        viewModelScope.launch {
+        launchLogged {
             val callback = object : ProjectExporterCallback {
                 override fun onNotifySuccess(project: Collection, file: File) { exportedFile = file }
                 override fun onError(project: Collection) {}

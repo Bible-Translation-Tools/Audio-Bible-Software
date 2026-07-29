@@ -331,7 +331,7 @@ class OratureNarrationViewModel(
         peakCache = cache
         peakSource = source
         clock.durationFrames = total.toLong()
-        peakBuildJob = viewModelScope.launch(Dispatchers.IO) {
+        peakBuildJob = launchLogged(Dispatchers.IO) {
             runCatching { buildPeakCache(source, cache) }
                 .onFailure { System.err.println("[narration] peak cache build failed: $it") }
         }
@@ -342,7 +342,7 @@ class OratureNarrationViewModel(
     }
 
     private fun load() {
-        viewModelScope.launch {
+        launchLogged {
             _uiState.value = OratureNarrationUiState(isLoading = true)
             try {
                 val loaded = withContext(Dispatchers.IO) {
@@ -386,6 +386,7 @@ class OratureNarrationViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("loading the narration screen", e)
                 _uiState.value = OratureNarrationUiState(isLoading = false, error = e.message ?: "Unknown error")
             }
         }
@@ -407,7 +408,7 @@ class OratureNarrationViewModel(
             verses = emptyList(),
             narrationState = null
         )
-        viewModelScope.launch { initializeNarration(chapter) }
+        launchLogged { initializeNarration(chapter) }
     }
 
     fun selectPreviousChapter() = stepChapter(step = -1)
@@ -537,12 +538,12 @@ class OratureNarrationViewModel(
 
             // Live mic level for the volume bar (JVM: VolumeBar over the recorder stream) — the
             // max sample of each incoming chunk, so it rises AND falls with the voice.
-            volumeJob = viewModelScope.launch(Dispatchers.Default) {
+            volumeJob = launchLogged(Dispatchers.Default) {
                 prepared.narration.getRecorderAudioStream().collect { bytes -> volumeLevel = micLevel(bytes) }
             }
 
             // Auto-pause when the player reaches the end (JVM: COMPLETE listener).
-            playerEventsJob = viewModelScope.launch {
+            playerEventsJob = launchLogged {
                 prepared.narration.getPlayer().events.collect { event ->
                     if (event is AudioPlayerEvent.Complete) {
                         System.err.println("[narr-diag] COMPLETE loc=${prepared.narration.getLocationInFrames()} dur=${prepared.narration.getDurationInFrames()} clock=${clock.displayFrame} playingVerse=$playingVerseIndex")
@@ -572,7 +573,7 @@ class OratureNarrationViewModel(
             // (the record transitions already advanced the state machine).
             activeVersesDisposable = prepared.narration.onActiveVersesUpdated
                 .subscribe({
-                    viewModelScope.launch {
+                    launchLogged {
                         refreshVerses(); updateMarkers(); syncChapterTake()
                         // The chapter audio changed (new/re-recorded/edited verse) — rebuild the
                         // frame-stable playback cache so the next play reflects it.
@@ -586,6 +587,7 @@ class OratureNarrationViewModel(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            logFailure("initializing narration", e)
             _uiState.value = _uiState.value.copy(verses = emptyList(), narrationState = null, actionsEnabled = false)
         }
     }
@@ -598,7 +600,7 @@ class OratureNarrationViewModel(
         val items = try {
             sm.transition(transition, index)
         } catch (e: Exception) {
-            System.err.println("[narration] transition $transition@$index failed: ${e.message}")
+            logFailure("narration transition $transition@$index", e)
             sm.getVerseItemStates()
         }
         publishVerses(items)
@@ -692,7 +694,7 @@ class OratureNarrationViewModel(
         val allRecorded = n.activeVerses.isNotEmpty() && n.activeVerses.size == n.totalVerses.size
         val existing = chapterTake
         if (allRecorded && (existing == null || existing.isDeleted())) {
-            viewModelScope.launch(Dispatchers.IO) {
+            launchLogged(Dispatchers.IO) {
                 runCatching { n.createChapterTake().await() }
                     .onSuccess { chapterTake = it }
                     .onFailure { System.err.println("[narration] createChapterTake failed: $it") }
@@ -708,7 +710,7 @@ class OratureNarrationViewModel(
     /** Recompute the composited waveform (into scene.frameBuffer) and the current viewport. */
     private fun startWaveformTicker() {
         waveformTickerJob?.cancel()
-        waveformTickerJob = viewModelScope.launch(Dispatchers.Default) {
+        waveformTickerJob = launchLogged(Dispatchers.Default) {
             while (isActive) {
                 val scene = _audioScene.value
                 val n = narration
@@ -943,7 +945,7 @@ class OratureNarrationViewModel(
      *  or take a navigation lock (unlike the plugin path), so this doesn't either. */
     fun importVerseAudio(index: Int, file: java.io.File) {
         val n = narration ?: return
-        viewModelScope.launch {
+        launchLogged {
             try {
                 withContext(Dispatchers.IO) { n.onEditVerse(index, file).blockingAwait() }
                 refreshVerses()
@@ -951,7 +953,7 @@ class OratureNarrationViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                System.err.println("Import verse audio failed: $e")
+                logFailure("importing verse audio", e)
             }
         }
     }
@@ -988,14 +990,14 @@ class OratureNarrationViewModel(
         val n = narration ?: return
         stopPlayer()
         _audioScene.value?.clear()
-        viewModelScope.launch {
+        launchLogged {
             try {
                 // Reuse the compiled chapter take, or compile one from what's recorded (JVM:
                 // chapterTakeProperty ?: createChapterTakeWithAudio) — same as launchChapterPlugin.
                 val take = chapterTake ?: withContext(Dispatchers.IO) {
                     runCatching { n.createChapterTakeWithAudio().await() }.getOrNull()
                 }
-                if (take == null) return@launch // nothing recorded yet to mark
+                if (take == null) return@launchLogged // nothing recorded yet to mark
                 chapterTake = take
 
                 val wb = workbookDataStore.activeWorkbook.value
@@ -1022,7 +1024,7 @@ class OratureNarrationViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                System.err.println("Open built-in verse marker editor failed: $e")
+                logFailure("opening the built-in verse marker editor", e)
             }
         }
     }
@@ -1042,14 +1044,14 @@ class OratureNarrationViewModel(
         val n = narration ?: return
         stopPlayer()
         _audioScene.value?.clear()
-        viewModelScope.launch {
+        launchLogged {
             try {
                 // Reuse the compiled chapter take, or compile one on the fly from what's recorded
                 // (JVM: chapterTakeProperty ?: narration.createChapterTakeWithAudio()).
                 val take = chapterTake ?: withContext(Dispatchers.IO) {
                     runCatching { n.createChapterTakeWithAudio().await() }.getOrNull()
                 }
-                if (take == null) return@launch // nothing recorded yet to compile
+                if (take == null) return@launchLogged // nothing recorded yet to compile
                 chapterTake = take
                 beginPluginOpen()
                 org.bibletranslationtools.orature.plugins.launchPlugin(plugin, take.file, narrationPluginParams(0))
@@ -1060,6 +1062,7 @@ class OratureNarrationViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("launching the chapter plugin", e)
                 endPluginOpen()
                 System.err.println("Chapter external plugin failed: $e")
             }
@@ -1081,7 +1084,7 @@ class OratureNarrationViewModel(
     /** Import an existing audio file as the chapter narration (JVM: onImportChapterAudio). */
     fun onImportChapterAudio(path: String) {
         val n = narration ?: return
-        viewModelScope.launch {
+        launchLogged {
             try {
                 withContext(Dispatchers.IO) { n.importChapterAudioFile(java.io.File(path)).blockingAwait() }
                 refreshVerses()
@@ -1089,7 +1092,7 @@ class OratureNarrationViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                System.err.println("Import chapter audio failed: $e")
+                logFailure("importing chapter audio", e)
             }
         }
     }
@@ -1103,7 +1106,7 @@ class OratureNarrationViewModel(
         val n = narration ?: return
         stopPlayer()
         _audioScene.value?.clear()
-        viewModelScope.launch {
+        launchLogged {
             try {
                 val file = withContext(Dispatchers.IO) { n.getSectionAsFile(index) }
                 beginPluginOpen()
@@ -1115,6 +1118,7 @@ class OratureNarrationViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("editing a verse with an external plugin", e)
                 endPluginOpen()
                 System.err.println("Narration external edit failed: $e")
             }
@@ -1213,7 +1217,7 @@ class OratureNarrationViewModel(
         clock.advancing = true
         performTransition(NarrationStateTransition.PLAY_AUDIO, index)
         startPositionTicker()
-        viewModelScope.launch {
+        launchLogged {
             kotlinx.coroutines.delay(150)
             System.err.println("[narr-diag] PLAY VERSE +150ms index=$index resuming=$resuming loc=${n.getLocationInFrames()} clock=${clock.displayFrame}")
         }
@@ -1338,7 +1342,7 @@ class OratureNarrationViewModel(
     private fun startPositionTicker() {
         stopPositionTicker()
         _uiState.value = _uiState.value.copy(isPlaying = true)
-        positionTickerJob = viewModelScope.launch {
+        positionTickerJob = launchLogged {
             var prevClock = clock.displayFrame
             var tick = 0
             while (isActive) {

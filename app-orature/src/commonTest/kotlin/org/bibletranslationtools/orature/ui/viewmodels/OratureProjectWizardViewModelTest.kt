@@ -15,7 +15,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
-import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
@@ -31,6 +30,7 @@ import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.domain.collections.CreateProject
 import org.bibletranslationtools.otter.common.domain.collections.DeleteProject
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
+import org.bibletranslationtools.orature.di.oratureViewModelModule
 import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
 import org.koin.dsl.module
@@ -63,6 +63,11 @@ class OratureProjectWizardViewModelTest : KoinTest {
         Dispatchers.setMain(testDispatcher)
         startKoin {
             modules(
+                // Compose the REAL app-scoped module so the graph under test is the production
+                // one. Hand-listing app singles here is what let OratureProjectDeletion go
+                // unbound: Koin's `by inject()` is lazy, so the omission surfaced only as
+                // create-path tests timing out. Stub ONLY the backend ports below.
+                oratureViewModelModule,
                 module {
                     single { createProject }
                     single { deleteProject }
@@ -71,14 +76,6 @@ class OratureProjectWizardViewModelTest : KoinTest {
                     single { resourceMetadataRepo }
                     single { workbookDescriptorRepo }
                     single { importer }
-                    // The VM injects this too (projectDeletion.awaitClear() gates every
-                    // create). Koin's `by inject()` is lazy, so leaving it unbound did not
-                    // fail at construction — it threw NoDefinitionFoundException inside
-                    // viewModelScope on the first create, where the exception was swallowed
-                    // and every create-path test just timed out. Real instance rather than a
-                    // mock: it is a no-arg holder whose awaitClear() returns immediately at
-                    // the initial pending == 0.
-                    single { OratureProjectDeletion() }
                 }
             )
         }

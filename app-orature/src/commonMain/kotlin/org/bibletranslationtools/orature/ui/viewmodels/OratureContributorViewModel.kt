@@ -1,13 +1,11 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
@@ -45,7 +43,7 @@ class OratureContributorViewModel(
     }
 
     private fun load() {
-        viewModelScope.launch {
+        launchLogged {
             try {
                 val names = withContext(Dispatchers.IO) {
                     val descriptor = workbookDescriptorRepo.getByIdSuspend(workbookDescriptorId)
@@ -58,6 +56,7 @@ class OratureContributorViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("loading contributors", e)
                 _uiState.value = OratureContributorUiState(isLoading = false, contributors = emptyList())
             }
         }
@@ -90,7 +89,7 @@ class OratureContributorViewModel(
     fun save() {
         val wb = workbook ?: return
         val contributors = _uiState.value.contributors.filter { it.isNotBlank() }.map { Contributor(it) }
-        viewModelScope.launch {
+        launchLogged {
             withContext(Dispatchers.IO) {
                 runCatching { wb.projectFilesAccessor.setContributorInfo(contributors) }
                     .onFailure { System.err.println("Failed to save contributors: $it") }

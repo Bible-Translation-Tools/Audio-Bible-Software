@@ -1,13 +1,11 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.rx2.await
 import org.bibletranslationtools.shared.preferences.AppSettings
@@ -78,7 +76,7 @@ class OratureSettingsViewModel(
 
     init {
         loadDevices()
-        viewModelScope.launch {
+        launchLogged {
             appPreferences.appSettings.collect { settings: AppSettings ->
                 _uiState.update {
                     it.copy(
@@ -95,7 +93,7 @@ class OratureSettingsViewModel(
 
     /** (Re)reads the currently-available hardware devices. Safe to call on drawer open. */
     fun loadDevices() {
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(Dispatchers.IO) {
             val spec = AudioSpec()
             val out = runCatching { deviceSelector.getOutputDevices(spec) }.getOrDefault(emptyList())
             val input = runCatching { deviceSelector.getInputDevices(spec) }.getOrDefault(emptyList())
@@ -106,17 +104,17 @@ class OratureSettingsViewModel(
     }
 
     fun setThemeMode(mode: ThemeMode) {
-        viewModelScope.launch { appPreferences.setThemeMode(mode) }
+        launchLogged { appPreferences.setThemeMode(mode) }
     }
 
     fun selectOutputDevice(device: AudioDevice) {
         deviceSelector.selectOutputDevice(device)
-        viewModelScope.launch { appPreferences.setOutputDeviceId(device.id) }
+        launchLogged { appPreferences.setOutputDeviceId(device.id) }
     }
 
     fun selectInputDevice(device: AudioDevice) {
         deviceSelector.selectInputDevice(device)
-        viewModelScope.launch { appPreferences.setInputDeviceId(device.id) }
+        launchLogged { appPreferences.setInputDeviceId(device.id) }
     }
 
     fun setAppLanguage(tag: String?) {
@@ -124,7 +122,7 @@ class OratureSettingsViewModel(
         // and the UI re-keys on the new language (OratureTheme). Otherwise the recomposition can read
         // the old Locale.current and Compose resources would resolve to the previous language.
         applyLocale(tag)
-        viewModelScope.launch { appPreferences.setAppLanguageTag(tag) }
+        launchLogged { appPreferences.setAppLanguageTag(tag) }
     }
 
     private fun applyLocale(tag: String?) {
@@ -135,7 +133,7 @@ class OratureSettingsViewModel(
     }
 
     fun setLangNamesUrl(url: String) {
-        viewModelScope.launch { appPreferences.setLangNamesUrl(url) }
+        launchLogged { appPreferences.setLangNamesUrl(url) }
     }
 
     /** Restores the langnames URL to the shared default. */
@@ -147,7 +145,7 @@ class OratureSettingsViewModel(
     fun updateLanguageNames() {
         if (_uiState.value.langNamesUpdateState is OratureLangNamesUpdateState.InProgress) return
         val url = _uiState.value.langNamesUrl.ifBlank { DEFAULT_LANG_NAMES_URL }
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(Dispatchers.IO) {
             withContext(Dispatchers.Main) {
                 _uiState.update { it.copy(langNamesUpdateState = OratureLangNamesUpdateState.InProgress) }
             }

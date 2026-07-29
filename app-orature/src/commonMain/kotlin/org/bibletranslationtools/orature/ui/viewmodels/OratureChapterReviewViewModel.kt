@@ -10,7 +10,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.orature.ui.workbook.OratureWorkbookDataStore
@@ -159,13 +158,13 @@ class OratureChapterReviewViewModel(
     init {
         translationVm.setUndoRedoHandlers(::undo, ::redo)
         translationVm.setOpenInHandler(::processWithPlugin)
-        viewModelScope.launch {
+        launchLogged {
             workbookDataStore.activeChapter.collect { chap -> onChapter(chap) }
         }
         // Mirror the shell's source text/license (JVM: `PluginOpenedPage.sourceTextProperty`/
         // `licenseProperty`, bound from `WorkbookDataStore`) so the plugin-opened cover can show
         // the chapter's full source text without re-deriving it here.
-        viewModelScope.launch {
+        launchLogged {
             translationVm.uiState.collect { t ->
                 if (_uiState.value.sourceText != t.sourceText || _uiState.value.sourceLicense != t.sourceLicense) {
                     _uiState.value = _uiState.value.copy(sourceText = t.sourceText, sourceLicense = t.sourceLicense)
@@ -193,7 +192,7 @@ class OratureChapterReviewViewModel(
     }
 
     private fun loadChapterTake(chap: Chapter) {
-        viewModelScope.launch {
+        launchLogged {
             try {
                 val prepared = withContext(Dispatchers.IO) {
                     val wb = workbookDataStore.activeWorkbook.value ?: error("No active workbook")
@@ -206,6 +205,7 @@ class OratureChapterReviewViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("loading the chapter take for review", e)
                 _uiState.value = OratureChapterReviewUiState(
                     hasChapter = true, isLoading = false, error = e.message ?: "Unknown error"
                 )
@@ -257,7 +257,7 @@ class OratureChapterReviewViewModel(
         // Fill the peak cache off-thread; the draw reads builtBuckets (snapshot) and shows the wave
         // as it fills (JVM/recorder: buildPeakCache streamed on Dispatchers.IO).
         peakBuildJob?.cancel()
-        peakBuildJob = viewModelScope.launch(Dispatchers.IO) {
+        peakBuildJob = launchLogged(Dispatchers.IO) {
             runCatching { buildPeakCache(prepared.source, prepared.cache) }
         }
         if (prepared.sourcePlayer != null) sourcePlayer = prepared.sourcePlayer
@@ -288,7 +288,7 @@ class OratureChapterReviewViewModel(
      *  threading contract) — mirrors the recorder's PlaybackViewModel. Re-created for each take. */
     private fun observePlayerForClock(p: IAudioPlayer) {
         clockEventsJob?.cancel()
-        clockEventsJob = viewModelScope.launch {
+        clockEventsJob = launchLogged {
             p.events.collect { e ->
                 when (e) {
                     AudioPlayerEvent.Play -> clock.advancing = true
@@ -396,7 +396,7 @@ class OratureChapterReviewViewModel(
         val editor = selectedEditor() ?: return
         val existingTake = chap.audio.getSelectedTake() ?: return
 
-        viewModelScope.launch {
+        launchLogged {
             writeMarkersBlocking()
             waveformTickerJob?.cancel()
             runCatching { takePlayer?.pause(); takePlayer?.release() }
@@ -456,13 +456,14 @@ class OratureChapterReviewViewModel(
     private fun reloadFromSelectedTake(chap: Chapter) {
         val wb = workbook ?: return
         val take = chap.audio.getSelectedTake() ?: return
-        viewModelScope.launch {
+        launchLogged {
             try {
                 val prepared = withContext(Dispatchers.IO) { prepareFromTake(wb, chap, take) }
                 applyPrepared(prepared, chap)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("reloading chapter review from the selected take", e)
                 _uiState.value = _uiState.value.copy(error = e.message ?: "Unknown error")
             }
         }
@@ -607,7 +608,7 @@ class OratureChapterReviewViewModel(
      *  the draw pass, so this ticker only feeds `positionFrames`/`isPlaying` (read live by the draw). */
     private fun startWaveformTicker() {
         waveformTickerJob?.cancel()
-        waveformTickerJob = viewModelScope.launch(Dispatchers.Default) {
+        waveformTickerJob = launchLogged(Dispatchers.Default) {
             while (isActive) {
                 val p = takePlayer
                 val current = _uiState.value
@@ -634,7 +635,7 @@ class OratureChapterReviewViewModel(
      *  ticker stops. */
     private fun startSourceTicker() {
         sourceTickerJob?.cancel()
-        sourceTickerJob = viewModelScope.launch(Dispatchers.Default) {
+        sourceTickerJob = launchLogged(Dispatchers.Default) {
             while (isActive) {
                 val current = _uiState.value
                 val srcPlaying = runCatching { sourcePlayer?.isPlaying() }.getOrDefault(false) ?: false

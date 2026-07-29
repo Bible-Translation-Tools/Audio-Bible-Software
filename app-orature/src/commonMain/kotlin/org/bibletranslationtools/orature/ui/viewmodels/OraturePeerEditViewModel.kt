@@ -141,12 +141,12 @@ class OraturePeerEditViewModel(
 
     init {
         translationVm.setUndoRedoHandlers(::undo, ::redo)
-        viewModelScope.launch {
+        launchLogged {
             workbookDataStore.activeChunk.collect { chunk -> onChunk(chunk) }
         }
         // Mirror the shell's book/chapter title + source text/license (JVM: `SourceContent`'s own
         // properties) so the plugin-opened cover can show them without re-deriving them here.
-        viewModelScope.launch {
+        launchLogged {
             translationVm.uiState.collect { t ->
                 val title = "${t.bookTitle} ${t.activeChapterTitle}".trim()
                 if (_uiState.value.activeContentTitle != title ||
@@ -175,7 +175,7 @@ class OraturePeerEditViewModel(
             return
         }
         _uiState.value = OraturePeerEditUiState(isLoading = true, hasChunk = true)
-        viewModelScope.launch {
+        launchLogged {
             try {
                 val prepared = withContext(Dispatchers.IO) {
                     val take = chunk.audio.getSelectedTake() ?: return@withContext null
@@ -191,7 +191,7 @@ class OraturePeerEditViewModel(
                     Prepared(take, playerReader.totalFrames, sr, source, tl, cache, sourcePrep?.first, sourcePrep?.second ?: 0)
                 } ?: run {
                     _uiState.value = OraturePeerEditUiState(hasChunk = true, noTake = true)
-                    return@launch
+                    return@launchLogged
                 }
 
                 selectedTake = prepared.take
@@ -202,7 +202,7 @@ class OraturePeerEditViewModel(
                 peakCache = prepared.cache
                 peakSource = prepared.source
                 peakBuildJob?.cancel()
-                peakBuildJob = viewModelScope.launch(Dispatchers.IO) {
+                peakBuildJob = launchLogged(Dispatchers.IO) {
                     runCatching { buildPeakCache(prepared.source, prepared.cache) }
                 }
                 sourcePlayer = prepared.sourcePlayer
@@ -229,6 +229,7 @@ class OraturePeerEditViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("loading the peer-edit chunk", e)
                 _uiState.value = OraturePeerEditUiState(hasChunk = true, error = e.message ?: "Unknown error")
             }
         }
@@ -304,7 +305,7 @@ class OraturePeerEditViewModel(
     /** Drive the display clock from the take player's transport events (main thread). */
     private fun observePlayerForClock(p: IAudioPlayer) {
         clockEventsJob?.cancel()
-        clockEventsJob = viewModelScope.launch {
+        clockEventsJob = launchLogged {
             p.events.collect { e ->
                 when (e) {
                     AudioPlayerEvent.Play -> clock.advancing = true
@@ -366,7 +367,7 @@ class OraturePeerEditViewModel(
     private fun recordWithExternalPlugin(chunk: Chunk) {
         if (_uiState.value.isPluginOpen) return
         val recorder = selectedPlugin(recorder = true) ?: return
-        viewModelScope.launch {
+        launchLogged {
             beginPluginOpen()
             val take = withContext(Dispatchers.IO) {
                 val t = newTake(chunk)
@@ -389,7 +390,7 @@ class OraturePeerEditViewModel(
         val chunk = activeChunk ?: return
         val take = chunk.audio.getSelectedTake() ?: return
         val editor = selectedPlugin(recorder = false) ?: return
-        viewModelScope.launch {
+        launchLogged {
             beginPluginOpen()
             org.bibletranslationtools.orature.plugins.launchPlugin(editor, take.file, pluginParams(chunk))
             endPluginOpen()
@@ -441,7 +442,7 @@ class OraturePeerEditViewModel(
         val chunk = activeChunk ?: return
         if (selectedPlugin(recorder = true) != null) { recordWithExternalPlugin(chunk); return }
         stopAll()
-        viewModelScope.launch {
+        launchLogged {
             try {
                 val take = withContext(Dispatchers.IO) { newTake(chunk) }
                 pendingTake = take
@@ -461,6 +462,7 @@ class OraturePeerEditViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("starting a new peer-edit recording", e)
                 _uiState.value = _uiState.value.copy(recording = false, recordingActive = false, error = e.message)
             }
         }
@@ -482,7 +484,7 @@ class OraturePeerEditViewModel(
     fun saveRecording() {
         val chunk = activeChunk ?: return
         val take = pendingTake ?: return
-        viewModelScope.launch {
+        launchLogged {
             recordingActiveFlow.value = false
             withContext(Dispatchers.IO) {
                 writer?.pause()
@@ -504,7 +506,7 @@ class OraturePeerEditViewModel(
 
     fun cancelRecording() {
         val take = pendingTake
-        viewModelScope.launch {
+        launchLogged {
             recordingActiveFlow.value = false
             withContext(Dispatchers.IO) {
                 writer?.pause()
@@ -540,7 +542,7 @@ class OraturePeerEditViewModel(
      *  is drawn by the shared renderer sampling the peak cache in the draw pass. */
     private fun startWaveformTicker() {
         waveformTickerJob?.cancel()
-        waveformTickerJob = viewModelScope.launch(Dispatchers.Default) {
+        waveformTickerJob = launchLogged(Dispatchers.Default) {
             while (isActive) {
                 val p = takePlayer
                 val current = _uiState.value
@@ -566,7 +568,7 @@ class OraturePeerEditViewModel(
      *  ticker stops. */
     private fun startSourceTicker() {
         sourceTickerJob?.cancel()
-        sourceTickerJob = viewModelScope.launch(Dispatchers.Default) {
+        sourceTickerJob = launchLogged(Dispatchers.Default) {
             while (isActive) {
                 val current = _uiState.value
                 val srcPlaying = runCatching { sourcePlayer?.isPlaying() }.getOrDefault(false) ?: false

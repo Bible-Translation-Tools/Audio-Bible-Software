@@ -134,7 +134,7 @@ class OratureBlindDraftViewModel(
         val take = takesById[id] ?: return
         val editor = selectedEditor() ?: return
         val chunk = activeChunk ?: return
-        viewModelScope.launch {
+        launchLogged {
             beginPluginOpen()
             org.bibletranslationtools.orature.plugins.launchPlugin(editor, take.file, pluginParams(chunk))
             endPluginOpen()
@@ -194,13 +194,13 @@ class OratureBlindDraftViewModel(
         // The page header undo/redo route here while this step is active.
         translationVm.setUndoRedoHandlers(::undo, ::redo)
         // Follow the shared active-chunk selection (set by the translation VM's steps-drawer nav).
-        viewModelScope.launch {
+        launchLogged {
             workbookDataStore.activeChunk.collect { chunk -> onChunk(chunk) }
         }
         startPositionTicker()
         // Mirror the shell's book/chapter title + source text/license (JVM: `SourceContent`'s own
         // properties) so the plugin-opened cover can show them without re-deriving them here.
-        viewModelScope.launch {
+        launchLogged {
             translationVm.uiState.collect { t ->
                 val title = "${t.bookTitle} ${t.activeChapterTitle}".trim()
                 if (_uiState.value.activeContentTitle != title ||
@@ -232,7 +232,7 @@ class OratureBlindDraftViewModel(
      */
     private fun startPositionTicker() {
         positionTickerJob?.cancel()
-        positionTickerJob = viewModelScope.launch(Dispatchers.Default) {
+        positionTickerJob = launchLogged(Dispatchers.Default) {
             while (isActive) {
                 val current = _uiState.value
                 val srcPlaying = runCatching { sourcePlayer?.isPlaying() }.getOrDefault(false) ?: false
@@ -270,7 +270,7 @@ class OratureBlindDraftViewModel(
             return
         }
         _uiState.value = OratureBlindDraftUiState(isLoading = true, hasChunk = true)
-        viewModelScope.launch {
+        launchLogged {
             try {
                 val loaded = withContext(Dispatchers.IO) {
                     val takes = chunk.audio.getAllTakes()
@@ -300,6 +300,7 @@ class OratureBlindDraftViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("loading the blind-draft chunk", e)
                 _uiState.value = OratureBlindDraftUiState(hasChunk = true, error = e.message ?: "Unknown error")
             }
         }
@@ -372,7 +373,7 @@ class OratureBlindDraftViewModel(
      *  save-as prompt; this port keeps the source format and just copies into the chosen folder). */
     fun exportTake(id: Int, targetDir: java.io.File) {
         val take = takesById[id] ?: return
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(Dispatchers.IO) {
             runCatching { take.file.copyTo(targetDir.resolve(take.file.name), overwrite = true) }
         }
     }
@@ -443,7 +444,7 @@ class OratureBlindDraftViewModel(
         val chunk = activeChunk ?: return
         if (selectedRecorder() != null) { recordWithExternalPlugin(chunk); return }
         stopAll()
-        viewModelScope.launch {
+        launchLogged {
             try {
                 val take = withContext(Dispatchers.IO) { newTake(chunk) }
                 pendingTake = take
@@ -466,6 +467,7 @@ class OratureBlindDraftViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("starting a new blind-draft recording", e)
                 _uiState.value = _uiState.value.copy(recording = false, recordingActive = false, error = e.message)
             }
         }
@@ -477,7 +479,7 @@ class OratureBlindDraftViewModel(
     private fun recordWithExternalPlugin(chunk: Chunk) {
         if (_uiState.value.isPluginOpen) return
         val recorder = selectedRecorder() ?: return
-        viewModelScope.launch {
+        launchLogged {
             beginPluginOpen()
             val take = withContext(Dispatchers.IO) {
                 val t = newTake(chunk)
@@ -516,7 +518,7 @@ class OratureBlindDraftViewModel(
     fun saveRecording() {
         val chunk = activeChunk ?: return
         val take = pendingTake ?: return
-        viewModelScope.launch {
+        launchLogged {
             recordingActiveFlow.value = false
             withContext(Dispatchers.IO) {
                 writer?.pause()
@@ -543,7 +545,7 @@ class OratureBlindDraftViewModel(
     /** Discard the active recording. */
     fun cancelRecording() {
         val take = pendingTake
-        viewModelScope.launch {
+        launchLogged {
             recordingActiveFlow.value = false
             withContext(Dispatchers.IO) {
                 writer?.pause()
