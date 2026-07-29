@@ -24,7 +24,7 @@ import org.jooq.Record3
 import org.jooq.Select
 import org.jooq.impl.DSL.max
 import org.bibletranslationtools.otter.common.persistence.database.InsertionException
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.ResourceLinkEntity
+import org.bibletranslationtools.otter.common.persistence.entities.ResourceLinkEntity
 
 class ResourceLinkDao(
     private val instanceDsl: DSLContext

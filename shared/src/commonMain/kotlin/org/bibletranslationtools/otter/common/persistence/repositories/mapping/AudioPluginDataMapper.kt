@@ -16,11 +16,11 @@
  * You should have received a copy of the GNU General Public License
  * along with Orature.  If not, see <https://www.gnu.org/licenses/>.
  */
-package org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping
+package org.bibletranslationtools.otter.common.persistence.repositories.mapping
 
 import org.bibletranslationtools.otter.common.domain.plugins.AudioPluginData
 import org.bibletranslationtools.otter.common.api.persistence.mapping.Mapper
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.AudioPluginEntity
+import org.bibletranslationtools.otter.common.persistence.entities.AudioPluginEntity
 import java.io.File
 import javax.inject.Inject
 

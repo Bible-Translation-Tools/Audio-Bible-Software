@@ -1,4 +1,4 @@
-package org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories
+package org.bibletranslationtools.otter.common.persistence.repositories
 
 import io.mockk.*
 import io.reactivex.Single
@@ -17,7 +17,7 @@ import org.bibletranslationtools.otter.common.persistence.database.daos.Resource
 import org.bibletranslationtools.otter.common.persistence.database.daos.ResourceLinkDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.LanguageDao
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
-import org.wycliffeassociates.otter.common.collections.OtterTree
+import org.bibletranslationtools.otter.common.collections.OtterTree
 import org.bibletranslationtools.otter.common.data.primitives.CollectionOrContent
 import org.bibletranslationtools.otter.common.persistence.database.daos.CheckingStatusDao
 import kotlin.test.BeforeTest

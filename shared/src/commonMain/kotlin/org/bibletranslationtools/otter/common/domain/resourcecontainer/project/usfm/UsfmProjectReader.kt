@@ -20,8 +20,8 @@ package org.bibletranslationtools.otter.common.domain.resourcecontainer.project.
 
 import java.io.File
 import java.io.Reader
-import org.wycliffeassociates.otter.common.collections.OtterTree
-import org.wycliffeassociates.otter.common.collections.OtterTreeNode
+import org.bibletranslationtools.otter.common.collections.OtterTree
+import org.bibletranslationtools.otter.common.collections.OtterTreeNode
 import org.bibletranslationtools.otter.common.data.primitives.BOOK_TITLE_SORT
 import org.bibletranslationtools.otter.common.data.primitives.CHAPTER_TITLE_SORT
 import org.bibletranslationtools.otter.common.data.primitives.Collection

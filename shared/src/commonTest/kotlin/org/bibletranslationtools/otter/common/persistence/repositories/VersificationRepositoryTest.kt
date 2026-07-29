@@ -1,4 +1,4 @@
-package org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories
+package org.bibletranslationtools.otter.common.persistence.repositories
 
 import io.mockk.*
 import io.reactivex.schedulers.Schedulers

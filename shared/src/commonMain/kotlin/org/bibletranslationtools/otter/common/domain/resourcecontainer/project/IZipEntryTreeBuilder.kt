@@ -18,7 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.domain.resourcecontainer.project
 
-import org.wycliffeassociates.otter.common.collections.OtterTree
+import org.bibletranslationtools.otter.common.collections.OtterTree
 import java.util.zip.ZipFile
 
 interface IZipEntryTreeBuilder {

@@ -16,7 +16,7 @@
  * You should have received a copy of the GNU General Public License
  * along with Orature.  If not, see <https://www.gnu.org/licenses/>.
  */
-package org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories
+package org.bibletranslationtools.otter.common.persistence.repositories
 
 import io.reactivex.Completable
 import io.reactivex.Observable
@@ -31,7 +31,7 @@ import org.jooq.SelectConditionStep
 import org.jooq.Record
 import org.jooq.DSLContext
 import org.slf4j.LoggerFactory
-import org.wycliffeassociates.otter.common.collections.MultiMap
+import org.bibletranslationtools.otter.common.collections.MultiMap
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
@@ -39,11 +39,11 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IReso
 import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
 import org.bibletranslationtools.otter.common.persistence.database.daos.ContentEntityTable
 import org.bibletranslationtools.otter.common.persistence.database.daos.RecordMappers
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.CollectionEntity
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.ContentEntity
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.ResourceLinkEntity
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.ResourceMetadataEntity
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.*
+import org.bibletranslationtools.otter.common.persistence.entities.CollectionEntity
+import org.bibletranslationtools.otter.common.persistence.entities.ContentEntity
+import org.bibletranslationtools.otter.common.persistence.entities.ResourceLinkEntity
+import org.bibletranslationtools.otter.common.persistence.entities.ResourceMetadataEntity
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.*
 import javax.inject.Inject
 
 class ResourceRepository @Inject constructor(private val database: IAppDatabase) : IResourceRepository {

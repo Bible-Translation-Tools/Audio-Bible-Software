@@ -16,7 +16,7 @@
  * You should have received a copy of the GNU General Public License
  * along with Orature.  If not, see <https://www.gnu.org/licenses/>.
  */
-package org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories
+package org.bibletranslationtools.otter.common.persistence.repositories
 
 import com.jakewharton.rxrelay2.BehaviorRelay
 import io.reactivex.Completable
@@ -32,13 +32,13 @@ import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IContentRepository
 import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.ContentEntity
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.ContentMapper
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.MarkerMapper
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.TakeMapper
+import org.bibletranslationtools.otter.common.persistence.entities.ContentEntity
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.ContentMapper
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.MarkerMapper
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.TakeMapper
 import java.lang.IllegalStateException
 import javax.inject.Inject
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.CollectionMapper
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.CollectionMapper
 
 class ContentRepository @Inject constructor(
     database: IAppDatabase

@@ -1,4 +1,4 @@
-package org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories
+package org.bibletranslationtools.otter.common.persistence.repositories
 
 import io.mockk.*
 import io.reactivex.Single
@@ -9,10 +9,10 @@ import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.persistence.database.daos.ResourceMetadataDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.LanguageDao
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.LanguageMapper
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.ResourceMetadataMapper
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.LanguageEntity
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.ResourceMetadataEntity
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.LanguageMapper
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.ResourceMetadataMapper
+import org.bibletranslationtools.otter.common.persistence.entities.LanguageEntity
+import org.bibletranslationtools.otter.common.persistence.entities.ResourceMetadataEntity
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

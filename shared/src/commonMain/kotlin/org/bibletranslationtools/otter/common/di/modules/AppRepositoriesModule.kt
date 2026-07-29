@@ -35,7 +35,7 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IWork
 import org.bibletranslationtools.otter.common.api.persistence.repositories.WorkbookRepository
 import org.bibletranslationtools.otter.common.domain.languages.LanguageDataSource
 import org.bibletranslationtools.otter.common.persistence.repositories.LanguageRepository
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.*
+import org.bibletranslationtools.otter.common.persistence.repositories.*
 import javax.inject.Singleton
 
 @Module

@@ -21,7 +21,7 @@ package org.bibletranslationtools.otter.common.domain.project.importer
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import org.slf4j.LoggerFactory
-import org.wycliffeassociates.otter.common.collections.OtterTree
+import org.bibletranslationtools.otter.common.collections.OtterTree
 import org.bibletranslationtools.otter.common.data.primitives.CollectionOrContent
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportException
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult

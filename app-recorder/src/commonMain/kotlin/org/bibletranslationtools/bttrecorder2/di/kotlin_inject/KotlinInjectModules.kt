@@ -18,16 +18,16 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.Workb
 import org.bibletranslationtools.otter.common.domain.languages.LanguageDataSource
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.IZipEntryTreeBuilder
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ZipEntryTreeBuilder
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.CollectionRepository
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.ContentRepository
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.InstalledEntityRepository
+import org.bibletranslationtools.otter.common.persistence.repositories.CollectionRepository
+import org.bibletranslationtools.otter.common.persistence.repositories.ContentRepository
+import org.bibletranslationtools.otter.common.persistence.repositories.InstalledEntityRepository
 import org.bibletranslationtools.otter.common.persistence.repositories.LanguageRepository
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.ResourceContainerRepository
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.ResourceMetadataRepository
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.ResourceRepository
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.TakeRepository
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.VersificationRepository
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.WorkbookDescriptorRepository
+import org.bibletranslationtools.otter.common.persistence.repositories.ResourceContainerRepository
+import org.bibletranslationtools.otter.common.persistence.repositories.ResourceMetadataRepository
+import org.bibletranslationtools.otter.common.persistence.repositories.ResourceRepository
+import org.bibletranslationtools.otter.common.persistence.repositories.TakeRepository
+import org.bibletranslationtools.otter.common.persistence.repositories.VersificationRepository
+import org.bibletranslationtools.otter.common.persistence.repositories.WorkbookDescriptorRepository
 
 import javax.inject.Singleton
 

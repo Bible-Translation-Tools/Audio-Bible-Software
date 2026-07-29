@@ -18,7 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.domain.resourcecontainer.project
 
-import org.wycliffeassociates.otter.common.collections.OtterTree
+import org.bibletranslationtools.otter.common.collections.OtterTree
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.CollectionOrContent
 import org.bibletranslationtools.otter.common.data.primitives.ContainerType

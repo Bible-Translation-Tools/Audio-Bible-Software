@@ -29,8 +29,8 @@ import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCas
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase.Companion.embeddedSourceNames
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ILanguageRepository
 import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.LanguageMapper
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.TranslationMapper
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.LanguageMapper
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.TranslationMapper
 import javax.inject.Inject
 
 class LanguageRepository @Inject constructor(

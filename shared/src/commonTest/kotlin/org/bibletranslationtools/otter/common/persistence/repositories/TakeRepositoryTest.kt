@@ -1,4 +1,4 @@
-package org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories
+package org.bibletranslationtools.otter.common.persistence.repositories
 
 import io.mockk.*
 import io.reactivex.Completable
@@ -8,14 +8,14 @@ import kotlinx.coroutines.test.runTest
 import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
 import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.Take
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.CollectionMapper
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.MarkerMapper
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.CollectionMapper
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.MarkerMapper
 import org.bibletranslationtools.otter.common.persistence.database.daos.TakeDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.MarkerDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.ContentDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.ContentTypeDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.CheckingStatusDao
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.TakeEntity
+import org.bibletranslationtools.otter.common.persistence.entities.TakeEntity
 import java.time.LocalDate
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -58,7 +58,7 @@ class TakeRepositoryTest {
     fun testGetAllSuspend() = runTest {
         val entity = mockk<TakeEntity>(relaxed = true)
         val take = mockk<Take>()
-        val markerEntity = mockk<org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.MarkerEntity>()
+        val markerEntity = mockk<org.bibletranslationtools.otter.common.persistence.entities.MarkerEntity>()
         
         every { entity.createdTs } returns LocalDate.now().toString()
         every { entity.deletedTs } returns null

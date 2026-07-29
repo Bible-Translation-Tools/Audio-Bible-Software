@@ -2,7 +2,7 @@ package org.bibletranslationtools.bttrecorder2.di.kotlin_inject
 
 import me.tatarka.inject.annotations.Component
 //import org.wycliffeassociates.otter.common.persistence.repositories.IAppPreferencesRepository
-//import org.wycliffeassociates.otter.jvm.workbookapp.persistence.database.AppDatabase
+//import org.bibletranslationtools.otter.common.persistence.database.AppDatabase
 import javax.inject.Singleton
 
 @Component

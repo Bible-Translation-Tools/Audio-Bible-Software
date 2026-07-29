@@ -1,4 +1,4 @@
-package org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories
+package org.bibletranslationtools.otter.common.persistence.repositories
 
 import io.mockk.*
 import io.reactivex.Single
@@ -10,7 +10,7 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.ICont
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.persistence.database.daos.WorkbookDescriptorDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.WorkbookTypeDao
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.WorkbookDescriptorEntity
+import org.bibletranslationtools.otter.common.persistence.entities.WorkbookDescriptorEntity
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor

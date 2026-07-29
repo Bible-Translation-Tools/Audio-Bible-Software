@@ -23,7 +23,7 @@ import org.jooq.DSLContext
 import org.jooq.exception.DataAccessException
 import org.jooq.impl.DSL
 import org.bibletranslationtools.otter.common.persistence.database.InsertionException
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.TranslationEntity
+import org.bibletranslationtools.otter.common.persistence.entities.TranslationEntity
 import kotlin.jvm.Throws
 
 class TranslationDao(

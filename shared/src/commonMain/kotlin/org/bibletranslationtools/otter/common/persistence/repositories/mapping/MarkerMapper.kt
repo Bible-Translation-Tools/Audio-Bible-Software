@@ -16,10 +16,10 @@
  * You should have received a copy of the GNU General Public License
  * along with Orature.  If not, see <https://www.gnu.org/licenses/>.
  */
-package org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping
+package org.bibletranslationtools.otter.common.persistence.repositories.mapping
 
 import org.bibletranslationtools.otter.common.data.primitives.Marker
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.MarkerEntity
+import org.bibletranslationtools.otter.common.persistence.entities.MarkerEntity
 import javax.inject.Inject
 
 class MarkerMapper @Inject constructor() {

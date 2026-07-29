@@ -20,7 +20,7 @@ package org.bibletranslationtools.otter.common.domain.narration
 
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
-import org.wycliffeassociates.otter.common.collections.FloatRingBuffer
+import org.bibletranslationtools.otter.common.collections.FloatRingBuffer
 import org.bibletranslationtools.otter.common.recorder.PCMCompressor
 import java.nio.ByteBuffer
 import java.nio.ByteOrder

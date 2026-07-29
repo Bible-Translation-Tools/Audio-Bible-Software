@@ -23,7 +23,7 @@ import org.jooq.DSLContext
 import org.jooq.impl.DSL
 import org.jooq.impl.DSL.max
 import org.bibletranslationtools.otter.common.persistence.database.InsertionException
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.LanguageEntity
+import org.bibletranslationtools.otter.common.persistence.entities.LanguageEntity
 
 class LanguageDao(
     private val instanceDsl: DSLContext
