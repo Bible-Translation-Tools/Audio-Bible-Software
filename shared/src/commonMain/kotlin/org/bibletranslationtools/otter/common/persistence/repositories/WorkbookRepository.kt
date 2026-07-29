@@ -16,7 +16,7 @@
  * You should have received a copy of the GNU General Public License
  * along with Orature.  If not, see <https://www.gnu.org/licenses/>.
  */
-package org.bibletranslationtools.otter.common.api.persistence.repositories
+package org.bibletranslationtools.otter.common.persistence.repositories
 
 import com.jakewharton.rxrelay2.BehaviorRelay
 import com.jakewharton.rxrelay2.ReplayRelay
@@ -56,6 +56,15 @@ import java.util.WeakHashMap
 import java.util.Collections.synchronizedMap
 import javax.inject.Inject
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IContentRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.ILanguageRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.ITakeRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDatabaseAccessors
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.ModelTake
 import java.util.concurrent.ConcurrentHashMap
 
 private typealias WorkbookTake = org.bibletranslationtools.otter.common.data.workbook.Take

@@ -50,7 +50,7 @@ import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.domain.mapper.mapToMetadata
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
-import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
 import org.bibletranslationtools.otter.common.persistence.entities.WorkbookDescriptorEntity
 import org.bibletranslationtools.otter.common.persistence.entities.CollectionEntity
 import org.bibletranslationtools.otter.common.persistence.entities.ResourceMetadataEntity

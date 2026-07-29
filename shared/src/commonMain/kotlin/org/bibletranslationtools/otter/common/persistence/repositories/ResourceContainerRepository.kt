@@ -38,7 +38,7 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportExc
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.castOrFindImportException
 import org.bibletranslationtools.otter.common.api.persistence.repositories.*
-import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.CollectionMapper
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.ContentMapper
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.LanguageMapper

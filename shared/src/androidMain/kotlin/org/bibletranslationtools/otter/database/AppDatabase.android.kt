@@ -4,7 +4,7 @@ package org.bibletranslationtools.otter.database
 
 import android.content.Context
 import com.readystatesoftware.sqliteasset.SQLiteAssetHelper
-import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.persistence.database.DatabaseMigrator
 import org.bibletranslationtools.otter.common.persistence.database.daos.CheckingStatusDao

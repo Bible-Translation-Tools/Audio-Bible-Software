@@ -4,7 +4,7 @@ import io.mockk.*
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.test.runTest
-import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.persistence.database.daos.CollectionDao

@@ -28,7 +28,7 @@ import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.domain.mapper.mapToMetadata
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
-import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
 import org.bibletranslationtools.otter.common.persistence.entities.ResourceMetadataEntity
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.LanguageMapper
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.ResourceMetadataMapper

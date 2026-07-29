@@ -14,7 +14,7 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.ITake
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
-import org.bibletranslationtools.otter.common.api.persistence.repositories.WorkbookRepository
+import org.bibletranslationtools.otter.common.persistence.repositories.WorkbookRepository
 import org.bibletranslationtools.otter.common.domain.languages.LanguageDataSource
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.IZipEntryTreeBuilder
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ZipEntryTreeBuilder

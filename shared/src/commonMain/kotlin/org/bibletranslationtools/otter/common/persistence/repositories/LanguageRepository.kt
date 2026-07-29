@@ -28,7 +28,7 @@ import org.bibletranslationtools.otter.common.data.workbook.Translation
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase.Companion.glSources
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase.Companion.embeddedSourceNames
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ILanguageRepository
-import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.LanguageMapper
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.TranslationMapper
 import javax.inject.Inject

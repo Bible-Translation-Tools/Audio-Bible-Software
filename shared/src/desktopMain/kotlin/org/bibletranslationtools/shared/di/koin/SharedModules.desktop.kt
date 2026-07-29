@@ -1,6 +1,6 @@
 package org.bibletranslationtools.shared.di.koin
 
-import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.device.newaudio.AudioDeviceSelector
 import org.bibletranslationtools.otter.common.device.newaudio.AudioHardwareProvider

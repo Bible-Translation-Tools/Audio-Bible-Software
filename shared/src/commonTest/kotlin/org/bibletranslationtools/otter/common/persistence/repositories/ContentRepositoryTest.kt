@@ -5,7 +5,7 @@ import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
-import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.persistence.database.daos.ContentTypeDao

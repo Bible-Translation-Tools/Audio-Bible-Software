@@ -33,7 +33,7 @@ import org.bibletranslationtools.otter.common.domain.versification.ParatextVersi
 import org.bibletranslationtools.otter.common.domain.versification.Versification
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
-import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
 import org.bibletranslationtools.otter.common.persistence.repositories.LanguageRepository
 import java.io.File
 import javax.inject.Inject

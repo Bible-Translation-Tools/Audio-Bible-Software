@@ -36,7 +36,7 @@ import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceRepository
-import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
 import org.bibletranslationtools.otter.common.persistence.database.daos.ContentEntityTable
 import org.bibletranslationtools.otter.common.persistence.database.daos.RecordMappers
 import org.bibletranslationtools.otter.common.persistence.entities.CollectionEntity

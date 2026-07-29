@@ -1,6 +1,5 @@
 package org.bibletranslationtools.otter.common.persistence.database
 
-import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.persistence.database.daos.CheckingStatusDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.CollectionDao

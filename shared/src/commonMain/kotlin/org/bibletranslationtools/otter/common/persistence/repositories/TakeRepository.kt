@@ -28,7 +28,7 @@ import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.primitives.Take
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ITakeRepository
-import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
 import org.bibletranslationtools.otter.common.persistence.entities.TakeEntity
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.CollectionMapper
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.MarkerMapper

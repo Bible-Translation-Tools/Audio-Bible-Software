@@ -16,18 +16,31 @@
  * You should have received a copy of the GNU General Public License
  * along with Orature.  If not, see <https://www.gnu.org/licenses/>.
  */
-package org.bibletranslationtools.otter.common.api.persistence
+package org.bibletranslationtools.otter.common.persistence.database
 
 import org.bibletranslationtools.otter_db.jooq.tables.InstalledEntity
 import org.jooq.DSLContext
 import org.jooq.impl.DSL
-import org.bibletranslationtools.otter.common.persistence.database.DATABASE_INSTALLABLE_NAME
-import org.bibletranslationtools.otter.common.persistence.database.SCHEMA_VERSION
 import org.bibletranslationtools.otter.common.persistence.database.daos.*
 import java.io.InputStream
 
-const val CREATION_SCRIPT = "sql/CreateAppDb.sql"
-
+/**
+ * The database seam shared by the platform `AppDatabase` implementations (desktop
+ * [AppDatabase] over sqlite-jdbc, android `AndroidAppDatabase` over SQLDroid).
+ *
+ * This is deliberately NOT in `api/persistence/` despite the `I` prefix: it is not a port.
+ * Its whole surface is jOOQ — a [DSLContext], 15 jOOQ-backed DAOs, and transaction helpers
+ * that speak `DSLContext` — and every consumer is an adapter (the repository
+ * implementations in this module's sibling `repositories/` package, their tests, and the
+ * platform DI modules). Nothing in `domain/` or in either app module touches it.
+ *
+ * Living in `api/` made the ports package depend on jOOQ and on this very package, which
+ * inverted the dependency rule the port package exists to enforce. Abstracting jOOQ away
+ * for real would mean giving all 16 DAOs jOOQ-free interfaces — they currently take
+ * `dsl: DSLContext = instanceDsl` on ~100 methods, and `ContentDao` returns
+ * `Select<Record>` — so the honest fix is to keep the jOOQ coupling and put it in the
+ * layer where jOOQ belongs.
+ */
 interface IAppDatabase {
     val dsl: DSLContext
 
