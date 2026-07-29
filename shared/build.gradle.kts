@@ -30,7 +30,6 @@ kotlin {
 
     // Backend library versions (moved verbatim from the recorder app during the split).
     val rxkotlinVer = "2.4.0"
-    val rxkotlinfxVer = "2.2.2"
     val rxrelayVer = "2.1.0"
     val jooqVer = "3.14.16"
     val kotlinVer = "1.9.23"
@@ -73,7 +72,6 @@ kotlin {
                 api(libs.kotlinx.coroutines.rx2)
 
                 api("io.reactivex.rxjava2:rxkotlin:$rxkotlinVer")
-                api("com.github.thomasnield:rxkotlinfx:$rxkotlinfxVer")
                 api("com.jakewharton.rxrelay2:rxrelay:$rxrelayVer")
                 api("org.jooq:jooq:$jooqVer")
                 api("org.slf4j:slf4j-api:$slf4jApiVer")
