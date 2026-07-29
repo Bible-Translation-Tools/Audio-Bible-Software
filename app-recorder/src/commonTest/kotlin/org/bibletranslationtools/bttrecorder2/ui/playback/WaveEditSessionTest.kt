@@ -137,6 +137,96 @@ class WaveEditSessionTest {
         }
     }
 
+    // --- Insert (playback-page insert recording) ---
+
+    @Test
+    fun insertRelativeSplicesTheClipAndLengthensTheTimeline() {
+        val session = WaveEditSession(FakePcmSource(totalFrames = 100, id = "take"))
+        val clip = FakePcmSource(totalFrames = 30, id = "clip")
+
+        assertTrue(session.insertRelative(40, clip))
+        assertEquals(130, session.editedTotalFrames)
+        assertTrue(session.hasEdits())
+        assertTrue(session.canUndo())
+    }
+
+    @Test
+    fun insertedClipSurvivesUndoRedo() {
+        val session = WaveEditSession(FakePcmSource(totalFrames = 100, id = "take"))
+        val clip = FakePcmSource(totalFrames = 30, id = "clip")
+        session.insertRelative(40, clip)
+
+        assertTrue(session.undo())
+        assertEquals(100, session.editedTotalFrames)
+        assertFalse(session.hasEdits()) // back to the untouched take
+
+        assertTrue(session.redo())
+        assertEquals(130, session.editedTotalFrames)
+        assertTrue(session.timeline().segments.any { it.source.id == "clip" })
+    }
+
+    @Test
+    fun emptyClipIsRejectedAndKeepsHistoryClean() {
+        val session = WaveEditSession(FakePcmSource(totalFrames = 100, id = "take"))
+        assertFalse(session.insertRelative(10, FakePcmSource(totalFrames = 0, id = "empty")))
+        assertFalse(session.canUndo())
+        assertFalse(session.hasEdits())
+    }
+
+    /**
+     * A cut followed by an equal-length insert leaves the frame count unchanged but the AUDIO very
+     * much changed — the old length-based hasEdits() reported "clean" here and the Save button stayed
+     * disabled, losing the edit.
+     */
+    @Test
+    fun cutThenEqualLengthInsertStillCountsAsEdited() {
+        val session = WaveEditSession(FakePcmSource(totalFrames = 100, id = "take"))
+        session.cutRelative(10, 40) // -30 frames
+        session.insertRelative(10, FakePcmSource(totalFrames = 30, id = "clip")) // +30 frames
+
+        assertEquals(100, session.editedTotalFrames) // same length as the original
+        assertTrue(session.hasEdits(), "cut + equal-length insert must report as edited")
+    }
+
+    /** Inserted segments belong to another source, so they must not be read as coverage of the take. */
+    @Test
+    fun insertDoesNotCorruptRemovedRangesOfTheOriginalTake() {
+        val session = WaveEditSession(FakePcmSource(totalFrames = 100, id = "take"))
+        session.cutRelative(10, 20) // drop take frames [10,20)
+        session.insertRelative(10, FakePcmSource(totalFrames = 50, id = "clip"))
+
+        // The only missing part of the ORIGINAL take is still [10,20).
+        val removed = session.rangesSnapshot()
+        assertEquals(1, removed.size)
+        assertEquals(10, removed.first().start)
+        assertEquals(20, removed.first().endExclusive)
+        assertTrue(session.isFrameRemoved(15))
+        assertFalse(session.isFrameRemoved(25))
+    }
+
+    /** Take frames after an inserted clip must map further down the timeline — this is what keeps
+     *  verse markers pinned to their audio after an insert. */
+    @Test
+    fun absoluteToRelativeShiftsTakeFramesThatFollowAnInsertedClip() {
+        val session = WaveEditSession(FakePcmSource(totalFrames = 100, id = "take"))
+        session.insertRelative(40, FakePcmSource(totalFrames = 30, id = "clip"))
+
+        assertEquals(10, session.absoluteToRelative(10)) // before the insert: unchanged
+        assertEquals(70, session.absoluteToRelative(40)) // at/after it: shifted by the clip length
+        assertEquals(129, session.absoluteToRelative(99))
+    }
+
+    /** A timeline position inside the inserted clip has no take frame; report the splice boundary. */
+    @Test
+    fun relativeToAbsoluteInsideAnInsertedClipReportsTheSpliceBoundary() {
+        val session = WaveEditSession(FakePcmSource(totalFrames = 100, id = "take"))
+        session.insertRelative(40, FakePcmSource(totalFrames = 30, id = "clip"))
+
+        assertEquals(39, session.relativeToAbsolute(39)) // last take frame before the clip
+        assertEquals(40, session.relativeToAbsolute(50)) // inside the clip → boundary
+        assertEquals(40, session.relativeToAbsolute(70)) // first take frame after the clip
+    }
+
     // --- Reference implementations copied from the original WaveEditSession ---
 
     private fun oldIsFrameRemoved(frame: Int, ranges: List<Pair<Int, Int>>): Boolean =

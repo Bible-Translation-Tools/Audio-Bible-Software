@@ -42,7 +42,13 @@ import org.bibletranslationtools.shared.resources.err_play_audio
 data class UnitUiModel(
     val unit: Chunk,
     val hasContent: Boolean = false,
-    val takes: Int = 0
+    val takes: Int = 0,
+    /**
+     * The unit's currently selected take. Kept in UI state (rather than read straight off
+     * `unit.audio.getSelectedTake()` while composing) because that relay value is invisible to
+     * Compose — the checkmark never repainted after selecting a take.
+     */
+    val selectedTake: Take? = null
 )
 
 data class UnitListUiState(
@@ -208,7 +214,8 @@ class UnitListViewModel(
                         UnitUiModel(
                             unit = chunk,
                             hasContent = chunk.hasSelectedAudio(),
-                            takes = chunk.audio.getAllTakes().count { !it.isDeleted() }
+                            takes = chunk.audio.getAllTakes().count { !it.isDeleted() },
+                            selectedTake = chunk.audio.getSelectedTake()
                         )
                     }
 
@@ -350,7 +357,23 @@ class UnitListViewModel(
     // Explicitly marks the currently browsed take as the selected take.
     fun selectCurrentTake(unit: Chunk) {
         val take = getCurrentViewedTake(unit) ?: return
+        // Persist the selection (the workbook repo's selectedTake relay writes it to the DB)...
         unit.audio.selectTake(take)
+        // ...then publish it, so the card's checkmark actually reflects the new selection. Without
+        // this the state never changes and Compose has no reason to recompose, which is why clicking
+        // the checkmark looked like it did nothing.
+        _uiState.update { state ->
+            state.copy(
+                units = state.units.map { uiModel ->
+                    if (uiModel.unit.sort == unit.sort) {
+                        uiModel.copy(
+                            selectedTake = unit.audio.getSelectedTake(),
+                            hasContent = unit.hasSelectedAudio()
+                        )
+                    } else uiModel
+                }
+            )
+        }
     }
 
     fun deleteTake(unit: Chunk, take: Take) {
@@ -372,7 +395,13 @@ class UnitListViewModel(
         // so StateFlow emits and recomposition fires even when the clamped index is unchanged.
         val updatedUnits = _uiState.value.units.map { uiModel ->
             if (uiModel.unit.sort == unit.sort) {
-                uiModel.copy(hasContent = unit.hasSelectedAudio(), takes = remaining.size)
+                // Deleting the selected take deselects it (WorkbookRepository.deselectUponDelete),
+                // so re-read the selection here too.
+                uiModel.copy(
+                    hasContent = unit.hasSelectedAudio(),
+                    takes = remaining.size,
+                    selectedTake = unit.audio.getSelectedTake()
+                )
             } else uiModel
         }
         _uiState.update { state ->

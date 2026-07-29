@@ -14,8 +14,10 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
+import androidx.compose.runtime.IntState
 import androidx.compose.runtime.mutableIntStateOf
 import org.bibletranslationtools.shared.ui.playback.AudioTimeline
 import org.bibletranslationtools.shared.ui.playback.FilePcmSource
@@ -44,6 +46,8 @@ import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
 import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnection
 import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
+import org.bibletranslationtools.otter.common.device.newaudio.AudioRecorderConnectionFactory
+import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
 import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerEvent
 import org.bibletranslationtools.otter.common.device.newaudio.IAudioPlayer
 import org.bibletranslationtools.otter.common.domain.audio.AudioBouncer
@@ -51,12 +55,15 @@ import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.content.Recordable
 import org.bibletranslationtools.otter.common.domain.content.TakeCreator
 import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
+import org.bibletranslationtools.otter.common.domain.narration.AudioScene
+import org.bibletranslationtools.otter.common.recorder.ActiveRecordingRenderer
 import org.jetbrains.compose.resources.getString
 import org.bibletranslationtools.shared.resources.Res
 import org.bibletranslationtools.shared.resources.err_no_edits_to_save
 import org.bibletranslationtools.shared.resources.err_save_edited_take
 import org.bibletranslationtools.shared.resources.err_save_verse_markers
 import org.bibletranslationtools.shared.resources.err_load_take
+import org.bibletranslationtools.shared.resources.err_record_device_start
 import java.io.File
 import kotlin.math.abs
 import kotlin.math.max
@@ -70,7 +77,8 @@ class PlaybackViewModel(
     private val workbookRepository: IWorkbookRepository,
     private val audioPlayerFactory: AudioPlayerConnectionFactory,
     private val takeCreator: TakeCreator,
-    private val audioBouncer: AudioBouncer
+    private val audioBouncer: AudioBouncer,
+    private val audioRecorderFactory: AudioRecorderConnectionFactory
 ) : ViewModel() {
 
     data class TargetUiState(
@@ -105,6 +113,10 @@ class PlaybackViewModel(
         val canCutSelection: Boolean = false,
         val canUndoEdit: Boolean = false,
         val canRedoEdit: Boolean = false,
+        /** An insert-at-playhead session is open (mic live, clip not yet spliced). */
+        val isInsertActive: Boolean = false,
+        /** The insert session is actively capturing (vs. armed/paused). */
+        val isInsertRecording: Boolean = false,
         val isVerseMarkerMode: Boolean = false,
         // Number of verse markers still to place in verse-marker mode
         // (totalVerses − placed), mirroring the original app's "N Left" counter.
@@ -627,6 +639,8 @@ class PlaybackViewModel(
                 audioBouncer.bounceAudio(tempEditedWav, reader, markers)
                 persistEditedFileAsNewTake(tempEditedWav)
                 tempEditedWav.delete()
+                // The spliced clips are now baked into the saved take's audio.
+                discardPendingInsertClips()
             }.onFailure { e ->
                 updateState { it.copy(
                     error = e.message ?: getString(Res.string.err_save_edited_take)
@@ -761,6 +775,189 @@ class PlaybackViewModel(
                 unitNumber = target.chunk?.sort ?: 0
             )
         )
+    }
+
+    // ---- insert recording: capture a clip and splice it in at the playhead --------------------
+    // Records in place (like narration's re-record) instead of bouncing out to the record screen:
+    // the clip becomes its own timeline segment, so it lands on the same undo/redo history as cuts
+    // and nothing is written to the take until the user saves.
+
+    private val insertRecorder by lazy { InsertRecorder(audioRecorderFactory, viewModelScope) }
+
+    /** Live mic waveform for the insert overlay; null when no insert session is open. */
+    val insertRenderer: StateFlow<ActiveRecordingRenderer?> get() = insertRecorder.renderer
+
+    /** Timeline frame the clip will be spliced at (captured when the session opens). */
+    private var insertAtFrame: Int = 0
+
+    /** Clips already spliced into the timeline but not yet written into a saved take. */
+    private val pendingInsertClips = mutableListOf<File>()
+
+    // Live composite waveform while capturing: AudioScene joins the edited take (read through the
+    // timeline) with the incoming mic stream, exactly as narration does for re-record. Published as a
+    // copied snapshot on a ~30 fps ticker so the Canvas never reads a buffer mid-refill.
+    private var insertScene: AudioScene? = null
+    private var insertSceneReader: AudioFileReader? = null
+    private var insertWaveformJob: Job? = null
+    @Volatile
+    private var insertWaveformSnapshot: FloatArray = FloatArray(0)
+    /** Bumped per published frame so the Canvas invalidates (draw-only, no recomposition). */
+    private val insertWaveformGeneration = mutableIntStateOf(0)
+
+    val insertWaveformGen: IntState get() = insertWaveformGeneration
+    fun insertWaveform(): FloatArray = insertWaveformSnapshot
+
+    private fun startInsertScene(take: Take, waveformWidth: Int) {
+        stopInsertScene()
+        val session = editSession ?: return
+        val reader = TimelineAudioFileReader(session.timeline())
+        runCatching { reader.open() }
+        insertSceneReader = reader
+        insertScene = AudioScene(
+            reader,
+            audioRecorderFactory.getRecorderWorker().audioStream,
+            insertRecorder.isRecording,
+            waveformWidth,
+            secondsOnScreen = 10,
+            recordingSampleRate = reader.spec.sampleRate
+        )
+        insertWaveformJob = viewModelScope.launch(Dispatchers.Default) {
+            while (isActive) {
+                val scene = insertScene
+                if (scene != null) {
+                    runCatching {
+                        // Insert = a re-record over a ZERO-length region: the old audio resumes at the
+                        // very frame the clip was spliced at, so both bounds are insertAtFrame.
+                        val recorded = insertRecordedFrames()
+                        val (buffer, _) = scene.getReRecordNarrationDrawable(
+                            insertAtFrame + recorded,
+                            insertAtFrame,
+                            insertAtFrame
+                        )
+                        insertWaveformSnapshot = buffer.copyOf()
+                        insertWaveformGeneration.value++
+                    }
+                }
+                delay(33)
+            }
+        }
+    }
+
+    private fun stopInsertScene() {
+        insertWaveformJob?.cancel()
+        insertWaveformJob = null
+        insertScene = null
+        runCatching { insertSceneReader?.release() }
+        insertSceneReader = null
+        insertWaveformSnapshot = FloatArray(0)
+    }
+
+    /** Frames captured into the open clip so far, for the scene's write head. */
+    private fun insertRecordedFrames(): Int = insertRecorder.recordedFramesSoFar()
+
+    /** The take's own format — the clip must match it (see [InsertRecorder]). */
+    private fun takeSpec(take: Take): AudioSpec {
+        val audio = OratureAudioFile(take.file)
+        return AudioSpec(
+            sampleRate = audio.sampleRate,
+            bitDepth = audio.bitsPerSample,
+            channels = audio.channels
+        )
+    }
+
+    /**
+     * Opens an insert session at the current playhead: pauses playback and arms the mic, without
+     * capturing yet ([startInsertRecording] starts). [waveformWidth] is the live waveform's pixel
+     * width.
+     */
+    fun beginInsertAtPlayhead(waveformWidth: Int) {
+        val take = activeTake ?: return
+        if (_uiState.value.isInsertActive) return
+
+        audioPlayer.pause()
+        clock.advancing = false
+        updateState { it.copy(isPlaying = false) }
+
+        val total = editSession?.editedTotalFrames ?: audioPlayer.getDurationInFrames()
+        insertAtFrame = clock.displayFrame.toInt().coerceIn(0, total)
+
+        viewModelScope.launch {
+            try {
+                val clip = File.createTempFile("insert_", ".wav")
+                insertRecorder.begin(clip, takeSpec(take), waveformWidth.coerceAtLeast(1))
+                startInsertScene(take, waveformWidth.coerceAtLeast(1))
+                updateState { it.copy(isInsertActive = true, isInsertRecording = false, error = null) }
+            } catch (e: Exception) {
+                insertRecorder.discard()
+                updateState {
+                    it.copy(
+                        isInsertActive = false,
+                        isInsertRecording = false,
+                        error = e.message ?: getString(Res.string.err_record_device_start)
+                    )
+                }
+            }
+        }
+    }
+
+    fun startInsertRecording() {
+        if (!_uiState.value.isInsertActive) return
+        insertRecorder.resume()
+        updateState { it.copy(isInsertRecording = true) }
+    }
+
+    fun pauseInsertRecording() {
+        if (!_uiState.value.isInsertActive) return
+        insertRecorder.pause()
+        updateState { it.copy(isInsertRecording = false) }
+    }
+
+    /** Closes the clip and splices it in at the captured playhead, leaving the playhead at its end. */
+    fun commitInsert() {
+        if (!_uiState.value.isInsertActive) return
+        viewModelScope.launch {
+            val clip = insertRecorder.finish()
+            stopInsertScene()
+            updateState { it.copy(isInsertActive = false, isInsertRecording = false) }
+            if (clip == null) return@launch // nothing captured
+
+            val session = editSession
+            val clipSource = FilePcmSource(clip.file)
+            if (session == null || !session.insertRelative(insertAtFrame, clipSource)) {
+                runCatching { clip.file.delete() }
+                return@launch
+            }
+            pendingInsertClips.add(clip.file)
+            ensureClipPeakCache(clipSource)
+            reloadCurrentTakePlayback(insertAtFrame + clip.frames)
+        }
+    }
+
+    /** Abandons the session: releases the mic, deletes the partial clip, leaves the take untouched. */
+    fun cancelInsert() {
+        if (!_uiState.value.isInsertActive) return
+        viewModelScope.launch {
+            insertRecorder.discard()
+            stopInsertScene()
+            updateState { it.copy(isInsertActive = false, isInsertRecording = false) }
+        }
+    }
+
+    /** Peaks for an inserted clip so the spliced region draws like the rest of the waveform. */
+    private fun ensureClipPeakCache(source: PcmSource) {
+        if (peakCaches.containsKey(source.id)) return
+        val cache = WaveformPeakCache(source.totalFrames)
+        peakCaches[source.id] = cache
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { buildPeakCache(source, cache) }
+            bumpTimelineGeneration()
+        }
+    }
+
+    /** Drops clips that were spliced but never saved (called on teardown / after a successful save). */
+    private fun discardPendingInsertClips() {
+        pendingInsertClips.forEach { runCatching { it.delete() } }
+        pendingInsertClips.clear()
     }
 
     /**
@@ -1042,8 +1239,11 @@ class PlaybackViewModel(
         val source = FilePcmSource(take.file)
         if (peakCaches.containsKey(source.id)) return
         peakCacheJob?.cancel()
-        // Drop caches for sources no longer referenced (previous takes).
-        peakCaches.keys.retainAll(setOf(source.id))
+        // Drop caches for sources no longer referenced (previous takes), but KEEP any clips spliced
+        // into the current timeline — their peaks are still being drawn.
+        val stillReferenced = mutableSetOf(source.id)
+        editSession?.timeline()?.segments?.forEach { stillReferenced.add(it.source.id) }
+        peakCaches.keys.retainAll(stillReferenced)
         val cache = WaveformPeakCache(source.totalFrames)
         peakCaches[source.id] = cache
         peakCacheJob = viewModelScope.launch(Dispatchers.IO) {
@@ -1137,5 +1337,10 @@ class PlaybackViewModel(
     override fun onCleared() {
         super.onCleared()
         cleanup()
+        // An insert session left open (or spliced-but-unsaved clips) must not leak the mic or files.
+        if (insertRecorder.isActive) {
+            viewModelScope.launch { insertRecorder.discard() }
+        }
+        discardPendingInsertClips()
     }
 }

@@ -124,14 +124,39 @@ compose.desktop {
             "-Dapple.awt.application.name=BTT-Recorder"
         )
 
+        // ProGuard is off for release packaging. It aborts on ~1670 unresolved references to OPTIONAL
+        // dependencies of our libraries that are absent (and unused) on desktop: javafx.* via
+        // rxkotlinfx, javax.annotation.* via okhttp/retrofit, org.osgi.*/aQute.bnd.* via Tika,
+        // javax.persistence.* via jOOQ, android.*/conscrypt via okhttp's Android paths.
+        // Those could be silenced with -dontwarn, but shrinking/obfuscating is genuinely risky here:
+        // jOOQ record mapping, Jackson, snakeyaml, JNA and the SQLite driver all resolve types
+        // reflectively, so a minified build would need a large, carefully tested set of -keep rules.
+        // Desktop distributions bundle their own JRE, so the size win doesn't justify that yet.
+        buildTypes.release.proguard {
+            isEnabled.set(false)
+        }
+
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "BTT-Recorder"
             packageVersion = "1.0.0"
 
-            // sqlite-jdbc and JOOQ require java.sql; jackson-dataformat-yaml needs java.naming.
-            // jpackage trims the JRE to declared modules only, so these must be explicit.
-            modules("java.sql", "java.naming", "java.xml", "jdk.unsupported")
+            // jpackage trims the bundled JRE to the declared modules only, so anything reached at
+            // runtime must be listed. This is the UNION of two sources:
+            //  - suggestRuntimeModules (static bytecode scan): java.compiler, java.instrument,
+            //    java.sql, jdk.security.auth, jdk.unsupported
+            //  - modules reached reflectively / via ServiceLoader, which that scan cannot see:
+            //    java.naming (jackson-dataformat-yaml) and java.xml (XML parsing).
+            // Keep both sets — dropping the reflective ones only fails at runtime, never at build.
+            modules(
+                "java.compiler",
+                "java.instrument",
+                "java.naming",
+                "java.sql",
+                "java.xml",
+                "jdk.security.auth",
+                "jdk.unsupported"
+            )
 
             macOS {
                 iconFile.set(project.file("src/desktopMain/resources/icons/ic_launcher.icns"))
