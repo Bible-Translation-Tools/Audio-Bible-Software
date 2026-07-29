@@ -1,6 +1,6 @@
 import java.net.URI
 
-rootProject.name = "BTT-Recorder2"
+rootProject.name = "Audio-Translation-Software"
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
 pluginManagement {
