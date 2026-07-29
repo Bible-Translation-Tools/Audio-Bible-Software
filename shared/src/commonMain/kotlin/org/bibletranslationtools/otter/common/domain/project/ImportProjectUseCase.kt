@@ -16,20 +16,13 @@
  * You should have received a copy of the GNU General Public License
  * along with Orature.  If not, see <https://www.gnu.org/licenses/>.
  */
-@file:OptIn(org.jetbrains.compose.resources.ExperimentalResourceApi::class)
-
 package org.bibletranslationtools.otter.common.domain.project
 
-import com.fasterxml.jackson.core.JsonFactory
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.readValue
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.reactivex.Completable
 import io.reactivex.Maybe
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
-import kotlinx.coroutines.runBlocking
-import org.bibletranslationtools.shared.resources.Res
+import org.bibletranslationtools.otter.common.api.io.IBundledContentSource
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
@@ -49,9 +42,9 @@ import java.lang.IllegalArgumentException
 import javax.inject.Inject
 import javax.inject.Provider
 
-// Paths are relative to the Compose resources root (composeResources/), because the GL
-// content ships as Compose Multiplatform resources and is read via Res.readBytes — NOT as
-// JVM classpath resources. (Res paths do not include the composeResources/ prefix.)
+// Packaged resource paths, resolved through IBundledContentSource. They are relative to the
+// resources root with no leading prefix; how that root is packaged (today: Compose
+// Multiplatform resources, which are not JVM classpath entries) is the adapter's business.
 const val SOURCES_JSON_FILE = "files/gl_sources.json"
 const val SOURCE_PATH_TEMPLATE = "files/content/%s.zip"
 // Build-generated manifest (generateEmbeddedSourcesManifest) of the source names whose zip
@@ -64,6 +57,8 @@ class ImportProjectUseCase @Inject constructor(
     val tsFactoryProvider: TsImporterFactory,
     val rcImporter: OngoingProjectImporter,
     val directoryProvider: IDirectoryProvider,
+    private val bundledContent: IBundledContentSource,
+    private val glSourceCatalog: GlSourceCatalog,
 ) {
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -114,10 +109,10 @@ class ImportProjectUseCase @Inject constructor(
     }
 
     private fun getEmbeddedSource(language: Language): File {
-        val resourceName = glSources.find { it.languageCode == language.slug }?.name
+        val resourceName = glSourceCatalog.sources.find { it.languageCode == language.slug }?.name
         val pathToSource = SOURCE_PATH_TEMPLATE.format(resourceName)
 
-        val sourceFile = runBlocking { Res.readBytes(pathToSource) }
+        val sourceFile = bundledContent.readBlocking(pathToSource)
             .inputStream()
             .use { input ->
                 val tempFile = File.createTempFile(
@@ -169,34 +164,6 @@ class ImportProjectUseCase @Inject constructor(
         return factory.makeImporter()
     }
 
-    companion object {
-        val glSources: List<ResourceInfoSerializable> by lazy {
-            // The GL-sources manifest ships as a Compose resource
-            // (composeResources/files/gl_sources.json), so it is read via Res.readBytes —
-            // NOT the JVM classpath (Compose packs its resources into a separate store the
-            // classloader doesn't see). A missing resource degrades to "no embedded GL
-            // sources" rather than crashing every caller (wizard, sideloadSource, import).
-            val bytes = runCatching { runBlocking { Res.readBytes(SOURCES_JSON_FILE) } }
-                .getOrNull() ?: return@lazy emptyList()
-            val mapper = ObjectMapper(JsonFactory()).registerKotlinModule()
-            val sources: List<ResourceInfoSerializable> = mapper.readValue(bytes)
-            sources
-        }
-
-        /**
-         * The source names (matching [ResourceInfoSerializable.name]) whose zip is actually
-         * bundled, per the build-generated [EMBEDDED_SOURCES_FILE]. Empty if the manifest is
-         * absent (e.g. the download task never ran), which fails closed — no embedded sources
-         * offered rather than offering ones that can't be sideloaded.
-         */
-        val embeddedSourceNames: Set<String> by lazy {
-            val bytes = runCatching { runBlocking { Res.readBytes(EMBEDDED_SOURCES_FILE) } }
-                .getOrNull() ?: return@lazy emptySet()
-            val mapper = ObjectMapper(JsonFactory()).registerKotlinModule()
-            val names: List<String> = mapper.readValue(bytes)
-            names.toSet()
-        }
-    }
 }
 
 data class ResourceInfoSerializable(val name: String, val languageCode: String, val url: String)

@@ -1,4 +1,3 @@
-@file:OptIn(InternalResourceApi::class)
 
 package org.bibletranslationtools.otter.database
 
@@ -22,7 +21,6 @@ import org.bibletranslationtools.otter.common.persistence.database.daos.Translat
 import org.bibletranslationtools.otter.common.persistence.database.daos.VersificationDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.WorkbookDescriptorDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.WorkbookTypeDao
-import org.jetbrains.compose.resources.InternalResourceApi
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.conf.Settings

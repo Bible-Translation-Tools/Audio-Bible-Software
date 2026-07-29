@@ -1,5 +1,6 @@
 package org.bibletranslationtools.shared.di.koin
 
+import org.bibletranslationtools.otter.common.api.io.IBundledContentSource
 import org.bibletranslationtools.otter.common.api.persistence.ILanguageDataSource
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IContentRepository
@@ -14,8 +15,10 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IWork
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.persistence.repositories.WorkbookRepository
 import org.bibletranslationtools.otter.common.domain.languages.LanguageDataSource
+import org.bibletranslationtools.otter.common.domain.project.GlSourceCatalog
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.IZipEntryTreeBuilder
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ZipEntryTreeBuilder
+import org.bibletranslationtools.shared.content.ComposeBundledContentSource
 import org.bibletranslationtools.shared.domain.SourceAudioImporter
 import org.bibletranslationtools.shared.preferences.DataStoreAppPreferences
 import org.bibletranslationtools.shared.preferences.IAppPreferences
@@ -104,6 +107,15 @@ val zipEntryTreeBuilderModule = module {
     singleOf(::ZipEntryTreeBuilder) { bind<IZipEntryTreeBuilder>() }
 }
 
+// Bundled content (GL source zips, langnames, source manifests, versification) reaches the
+// backend through IBundledContentSource so that domain/ and initialization/ never import the
+// Compose Res object. Both are singles: GlSourceCatalog parses lazily and caches, matching
+// the process-wide caching the old ImportProjectUseCase.Companion lazies provided.
+val bundledContentModule = module {
+    single<IBundledContentSource> { ComposeBundledContentSource() }
+    singleOf(::GlSourceCatalog)
+}
+
 val metadataModule = module {
 //    single<IAppInfo> { AppInfo() }
 }
@@ -121,6 +133,7 @@ val sharedCommonModules = listOf(
     appPreferencesModule,
     appRepositoriesModule,
     zipEntryTreeBuilderModule,
+    bundledContentModule,
     metadataModule,
     authModule
 )

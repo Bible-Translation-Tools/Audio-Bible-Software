@@ -24,15 +24,17 @@ import kotlin.test.fail
  */
 class PortBoundaryTest {
 
-    private val apiRoot: File = run {
+    private val commonMainRoot: File = run {
         // Gradle runs test tasks with the working directory set to the project dir (shared/),
         // but walk up as a fallback so the test also works from a repo-root invocation.
         var dir = File(".").absoluteFile
         while (dir.parentFile != null && !File(dir, "src/commonMain/kotlin").isDirectory) {
             dir = dir.parentFile
         }
-        File(dir, "src/commonMain/kotlin/org/bibletranslationtools/otter/common/api")
+        File(dir, "src/commonMain/kotlin/org/bibletranslationtools/otter/common")
     }
+
+    private val apiRoot: File = File(commonMainRoot, "api")
 
     private fun apiSources(): List<File> {
         assertTrue(
@@ -83,6 +85,40 @@ class PortBoundaryTest {
         forbidden = "otter.common.persistence",
         rationale = "that is a reverse edge: adapters depend on ports, never the other way."
     ) { it.startsWith("org.bibletranslationtools.otter.common.persistence") }
+
+    /**
+     * The inner layers must not depend on a UI framework.
+     *
+     * `initialization/` and `domain/project/` used to read the bundled GL zips, langnames
+     * catalog, source manifests, and versification json straight off the Compose
+     * Multiplatform `Res` object — a UI-framework dependency in the domain layer, plus a
+     * `runBlocking` at each call site to bridge its suspend API. They now go through
+     * [org.bibletranslationtools.otter.common.api.io.IBundledContentSource], whose only
+     * implementation knows about Compose.
+     */
+    @Test
+    fun `backend layers do not depend on Compose`() {
+        val layers = listOf("api", "data", "domain", "initialization", "persistence")
+        val violations = layers.flatMap { layer ->
+            val root = File(commonMainRoot, layer)
+            if (!root.isDirectory) return@flatMap emptyList()
+            root.walkTopDown()
+                .filter { it.isFile && it.extension == "kt" }
+                .flatMap { file ->
+                    importsOf(file)
+                        .filter { it.startsWith("org.jetbrains.compose") || it.startsWith("androidx.compose") }
+                        .map { "$layer/${file.name} imports $it" }
+                }
+                .toList()
+        }
+        if (violations.isNotEmpty()) {
+            fail(
+                "the backend layers must not depend on Compose — read bundled content through " +
+                    "IBundledContentSource instead of the generated Res object\n" +
+                    violations.joinToString("\n") { "  - $it" }
+            )
+        }
+    }
 
     /**
      * `api/persistence/` is interfaces (plus the `ModelTake` typealias) only. Concrete

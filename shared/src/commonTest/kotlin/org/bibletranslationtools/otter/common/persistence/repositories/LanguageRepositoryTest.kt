@@ -6,6 +6,7 @@ import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.test.runTest
 import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
 import org.bibletranslationtools.otter.common.data.primitives.Language
+import org.bibletranslationtools.otter.common.domain.project.GlSourceCatalog
 import org.bibletranslationtools.otter.common.persistence.database.daos.LanguageDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.TranslationDao
 import org.bibletranslationtools.otter.common.persistence.repositories.LanguageRepository
@@ -23,6 +24,7 @@ class LanguageRepositoryTest {
     private val translationDao = mockk<TranslationDao>()
     private val mapper = mockk<LanguageMapper>()
     private val translationMapper = mockk<TranslationMapper>()
+    private val glSourceCatalog = mockk<GlSourceCatalog>()
 
     private lateinit var repository: LanguageRepository
 
@@ -34,7 +36,7 @@ class LanguageRepositoryTest {
         every { db.languageDao } returns languageDao
         every { db.translationDao } returns translationDao
 
-        repository = LanguageRepository(db, mapper, translationMapper)
+        repository = LanguageRepository(db, mapper, translationMapper, glSourceCatalog)
     }
 
     @Test
