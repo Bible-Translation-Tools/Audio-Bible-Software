@@ -124,16 +124,20 @@ compose.desktop {
             "-Dapple.awt.application.name=BTT-Recorder"
         )
 
-        // ProGuard is off for release packaging. It aborts on ~1670 unresolved references to OPTIONAL
-        // dependencies of our libraries that are absent (and unused) on desktop: javafx.* via
-        // rxkotlinfx, javax.annotation.* via okhttp/retrofit, org.osgi.*/aQute.bnd.* via Tika,
-        // javax.persistence.* via jOOQ, android.*/conscrypt via okhttp's Android paths.
-        // Those could be silenced with -dontwarn, but shrinking/obfuscating is genuinely risky here:
-        // jOOQ record mapping, Jackson, snakeyaml, JNA and the SQLite driver all resolve types
-        // reflectively, so a minified build would need a large, carefully tested set of -keep rules.
-        // Desktop distributions bundle their own JRE, so the size win doesn't justify that yet.
+        // ProGuard runs in SHRINK-ONLY mode for release packaging: dead code is removed, but
+        // nothing is renamed or inlined. The target is material-icons-extended, which ships all
+        // ~11,100 Material icons while this app references a few dozen.
+        // Renaming/inlining is what would break the reflective paths here (jOOQ record mapping,
+        // Jackson, snakeyaml, JNA, sqlite-jdbc, ServiceLoader), so both stay off and the
+        // reflective libraries are kept whole. See proguard/desktop-shrink.pro for the rules and
+        // the -dontwarn list that silences the optional deps absent on desktop.
         buildTypes.release.proguard {
-            isEnabled.set(false)
+            isEnabled.set(true)
+            obfuscate.set(false)
+            optimize.set(false)
+            // Keep one output jar per input jar so per-library size changes stay measurable.
+            joinOutputJars.set(false)
+            configurationFiles.from(rootProject.file("proguard/desktop-shrink.pro"))
         }
 
         nativeDistributions {

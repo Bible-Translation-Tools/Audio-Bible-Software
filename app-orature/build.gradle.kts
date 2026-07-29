@@ -134,11 +134,18 @@ compose.desktop {
             "-Dapple.awt.application.name=Orature"
         )
 
-        // ProGuard is off for release packaging — same reasoning as :app-recorder (it aborts on
-        // unresolved references to optional deps absent on desktop, and minifying would break the
-        // reflective jOOQ/Jackson/JNA/SQLite paths without a large, well-tested set of keep rules).
+        // ProGuard runs in SHRINK-ONLY mode for release packaging — same setup as :app-recorder
+        // (see proguard/desktop-shrink.pro). Orature adds Sentry, which resolves its integrations
+        // reflectively, so it carries an extra rules file.
         buildTypes.release.proguard {
-            isEnabled.set(false)
+            isEnabled.set(true)
+            obfuscate.set(false)
+            optimize.set(false)
+            joinOutputJars.set(false)
+            configurationFiles.from(
+                rootProject.file("proguard/desktop-shrink.pro"),
+                rootProject.file("proguard/desktop-shrink-orature.pro")
+            )
         }
 
         nativeDistributions {
