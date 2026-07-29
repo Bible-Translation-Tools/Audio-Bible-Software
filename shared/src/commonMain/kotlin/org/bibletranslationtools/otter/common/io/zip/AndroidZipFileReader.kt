@@ -1,5 +1,6 @@
-package org.bibletranslationtools.otter.common.api.io.zip
+package org.bibletranslationtools.otter.common.io.zip
 
+import org.bibletranslationtools.otter.common.api.io.zip.IFileReader
 import io.reactivex.Observable
 import java.io.BufferedReader
 import java.io.File

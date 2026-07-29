@@ -1,5 +1,6 @@
-package org.bibletranslationtools.otter.common.api.io.zip
+package org.bibletranslationtools.otter.common.io.zip
 
+import org.bibletranslationtools.otter.common.api.io.zip.IFileReader
 import io.reactivex.Observable
 import java.io.File
 import java.io.InputStream
@@ -8,7 +9,7 @@ import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.streams.asSequence
-import org.bibletranslationtools.otter.common.api.io.utils.copyDirectoryTo
+import org.bibletranslationtools.otter.common.io.utils.copyDirectoryTo
 
 class NioDirectoryFileReader(
     private val dir: File

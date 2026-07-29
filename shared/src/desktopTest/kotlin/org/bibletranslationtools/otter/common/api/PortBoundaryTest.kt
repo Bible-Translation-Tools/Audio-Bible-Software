@@ -121,29 +121,27 @@ class PortBoundaryTest {
     }
 
     /**
-     * `api/persistence/` is interfaces (plus the `ModelTake` typealias) only. Concrete
-     * repositories belong in `persistence/repositories/` — `WorkbookRepository` and
-     * `WorkbookDatabaseAccessor` used to sit here, which made `api/` read as a mixed bag and
-     * hid the layer boundary from anyone reading an import.
+     * `api/` is interfaces (plus the `ModelTake` typealias) only — implementations live in the
+     * layer that owns them.
      *
-     * Scoped to `api/persistence/` on purpose: `api/io/zip/` still holds the Nio/Android
-     * `IFileReader`/`IFileWriter` implementations alongside their interfaces, which is a
-     * separate cleanup.
+     * It used to be a mixed bag: `WorkbookRepository` and `WorkbookDatabaseAccessor` sat in
+     * `api/persistence/repositories/`, and `api/io/zip/` held the Nio/`java.util.zip`
+     * `IFileReader`/`IFileWriter` implementations next to their interfaces. Anyone reading
+     * `api/` as a port package was wrong, and an import no longer told you which side of the
+     * boundary you were on. Those now live in `persistence/repositories/` and `io/zip/`.
      */
     @Test
-    fun `persistence ports declare no concrete classes`() {
+    fun `ports declare no concrete classes`() {
         val declaration = Regex("""^(?:abstract |sealed |data |open |internal |private )*(class|object)\s+(\w+)""")
-        val violations = apiSources()
-            .filter { it.absolutePath.contains("/api/persistence/") }
-            .flatMap { file ->
-                file.readLines()
-                    .mapNotNull { declaration.find(it)?.groupValues?.get(2) }
-                    .map { "${file.name} declares class/object $it" }
-            }
+        val violations = apiSources().flatMap { file ->
+            file.readLines()
+                .mapNotNull { declaration.find(it)?.groupValues?.get(2) }
+                .map { "${file.toRelativeString(apiRoot)} declares class/object $it" }
+        }
         if (violations.isNotEmpty()) {
             fail(
-                "api/persistence/ must contain only interfaces — move implementations to " +
-                    "persistence/\n" + violations.joinToString("\n") { "  - $it" }
+                "api/ must contain only interfaces — move implementations into the layer that " +
+                    "owns them\n" + violations.joinToString("\n") { "  - $it" }
             )
         }
     }

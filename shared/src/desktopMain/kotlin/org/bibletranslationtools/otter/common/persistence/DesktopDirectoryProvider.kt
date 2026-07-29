@@ -5,9 +5,9 @@ import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.ContainerType
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.api.io.zip.IFileReader
-import org.bibletranslationtools.otter.common.api.io.zip.NioDirectoryFileReader
-import org.bibletranslationtools.otter.common.api.io.zip.NioZipFileReader
-import org.bibletranslationtools.otter.common.api.io.zip.NioZipFileWriter
+import org.bibletranslationtools.otter.common.io.zip.NioDirectoryFileReader
+import org.bibletranslationtools.otter.common.io.zip.NioZipFileReader
+import org.bibletranslationtools.otter.common.io.zip.NioZipFileWriter
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import java.io.File

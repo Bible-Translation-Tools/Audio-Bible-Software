@@ -1,8 +1,9 @@
-package org.bibletranslationtools.otter.common.api.io.zip
+package org.bibletranslationtools.otter.common.io.zip
 
+import org.bibletranslationtools.otter.common.api.io.zip.IFileReader
 import io.reactivex.Observable
-import org.bibletranslationtools.otter.common.api.io.utils.copyDirectoryTo
-import org.bibletranslationtools.otter.common.api.io.utils.jarUri
+import org.bibletranslationtools.otter.common.io.utils.copyDirectoryTo
+import org.bibletranslationtools.otter.common.io.utils.jarUri
 import java.io.File
 import java.io.InputStream
 import java.nio.file.FileSystem

@@ -1,9 +1,10 @@
-package org.bibletranslationtools.otter.common.api.io.zip
+package org.bibletranslationtools.otter.common.io.zip
 
-import org.bibletranslationtools.otter.common.api.io.utils.copyDirectoryTo
-import org.bibletranslationtools.otter.common.api.io.utils.copyFileTo
-import org.bibletranslationtools.otter.common.api.io.utils.createParentDirectories
-import org.bibletranslationtools.otter.common.api.io.utils.jarUri
+import org.bibletranslationtools.otter.common.api.io.zip.IFileWriter
+import org.bibletranslationtools.otter.common.io.utils.copyDirectoryTo
+import org.bibletranslationtools.otter.common.io.utils.copyFileTo
+import org.bibletranslationtools.otter.common.io.utils.createParentDirectories
+import org.bibletranslationtools.otter.common.io.utils.jarUri
 import java.io.BufferedWriter
 import java.io.File
 import java.io.OutputStream

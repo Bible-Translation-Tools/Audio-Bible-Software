@@ -71,6 +71,14 @@ class OratureProjectWizardViewModelTest : KoinTest {
                     single { resourceMetadataRepo }
                     single { workbookDescriptorRepo }
                     single { importer }
+                    // The VM injects this too (projectDeletion.awaitClear() gates every
+                    // create). Koin's `by inject()` is lazy, so leaving it unbound did not
+                    // fail at construction — it threw NoDefinitionFoundException inside
+                    // viewModelScope on the first create, where the exception was swallowed
+                    // and every create-path test just timed out. Real instance rather than a
+                    // mock: it is a no-arg holder whose awaitClear() returns immediately at
+                    // the initial pending == 0.
+                    single { OratureProjectDeletion() }
                 }
             )
         }

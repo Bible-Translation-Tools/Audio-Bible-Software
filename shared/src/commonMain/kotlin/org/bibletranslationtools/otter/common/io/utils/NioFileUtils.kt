@@ -1,4 +1,4 @@
-package org.bibletranslationtools.otter.common.api.io.utils
+package org.bibletranslationtools.otter.common.io.utils
 
 import io.reactivex.Observable
 import io.reactivex.rxkotlin.toObservable
