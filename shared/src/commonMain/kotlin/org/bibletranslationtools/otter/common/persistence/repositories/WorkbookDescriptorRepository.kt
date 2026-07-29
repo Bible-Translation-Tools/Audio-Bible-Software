@@ -36,21 +36,18 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IWork
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
 import org.bibletranslationtools.otter.common.persistence.entities.WorkbookDescriptorEntity
-import javax.inject.Inject
 
-class WorkbookDescriptorRepository @Inject constructor(
+class WorkbookDescriptorRepository(
     database: IAppDatabase,
     private val collectionRepository: ICollectionRepository,
     private val contentRepository: IContentRepository,
-    private val workbookRepository: IWorkbookRepository
+    private val workbookRepository: IWorkbookRepository,
+    private val projectCompletionStatus: ProjectCompletionStatus
 ) : IWorkbookDescriptorRepository {
 
     private val logger = LoggerFactory.getLogger(javaClass)
     private val workbookDescriptorDao = database.workbookDescriptorDao
     private val workbookTypeDao = database.workbookTypeDao
-
-    @Inject
-    lateinit var projectCompletionStatus: ProjectCompletionStatus
 
     override fun getById(id: Int): Maybe<WorkbookDescriptor> {
         return Maybe

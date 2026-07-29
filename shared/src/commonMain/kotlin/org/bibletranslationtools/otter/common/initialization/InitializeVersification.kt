@@ -29,13 +29,12 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IVers
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.ProgressStatus
 import java.io.File
-import javax.inject.Inject
 
 private const val ULB_VERSIFICATION_FILE = "ulb.json"
 private const val UFW_VERSIFICATION_FILE = "ufw.json"
 private const val ULB_VERSIFICATION_RESOURCE_PATH = "files/versification/ulb_versification.json"
 
-class InitializeVersification @Inject constructor(
+class InitializeVersification(
     val directoryProvider: IDirectoryProvider,
     val versificationRepository: IVersificationRepository,
     private val bundledContent: IBundledContentSource

@@ -24,7 +24,7 @@
 //import org.bibletranslationtools.otter.common.api.persistence.repositories.IAppPreferencesRepository
 //import javax.inject.Inject
 //
-//class AppTheme @Inject constructor(
+//class AppTheme(
 //    private val appPrefRepo: IAppPreferencesRepository
 //) {
 //    val preferredTheme: Single<ColorTheme>

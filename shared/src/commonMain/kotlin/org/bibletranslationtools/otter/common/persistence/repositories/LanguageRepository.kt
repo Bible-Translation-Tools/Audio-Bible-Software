@@ -30,9 +30,8 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.ILang
 import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.LanguageMapper
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.TranslationMapper
-import javax.inject.Inject
 
-class LanguageRepository @Inject constructor(
+class LanguageRepository(
     database: IAppDatabase,
     private val mapper: LanguageMapper,
     private val translationMapper: TranslationMapper,

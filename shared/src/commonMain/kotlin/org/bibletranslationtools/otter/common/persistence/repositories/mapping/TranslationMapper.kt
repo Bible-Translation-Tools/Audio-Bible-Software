@@ -22,9 +22,8 @@ import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.workbook.Translation
 import org.bibletranslationtools.otter.common.persistence.entities.TranslationEntity
 import java.time.LocalDateTime
-import javax.inject.Inject
 
-class TranslationMapper @Inject constructor() {
+class TranslationMapper() {
     fun mapFromEntity(type: TranslationEntity, source: Language, target: Language) =
         Translation(
             source,

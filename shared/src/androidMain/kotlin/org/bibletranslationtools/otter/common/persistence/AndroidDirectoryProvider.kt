@@ -17,9 +17,8 @@ import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.nio.file.FileSystems
-import javax.inject.Inject
 
-class AndroidDirectoryProvider @Inject constructor (val context: Context): IDirectoryProvider {
+class AndroidDirectoryProvider(val context: Context): IDirectoryProvider {
 
     private val pathSeparator = FileSystems.getDefault().separator
 

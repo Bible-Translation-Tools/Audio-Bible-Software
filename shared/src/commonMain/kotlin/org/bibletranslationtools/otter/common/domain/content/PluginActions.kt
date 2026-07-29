@@ -48,7 +48,7 @@
 // * No Plugin - The plugin was not found, and the action could not be performed.
 // * No Audio - The result of the plugin was an empty audio file.
 // */
-//class PluginActions @Inject constructor(
+//class PluginActions(
 //    private val waveFileCreator: IWaveFileCreator,
 //    private val launchPlugin: LaunchPlugin,
 //    private val pcmTakeTransformer: PcmTakeTransformer

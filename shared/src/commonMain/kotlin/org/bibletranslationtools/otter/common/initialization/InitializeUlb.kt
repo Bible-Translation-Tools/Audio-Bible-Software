@@ -30,12 +30,11 @@ import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCas
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportException
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
 import java.io.File
-import javax.inject.Inject
 
 const val EN_ULB_FILENAME = "en_ulb"
 private const val EN_ULB_PATH = "files/content/$EN_ULB_FILENAME.zip"
 
-class InitializeUlb @Inject constructor(
+class InitializeUlb(
     private val directoryProvider: IDirectoryProvider,
     private val installedEntityRepo: IInstalledEntityRepository,
     private val importer: ImportProjectUseCase,

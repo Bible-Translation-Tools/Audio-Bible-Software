@@ -21,9 +21,8 @@ package org.bibletranslationtools.otter.common.persistence.repositories.mapping
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.api.persistence.mapping.Mapper
 import org.bibletranslationtools.otter.common.persistence.entities.LanguageEntity
-import javax.inject.Inject
 
-class LanguageMapper @Inject constructor() : Mapper<LanguageEntity, Language> {
+class LanguageMapper() : Mapper<LanguageEntity, Language> {
 
     override fun mapFromEntity(type: LanguageEntity) =
         Language(

@@ -18,9 +18,6 @@
  */
 package org.bibletranslationtools.otter.common.domain.narration
 
-import dagger.assisted.Assisted
-import dagger.assisted.AssistedFactory
-import dagger.assisted.AssistedInject
 import io.reactivex.Completable
 import kotlinx.coroutines.flow.Flow
 import io.reactivex.Single
@@ -56,15 +53,15 @@ import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-class Narration @AssistedInject constructor(
+class Narration(
     private val directoryProvider: IDirectoryProvider,
     private val splitAudioOnCues: SplitAudioOnCues,
     private val audioFileUtils: AudioFileUtils,
     private val audioBouncer: AudioBouncer,
     private val recorder: IAudioRecorder,
     private val player: IAudioPlayer,
-    @Assisted private val workbook: Workbook,
-    @Assisted private val chapter: Chapter
+    private val workbook: Workbook,
+    private val chapter: Chapter
 ) {
 
     private val DEFAULT_FRAME_SIZE_BYTES = 2
@@ -800,12 +797,4 @@ class Narration @AssistedInject constructor(
             chapterRepresentation.relativeChapterFrameToAbsoluteIndex(frame) / chapterRepresentation.frameSizeInBytes
         return chapterRepresentation.findVerse(frame)?.marker
     }
-}
-
-@AssistedFactory
-interface NarrationFactory {
-    fun create(
-        workbook: Workbook,
-        chapter: Chapter
-    ): Narration
 }

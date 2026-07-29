@@ -39,8 +39,6 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstan
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import java.io.File
 import java.lang.IllegalArgumentException
-import javax.inject.Inject
-import javax.inject.Provider
 
 // Packaged resource paths, resolved through IBundledContentSource. They are relative to the
 // resources root with no leading prefix; how that root is packaged (today: Compose
@@ -51,7 +49,7 @@ const val SOURCE_PATH_TEMPLATE = "files/content/%s.zip"
 // actually got bundled — the wa-catalog manifest is partly stale, so this reflects reality.
 const val EMBEDDED_SOURCES_FILE = "files/embedded_gl_sources.json"
 
-class ImportProjectUseCase @Inject constructor(
+class ImportProjectUseCase(
     val burritoFactoryProvider: BurritoImporterFactory,
     val rcFactoryProvider: RCImporterFactory,
     val tsFactoryProvider: TsImporterFactory,

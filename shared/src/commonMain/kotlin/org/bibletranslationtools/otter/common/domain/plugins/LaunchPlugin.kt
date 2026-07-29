@@ -26,7 +26,7 @@
 //import java.io.File
 //import javax.inject.Inject
 //
-//class LaunchPlugin @Inject constructor(
+//class LaunchPlugin(
 //    private val pluginRepository: IAudioPluginRepository
 //) {
 //    enum class Result {

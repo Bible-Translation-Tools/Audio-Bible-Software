@@ -28,11 +28,10 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.ILang
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.ProgressStatus
 import org.bibletranslationtools.otter.common.domain.languages.ImportLanguages
-import javax.inject.Inject
 
 const val LANGNAMES_PATH = "files/content/langnames.json"
 
-class InitializeLanguages @Inject constructor(
+class InitializeLanguages(
     val installedEntityRepo: IInstalledEntityRepository,
     val languageRepo: ILanguageRepository,
     val languageDataSource: ILanguageDataSource,

@@ -6,9 +6,8 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportRes
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.wycliffeassociates.tstudio2rc.Tstudio2RcConverter
 import java.io.File
-import javax.inject.Inject
 
-class TstudioImporter @Inject constructor(
+class TstudioImporter(
     private val directoryProvider: IDirectoryProvider
 ) : IProjectImporter {
     private var next: RCImporter? = null

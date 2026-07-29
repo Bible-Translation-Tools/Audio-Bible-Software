@@ -29,7 +29,7 @@
 //
 //private const val DEFAULT_LANGUAGE_SLUG = "en"
 //
-//class LocaleLanguage @Inject constructor(
+//class LocaleLanguage(
 //    private val appPrefRepo: IAppPreferences,
 //    private val langRepo: ILanguageRepository,
 //    private val localeDataSource: ILocaleDataSource

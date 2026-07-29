@@ -40,9 +40,8 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IReso
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import java.io.File
 import java.io.IOException
-import javax.inject.Inject
 
-class ExistingSourceImporter @Inject constructor(
+class ExistingSourceImporter(
     directoryProvider: IDirectoryProvider,
     private val resourceMetadataRepository: IResourceMetadataRepository,
     private val resourceContainerRepository: IResourceContainerRepository,

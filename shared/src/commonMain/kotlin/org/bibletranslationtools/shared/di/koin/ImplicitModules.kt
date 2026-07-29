@@ -64,19 +64,13 @@ val implicitCommonModule = module {
     // Collections
     factoryOf(::DeleteTranslation)
     factoryOf(::CreateTranslation)
-    // CreateProject injects collectionRepo + resourceMetadataRepo via its
-    // constructor, but `translationCreation` is a Dagger field-injected
-    // `@Inject lateinit var` that Koin's constructor DSL won't populate. Set it
-    // explicitly, otherwise importing a project throws
-    // UninitializedPropertyAccessException in createAllBooks().
-    factory { CreateProject(get(), get()).apply { translationCreation = get() } }
+    factoryOf(::CreateProject)
     factoryOf(::UpdateTranslation)
     factoryOf(::UpdateProject)
     factoryOf(::DeleteProject)
 
     // Audio
-    // AudioExporter has @Inject lateinit var audioConverter — factoryOf won't set it.
-    factory { AudioExporter().apply { audioConverter = get() } }
+    factoryOf(::AudioExporter)
     factoryOf(::AudioBouncer)
     factoryOf(::AudioConverter)
 
@@ -85,10 +79,10 @@ val implicitCommonModule = module {
     factoryOf(::ImportLanguages)
 //    factoryOf(::ProjectFormatIdentifier)
 
-    // Exporters — each has @Inject lateinit var fields that factoryOf won't populate.
-    factory { AudioProjectExporter(get()).apply { audioExporter = get() } }
-    factory { BackupProjectExporter(get(), get()).apply { concatenateAudio = get() } }
-    factory { SourceProjectExporter(get(), get()).apply { concatenateAudio = get(); audioExporter = get() } }
+    // Exporters
+    factoryOf(::AudioProjectExporter)
+    factoryOf(::BackupProjectExporter)
+    factoryOf(::SourceProjectExporter)
 
     // Importers
     factoryOf(::NewSourceImporter)

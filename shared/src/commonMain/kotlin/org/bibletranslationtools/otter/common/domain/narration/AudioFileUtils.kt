@@ -22,9 +22,8 @@ import org.bibletranslationtools.otter.common.audio.AudioFile
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
 import java.io.File
-import javax.inject.Inject
 
-class AudioFileUtils @Inject constructor(private val directoryProvider: IDirectoryProvider) {
+class AudioFileUtils(private val directoryProvider: IDirectoryProvider) {
 
     fun getSectionAsFile(audio: AudioFile, reader: AudioFileReader): File {
         val file = directoryProvider.createTempFile("verse", ".${audio.file.extension}")

@@ -30,9 +30,8 @@ import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import java.util.concurrent.TimeUnit
-import javax.inject.Inject
 
-class DeleteProject @Inject constructor(
+class DeleteProject(
     private val collectionRepository: ICollectionRepository,
     private val directoryProvider: IDirectoryProvider,
     private val workbookRepository: IWorkbookRepository,

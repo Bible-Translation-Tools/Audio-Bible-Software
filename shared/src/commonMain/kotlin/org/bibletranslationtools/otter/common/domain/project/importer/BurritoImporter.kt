@@ -6,9 +6,8 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportRes
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito.BurritoToResourceContainerConverter
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import java.io.File
-import javax.inject.Inject
 
-class BurritoImporter @Inject constructor(
+class BurritoImporter(
     private val directoryProvider: IDirectoryProvider,
     private val converter: BurritoToResourceContainerConverter,
 ): IProjectImporter {

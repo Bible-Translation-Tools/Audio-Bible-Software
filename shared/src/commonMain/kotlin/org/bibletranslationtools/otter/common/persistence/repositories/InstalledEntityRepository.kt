@@ -21,9 +21,8 @@ package org.bibletranslationtools.otter.common.persistence.repositories
 import org.bibletranslationtools.otter.common.api.persistence.config.Installable
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IInstalledEntityRepository
 import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
-import javax.inject.Inject
 
-class InstalledEntityRepository @Inject constructor(
+class InstalledEntityRepository(
     private val database: IAppDatabase
 ) : IInstalledEntityRepository {
 

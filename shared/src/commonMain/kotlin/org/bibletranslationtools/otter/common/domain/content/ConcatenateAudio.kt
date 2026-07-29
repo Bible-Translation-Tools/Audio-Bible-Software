@@ -24,9 +24,8 @@ import org.bibletranslationtools.otter.common.data.audio.OratureCueType
 import org.bibletranslationtools.otter.common.data.audio.VerseMarker
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import java.io.File
-import javax.inject.Inject
 
-class ConcatenateAudio @Inject constructor(private val directoryProvider: IDirectoryProvider) {
+class ConcatenateAudio(private val directoryProvider: IDirectoryProvider) {
 
     fun execute(
         files: List<File>,

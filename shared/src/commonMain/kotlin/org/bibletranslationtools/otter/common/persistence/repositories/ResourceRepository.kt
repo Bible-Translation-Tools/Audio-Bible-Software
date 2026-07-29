@@ -44,9 +44,8 @@ import org.bibletranslationtools.otter.common.persistence.entities.ContentEntity
 import org.bibletranslationtools.otter.common.persistence.entities.ResourceLinkEntity
 import org.bibletranslationtools.otter.common.persistence.entities.ResourceMetadataEntity
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.*
-import javax.inject.Inject
 
-class ResourceRepository @Inject constructor(private val database: IAppDatabase) : IResourceRepository {
+class ResourceRepository(private val database: IAppDatabase) : IResourceRepository {
     private val logger = LoggerFactory.getLogger(ResourceRepository::class.java)
 
     private val contentDao = database.contentDao

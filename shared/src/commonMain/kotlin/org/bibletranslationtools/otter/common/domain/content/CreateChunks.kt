@@ -42,7 +42,6 @@ import org.bibletranslationtools.otter.common.data.audio.VerseMarker
 import org.bibletranslationtools.otter.common.domain.versification.Versification
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
-import javax.inject.Inject
 
 
 /**
@@ -54,7 +53,7 @@ import javax.inject.Inject
  * @param chapterNumber The chapter number to create chunks for
  * @param workbook The workbook to add the created chunks to
  */
-class CreateChunks @Inject constructor(
+class CreateChunks(
     private val versificationRepository: IVersificationRepository
 ) {
     private val logger = LoggerFactory.getLogger(CreateChunks::class.java)

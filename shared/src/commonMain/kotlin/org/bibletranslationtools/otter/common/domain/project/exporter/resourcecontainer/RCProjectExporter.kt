@@ -41,14 +41,10 @@ import java.nio.file.StandardCopyOption
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
-import javax.inject.Inject
 
 abstract class RCProjectExporter(
     protected val directoryProvider:IDirectoryProvider
 ) : IProjectExporter {
-    @Inject
-    lateinit var concatenateAudio: ConcatenateAudio
-
 
     private val logger = LoggerFactory.getLogger(this.javaClass)
     private val compositeDisposable = CompositeDisposable()

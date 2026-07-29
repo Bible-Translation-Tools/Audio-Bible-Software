@@ -38,9 +38,8 @@ import java.io.FileWriter
 import java.lang.Exception
 import java.util.regex.Pattern
 import java.util.zip.ZipFile
-import javax.inject.Inject
 
-class BackupProjectExporter @Inject constructor(
+class BackupProjectExporter(
     directoryProvider: IDirectoryProvider,
     private val workbookRepository: IWorkbookRepository
 ) : RCProjectExporter(directoryProvider) {

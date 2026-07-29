@@ -18,10 +18,8 @@
  */
 package org.bibletranslationtools.otter.common.domain.project.importer
 
-import javax.inject.Inject
-import javax.inject.Provider
 
-class RCImporterFactory @Inject constructor(
+class RCImporterFactory(
     val ongoingProjectImporter: OngoingProjectImporter,
     val existingProjectImporter: ExistingSourceImporter,
     val newSourceImporter: NewSourceImporter

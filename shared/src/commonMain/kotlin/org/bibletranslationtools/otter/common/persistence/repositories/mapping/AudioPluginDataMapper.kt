@@ -22,9 +22,8 @@ import org.bibletranslationtools.otter.common.domain.plugins.AudioPluginData
 import org.bibletranslationtools.otter.common.api.persistence.mapping.Mapper
 import org.bibletranslationtools.otter.common.persistence.entities.AudioPluginEntity
 import java.io.File
-import javax.inject.Inject
 
-class AudioPluginDataMapper @Inject constructor() : Mapper<AudioPluginEntity, AudioPluginData> {
+class AudioPluginDataMapper() : Mapper<AudioPluginEntity, AudioPluginData> {
 
     override fun mapFromEntity(type: AudioPluginEntity): AudioPluginData {
         return AudioPluginData(

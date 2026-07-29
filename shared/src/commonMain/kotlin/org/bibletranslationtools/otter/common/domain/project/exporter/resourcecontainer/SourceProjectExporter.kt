@@ -48,18 +48,16 @@ import java.io.File
 import java.nio.file.Files
 import java.util.*
 import java.util.regex.Pattern
-import javax.inject.Inject
 import kotlin.io.path.deleteIfExists
 import kotlin.io.path.inputStream
 import kotlin.io.path.outputStream
 import kotlin.io.path.readText
 
-class SourceProjectExporter @Inject constructor(
+class SourceProjectExporter(
     directoryProvider: IDirectoryProvider,
-    val burritoUtils: ScriptureBurritoUtils
+    val burritoUtils: ScriptureBurritoUtils,
+    private val audioExporter: AudioExporter
 ) : RCProjectExporter(directoryProvider) {
-    @Inject
-    lateinit var audioExporter: AudioExporter
 
     private val logger = LoggerFactory.getLogger(this.javaClass)
     private val exportMediaTypes = listOf(

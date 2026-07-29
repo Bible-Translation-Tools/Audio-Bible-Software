@@ -21,9 +21,8 @@ package org.bibletranslationtools.otter.common.domain.collections
 import io.reactivex.Completable
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ILanguageRepository
-import javax.inject.Inject
 
-class DeleteTranslation @Inject constructor(
+class DeleteTranslation(
     private val languageRepo: ILanguageRepository
 ) {
     fun delete(

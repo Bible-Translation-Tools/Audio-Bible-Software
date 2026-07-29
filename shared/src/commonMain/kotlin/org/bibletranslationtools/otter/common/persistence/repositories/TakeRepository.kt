@@ -35,9 +35,8 @@ import org.bibletranslationtools.otter.common.persistence.repositories.mapping.M
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.TakeMapper
 import java.io.File
 import java.time.LocalDate
-import javax.inject.Inject
 
-class TakeRepository @Inject constructor(
+class TakeRepository(
     private val database: IAppDatabase,
     private val markerMapper: MarkerMapper,
     private val collectionMapper: CollectionMapper

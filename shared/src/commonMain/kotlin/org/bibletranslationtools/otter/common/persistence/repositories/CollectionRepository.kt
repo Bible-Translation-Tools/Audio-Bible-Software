@@ -66,9 +66,8 @@ import java.io.File
 import java.lang.Exception
 import java.time.LocalDate
 import java.time.LocalDateTime
-import javax.inject.Inject
 
-class CollectionRepository @Inject constructor(
+class CollectionRepository(
     private val database: IAppDatabase,
     private val directoryProvider: IDirectoryProvider,
     private val collectionMapper: CollectionMapper,

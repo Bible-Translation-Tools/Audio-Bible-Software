@@ -24,9 +24,8 @@ import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.persistence.entities.ResourceMetadataEntity
 import java.io.File
 import java.time.LocalDate
-import javax.inject.Inject
 
-class ResourceMetadataMapper @Inject constructor() {
+class ResourceMetadataMapper() {
     fun mapFromEntity(entity: ResourceMetadataEntity, language: Language): ResourceMetadata {
         return ResourceMetadata(
             entity.conformsTo,

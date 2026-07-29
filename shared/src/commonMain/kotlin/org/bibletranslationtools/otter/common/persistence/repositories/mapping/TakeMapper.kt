@@ -24,7 +24,6 @@ import org.bibletranslationtools.otter.common.persistence.database.daos.Checking
 import org.bibletranslationtools.otter.common.persistence.entities.TakeEntity
 import java.io.File
 import java.time.LocalDate
-import javax.inject.Inject
 
 class TakeMapper(
     private val checkingStatusDao: CheckingStatusDao

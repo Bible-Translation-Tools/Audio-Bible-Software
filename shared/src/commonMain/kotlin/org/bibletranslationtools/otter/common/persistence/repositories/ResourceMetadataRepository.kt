@@ -33,9 +33,8 @@ import org.bibletranslationtools.otter.common.persistence.entities.ResourceMetad
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.LanguageMapper
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.ResourceMetadataMapper
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
-import javax.inject.Inject
 
-class ResourceMetadataRepository @Inject constructor(
+class ResourceMetadataRepository(
     database: IAppDatabase,
     private val metadataMapper: ResourceMetadataMapper = ResourceMetadataMapper(),
     private val languageMapper: LanguageMapper = LanguageMapper()

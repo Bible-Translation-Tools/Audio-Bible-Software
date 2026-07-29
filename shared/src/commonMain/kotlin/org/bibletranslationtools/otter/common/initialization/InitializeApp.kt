@@ -23,9 +23,8 @@ import io.reactivex.schedulers.Schedulers
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.ProgressStatus
-import javax.inject.Inject
 
-class InitializeApp @Inject constructor(
+class InitializeApp(
     private val initializeVersification: InitializeVersification,
     private val initializeSources: InitializeSources,
     private val initializeLanguages: InitializeLanguages,

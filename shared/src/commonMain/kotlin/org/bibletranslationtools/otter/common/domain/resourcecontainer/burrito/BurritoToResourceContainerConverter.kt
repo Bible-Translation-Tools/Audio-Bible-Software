@@ -35,7 +35,6 @@ import java.time.format.DateTimeFormatter
 import java.util.*
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
-import javax.inject.Inject
 import kotlin.collections.HashMap
 
 internal typealias IngredientsByBook = Map<String, List<Pair<String, IngredientSchema>>>
@@ -67,7 +66,7 @@ private val usfmFilenamePattern = "./{booknum}-{book}.usfm"
 private val filenamePattern = "{language}_{title}_{book}_c{chapter}.{extension}"
 private val DEFAULT_TITLE_CODE = "reg"
 
-class BurritoToResourceContainerConverter @Inject constructor(
+class BurritoToResourceContainerConverter(
     val directoryProvider: IDirectoryProvider
 ) {
     fun convert(

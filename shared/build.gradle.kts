@@ -37,7 +37,6 @@ kotlin {
     val retrofitJacksonVer = "2.9.0"
     val retrofitRxJava2Ver = "2.9.0"
     val jacksonVer = "2.15.1"
-    val daggerVer = "2.51.1"
     val kotlinresourcecontainerVer = "0.12.0"
     val kotlinscriptureburritoVer = "1.0.1"
     val slf4jApiVer = "2.0.13"
@@ -52,7 +51,6 @@ kotlin {
     val kotlinVttVer = "1.0.0"
     val kotlinScriptureAlignmentVer = "1.0.0"
     val koinVer = "3.5.6"
-    val kotlinInjectVer = "0.6.3"
 
     sourceSets {
         val commonMain by getting {
@@ -82,8 +80,6 @@ kotlin {
                 api("org.wycliffeassociates:kotlin-resource-container:$kotlinresourcecontainerVer")
                 api("org.wycliffeassociates:usfmtools:$usfmToolsVer")
 
-                api("com.google.dagger:dagger:$daggerVer")
-
                 api("org.jetbrains.kotlin:kotlin-reflect:$kotlinVer")
                 api("com.fasterxml.jackson.module:jackson-module-kotlin:$jacksonVer")
                 api("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:$jacksonVer")
@@ -107,7 +103,6 @@ kotlin {
                 api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
 
                 api("io.insert-koin:koin-core:$koinVer")
-                api("me.tatarka.inject:kotlin-inject-runtime:$kotlinInjectVer")
                 api(libs.koin.core)
 
                 api(libs.datastore.preferences)

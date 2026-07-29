@@ -26,10 +26,9 @@ import java.nio.file.*
 import java.nio.file.attribute.BasicFileAttributes
 import java.util.*
 import java.util.zip.ZipFile
-import javax.inject.Inject
 import kotlin.io.path.absolutePathString
 
-class ZipEntryTreeBuilder @Inject constructor() : IZipEntryTreeBuilder {
+class ZipEntryTreeBuilder() : IZipEntryTreeBuilder {
 
     private fun createZipFileSystem(zipFilename: String): FileSystem {
         val path = Paths.get(zipFilename)

@@ -22,9 +22,8 @@ import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.persistence.entities.CollectionEntity
 import java.time.LocalDateTime
-import javax.inject.Inject
 
-class CollectionMapper @Inject constructor() {
+class CollectionMapper() {
     fun mapFromEntity(entity: CollectionEntity, metadata: ResourceMetadata?): Collection {
         return Collection(
             sort = entity.sort,

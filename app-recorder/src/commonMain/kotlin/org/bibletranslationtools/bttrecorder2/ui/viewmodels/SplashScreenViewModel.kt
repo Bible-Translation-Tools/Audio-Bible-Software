@@ -10,7 +10,6 @@ import io.reactivex.Completable
 import org.bibletranslationtools.otter.common.initialization.InitializeApp
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
-import javax.inject.Inject
 
 class SplashScreenViewModel(): ViewModel(), KoinComponent {
 

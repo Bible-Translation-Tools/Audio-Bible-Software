@@ -30,9 +30,8 @@ import org.bibletranslationtools.otter.common.domain.project.importer.ProjectImp
 import org.bibletranslationtools.otter.common.domain.project.importer.RCImporterFactory
 import org.bibletranslationtools.otter.common.data.ProgressStatus
 import java.io.File
-import javax.inject.Inject
 
-class InitializeSources @Inject constructor(
+class InitializeSources(
     private val directoryProvider: IDirectoryProvider,
     private val resourceMetadataRepo: IResourceMetadataRepository,
     private val installedEntityRepo: IInstalledEntityRepository,

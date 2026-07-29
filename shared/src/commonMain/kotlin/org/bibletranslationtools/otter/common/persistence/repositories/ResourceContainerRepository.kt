@@ -22,7 +22,6 @@ import io.reactivex.Completable
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.rx2.await
-import javax.inject.Inject
 import org.jooq.DSLContext
 import org.jooq.Record3
 import org.jooq.Select
@@ -45,7 +44,7 @@ import org.bibletranslationtools.otter.common.persistence.repositories.mapping.L
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.ResourceMetadataMapper
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 
-class ResourceContainerRepository @Inject constructor(
+class ResourceContainerRepository(
     private val database: IAppDatabase,
     private val collectionRepository: ICollectionRepository,
     private val contentRepository: IContentRepository,

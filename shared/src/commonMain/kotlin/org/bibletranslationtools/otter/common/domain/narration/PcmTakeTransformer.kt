@@ -23,9 +23,8 @@ import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.domain.audio.AudioConverter
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import java.lang.IllegalArgumentException
-import javax.inject.Inject
 
-class PcmTakeTransformer @Inject constructor(
+class PcmTakeTransformer(
     private val directoryProvider: IDirectoryProvider,
     private val audioConverter: AudioConverter
 ) {

@@ -46,11 +46,10 @@ import java.security.NoSuchAlgorithmException
 import java.text.SimpleDateFormat
 import java.time.Instant
 import java.util.*
-import javax.inject.Inject
 
 typealias ChapterNumber = Int
 
-class ScriptureBurritoUtils @Inject constructor(
+class ScriptureBurritoUtils(
     private val idAuthorityProvider: AuthProvider,
     private val appInfo: IAppInfo,
     directoryProvider: IDirectoryProvider

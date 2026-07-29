@@ -87,10 +87,7 @@ val appRepositoriesModule = module {
             get()  // updateTranslationUseCase
         )
     }
-    // WorkbookDescriptorRepository has @Inject lateinit var projectCompletionStatus — set it manually.
-    single<IWorkbookDescriptorRepository> {
-        WorkbookDescriptorRepository(get(), get(), get(), get()).apply { projectCompletionStatus = get() }
-    }
+    singleOf(::WorkbookDescriptorRepository) { bind<IWorkbookDescriptorRepository>() }
     singleOf(::InstalledEntityRepository) { bind<IInstalledEntityRepository>() }
 //    singleOf(::AudioPluginRegistrar) { bind<IAudioPluginRegistrar>() }
 //    singleOf(::AppPreferencesRepository) { bind<IAppPreferencesRepository>() }

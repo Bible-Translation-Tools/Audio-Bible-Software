@@ -27,12 +27,11 @@ import org.bibletranslationtools.otter.common.domain.versification.Versification
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import org.wycliffeassociates.resourcecontainer.entity.Project
-import javax.inject.Inject
 
 private const val FORMAT = "text/usfm"
 private const val DEFAULT_VERSIFICATION = "ulb"
 
-class VersificationTreeBuilder @Inject constructor(
+class VersificationTreeBuilder(
     private val versificationRepository: IVersificationRepository
 ) {
     fun build(container: ResourceContainer): List<OtterTree<CollectionOrContent>>? {

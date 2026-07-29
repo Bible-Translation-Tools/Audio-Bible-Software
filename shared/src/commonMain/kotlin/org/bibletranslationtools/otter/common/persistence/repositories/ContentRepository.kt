@@ -37,10 +37,9 @@ import org.bibletranslationtools.otter.common.persistence.repositories.mapping.C
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.MarkerMapper
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.TakeMapper
 import java.lang.IllegalStateException
-import javax.inject.Inject
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.CollectionMapper
 
-class ContentRepository @Inject constructor(
+class ContentRepository(
     database: IAppDatabase
 ) : IContentRepository {
     private val logger = LoggerFactory.getLogger(ContentRepository::class.java)

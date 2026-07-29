@@ -4,6 +4,7 @@ import io.mockk.*
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.test.runTest
+import org.bibletranslationtools.otter.common.domain.project.ProjectCompletionStatus
 import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IContentRepository
@@ -24,6 +25,7 @@ class WorkbookDescriptorRepositoryTest {
     private val collectionRepository = mockk<ICollectionRepository>()
     private val contentRepository = mockk<IContentRepository>()
     private val workbookRepository = mockk<IWorkbookRepository>()
+    private val projectCompletionStatus = mockk<ProjectCompletionStatus>(relaxed = true)
     
     private val workbookDescriptorDao = mockk<WorkbookDescriptorDao>()
     private val workbookTypeDao = mockk<WorkbookTypeDao>()
@@ -42,7 +44,8 @@ class WorkbookDescriptorRepositoryTest {
             db,
             collectionRepository,
             contentRepository,
-            workbookRepository
+            workbookRepository,
+            projectCompletionStatus
         )
     }
 

@@ -20,9 +20,8 @@ package org.bibletranslationtools.otter.common.persistence.repositories.mapping
 
 import org.bibletranslationtools.otter.common.data.primitives.Marker
 import org.bibletranslationtools.otter.common.persistence.entities.MarkerEntity
-import javax.inject.Inject
 
-class MarkerMapper @Inject constructor() {
+class MarkerMapper() {
     fun mapFromEntity(type: MarkerEntity): Marker {
         return Marker(
             type.number,

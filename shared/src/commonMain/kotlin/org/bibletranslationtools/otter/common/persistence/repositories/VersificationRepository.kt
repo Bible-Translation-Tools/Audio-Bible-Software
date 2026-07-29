@@ -36,9 +36,8 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IVers
 import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
 import org.bibletranslationtools.otter.common.persistence.repositories.LanguageRepository
 import java.io.File
-import javax.inject.Inject
 
-class VersificationRepository @Inject constructor(
+class VersificationRepository(
     database: IAppDatabase,
     private val directoryProvider: IDirectoryProvider
 ) : IVersificationRepository {

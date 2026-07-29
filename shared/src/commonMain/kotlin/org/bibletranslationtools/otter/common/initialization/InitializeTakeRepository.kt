@@ -25,9 +25,8 @@ import org.bibletranslationtools.otter.common.api.persistence.config.Initializab
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ITakeRepository
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.ProgressStatus
-import javax.inject.Inject
 
-class InitializeTakeRepository @Inject constructor(
+class InitializeTakeRepository(
     private val takeRepository: ITakeRepository
 ) : Initializable {
 

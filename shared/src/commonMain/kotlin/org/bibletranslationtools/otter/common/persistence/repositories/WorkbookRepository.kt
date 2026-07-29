@@ -54,7 +54,6 @@ import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.domain.collections.UpdateTranslation
 import java.util.WeakHashMap
 import java.util.Collections.synchronizedMap
-import javax.inject.Inject
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IContentRepository
@@ -80,7 +79,6 @@ class WorkbookRepository(
 ) : IWorkbookRepository {
     private val logger = LoggerFactory.getLogger(WorkbookRepository::class.java)
 
-    @Inject
     constructor(
         directoryProvider: IDirectoryProvider,
         collectionRepository: ICollectionRepository,
