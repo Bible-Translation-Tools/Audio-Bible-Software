@@ -8,7 +8,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import org.bibletranslationtools.bttrecorder2.ui.TestTags
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 
@@ -54,7 +56,9 @@ fun SourceSelectionScreen(
                 ListItem(
                     headlineContent = { Text(source.title) },
                     supportingContent = { Text(source.language.name) },
-                    modifier = Modifier.clickable { onSourceSelected(source) }
+                    modifier = Modifier
+                        .testTag(TestTags.wizardRow(source.identifier))
+                        .clickable { onSourceSelected(source) }
                 )
                 HorizontalDivider()
             }
@@ -62,7 +66,9 @@ fun SourceSelectionScreen(
                 ListItem(
                     headlineContent = { Text(language.name) },
                     supportingContent = { Text(language.slug) },
-                    modifier = Modifier.clickable { onAvailableSourceSelected(language) }
+                    modifier = Modifier
+                        .testTag(TestTags.wizardRow(language.slug))
+                        .clickable { onAvailableSourceSelected(language) }
                 )
                 HorizontalDivider()
             }

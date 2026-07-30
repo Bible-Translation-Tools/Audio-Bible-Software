@@ -20,8 +20,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import org.bibletranslationtools.bttrecorder2.ui.TestTags
 import org.bibletranslationtools.shared.resources.Res
 import org.bibletranslationtools.shared.resources.action_back
 import org.bibletranslationtools.shared.resources.cd_close_search
@@ -46,8 +48,10 @@ fun ProjectWizardScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    if (uiState.isCreated) {
-        onProjectCreated()
+    LaunchedEffect(uiState.isCreated) {
+        if (uiState.isCreated) {
+            onProjectCreated()
+        }
     }
 
     // Search state lives at the wizard level. Each step renders its own list so
@@ -71,6 +75,7 @@ fun ProjectWizardScreen(
     }
 
     Scaffold(
+        modifier = Modifier.testTag(TestTags.WIZARD_SCREEN),
         topBar = {
             CenterAlignedTopAppBar(
                 title = {

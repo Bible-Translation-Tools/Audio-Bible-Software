@@ -186,12 +186,14 @@ class ProjectCreationViewModel : ViewModel(), KoinComponent {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             try {
-                createProject.create(
-                    sourceProject = source,
-                    targetLanguage = targetLang,
-                    mode = ProjectMode.NARRATION,
-                    deriveProjectFromVerses = true
-                ).blockingGet()
+                withContext(Dispatchers.IO) {
+                    createProject.create(
+                        sourceProject = source,
+                        targetLanguage = targetLang,
+                        mode = ProjectMode.NARRATION,
+                        deriveProjectFromVerses = false
+                    ).blockingGet()
+                }
                 _uiState.update { it.copy(isLoading = false, isCreated = true) }
             } catch (e: Exception) {
                  _uiState.update { it.copy(isLoading = false, error = e.message) }

@@ -76,9 +76,7 @@ fun Navigation(
             MainMenuScreen(
                 viewModel = vm,
                 onFilesClick = {
-                    scope.launch {
-                        navController.navigate(ProjectManagementRoute)
-                    }
+                    navController.navigate(ProjectManagementRoute)
                 },
                 onRecordClick = {
                     scope.launch {
@@ -114,13 +112,16 @@ fun Navigation(
                     navController.navigate(ProjectWizardRoute)
                 },
                 onProjectClick = { workbookDesc ->
+                    // Persist active workbook off the UI path; navigate immediately so
+                    // Compose UI tests (and users) are not blocked on prefs I/O or a
+                    // deferred coroutine dispatcher.
                     scope.launch {
                         appPreferences.setActiveWorkbook(
                             workbookDesc.sourceCollection.id,
                             workbookDesc.targetCollection.id
                         )
-                        navController.navigate(ChapterListRoute)
                     }
+                    navController.navigate(ChapterListRoute)
                 },
                 onRecordClick = { workbookDesc ->
                     // Project-list mic: jump straight into the recorder at the
@@ -131,15 +132,15 @@ fun Navigation(
                             workbookDesc.sourceCollection.id,
                             workbookDesc.targetCollection.id
                         )
-                        navController.navigate(
-                            RecorderRoute(
-                                workbookDesc.sourceCollection.id,
-                                workbookDesc.targetCollection.id,
-                                -1,
-                                -1
-                            )
-                        )
                     }
+                    navController.navigate(
+                        RecorderRoute(
+                            workbookDesc.sourceCollection.id,
+                            workbookDesc.targetCollection.id,
+                            -1,
+                            -1
+                        )
+                    )
                 },
                 onSettingsClick = { navController.navigate(SettingsRoute) }
             )
@@ -320,7 +321,12 @@ fun Navigation(
                 viewModel = vm,
                 onBackClick = { navController.popBackStack() },
                 onProjectCreated = {
-                    navController.popBackStack()
+                    // Replace the existing PM entry so LaunchedEffect reloads workbooks
+                    // and the new project is visible immediately.
+                    navController.navigate(ProjectManagementRoute) {
+                        popUpTo(ProjectManagementRoute) { inclusive = true }
+                        launchSingleTop = true
+                    }
                 }
             )
         }

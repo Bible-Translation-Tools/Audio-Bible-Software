@@ -1,3 +1,6 @@
+@file:OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
+
+import org.gradle.internal.os.OperatingSystem
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -70,6 +73,11 @@ kotlin {
         val desktopTest by getting {
             dependencies {
                 implementation(libs.kotlin.test.junit)
+                implementation(compose.desktop.currentOs)
+                implementation(compose.uiTest)
+                implementation(libs.kotlinx.coroutines.test)
+                implementation(libs.kotlinx.coroutines.swing)
+                implementation(libs.koin.test)
             }
         }
 
@@ -119,10 +127,13 @@ compose.desktop {
     application {
         mainClass = "org.bibletranslationtools.recorder2.MainKt"
 
-        jvmArgs += listOf(
-            "-Xdock:name=BTT-Recorder",
-            "-Dapple.awt.application.name=BTT-Recorder"
-        )
+        // macOS-only JVM flags; Windows/Linux reject -Xdock and fail to start.
+        if (OperatingSystem.current().isMacOsX) {
+            jvmArgs += listOf(
+                "-Xdock:name=BTT-Recorder",
+                "-Dapple.awt.application.name=BTT-Recorder"
+            )
+        }
 
         // ProGuard runs in SHRINK-ONLY mode for release packaging: dead code is removed, but
         // nothing is renamed or inlined. The target is material-icons-extended, which ships all
@@ -175,9 +186,9 @@ compose.desktop {
     }
 }
 
-// Ensure -Xdock:name reaches the dev run task (compose.desktop jvmArgs targets packaging only).
+// Ensure -Xdock:name reaches the macOS dev run task (compose.desktop jvmArgs targets packaging only).
 tasks.withType<JavaExec>().configureEach {
-    if (name == "run") {
+    if (name == "run" && OperatingSystem.current().isMacOsX) {
         jvmArgs("-Xdock:name=BTT-Recorder")
     }
 }

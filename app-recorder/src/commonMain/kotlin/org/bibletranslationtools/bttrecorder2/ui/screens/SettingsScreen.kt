@@ -45,10 +45,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import org.bibletranslationtools.bttrecorder2.ui.TestTags
 import org.bibletranslationtools.shared.preferences.AppSettings
 import org.bibletranslationtools.shared.preferences.ThemeMode
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.LangNamesUpdateState
@@ -90,6 +92,7 @@ fun SettingsScreen(
     LaunchedEffect(Unit) { viewModel.loadDevices() }
 
     Scaffold(
+        modifier = Modifier.testTag(TestTags.SETTINGS_SCREEN),
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text(stringResource(Res.string.settings_title)) },
