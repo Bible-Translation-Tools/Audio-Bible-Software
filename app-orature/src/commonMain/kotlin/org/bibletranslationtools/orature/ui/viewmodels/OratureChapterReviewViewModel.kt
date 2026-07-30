@@ -48,6 +48,7 @@ import org.bibletranslationtools.orature.plugins.OraturePluginStore
 import org.bibletranslationtools.orature.plugins.OratureExternalPlugin
 import org.bibletranslationtools.orature.plugins.canLaunchPlugins
 import org.bibletranslationtools.orature.plugins.launchPlugin
+import org.bibletranslationtools.orature.plugins.PluginCapability
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -353,11 +354,8 @@ class OratureChapterReviewViewModel(
 
     /** The configured default editor plugin, if external editing is available (desktop + one
      *  selected) — same lookup as `OratureBlindDraftViewModel.selectedEditor`. */
-    private fun selectedEditor(): OratureExternalPlugin? {
-        if (!canLaunchPlugins()) return null
-        val reg = pluginStore.load()
-        return reg.plugins.firstOrNull { it.id == reg.selectedEditorId && it.canEdit }
-    }
+    private fun selectedEditor(): OratureExternalPlugin? =
+        pluginStore.selected(PluginCapability.EDIT)
 
     /** Translation context handed to the plugin (JVM: `PluginParameters`) — chapter-scoped, no
      *  chunk fields, since Final Review edits the whole compiled chapter take. */

@@ -9,8 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
+import org.bibletranslationtools.otter.common.domain.project.OpenWorkbook
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.domain.project.exporter.AudioProjectExporter
@@ -57,8 +56,7 @@ class OratureExportProjectViewModel(
     private val workbookDescriptorId: Int
 ) : ViewModel(), KoinComponent {
 
-    private val workbookDescriptorRepo: IWorkbookDescriptorRepository by inject()
-    private val workbookRepository: IWorkbookRepository by inject()
+    private val openWorkbook: OpenWorkbook by inject()
     private val audioExporter: AudioProjectExporter by inject()
     private val sourceExporter: SourceProjectExporter by inject()
     private val backupExporter: BackupProjectExporter by inject()
@@ -84,30 +82,24 @@ class OratureExportProjectViewModel(
     private fun load() {
         launchLogged {
             try {
-                val loaded = withContext(Dispatchers.IO) {
-                    val descriptor = workbookDescriptorRepo.getByIdSuspend(workbookDescriptorId)
-                        ?: error("No workbook descriptor with id=$workbookDescriptorId")
-                    val wb = workbookRepository.get(descriptor.sourceCollection, descriptor.targetCollection)
-                    workbook = wb
-                    val chapters = wb.target.chapters.toList().blockingGet()
-                        .sortedBy { it.sort }
-                        .map { chapter ->
-                            // JVM: progress is 1.0 when the chapter has selected audio, else 0.0.
-                            OratureExportChapter(
-                                sort = chapter.sort,
-                                progress = if (chapter.hasSelectedAudio()) 1.0 else 0.0,
-                                selectable = false,
-                                selected = false
-                            )
-                        }
-                    val title = wb.target.title.ifEmpty { wb.target.slug.uppercase() }
-                    title to chapters
+                // openWithChapters() dispatches to IO itself, so no withContext wrapper here.
+                val opened = openWorkbook.openWithChapters(workbookDescriptorId)
+                val wb = opened.workbook
+                workbook = wb
+                val chapters = opened.chapters.map { chapter ->
+                    // JVM: progress is 1.0 when the chapter has selected audio, else 0.0.
+                    OratureExportChapter(
+                        sort = chapter.sort,
+                        progress = if (opened.completedByChapterSort[chapter.sort] == true) 1.0 else 0.0,
+                        selectable = false,
+                        selected = false
+                    )
                 }
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    bookTitle = loaded.first,
+                    bookTitle = wb.target.title.ifEmpty { wb.target.slug.uppercase() },
                     // Derive selectability for the default type and pre-select all selectable.
-                    chapters = applySelectability(loaded.second, _uiState.value.selectedType)
+                    chapters = applySelectability(chapters, _uiState.value.selectedType)
                 )
                 recomputeEstimate()
             } catch (e: CancellationException) {

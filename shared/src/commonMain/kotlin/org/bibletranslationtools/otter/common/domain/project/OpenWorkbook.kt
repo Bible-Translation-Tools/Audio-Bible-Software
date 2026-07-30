@@ -44,6 +44,11 @@ class OpenWorkbook(
     private val workbookRepository: IWorkbookRepository
 ) {
 
+    data class OpenedProject(
+        val workbook: Workbook,
+        val mode: ProjectMode
+    )
+
     /**
      * @param chapters the target book's chapters, ordered by [Chapter.sort]
      * @param completedByChapterSort whether each chapter has a selected take, keyed by sort
@@ -56,26 +61,43 @@ class OpenWorkbook(
     )
 
     /**
-     * Runs entirely on [Dispatchers.IO]: the repositories hit the database, and
-     * [Chapter.hasSelectedAudio] resolves each chapter's selected take, which is cheap per call
-     * but not free across a whole book — it should not be sampled on the main thread.
+     * Resolves the descriptor to its workbook and project mode, and nothing else.
+     *
+     * Screens that do not show a chapter list — the contributor editor, for one — want exactly
+     * this: [openWithChapters] costs a [Chapter.hasSelectedAudio] lookup per chapter, which is a
+     * per-chapter query in service of a list those screens never render.
      *
      * @throws IllegalStateException if no descriptor has this id, which means the caller was
      *   navigated to with an id that no longer exists — not something a screen can recover from.
      */
-    suspend fun execute(workbookDescriptorId: Int): OpenedWorkbook = withContext(Dispatchers.IO) {
+    suspend fun open(workbookDescriptorId: Int): OpenedProject = withContext(Dispatchers.IO) {
         val descriptor = workbookDescriptorRepository.getByIdSuspend(workbookDescriptorId)
             ?: error("No workbook descriptor with id=$workbookDescriptorId")
-        val workbook = workbookRepository.get(
-            descriptor.sourceCollection,
-            descriptor.targetCollection
-        )
-        val chapters = workbook.target.chapters.toList().await().sortedBy { it.sort }
-        OpenedWorkbook(
-            workbook = workbook,
-            mode = descriptor.mode,
-            chapters = chapters,
-            completedByChapterSort = chapters.associate { it.sort to it.hasSelectedAudio() }
+        OpenedProject(
+            workbook = workbookRepository.get(
+                descriptor.sourceCollection,
+                descriptor.targetCollection
+            ),
+            mode = descriptor.mode
         )
     }
+
+    /**
+     * [open], plus the target book's chapters in sort order and each one's completion.
+     *
+     * Runs entirely on [Dispatchers.IO]: the repositories hit the database, and
+     * [Chapter.hasSelectedAudio] resolves each chapter's selected take, which is cheap per call
+     * but not free across a whole book — it should not be sampled on the main thread.
+     */
+    suspend fun openWithChapters(workbookDescriptorId: Int): OpenedWorkbook =
+        withContext(Dispatchers.IO) {
+            val opened = open(workbookDescriptorId)
+            val chapters = opened.workbook.target.chapters.toList().await().sortedBy { it.sort }
+            OpenedWorkbook(
+                workbook = opened.workbook,
+                mode = opened.mode,
+                chapters = chapters,
+                completedByChapterSort = chapters.associate { it.sort to it.hasSelectedAudio() }
+            )
+        }
 }

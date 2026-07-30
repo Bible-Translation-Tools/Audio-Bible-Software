@@ -14,8 +14,7 @@ import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.orature.ui.workbook.OratureWorkbookDataStore
 import org.bibletranslationtools.orature.ui.translation.ChunkingStep
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
+import org.bibletranslationtools.otter.common.domain.project.OpenWorkbook
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
@@ -125,8 +124,7 @@ class OratureTranslationViewModel(
     private val workbookDescriptorId: Int
 ) : ViewModel(), KoinComponent {
 
-    private val workbookDescriptorRepo: IWorkbookDescriptorRepository by inject()
-    private val workbookRepository: IWorkbookRepository by inject()
+    private val openWorkbook: OpenWorkbook by inject()
     private val workbookDataStore: OratureWorkbookDataStore by inject()
 
     private val _uiState = MutableStateFlow(OratureTranslationUiState())
@@ -188,26 +186,27 @@ class OratureTranslationViewModel(
         launchLogged {
             _uiState.value = OratureTranslationUiState(isLoading = true)
             try {
+                // Descriptor lookup, workbook resolution, chapter ordering and completion come
+                // from OpenWorkbook, which dispatches to IO itself. What stays here is the
+                // app-side work that is still file I/O: scaffolding the project files and
+                // probing the source RC for chapter audio.
+                val opened = openWorkbook.openWithChapters(workbookDescriptorId)
                 val loaded = withContext(Dispatchers.IO) {
-                    val descriptor = workbookDescriptorRepo.getByIdSuspend(workbookDescriptorId)
-                        ?: error("No workbook descriptor with id=$workbookDescriptorId")
-                    val workbook = workbookRepository.get(
-                        descriptor.sourceCollection,
-                        descriptor.targetCollection
-                    )
-                    workbookDataStore.open(workbook, descriptor.mode)
-                    val chapterList = workbook.target.chapters.toList().await().sortedBy { it.sort }
-                    val completed = chapterList.associate { it.sort to it.hasSelectedAudio() }
-                    val title = workbook.target.title.ifEmpty { workbook.target.slug.uppercase() }
+                    val workbook = opened.workbook
+                    workbookDataStore.open(workbook, opened.mode)
                     val restoredSort = workbookDataStore.lastChapterSort(workbookDescriptorId)
-                    val activeSort = (chapterList.firstOrNull { it.sort == restoredSort }
-                        ?: chapterList.firstOrNull())?.sort
+                    val activeSort = (opened.chapters.firstOrNull { it.sort == restoredSort }
+                        ?: opened.chapters.firstOrNull())?.sort
                     val noSource = runCatching {
                         activeSort != null &&
                             workbook.sourceAudioAccessor.getChapter(activeSort, workbook.target) == null
                     }.getOrDefault(true)
                     LoadResult(
-                        title, descriptor.mode, chapterList, completed, noSource,
+                        workbook.target.title.ifEmpty { workbook.target.slug.uppercase() },
+                        opened.mode,
+                        opened.chapters,
+                        opened.completedByChapterSort,
+                        noSource,
                         sourceTitle = workbook.source.resourceMetadata.title,
                         sourceLicense = workbook.source.resourceMetadata.license
                     )

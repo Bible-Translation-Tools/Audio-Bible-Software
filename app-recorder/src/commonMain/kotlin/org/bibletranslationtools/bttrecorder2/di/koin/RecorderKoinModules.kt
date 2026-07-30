@@ -7,6 +7,7 @@ import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectCreationViewM
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.RecorderViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.UnitListViewModel
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.UnitTargetLoader
 import org.koin.core.module.dsl.factoryOf
 import org.koin.dsl.module
 
@@ -19,6 +20,9 @@ interface AppContext
  * and the platform (sharedDesktopModules / sharedAndroidModules) + directory provider.
  */
 val recorderViewModelModule = module {
+    // Shared by the Recorder and Playback screens: navigation args -> the flat
+    // chapter-then-chunks list both page through.
+    factoryOf(::UnitTargetLoader)
     single { ProjectManagementViewModel() }
     single { ProjectCreationViewModel() }
     single { ChapterListViewModel() }

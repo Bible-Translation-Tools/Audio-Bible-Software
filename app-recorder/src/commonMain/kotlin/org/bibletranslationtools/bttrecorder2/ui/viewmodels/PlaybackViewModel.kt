@@ -76,7 +76,7 @@ enum class MarkerKind { BOOK, CHAPTER, VERSE }
 private val VERSE_LABEL = Regex("""(\d+)(?:-(\d+))?""")
 
 class PlaybackViewModel(
-    private val workbookRepository: IWorkbookRepository,
+    private val unitTargetLoader: UnitTargetLoader,
     private val audioPlayerFactory: AudioPlayerConnectionFactory,
     private val saveAudioAsNewTake: SaveAudioAsNewTake,
     private val writeTakeMarkers: WriteTakeMarkers,
@@ -148,14 +148,6 @@ class PlaybackViewModel(
         object ConfirmExit : NavEvent()
     }
 
-    private data class PlaybackTarget(
-        val chapter: Chapter,
-        val chunk: Chunk?
-    ) {
-        val recordable: Recordable
-            get() = chunk ?: chapter
-    }
-
     private val _uiState = MutableStateFlow(PlaybackUiState())
     val uiState: StateFlow<PlaybackUiState> = _uiState.asStateFlow()
 
@@ -189,7 +181,7 @@ class PlaybackViewModel(
     val sourceAudioState: StateFlow<SourceAudioPlayerController.UiState> = sourceAudioController.uiState
 
     private var workbook: Workbook? = null
-    private var targets: List<PlaybackTarget> = emptyList()
+    private var targets: List<UnitTarget> = emptyList()
     private var currentTargetIndex = -1
     private var associatedAudio: AssociatedAudio? = null
     private var requestedTakeNumber: Int? = null
@@ -336,32 +328,19 @@ class PlaybackViewModel(
     ) {
         requestedTakeNumber = takeNumber
         launchLogged(Dispatchers.IO) {
-            val projects = workbookRepository.getProjectsSuspend()
-            val foundWorkbook = projects.find {
-                it.source.collectionId == sourceId && it.target.collectionId == targetId
-            } ?: return@launchLogged
+            // -1 is this screen's navigation encoding for "no specific unit" — the chapter-level
+            // target. UnitTargetLoader takes a nullable unit instead.
+            val loaded = unitTargetLoader.load(
+                sourceId = sourceId,
+                targetId = targetId,
+                chapterNumber = chapterNumber,
+                unitNumber = if (unitNumber == -1) null else unitNumber
+            ) ?: return@launchLogged
 
-            val chapterList = foundWorkbook.target.chapters.toList().await()
-                .sortedBy { it.sort }
-            if (chapterList.isEmpty()) return@launchLogged
-
-            val expandedTargets = mutableListOf<PlaybackTarget>()
-            chapterList.forEach { chapter ->
-                expandedTargets.add(PlaybackTarget(chapter = chapter, chunk = null))
-                chapter.chunksSuspend().sortedBy { it.sort }.forEach { chunk ->
-                    expandedTargets.add(PlaybackTarget(chapter = chapter, chunk = chunk))
-                }
-            }
-
-            val desiredUnit = if (unitNumber == -1) null else unitNumber
-            val initialIndex = expandedTargets.indexOfFirst { target ->
-                if (target.chapter.sort != chapterNumber) return@indexOfFirst false
-                if (desiredUnit == null) target.chunk == null else target.chunk?.sort == desiredUnit
-            }
-
-            workbook = foundWorkbook
-            targets = expandedTargets
-            switchToTarget(if (initialIndex >= 0) initialIndex else 0, force = true)
+            workbook = loaded.workbook
+            targets = loaded.targets
+            // No match falls back to the first target; the recorder deliberately differs here.
+            switchToTarget(loaded.requestedIndex.takeIf { it >= 0 } ?: 0, force = true)
         }
     }
 
@@ -1030,7 +1009,7 @@ class PlaybackViewModel(
         _editedTakeSavedEvents.tryEmit(newTake.number)
     }
 
-    private fun currentTarget(): PlaybackTarget? = targets.getOrNull(currentTargetIndex)
+    private fun currentTarget(): UnitTarget? = targets.getOrNull(currentTargetIndex)
 
     private fun switchToTarget(index: Int, force: Boolean = false) {
         if (index !in targets.indices) return
@@ -1089,7 +1068,7 @@ class PlaybackViewModel(
         sourceAudioController.seekToProgress(progress)
     }
 
-    private fun updateTargetUi(target: PlaybackTarget, wb: Workbook) {
+    private fun updateTargetUi(target: UnitTarget, wb: Workbook) {
         updateState { it.copy(
             targetUi = TargetUiState(
                 languageLabel = wb.target.language.name,

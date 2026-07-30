@@ -3,6 +3,7 @@ package org.bibletranslationtools.otter.common.domain.project
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import io.reactivex.Observable
 import kotlinx.coroutines.test.runTest
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
@@ -64,10 +65,44 @@ class OpenWorkbookTest {
     fun `resolves the descriptor into its workbook and mode`() = runTest {
         val workbook = stub(listOf(chapter(1)), mode = ProjectMode.DIALECT)
 
-        val opened = openWorkbook.execute(descriptorId)
+        val opened = openWorkbook.openWithChapters(descriptorId)
 
         assertSame(workbook, opened.workbook)
         assertEquals(ProjectMode.DIALECT, opened.mode)
+    }
+
+    @Test
+    fun `open resolves the workbook and mode without chapters`() = runTest {
+        val workbook = stub(listOf(chapter(1)), mode = ProjectMode.TRANSLATION)
+
+        val opened = openWorkbook.open(descriptorId)
+
+        assertSame(workbook, opened.workbook)
+        assertEquals(ProjectMode.TRANSLATION, opened.mode)
+    }
+
+    /**
+     * The whole reason [OpenWorkbook.open] exists alongside [OpenWorkbook.openWithChapters]:
+     * screens with no chapter list should not pay a `hasSelectedAudio()` query per chapter. If
+     * `open` ever starts draining the chapter observable, this catches it.
+     */
+    @Test
+    fun `open does not touch chapter completion`() = runTest {
+        val chapters = listOf(chapter(1, completed = true), chapter(2), chapter(3))
+        stub(chapters)
+
+        openWorkbook.open(descriptorId)
+
+        chapters.forEach { verify(exactly = 0) { it.hasSelectedAudio() } }
+    }
+
+    @Test
+    fun `open fails naming the descriptor when the id does not resolve`() = runTest {
+        coEvery { descriptorRepo.getByIdSuspend(descriptorId) } returns null
+
+        val error = assertFails { openWorkbook.open(descriptorId) }
+
+        assertTrue("$descriptorId" in (error.message ?: ""), "was: ${error.message}")
     }
 
     /**
@@ -79,7 +114,7 @@ class OpenWorkbookTest {
     fun `returns chapters ordered by sort regardless of emission order`() = runTest {
         stub(listOf(chapter(3), chapter(1), chapter(2)))
 
-        val opened = openWorkbook.execute(descriptorId)
+        val opened = openWorkbook.openWithChapters(descriptorId)
 
         assertEquals(listOf(1, 2, 3), opened.chapters.map { it.sort })
     }
@@ -88,7 +123,7 @@ class OpenWorkbookTest {
     fun `maps each chapter's completion by its sort`() = runTest {
         stub(listOf(chapter(1, completed = false), chapter(2, completed = true), chapter(3)))
 
-        val opened = openWorkbook.execute(descriptorId)
+        val opened = openWorkbook.openWithChapters(descriptorId)
 
         assertEquals(
             mapOf(1 to false, 2 to true, 3 to false),
@@ -100,7 +135,7 @@ class OpenWorkbookTest {
     fun `a book with no chapters opens with empty lists rather than failing`() = runTest {
         stub(emptyList())
 
-        val opened = openWorkbook.execute(descriptorId)
+        val opened = openWorkbook.openWithChapters(descriptorId)
 
         assertTrue(opened.chapters.isEmpty())
         assertTrue(opened.completedByChapterSort.isEmpty())
@@ -115,7 +150,7 @@ class OpenWorkbookTest {
     fun `fails naming the descriptor when the id does not resolve`() = runTest {
         coEvery { descriptorRepo.getByIdSuspend(descriptorId) } returns null
 
-        val error = assertFails { openWorkbook.execute(descriptorId) }
+        val error = assertFails { openWorkbook.openWithChapters(descriptorId) }
 
         val message = error.message ?: ""
         assertTrue("descriptor" in message, "expected the message to mention the descriptor: $message")

@@ -19,7 +19,6 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
 import org.bibletranslationtools.otter.common.data.primitives.MimeType
 import org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio
@@ -43,7 +42,7 @@ import java.nio.file.StandardCopyOption
 import java.time.LocalDate
 
 class RecorderViewModel(
-    private val workbookRepository: IWorkbookRepository,
+    private val unitTargetLoader: UnitTargetLoader,
     private val audioRecorderFactory: AudioRecorderConnectionFactory,
     audioPlayerFactory: AudioPlayerConnectionFactory
 ) : ViewModel() {
@@ -74,16 +73,8 @@ class RecorderViewModel(
         val canGoNextUnit: Boolean = false
     )
 
-    private data class RecordingTarget(
-        val chapter: Chapter,
-        val chunk: Chunk?
-    ) {
-        val recordable: Recordable
-            get() = chunk ?: chapter
-    }
-
     private var workbook: Workbook? = null
-    private var targets: List<RecordingTarget> = emptyList()
+    private var targets: List<UnitTarget> = emptyList()
     private var currentTargetIndex = -1
 
     private var associatedAudio: AssociatedAudio? = null
@@ -132,48 +123,22 @@ class RecorderViewModel(
         unitNumber: Int?
     ) {
         launchLogged(Dispatchers.IO) {
-            val projects = workbookRepository.getProjectsSuspend()
-            val foundWorkbook = projects.find {
-                it.source.collectionId == sourceId && it.target.collectionId == targetId 
-            } ?: return@launchLogged
-
-            val chapterList = foundWorkbook.target.chapters.toList().await()
-                .sortedBy { it.sort }
-
-            if (chapterList.isEmpty()) return@launchLogged
-
-            val expandedTargets = mutableListOf<RecordingTarget>()
-            chapterList.forEach { chapter ->
-                expandedTargets.add(RecordingTarget(chapter = chapter, chunk = null))
-                val chunks = chapter.chunksSuspend().sortedBy { it.sort }
-                chunks.forEach { chunk ->
-                    expandedTargets.add(RecordingTarget(chapter = chapter, chunk = chunk))
-                }
-            }
-
-            val initialIndex = expandedTargets.indexOfFirst { target ->
-                val chapterMatch = target.chapter.sort == chapterNumber
-                if (!chapterMatch) return@indexOfFirst false
-                if (unitNumber == null) {
-                    target.chunk == null
-                } else {
-                    target.chunk?.sort == unitNumber
-                }
-            }
+            val loaded = unitTargetLoader.load(sourceId, targetId, chapterNumber, unitNumber)
+                ?: return@launchLogged
 
             // When the requested target isn't found (e.g. entering from the
             // project-list mic or the home Record button with no specific verse),
             // fall back to the first *verse* rather than the chapter-meta target,
             // matching the original recorder which opened on the first recordable
             // unit. Chapter-level entry (unitNumber == null + matching chapter)
-            // still resolves explicitly above, so this only affects no-match.
+            // still resolves explicitly in the loader, so this only affects no-match.
             val safeInitialIndex = when {
-                initialIndex >= 0 -> initialIndex
-                else -> expandedTargets.indexOfFirst { it.chunk != null }.takeIf { it >= 0 } ?: 0
+                loaded.requestedIndex >= 0 -> loaded.requestedIndex
+                else -> loaded.targets.indexOfFirst { it.chunk != null }.takeIf { it >= 0 } ?: 0
             }
 
-            workbook = foundWorkbook
-            targets = expandedTargets
+            workbook = loaded.workbook
+            targets = loaded.targets
             switchToTarget(safeInitialIndex, force = true)
         }
     }
@@ -262,7 +227,7 @@ class RecorderViewModel(
         }
     }
 
-    private fun currentTarget(): RecordingTarget? = targets.getOrNull(currentTargetIndex)
+    private fun currentTarget(): UnitTarget? = targets.getOrNull(currentTargetIndex)
 
     private fun canNavigateTo(index: Int): Boolean {
         return index in targets.indices && _recordingState.value == RecordingUiState.Idle

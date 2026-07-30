@@ -7,8 +7,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
+import org.bibletranslationtools.otter.common.domain.project.OpenWorkbook
 import org.bibletranslationtools.otter.common.data.primitives.Contributor
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.koin.core.component.KoinComponent
@@ -30,8 +29,7 @@ class OratureContributorViewModel(
     private val workbookDescriptorId: Int
 ) : ViewModel(), KoinComponent {
 
-    private val workbookDescriptorRepo: IWorkbookDescriptorRepository by inject()
-    private val workbookRepository: IWorkbookRepository by inject()
+    private val openWorkbook: OpenWorkbook by inject()
 
     private val _uiState = MutableStateFlow(OratureContributorUiState())
     val uiState: StateFlow<OratureContributorUiState> = _uiState.asStateFlow()
@@ -45,11 +43,12 @@ class OratureContributorViewModel(
     private fun load() {
         launchLogged {
             try {
+                // open(), not openWithChapters(): this screen lists contributor names and never
+                // renders a chapter list, so there is no reason to pay a completion lookup per
+                // chapter for it.
+                val wb = openWorkbook.open(workbookDescriptorId).workbook
+                workbook = wb
                 val names = withContext(Dispatchers.IO) {
-                    val descriptor = workbookDescriptorRepo.getByIdSuspend(workbookDescriptorId)
-                        ?: error("No workbook descriptor with id=$workbookDescriptorId")
-                    val wb = workbookRepository.get(descriptor.sourceCollection, descriptor.targetCollection)
-                    workbook = wb
                     wb.projectFilesAccessor.getContributorInfo().map { it.name }
                 }
                 _uiState.value = OratureContributorUiState(isLoading = false, contributors = names)

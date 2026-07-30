@@ -41,6 +41,7 @@ import org.bibletranslationtools.otter.common.domain.model.UndoableActionHistory
 import org.bibletranslationtools.otter.common.domain.translation.TranslationTakeApproveAction
 import org.bibletranslationtools.otter.common.recorder.ActiveRecordingRenderer
 import org.bibletranslationtools.otter.common.recorder.WavFileWriter
+import org.bibletranslationtools.orature.plugins.PluginCapability
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.time.LocalDate
@@ -344,12 +345,8 @@ class OraturePeerEditViewModel(
     }
 
     /** Start a re-recording (JVM: onRecordNew) — same pipeline as Blind Draft. */
-    private fun selectedPlugin(recorder: Boolean): org.bibletranslationtools.orature.plugins.OratureExternalPlugin? {
-        if (!org.bibletranslationtools.orature.plugins.canLaunchPlugins()) return null
-        val reg = pluginStore.load()
-        val id = if (recorder) reg.selectedRecorderId else reg.selectedEditorId
-        return reg.plugins.firstOrNull { it.id == id && (if (recorder) it.canRecord else it.canEdit) }
-    }
+    private fun selectedPlugin(recorder: Boolean): org.bibletranslationtools.orature.plugins.OratureExternalPlugin? =
+        pluginStore.selected(if (recorder) PluginCapability.RECORD else PluginCapability.EDIT)
 
     private suspend fun newTake(chunk: Chunk): Take {
         val wb = workbookDataStore.activeWorkbook.value ?: error("No active workbook")

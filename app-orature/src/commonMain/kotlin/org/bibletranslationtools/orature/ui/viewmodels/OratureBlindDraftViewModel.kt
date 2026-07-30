@@ -34,6 +34,7 @@ import org.bibletranslationtools.otter.common.domain.translation.TranslationTake
 import org.bibletranslationtools.otter.common.domain.translation.TranslationTakeSelectAction
 import org.bibletranslationtools.otter.common.recorder.ActiveRecordingRenderer
 import org.bibletranslationtools.otter.common.recorder.WavFileWriter
+import org.bibletranslationtools.orature.plugins.PluginCapability
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.time.LocalDate
@@ -118,11 +119,8 @@ class OratureBlindDraftViewModel(
     private val navigationLock: org.bibletranslationtools.orature.ui.OratureNavigationLock by inject()
 
     /** The configured default editor plugin, if external editing is available (desktop + one selected). */
-    private fun selectedEditor(): org.bibletranslationtools.orature.plugins.OratureExternalPlugin? {
-        if (!org.bibletranslationtools.orature.plugins.canLaunchPlugins()) return null
-        val reg = pluginStore.load()
-        return reg.plugins.firstOrNull { it.id == reg.selectedEditorId && it.canEdit }
-    }
+    private fun selectedEditor(): org.bibletranslationtools.orature.plugins.OratureExternalPlugin? =
+        pluginStore.selected(PluginCapability.EDIT)
 
     /** Open a take in the configured external editor, then reload it (edited in place). Locks
      *  in-app navigation for the duration (JVM: the window-close guard, adapted — see
@@ -419,11 +417,8 @@ class OratureBlindDraftViewModel(
     }
 
     /** The configured default recorder plugin, if external recording is available. */
-    private fun selectedRecorder(): org.bibletranslationtools.orature.plugins.OratureExternalPlugin? {
-        if (!org.bibletranslationtools.orature.plugins.canLaunchPlugins()) return null
-        val reg = pluginStore.load()
-        return reg.plugins.firstOrNull { it.id == reg.selectedRecorderId && it.canRecord }
-    }
+    private fun selectedRecorder(): org.bibletranslationtools.orature.plugins.OratureExternalPlugin? =
+        pluginStore.selected(PluginCapability.RECORD)
 
     /** Build a new, un-persisted take for the active chunk (JVM: recorderViewModel.createTake). */
     private suspend fun newTake(chunk: Chunk): Take {

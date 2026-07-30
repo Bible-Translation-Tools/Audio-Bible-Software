@@ -41,6 +41,7 @@ import org.bibletranslationtools.otter.common.domain.narration.teleprompter.Narr
 import org.bibletranslationtools.otter.common.domain.narration.teleprompter.NarrationStateType
 import org.bibletranslationtools.otter.common.domain.narration.teleprompter.TeleprompterItemState
 import org.bibletranslationtools.otter.common.domain.narration.teleprompter.TeleprompterStateMachine
+import org.bibletranslationtools.orature.plugins.PluginCapability
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -347,7 +348,7 @@ class OratureNarrationViewModel(
             try {
                 // Descriptor lookup, workbook resolution, chapter ordering and the completion
                 // snapshot all live in OpenWorkbook, which does its own IO dispatch.
-                val loaded = openWorkbook.execute(workbookDescriptorId)
+                val loaded = openWorkbook.openWithChapters(workbookDescriptorId)
 
                 // open() scaffolds the on-disk project files (RC manifest, source copy, takes/chunks
                 // files) — file I/O, so keep it off the main thread.
@@ -915,12 +916,8 @@ class OratureNarrationViewModel(
     }
 
     /** The configured recorder/editor plugin, if external plugins are available (desktop + selected). */
-    private fun pluginFor(record: Boolean): org.bibletranslationtools.orature.plugins.OratureExternalPlugin? {
-        if (!org.bibletranslationtools.orature.plugins.canLaunchPlugins()) return null
-        val reg = pluginStore.load()
-        val id = if (record) reg.selectedRecorderId else reg.selectedEditorId
-        return reg.plugins.firstOrNull { it.id == id && (if (record) it.canRecord else it.canEdit) }
-    }
+    private fun pluginFor(record: Boolean): org.bibletranslationtools.orature.plugins.OratureExternalPlugin? =
+        pluginStore.selected(if (record) PluginCapability.RECORD else PluginCapability.EDIT)
 
     /** True when a verse can be opened in a configured external editor (drives the teleprompter Edit button). */
     fun editorConfigured(): Boolean = pluginFor(record = false) != null
@@ -949,11 +946,8 @@ class OratureNarrationViewModel(
         }
     }
 
-    private fun markerPlugin(): org.bibletranslationtools.orature.plugins.OratureExternalPlugin? {
-        if (!org.bibletranslationtools.orature.plugins.canLaunchPlugins()) return null
-        val reg = pluginStore.load()
-        return reg.plugins.firstOrNull { it.id == reg.selectedMarkerId && it.canMark }
-    }
+    private fun markerPlugin(): org.bibletranslationtools.orature.plugins.OratureExternalPlugin? =
+        pluginStore.selected(PluginCapability.MARK)
 
     /** True when an editor / marker plugin is configured — drives kebab item visibility. Always
      *  enabled once shown: the chapter take is compiled on demand (JVM: Open Chapter In has no

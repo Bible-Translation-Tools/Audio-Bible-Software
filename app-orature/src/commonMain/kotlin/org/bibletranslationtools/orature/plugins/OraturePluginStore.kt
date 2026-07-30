@@ -41,8 +41,43 @@ class OraturePluginStore : KoinComponent {
         }.onFailure { System.err.println("Failed to save plugins: $it") }
     }
 
+    /**
+     * The plugin currently selected for [capability], or null if external plugins are unavailable
+     * on this platform, none is selected, or the selected one cannot do the job.
+     *
+     * Selecting a plugin used to be open-coded in every screen that launched one — narration
+     * (editor and marker), blind draft (editor and recorder), peer edit, and chapter review each
+     * repeated the same three steps, six copies in four files. The capability check is the part
+     * that is easy to get wrong: a registry can name a `selectedEditorId` whose plugin has since
+     * been re-registered without `canEdit`, and returning it anyway launches a plugin that cannot
+     * do what the caller wants.
+     */
+    fun selected(capability: PluginCapability): OratureExternalPlugin? {
+        if (!canLaunchPlugins()) return null
+        val registry = load()
+        val id = when (capability) {
+            PluginCapability.EDIT -> registry.selectedEditorId
+            PluginCapability.RECORD -> registry.selectedRecorderId
+            PluginCapability.MARK -> registry.selectedMarkerId
+        }
+        return registry.plugins.firstOrNull { it.id == id && capability.isSupportedBy(it) }
+    }
+
     companion object {
         const val NO_ID = -1
         private const val PLUGINS_FILE = "orature-plugins.json"
+    }
+}
+
+/** What a caller needs a plugin to be able to do. */
+enum class PluginCapability {
+    EDIT,
+    RECORD,
+    MARK;
+
+    fun isSupportedBy(plugin: OratureExternalPlugin): Boolean = when (this) {
+        EDIT -> plugin.canEdit
+        RECORD -> plugin.canRecord
+        MARK -> plugin.canMark
     }
 }
