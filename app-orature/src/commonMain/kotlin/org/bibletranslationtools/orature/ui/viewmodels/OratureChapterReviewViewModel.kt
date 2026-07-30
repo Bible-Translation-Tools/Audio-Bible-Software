@@ -18,7 +18,6 @@ import org.bibletranslationtools.shared.ui.playback.FilePcmSource
 import org.bibletranslationtools.shared.ui.playback.PcmSource
 import org.bibletranslationtools.shared.ui.playback.WaveformPeakCache
 import org.bibletranslationtools.shared.ui.playback.buildPeakCache
-import org.bibletranslationtools.otter.common.audio.AudioFileFormat
 import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
 import org.bibletranslationtools.otter.common.data.audio.BookMarker
@@ -27,15 +26,14 @@ import org.bibletranslationtools.otter.common.data.audio.VerseMarker
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnection
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerEvent
-import org.bibletranslationtools.otter.common.device.newaudio.IAudioPlayer
+import org.bibletranslationtools.otter.common.device.AudioPlayerConnection
+import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
+import org.bibletranslationtools.otter.common.device.AudioPlayerEvent
+import org.bibletranslationtools.otter.common.device.IAudioPlayer
 import org.bibletranslationtools.shared.ui.playback.PlaybackDisplayClock
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.content.ChapterTranslationBuilder
-import org.bibletranslationtools.otter.common.domain.content.TakeCreator
-import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
+import org.bibletranslationtools.otter.common.domain.content.SaveAudioAsNewTake
 import org.bibletranslationtools.otter.common.domain.model.MarkerItem
 import org.bibletranslationtools.otter.common.domain.model.MarkerPlacementModel
 import org.bibletranslationtools.otter.common.domain.model.MarkerPlacementType
@@ -109,7 +107,7 @@ class OratureChapterReviewViewModel(
     private val workbookDataStore: OratureWorkbookDataStore by inject()
     private val playerFactory: AudioPlayerConnectionFactory by inject()
     private val chapterTranslationBuilder: ChapterTranslationBuilder by inject()
-    private val takeCreator: TakeCreator by inject()
+    private val saveAudioAsNewTake: SaveAudioAsNewTake by inject()
     private val pluginStore: OraturePluginStore by inject()
     private val navigationLock: org.bibletranslationtools.orature.ui.OratureNavigationLock by inject()
 
@@ -410,23 +408,16 @@ class OratureChapterReviewViewModel(
             translationVm.setPluginOpen(true)
             navigationLock.lock()
 
-            val newTake = withContext(Dispatchers.IO) {
-                val namer = WorkbookFileNamerBuilder.createFileNamer(
-                    workbook = wb, chapter = chap, chunk = null, recordable = chap, rcSlug = wb.sourceMetadataSlug
-                )
-                val chapterAudioDir = wb.projectFilesAccessor.audioDir
-                    .resolve(namer.formatChapterNumber())
-                    .apply { mkdirs() }
-                val takeNumber = chap.audio.getNewTakeNumberSuspend()
-                takeCreator.createNewTake(
-                    takeNumber,
-                    namer.generateName(takeNumber, AudioFileFormat.WAV),
-                    chapterAudioDir,
-                    createEmpty = false
-                ).also { existingTake.file.copyTo(it.file, overwrite = true) }
-            }
-            chap.audio.insertTake(newTake)
-            chap.audio.selectTake(newTake)
+            // Snapshot the selected take into a fresh one for the plugin to edit in place. The
+            // use case does its file work on Dispatchers.IO and leaves insert/select on this
+            // context, which is the main thread — same as the hand-rolled version it replaces.
+            val newTake = saveAudioAsNewTake.execute(
+                workbook = wb,
+                chapter = chap,
+                chunk = null,
+                recordable = chap,
+                audioFile = existingTake.file
+            )
 
             val success = withContext(Dispatchers.IO) {
                 runCatching { launchPlugin(editor, newTake.file, pluginParams(wb, chap)) }.getOrDefault(false)

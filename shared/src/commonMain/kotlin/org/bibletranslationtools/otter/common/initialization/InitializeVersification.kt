@@ -23,7 +23,7 @@ import io.reactivex.ObservableEmitter
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import org.bibletranslationtools.otter.common.api.io.IBundledContentSource
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.IAppDirectories
 import org.bibletranslationtools.otter.common.api.persistence.config.Initializable
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
 import org.slf4j.LoggerFactory
@@ -35,7 +35,7 @@ private const val UFW_VERSIFICATION_FILE = "ufw.json"
 private const val ULB_VERSIFICATION_RESOURCE_PATH = "files/versification/ulb_versification.json"
 
 class InitializeVersification(
-    val directoryProvider: IDirectoryProvider,
+    val directoryProvider: IAppDirectories,
     val versificationRepository: IVersificationRepository,
     private val bundledContent: IBundledContentSource
 ) : Initializable {

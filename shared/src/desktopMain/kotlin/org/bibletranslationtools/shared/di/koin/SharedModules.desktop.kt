@@ -2,14 +2,14 @@ package org.bibletranslationtools.shared.di.koin
 
 import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
-import org.bibletranslationtools.otter.common.device.newaudio.AudioDeviceSelector
-import org.bibletranslationtools.otter.common.device.newaudio.AudioHardwareProvider
-import org.bibletranslationtools.otter.common.device.newaudio.AudioSink
-import org.bibletranslationtools.otter.common.device.newaudio.AudioSource
-import org.bibletranslationtools.otter.common.device.newaudio.JvmAudioDeviceSelector
-import org.bibletranslationtools.otter.common.device.newaudio.JvmAudioHardwareProvider
-import org.bibletranslationtools.otter.common.device.newaudio.JvmAudioSink
-import org.bibletranslationtools.otter.common.device.newaudio.JvmAudioSource
+import org.bibletranslationtools.otter.common.device.AudioDeviceSelector
+import org.bibletranslationtools.otter.common.device.AudioHardwareProvider
+import org.bibletranslationtools.otter.common.device.AudioSink
+import org.bibletranslationtools.otter.common.device.AudioSource
+import org.bibletranslationtools.otter.common.device.JvmAudioDeviceSelector
+import org.bibletranslationtools.otter.common.device.JvmAudioHardwareProvider
+import org.bibletranslationtools.otter.common.device.JvmAudioSink
+import org.bibletranslationtools.otter.common.device.JvmAudioSource
 import org.bibletranslationtools.otter.common.persistence.database.AppDatabase
 import org.koin.dsl.module
 import java.io.File

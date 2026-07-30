@@ -14,10 +14,10 @@ import org.bibletranslationtools.di.koin.directoryProviderModule
 import org.bibletranslationtools.shared.di.koin.sharedCommonModules
 import org.bibletranslationtools.shared.di.koin.sharedDesktopModules
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
-import org.bibletranslationtools.otter.common.device.newaudio.AudioDeviceSelector
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
-import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
-import org.bibletranslationtools.otter.common.device.newaudio.AudioSystemConfig
+import org.bibletranslationtools.otter.common.device.AudioDeviceSelector
+import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
+import org.bibletranslationtools.otter.common.device.AudioSpec
+import org.bibletranslationtools.otter.common.device.AudioSystemConfig
 import org.koin.core.context.startKoin
 
 fun main() {

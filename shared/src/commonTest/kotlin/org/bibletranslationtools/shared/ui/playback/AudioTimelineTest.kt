@@ -141,9 +141,9 @@ internal class FakePcmSourceTL(
 
 internal class SequentialFrameReaderTL(
     override val totalFrames: Int,
-    override val spec: org.bibletranslationtools.otter.common.device.newaudio.AudioSpec =
-        org.bibletranslationtools.otter.common.device.newaudio.AudioSpec(sampleRate = 44100, bitDepth = 16, channels = 1)
-) : org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader {
+    override val spec: org.bibletranslationtools.otter.common.device.AudioSpec =
+        org.bibletranslationtools.otter.common.device.AudioSpec(sampleRate = 44100, bitDepth = 16, channels = 1)
+) : org.bibletranslationtools.otter.common.device.AudioFileReader {
     override var framePosition: Int = 0
     private var opened = false
     override fun open() { opened = true }

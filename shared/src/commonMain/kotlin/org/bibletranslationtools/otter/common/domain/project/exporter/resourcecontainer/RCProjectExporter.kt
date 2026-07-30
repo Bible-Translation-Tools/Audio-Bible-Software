@@ -33,7 +33,8 @@ import org.bibletranslationtools.otter.common.domain.content.FileNamer
 import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
 import org.bibletranslationtools.otter.common.domain.project.exporter.IProjectExporter
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesAccessor
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.IFileIOFactory
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import java.io.File
 import java.nio.file.Files
@@ -43,7 +44,8 @@ import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
 
 abstract class RCProjectExporter(
-    protected val directoryProvider:IDirectoryProvider
+    protected val fileIO: IFileIOFactory,
+    protected val tempFiles: ITempFileProvider
 ) : IProjectExporter {
 
     private val logger = LoggerFactory.getLogger(this.javaClass)

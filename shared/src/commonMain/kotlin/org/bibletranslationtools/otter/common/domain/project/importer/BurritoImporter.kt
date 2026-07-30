@@ -4,11 +4,11 @@ import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito.BurritoToResourceContainerConverter
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import java.io.File
 
 class BurritoImporter(
-    private val directoryProvider: IDirectoryProvider,
+    private val directoryProvider: ITempFileProvider,
     private val converter: BurritoToResourceContainerConverter,
 ): IProjectImporter {
 

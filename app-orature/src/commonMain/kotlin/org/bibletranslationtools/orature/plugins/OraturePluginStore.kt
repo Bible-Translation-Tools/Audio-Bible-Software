@@ -2,7 +2,7 @@ package org.bibletranslationtools.orature.plugins
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.IAppDirectories
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.io.File
@@ -16,7 +16,7 @@ import java.io.File
  */
 class OraturePluginStore : KoinComponent {
 
-    private val directoryProvider: IDirectoryProvider by inject()
+    private val directoryProvider: IAppDirectories by inject()
     private val mapper = jacksonObjectMapper()
 
     private val file: File

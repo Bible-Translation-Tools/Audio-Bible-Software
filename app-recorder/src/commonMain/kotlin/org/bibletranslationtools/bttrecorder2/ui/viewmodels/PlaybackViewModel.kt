@@ -31,7 +31,6 @@ import org.bibletranslationtools.shared.ui.playback.WaveformPeakCache
 import org.bibletranslationtools.shared.ui.playback.buildPeakCache
 import org.bibletranslationtools.shared.ui.playback.formatPlaybackTime
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
-import org.bibletranslationtools.otter.common.audio.AudioFileFormat
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
 import org.bibletranslationtools.otter.common.data.audio.BookMarker
 import org.bibletranslationtools.otter.common.data.audio.ChapterMarker
@@ -43,18 +42,18 @@ import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnection
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
-import org.bibletranslationtools.otter.common.device.newaudio.AudioRecorderConnectionFactory
-import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerEvent
-import org.bibletranslationtools.otter.common.device.newaudio.IAudioPlayer
+import org.bibletranslationtools.otter.common.device.AudioFileReader
+import org.bibletranslationtools.otter.common.device.AudioPlayerConnection
+import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
+import org.bibletranslationtools.otter.common.device.AudioRecorderConnectionFactory
+import org.bibletranslationtools.otter.common.device.AudioSpec
+import org.bibletranslationtools.otter.common.device.AudioPlayerEvent
+import org.bibletranslationtools.otter.common.device.IAudioPlayer
 import org.bibletranslationtools.otter.common.domain.audio.AudioBouncer
+import org.bibletranslationtools.otter.common.domain.audio.WriteTakeMarkers
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.content.Recordable
-import org.bibletranslationtools.otter.common.domain.content.TakeCreator
-import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
+import org.bibletranslationtools.otter.common.domain.content.SaveAudioAsNewTake
 import org.bibletranslationtools.otter.common.domain.narration.AudioScene
 import org.bibletranslationtools.otter.common.recorder.ActiveRecordingRenderer
 import org.jetbrains.compose.resources.getString
@@ -73,10 +72,14 @@ import kotlin.random.Random
 /** Kind of a waveform marker, so the UI can render each type distinctly. */
 enum class MarkerKind { BOOK, CHAPTER, VERSE }
 
+/** Verse labels the take file accepts: `N` or `N-M`. See `EditMarker.toPersistableMarker`. */
+private val VERSE_LABEL = Regex("""(\d+)(?:-(\d+))?""")
+
 class PlaybackViewModel(
     private val workbookRepository: IWorkbookRepository,
     private val audioPlayerFactory: AudioPlayerConnectionFactory,
-    private val takeCreator: TakeCreator,
+    private val saveAudioAsNewTake: SaveAudioAsNewTake,
+    private val writeTakeMarkers: WriteTakeMarkers,
     private val audioBouncer: AudioBouncer,
     private val audioRecorderFactory: AudioRecorderConnectionFactory
 ) : ViewModel() {
@@ -572,6 +575,26 @@ class PlaybackViewModel(
         baseMarkers = (nonContent + rebuilt).sortedBy { it.location }
     }
 
+    /**
+     * The form these markers take when written to the take file.
+     *
+     * Differs from [toAudioMarker] on exactly one point, and deliberately: a verse label that is
+     * not `N` or `N-M` is dropped rather than coerced. The write path used to go through
+     * `OratureAudioFile.addVerseMarker`, which matched the label against that pattern and
+     * silently ignored it on a miss, while [toAudioMarker] — which feeds the in-memory
+     * [baseMarkers] list — falls back to verse 1. The two have always disagreed; extracting the
+     * write into [WriteTakeMarkers] keeps the disagreement rather than quietly picking a side.
+     */
+    private fun EditMarker.toPersistableMarker(): AudioMarker? = when (kind) {
+        MarkerKind.BOOK -> BookMarker(label, frame)
+        MarkerKind.CHAPTER -> ChapterMarker(label.toIntOrNull() ?: 0, frame)
+        MarkerKind.VERSE -> VERSE_LABEL.matchEntire(label.trim())?.let { match ->
+            val start = match.groupValues[1].toInt()
+            val end = match.groupValues[2].takeIf { it.isNotEmpty() }?.toInt() ?: start
+            VerseMarker(start, end, frame)
+        }
+    }
+
     private fun EditMarker.toAudioMarker(): AudioMarker = when (kind) {
         MarkerKind.BOOK -> BookMarker(label, frame)
         MarkerKind.CHAPTER -> ChapterMarker(label.toIntOrNull() ?: 0, frame)
@@ -717,7 +740,7 @@ class PlaybackViewModel(
             exitVerseMarkerMode()
             return
         }
-        val toWrite = editedMarkers.sortedBy { it.frame }
+        val toWrite = editedMarkers.sortedBy { it.frame }.mapNotNull { it.toPersistableMarker() }
 
         // Markers are metadata, not audio — write them as WAV cue chunks into the
         // EXISTING take file (Orature does exactly this; the PCM is unchanged). No
@@ -727,20 +750,16 @@ class PlaybackViewModel(
 
         launchLogged(Dispatchers.IO) {
             runCatching {
-                val oaf = OratureAudioFile(take.file)
-                oaf.clearMarkers()
-                toWrite.forEach { m ->
-                    when (m.kind) {
-                        MarkerKind.BOOK -> oaf.addMarker<BookMarker>(BookMarker(m.label, m.frame))
-                        MarkerKind.CHAPTER -> oaf.addMarker<ChapterMarker>(
-                            ChapterMarker(m.label.toIntOrNull() ?: 0, m.frame)
-                        )
-                        MarkerKind.VERSE -> oaf.addVerseMarker(m.frame, m.label)
-                    }
-                }
-                oaf.update()
-                // Re-read so the normal view shows the just-written markers.
-                baseMarkers = OratureAudioFile(take.file).getMarkers().sortedBy { it.location }
+                // ALL_CUE_TYPES matches what the local clearMarkers() call did — it replaces the
+                // file's marker metadata wholesale, including any CHUNK/LICENSE cues. Narration
+                // deliberately preserves those; see WriteTakeMarkers.
+                // execute() returns the markers re-read from the file, so the normal view shows
+                // what actually landed rather than what we intended to write.
+                baseMarkers = writeTakeMarkers.execute(
+                    take.file,
+                    toWrite,
+                    WriteTakeMarkers.ALL_CUE_TYPES
+                )
             }.onFailure { e ->
                 updateState { it.copy(
                     error = e.message ?: getString(Res.string.err_save_verse_markers)
@@ -998,33 +1017,16 @@ class PlaybackViewModel(
     private suspend fun persistEditedFileAsNewTake(editedAudioFile: File) {
         val wb = workbook ?: return
         val target = currentTarget() ?: return
-        val audio = associatedAudio ?: return
 
-        if (!editedAudioFile.exists()) {
-            throw IllegalStateException("Edited audio file does not exist")
-        }
-
-        val newTakeNumber = audio.getNewTakeNumberSuspend()
-        val namer = WorkbookFileNamerBuilder.createFileNamer(
+        // Naming, chapter directory, take creation, the copy, and insert/select all live in
+        // SaveAudioAsNewTake — Orature's chapter-review screen performs the same sequence.
+        val newTake = saveAudioAsNewTake.execute(
             workbook = wb,
             chapter = target.chapter,
             chunk = target.chunk,
             recordable = target.recordable,
-            rcSlug = wb.sourceMetadataSlug
+            audioFile = editedAudioFile
         )
-
-        val filename = namer.generateName(newTakeNumber, AudioFileFormat.WAV)
-        val takeDir = wb.projectFilesAccessor.getChapterAudioDir(wb, target.chapter)
-        val newTake = takeCreator.createNewTake(
-            newTakeNumber = newTakeNumber,
-            filename = filename,
-            audioDir = takeDir,
-            createEmpty = false
-        )
-
-        editedAudioFile.copyTo(newTake.file, overwrite = true)
-        audio.insertTake(newTake)
-        audio.selectTake(newTake)
         _editedTakeSavedEvents.tryEmit(newTake.number)
     }
 

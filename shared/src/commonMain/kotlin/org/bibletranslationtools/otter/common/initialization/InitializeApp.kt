@@ -20,7 +20,7 @@ package org.bibletranslationtools.otter.common.initialization
 
 import io.reactivex.Observable
 import io.reactivex.schedulers.Schedulers
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.ProgressStatus
 
@@ -32,7 +32,7 @@ class InitializeApp(
     private val initializeTakeRepository: InitializeTakeRepository,
     private val initializeProjects: InitializeProjects,
     private val initializeTranslations: InitializeTranslations,
-    private val directoryProvider: IDirectoryProvider
+    private val directoryProvider: ITempFileProvider
 ) {
 
     private val logger = LoggerFactory.getLogger(InitializeApp::class.java)

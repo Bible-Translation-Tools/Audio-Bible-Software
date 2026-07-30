@@ -2,10 +2,17 @@ package org.bibletranslationtools.shared.di.koin
 
 import io.mockk.mockk
 import org.bibletranslationtools.otter.common.api.io.IBundledContentSource
+import org.bibletranslationtools.otter.common.api.persistence.IAppDirectories
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.IFileIOFactory
+import org.bibletranslationtools.otter.common.api.persistence.IProjectDirectories
+import org.bibletranslationtools.otter.common.api.persistence.IResourceContainerDirectories
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.domain.audio.AudioExporter
+import org.bibletranslationtools.otter.common.domain.audio.WriteTakeMarkers
 import org.bibletranslationtools.otter.common.domain.collections.CreateProject
+import org.bibletranslationtools.otter.common.domain.content.SaveAudioAsNewTake
 import org.bibletranslationtools.otter.common.domain.project.exporter.AudioProjectExporter
 import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.BackupProjectExporter
 import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.SourceProjectExporter
@@ -55,9 +62,54 @@ class SharedGraphWiringTest : KoinTest {
         assertNotNull(start().get<IBundledContentSource>())
     }
 
+    /**
+     * Each narrow slice of the former 27-member directory god interface must be resolvable on
+     * its own, because that is what narrowed constructors now ask Koin for. A missing binding
+     * here would not fail at startup — the ViewModels reach these through lazy `by inject()`,
+     * so it would surface as a throw on the first import/export the user attempts.
+     */
+    @Test
+    fun `every narrow directory port is bound`() {
+        val koin = start()
+        assertNotNull(koin.get<IAppDirectories>())
+        assertNotNull(koin.get<ITempFileProvider>())
+        assertNotNull(koin.get<IProjectDirectories>())
+        assertNotNull(koin.get<IResourceContainerDirectories>())
+        assertNotNull(koin.get<IFileIOFactory>())
+    }
+
+    /**
+     * Splitting the interface must not split the object. The narrow ports delegate to the single
+     * [IDirectoryProvider] rather than constructing anything, so a caller holding
+     * [ITempFileProvider] and a caller holding [IAppDirectories] are talking to the same temp
+     * directory — binding them to separate instances would silently give two views of the disk.
+     */
+    @Test
+    fun `the narrow directory ports all resolve to the one provider instance`() {
+        val koin = start()
+        val provider = koin.get<IDirectoryProvider>()
+        assertSame(provider, koin.get<IAppDirectories>())
+        assertSame(provider, koin.get<ITempFileProvider>())
+        assertSame(provider, koin.get<IProjectDirectories>())
+        assertSame(provider, koin.get<IResourceContainerDirectories>())
+        assertSame(provider, koin.get<IFileIOFactory>())
+    }
+
     @Test
     fun `the gl source catalog is bound`() {
         assertNotNull(start().get<GlSourceCatalog>())
+    }
+
+    /**
+     * Both apps' ViewModels reach these two through Koin — the recorder's PlaybackViewModel by
+     * constructor, Orature's chapter-review ViewModel by lazy `by inject()`. A missing binding on
+     * the lazy path would not surface until the user saved a take or their verse markers.
+     */
+    @Test
+    fun `the take-save and marker-write use cases are bound`() {
+        val koin = start()
+        assertNotNull(koin.get<SaveAudioAsNewTake>())
+        assertNotNull(koin.get<WriteTakeMarkers>())
     }
 
     /**

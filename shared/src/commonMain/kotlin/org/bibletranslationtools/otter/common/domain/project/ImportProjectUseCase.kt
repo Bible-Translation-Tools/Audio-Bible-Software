@@ -36,7 +36,8 @@ import org.bibletranslationtools.otter.common.domain.project.importer.RCImporter
 import org.bibletranslationtools.otter.common.domain.project.importer.TsImporterFactory
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstants
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.IFileIOFactory
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import java.io.File
 import java.lang.IllegalArgumentException
 
@@ -54,7 +55,8 @@ class ImportProjectUseCase(
     val rcFactoryProvider: RCImporterFactory,
     val tsFactoryProvider: TsImporterFactory,
     val rcImporter: OngoingProjectImporter,
-    val directoryProvider: IDirectoryProvider,
+    val fileIO: IFileIOFactory,
+    val tempFiles: ITempFileProvider,
     private val bundledContent: IBundledContentSource,
     private val glSourceCatalog: GlSourceCatalog,
 ) {
@@ -116,7 +118,7 @@ class ImportProjectUseCase(
                 val tempFile = File.createTempFile(
                     resourceName,
                     ".zip",
-                    directoryProvider.tempDirectory
+                    tempFiles.tempDirectory
                 )
                 tempFile.outputStream().use { output ->
                     input.copyTo(output)
@@ -134,7 +136,7 @@ class ImportProjectUseCase(
     }
 
     fun isSourceAudioProject(file: File): Boolean {
-        return directoryProvider.newFileReader(file).use {
+        return fileIO.newFileReader(file).use {
             !it.exists(RcConstants.SELECTED_TAKES_FILE) && it.exists(RcConstants.SOURCE_MEDIA_DIR)
         }
     }

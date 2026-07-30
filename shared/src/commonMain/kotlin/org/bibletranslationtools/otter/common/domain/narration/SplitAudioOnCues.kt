@@ -23,12 +23,12 @@ import org.bibletranslationtools.otter.common.audio.AudioFile
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import java.io.File
 
 
 typealias VerseSegments = Map<AudioMarker, File>
-class SplitAudioOnCues(private val directoryProvider: IDirectoryProvider) {
+class SplitAudioOnCues(private val directoryProvider: ITempFileProvider) {
 
     fun execute(file: File, initialMarker: AudioMarker): VerseSegments {
         val sourceAudio = OratureAudioFile(file)

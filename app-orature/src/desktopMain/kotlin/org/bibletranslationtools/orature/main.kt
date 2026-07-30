@@ -26,9 +26,9 @@ import org.bibletranslationtools.orature.ui.OratureTheme
 import org.bibletranslationtools.orature.ui.screens.OratureSplashScreen
 import org.bibletranslationtools.orature.ui.viewmodels.OratureSplashViewModel
 import org.bibletranslationtools.otter.common.persistence.DesktopDirectoryProvider
-import org.bibletranslationtools.otter.common.device.newaudio.AudioDeviceSelector
-import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
-import org.bibletranslationtools.otter.common.device.newaudio.AudioSystemConfig
+import org.bibletranslationtools.otter.common.device.AudioDeviceSelector
+import org.bibletranslationtools.otter.common.device.AudioSpec
+import org.bibletranslationtools.otter.common.device.AudioSystemConfig
 import org.bibletranslationtools.shared.di.koin.sharedCommonModules
 import org.bibletranslationtools.shared.di.koin.sharedDesktopModules
 import org.koin.core.context.startKoin
@@ -76,7 +76,7 @@ fun main() {
     // Reports upload to GitHub only if a github.properties is on the classpath; otherwise the crash
     // screen still shows (send disabled). Close = quit the process.
     run {
-        val directoryProvider = koin.get<org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider>()
+        val directoryProvider = koin.get<org.bibletranslationtools.otter.common.api.persistence.IAppDirectories>()
         org.bibletranslationtools.orature.crash.OratureCrashReporter.install(
             uploaders = listOfNotNull(
                 org.bibletranslationtools.orature.crash.GithubCrashReportUploader.fromClasspath(),

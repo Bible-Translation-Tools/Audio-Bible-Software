@@ -199,10 +199,6 @@ class AndroidDirectoryProvider(val context: Context): IDirectoryProvider {
         deleteRecursively(tempDirectory)
     }
 
-    override fun openInFileManager(path: String) {
-        TODO("Not yet implemented")
-    }
-
     override val databaseDirectory: File
         get() = context.getDatabasePath("tr.db").parentFile!!
 

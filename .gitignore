@@ -385,3 +385,4 @@ Makefile
 # Crash-report upload credentials (see *.template alongside). Never commit real tokens/DSNs.
 **/resources/github.properties
 **/resources/sentry.properties
+*.wav

@@ -3,12 +3,12 @@ package org.bibletranslationtools.otter.common.domain.project.importer
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.wycliffeassociates.tstudio2rc.Tstudio2RcConverter
 import java.io.File
 
 class TstudioImporter(
-    private val directoryProvider: IDirectoryProvider
+    private val directoryProvider: ITempFileProvider
 ) : IProjectImporter {
     private var next: RCImporter? = null
 

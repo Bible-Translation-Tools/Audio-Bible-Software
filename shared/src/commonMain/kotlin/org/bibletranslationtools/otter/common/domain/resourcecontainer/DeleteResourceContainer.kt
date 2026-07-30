@@ -20,13 +20,13 @@ package org.bibletranslationtools.otter.common.domain.resourcecontainer
 
 import io.reactivex.Single
 import org.slf4j.LoggerFactory
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.IResourceContainerDirectories
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceContainerRepository
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import java.io.File
 
 class DeleteResourceContainer(
-    private val directoryProvider: IDirectoryProvider,
+    private val directoryProvider: IResourceContainerDirectories,
     private val resourceContainerRepository: IResourceContainerRepository
 ) {
     private val logger = LoggerFactory.getLogger(DeleteResourceContainer::class.java)

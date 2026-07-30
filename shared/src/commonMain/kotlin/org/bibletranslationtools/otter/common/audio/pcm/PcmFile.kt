@@ -20,7 +20,7 @@ package org.bibletranslationtools.otter.common.audio.pcm
 
 import org.bibletranslationtools.otter.common.audio.*
 import org.bibletranslationtools.otter.common.audio.wav.WavMetadata
-import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
+import org.bibletranslationtools.otter.common.device.AudioFileReader
 import java.io.File
 import java.io.OutputStream
 

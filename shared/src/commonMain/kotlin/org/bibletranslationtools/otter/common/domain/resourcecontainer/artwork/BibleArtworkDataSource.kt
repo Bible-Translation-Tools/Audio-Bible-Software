@@ -20,19 +20,21 @@ package org.bibletranslationtools.otter.common.domain.resourcecontainer.artwork
 
 import org.bibletranslationtools.otter.common.data.primitives.ImageRatio
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.IAppDirectories
+import org.bibletranslationtools.otter.common.api.persistence.IResourceContainerDirectories
 import org.bibletranslationtools.otter.common.utils.filePathWithSuffix
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 class BibleArtworkDataSource(
-    private val directoryProvider: IDirectoryProvider,
+    private val appDirectories: IAppDirectories,
+    private val rcDirectories: IResourceContainerDirectories,
     private val imagesContainerNames: List<String> = listOf("en_art_sp.zip", "en_art_wa.zip")
 ) : ArtworkDataSource {
 
     private val cacheDir = File(
-        directoryProvider.cacheDirectory,
+        appDirectories.cacheDirectory,
         "bible-images"
     ).apply { mkdirs() }
 
@@ -47,7 +49,7 @@ class BibleArtworkDataSource(
 
         var art: Artwork? = null
         for (container in imagesContainerNames) {
-            val imagesContainer = directoryProvider
+            val imagesContainer = rcDirectories
                 .resourceContainerDirectory
                 .resolve(container)
             if (imagesContainer.exists()) {

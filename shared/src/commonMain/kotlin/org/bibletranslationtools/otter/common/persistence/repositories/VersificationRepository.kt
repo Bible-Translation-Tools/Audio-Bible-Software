@@ -31,7 +31,7 @@ import kotlinx.coroutines.rx2.awaitSingleOrNull
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.domain.versification.ParatextVersification
 import org.bibletranslationtools.otter.common.domain.versification.Versification
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.IAppDirectories
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
 import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
 import org.bibletranslationtools.otter.common.persistence.repositories.LanguageRepository
@@ -39,7 +39,7 @@ import java.io.File
 
 class VersificationRepository(
     database: IAppDatabase,
-    private val directoryProvider: IDirectoryProvider
+    private val directoryProvider: IAppDirectories
 ) : IVersificationRepository {
 
     private val logger = LoggerFactory.getLogger(LanguageRepository::class.java)

@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.data.primitives.Language
@@ -48,7 +48,7 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
     private val workbookRepository: IWorkbookRepository by inject()
     private val workbookDescriptorRepository: IWorkbookDescriptorRepository by inject()
     private val importProjectUseCase: ImportProjectUseCase by inject()
-    private val directoryProvider: IDirectoryProvider by inject()
+    private val directoryProvider: ITempFileProvider by inject()
 
     private val _rawWorkbooks = MutableStateFlow<List<WorkbookDescriptor>?>(null)
     private val _sortState = MutableStateFlow(SortState())

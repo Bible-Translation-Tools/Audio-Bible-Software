@@ -18,7 +18,7 @@ import org.bibletranslationtools.orature.resources.importFailed
 import org.bibletranslationtools.orature.resources.importFailedMessage
 import org.bibletranslationtools.orature.resources.importProjectSuccessfulMessage
 import org.bibletranslationtools.orature.resources.importSourceSuccessfulMessage
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
 import org.bibletranslationtools.otter.common.domain.project.importer.ImportCallbackParameter
@@ -57,7 +57,7 @@ class OratureImportViewModel : ViewModel(), KoinComponent {
     private val logger = LoggerFactory.getLogger(OratureImportViewModel::class.java)
 
     private val importProjectUseCase: ImportProjectUseCase by inject()
-    private val directoryProvider: IDirectoryProvider by inject()
+    private val directoryProvider: ITempFileProvider by inject()
     private val importEvents: OratureImportEvents by inject()
 
     private val _importState = MutableStateFlow<OratureImportState>(OratureImportState.Idle)

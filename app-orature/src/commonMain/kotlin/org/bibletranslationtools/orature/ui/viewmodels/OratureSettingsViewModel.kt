@@ -12,9 +12,9 @@ import org.bibletranslationtools.shared.preferences.AppSettings
 import org.bibletranslationtools.shared.preferences.AppSettings.Companion.DEFAULT_LANG_NAMES_URL
 import org.bibletranslationtools.shared.preferences.IAppPreferences
 import org.bibletranslationtools.shared.preferences.ThemeMode
-import org.bibletranslationtools.otter.common.device.newaudio.AudioDevice
-import org.bibletranslationtools.otter.common.device.newaudio.AudioDeviceSelector
-import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
+import org.bibletranslationtools.otter.common.device.AudioDevice
+import org.bibletranslationtools.otter.common.device.AudioDeviceSelector
+import org.bibletranslationtools.otter.common.device.AudioSpec
 import org.bibletranslationtools.otter.common.domain.languages.ImportLanguages
 import org.koin.core.component.KoinComponent
 import java.util.Locale

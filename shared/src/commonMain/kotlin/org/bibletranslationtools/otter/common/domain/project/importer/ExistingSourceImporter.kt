@@ -34,7 +34,7 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportRes
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.IProjectReader
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.IZipEntryTreeBuilder
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.projectimportexport.MergeTextContent
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceContainerRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
@@ -42,7 +42,7 @@ import java.io.File
 import java.io.IOException
 
 class ExistingSourceImporter(
-    directoryProvider: IDirectoryProvider,
+    directoryProvider: ITempFileProvider,
     private val resourceMetadataRepository: IResourceMetadataRepository,
     private val resourceContainerRepository: IResourceContainerRepository,
     private val zipEntryTreeBuilder: IZipEntryTreeBuilder,

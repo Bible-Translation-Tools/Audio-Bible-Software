@@ -21,7 +21,7 @@ package org.bibletranslationtools.otter.common.initialization
 import io.reactivex.Completable
 import io.reactivex.ObservableEmitter
 import org.bibletranslationtools.otter.common.api.io.IBundledContentSource
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.api.persistence.config.Installable
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IInstalledEntityRepository
 import org.slf4j.LoggerFactory
@@ -35,7 +35,7 @@ const val EN_ULB_FILENAME = "en_ulb"
 private const val EN_ULB_PATH = "files/content/$EN_ULB_FILENAME.zip"
 
 class InitializeUlb(
-    private val directoryProvider: IDirectoryProvider,
+    private val directoryProvider: ITempFileProvider,
     private val installedEntityRepo: IInstalledEntityRepository,
     private val importer: ImportProjectUseCase,
     private val bundledContent: IBundledContentSource

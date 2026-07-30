@@ -8,14 +8,11 @@ import io.reactivex.disposables.Disposable
 import io.reactivex.observables.ConnectableObservable
 import io.reactivex.schedulers.Schedulers
 import org.slf4j.LoggerFactory
-import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
+import org.bibletranslationtools.otter.common.device.AudioFileReader
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
-import org.bibletranslationtools.otter.common.data.audio.BookMarker
-import org.bibletranslationtools.otter.common.data.audio.ChapterMarker
-import org.bibletranslationtools.otter.common.data.audio.VerseMarker
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.domain.audio.AudioBouncer
-import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
+import org.bibletranslationtools.otter.common.domain.audio.WriteTakeMarkers
 import java.io.File
 import kotlin.math.log
 
@@ -33,6 +30,7 @@ object NarrationTakeModifier {
     private val logger = LoggerFactory.getLogger(NarrationTakeModifier::class.java)
 
     private val audioBouncer = AudioBouncer()
+    private val writeTakeMarkers = WriteTakeMarkers()
 
     private var currentAudioBounceTask: Disposable? = null
     private lateinit var currentAudioBounceTaskEmitter: CompletableEmitter
@@ -234,10 +232,10 @@ object NarrationTakeModifier {
                 logger.info("Started updating markers")
                 this.currentUpdateMarkerTaskEmitter = emitter
 
-                val oaf = OratureAudioFile(file)
-                clearNarrationMarkers(oaf)
-                addNarrationMarkers(oaf, markers)
-                oaf.update()
+                // NARRATION_CUE_TYPES, not every type: this must leave any CHUNK and LICENSE
+                // cues on the file alone, which is what the local clearNarrationMarkers() here
+                // used to guarantee.
+                writeTakeMarkers.execute(file, markers, WriteTakeMarkers.NARRATION_CUE_TYPES)
 
                 emitter.onComplete()
             }
@@ -250,16 +248,5 @@ object NarrationTakeModifier {
     }
 
 
-    private fun clearNarrationMarkers(audioFile: OratureAudioFile) {
-        audioFile.clearMarkersOfType<VerseMarker>()
-        audioFile.clearMarkersOfType<ChapterMarker>()
-        audioFile.clearMarkersOfType<BookMarker>()
-    }
-
-    private fun addNarrationMarkers(audioFile: OratureAudioFile, markers: List<AudioMarker>) {
-        markers.forEach { marker ->
-            audioFile.addMarker(audioFile.getMarkerTypeFromClass(marker::class), marker)
-        }
-    }
 
 }

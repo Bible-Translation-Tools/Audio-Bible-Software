@@ -34,18 +34,18 @@ import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.audio.AudioFile
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
-import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
+import org.bibletranslationtools.otter.common.device.AudioFileReader
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
 import org.bibletranslationtools.otter.common.data.primitives.MimeType
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.DateHolder
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.device.newaudio.IAudioPlayer
-import org.bibletranslationtools.otter.common.device.newaudio.IAudioRecorder
+import org.bibletranslationtools.otter.common.device.IAudioPlayer
+import org.bibletranslationtools.otter.common.device.IAudioRecorder
 import org.bibletranslationtools.otter.common.domain.audio.AudioBouncer
 import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.recorder.WavFileWriter
 import java.io.File
 import java.lang.Integer.max
@@ -54,7 +54,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 class Narration(
-    private val directoryProvider: IDirectoryProvider,
+    private val directoryProvider: ITempFileProvider,
     private val splitAudioOnCues: SplitAudioOnCues,
     private val audioFileUtils: AudioFileUtils,
     private val audioBouncer: AudioBouncer,

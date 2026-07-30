@@ -19,8 +19,8 @@ import org.bibletranslationtools.shared.preferences.IAppPreferences
 import org.bibletranslationtools.shared.preferences.ThemeMode
 import org.bibletranslationtools.bttrecorder2.ui.navigation.Navigation
 import org.bibletranslationtools.bttrecorder2.ui.theme.TranslationRecorderTheme
-import org.bibletranslationtools.otter.common.device.newaudio.AudioDeviceSelector
-import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
+import org.bibletranslationtools.otter.common.device.AudioDeviceSelector
+import org.bibletranslationtools.otter.common.device.AudioSpec
 import org.koin.mp.KoinPlatform.getKoin
 import java.util.Locale
 

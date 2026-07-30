@@ -22,7 +22,12 @@ import org.bibletranslationtools.shared.content.ComposeBundledContentSource
 import org.bibletranslationtools.shared.domain.SourceAudioImporter
 import org.bibletranslationtools.shared.preferences.DataStoreAppPreferences
 import org.bibletranslationtools.shared.preferences.IAppPreferences
+import org.bibletranslationtools.otter.common.api.persistence.IAppDirectories
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.IFileIOFactory
+import org.bibletranslationtools.otter.common.api.persistence.IProjectDirectories
+import org.bibletranslationtools.otter.common.api.persistence.IResourceContainerDirectories
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.koin.core.module.dsl.bind
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.module
@@ -58,11 +63,11 @@ val audioModule = module {
 
 val appPreferencesModule = module {
     single<IAppPreferences> {
-        val dir = get<IDirectoryProvider>().getAppDataDirectory("preferences")
+        val dir = get<IAppDirectories>().getAppDataDirectory("preferences")
         dir.mkdirs()
         DataStoreAppPreferences(dir.absolutePath)
     }
-    single { SourceAudioImporter(get(), get()) }
+    single { SourceAudioImporter(get(), get(), get()) }
 }
 
 val appRepositoriesModule = module {
@@ -113,6 +118,21 @@ val bundledContentModule = module {
     singleOf(::GlSourceCatalog)
 }
 
+// The five narrow directory ports, each bound to the one IDirectoryProvider the app supplies.
+//
+// Consumers depend on the slice they call (a use case that only stages temp audio takes
+// ITempFileProvider, not all 27 members), while there is still exactly one provider instance
+// per process — these delegate rather than construct, so `assertSame` holds across all of them.
+// Without these bindings every narrowed constructor would fail to resolve at first use, which
+// with Koin's lazy `by inject()` means at runtime rather than at startup.
+val directoryPortsModule = module {
+    single<IAppDirectories> { get<IDirectoryProvider>() }
+    single<ITempFileProvider> { get<IDirectoryProvider>() }
+    single<IProjectDirectories> { get<IDirectoryProvider>() }
+    single<IResourceContainerDirectories> { get<IDirectoryProvider>() }
+    single<IFileIOFactory> { get<IDirectoryProvider>() }
+}
+
 val metadataModule = module {
 //    single<IAppInfo> { AppInfo() }
 }
@@ -131,6 +151,7 @@ val sharedCommonModules = listOf(
     appRepositoriesModule,
     zipEntryTreeBuilderModule,
     bundledContentModule,
+    directoryPortsModule,
     metadataModule,
     authModule
 )

@@ -2,13 +2,13 @@ package org.bibletranslationtools.orature.ui.narration
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnection
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
-import org.bibletranslationtools.otter.common.device.newaudio.AudioRecorderConnection
-import org.bibletranslationtools.otter.common.device.newaudio.AudioRecorderConnectionFactory
+import org.bibletranslationtools.otter.common.device.AudioPlayerConnection
+import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
+import org.bibletranslationtools.otter.common.device.AudioRecorderConnection
+import org.bibletranslationtools.otter.common.device.AudioRecorderConnectionFactory
 import org.bibletranslationtools.otter.common.domain.audio.AudioBouncer
 import org.bibletranslationtools.otter.common.domain.narration.AudioFileUtils
 import org.bibletranslationtools.otter.common.domain.narration.Narration
@@ -19,12 +19,12 @@ import java.util.concurrent.atomic.AtomicInteger
  * Builds a [Narration] for a (workbook, chapter). The JVM app used a Dagger `@AssistedFactory`
  * (`NarrationFactory`), which is NOT bound in this port's Koin graph — so we construct the
  * `Narration` directly here, resolving its non-assisted deps from Koin and wrapping the shared
- * device factories in [AudioRecorderConnection] / [AudioPlayerConnection] (the same newaudio
- * connection pattern the recorder/playback ViewModels use — `Narration` was migrated to the
- * newaudio device layer, so the connections satisfy it directly). Registered as a Koin `single`.
+ * device factories in [AudioRecorderConnection] / [AudioPlayerConnection] (the same connection
+ * pattern the recorder/playback ViewModels use — `Narration` was migrated to the
+ * `otter.common.device` layer, so the connections satisfy it directly). Registered as a Koin `single`.
  */
 class OratureNarrationFactory(
-    private val directoryProvider: IDirectoryProvider,
+    private val directoryProvider: ITempFileProvider,
     private val splitAudioOnCues: SplitAudioOnCues,
     private val audioFileUtils: AudioFileUtils,
     private val audioBouncer: AudioBouncer,

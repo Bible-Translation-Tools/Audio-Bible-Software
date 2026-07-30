@@ -6,6 +6,7 @@ import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.domain.audio.AudioBouncer
 import org.bibletranslationtools.otter.common.domain.audio.AudioConverter
 import org.bibletranslationtools.otter.common.domain.audio.AudioExporter
+import org.bibletranslationtools.otter.common.domain.audio.WriteTakeMarkers
 import org.bibletranslationtools.otter.common.domain.collections.CreateProject
 import org.bibletranslationtools.otter.common.domain.collections.CreateTranslation
 import org.bibletranslationtools.otter.common.domain.collections.DeleteProject
@@ -16,6 +17,7 @@ import org.bibletranslationtools.otter.common.domain.content.ChapterTranslationB
 import org.bibletranslationtools.otter.common.domain.content.ConcatenateAudio
 import org.bibletranslationtools.otter.common.domain.content.CreateChunks
 import org.bibletranslationtools.otter.common.domain.content.ResetChunks
+import org.bibletranslationtools.otter.common.domain.content.SaveAudioAsNewTake
 import org.bibletranslationtools.otter.common.domain.content.TakeCreator
 import org.bibletranslationtools.otter.common.domain.narration.AudioFileUtils
 import org.bibletranslationtools.otter.common.domain.narration.PcmTakeTransformer
@@ -73,6 +75,7 @@ val implicitCommonModule = module {
     factoryOf(::AudioExporter)
     factoryOf(::AudioBouncer)
     factoryOf(::AudioConverter)
+    factoryOf(::WriteTakeMarkers)
 
     // Project
     factoryOf(::ImportProjectUseCase)
@@ -98,6 +101,7 @@ val implicitCommonModule = module {
     // Content
     factoryOf(::ChapterTranslationBuilder)
     factoryOf(::TakeCreator)
+    factoryOf(::SaveAudioAsNewTake)
     factoryOf(::ConcatenateAudio)
 //    factoryOf(::PluginActions)
     factoryOf(::ResetChunks)

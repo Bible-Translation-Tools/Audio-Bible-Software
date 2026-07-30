@@ -20,11 +20,11 @@ import org.bibletranslationtools.shared.ui.playback.WaveformPeakCache
 import org.bibletranslationtools.shared.ui.playback.buildPeakCache
 import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
 import org.bibletranslationtools.otter.common.data.audio.VerseMarker
-import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnection
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerEvent
-import org.bibletranslationtools.otter.common.device.newaudio.IAudioPlayer
+import org.bibletranslationtools.otter.common.device.AudioFileReader
+import org.bibletranslationtools.otter.common.device.AudioPlayerConnection
+import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
+import org.bibletranslationtools.otter.common.device.AudioPlayerEvent
+import org.bibletranslationtools.otter.common.device.IAudioPlayer
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.shared.ui.playback.PlaybackDisplayClock
 import org.koin.core.component.KoinComponent
@@ -44,7 +44,7 @@ data class OratureConsumeUiState(
  * Drives the Consume step: plays the chapter's SOURCE audio (read-only), rendering its waveform +
  * verse markers so the translator can listen and internalize the passage before drafting. Mirrors
  * the JVM `ConsumeViewModel`, but the waveform routes through our live renderer ([AudioReaderDrawable])
- * instead of the retired image-precompute `MarkerWaveform`, and playback uses the shared newaudio
+ * instead of the retired image-precompute `MarkerWaveform`, and playback uses the shared audio
  * player. Read-only: markers can't be moved or deleted here.
  */
 class OratureConsumeViewModel(

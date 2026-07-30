@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.data.primitives.Collection as OratureCollection
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
@@ -67,7 +67,7 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
 
     private val backupExporter: BackupProjectExporter by inject()
     private val sourceExporter: SourceProjectExporter by inject()
-    private val directoryProvider: IDirectoryProvider by inject()
+    private val directoryProvider: ITempFileProvider by inject()
     private val workbookRepository: IWorkbookRepository by inject()
     private val completionStatus: ProjectCompletionStatus by inject()
 

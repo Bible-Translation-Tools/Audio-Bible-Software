@@ -2,14 +2,14 @@ package org.bibletranslationtools.shared.di.koin
 
 import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
-import org.bibletranslationtools.otter.common.device.newaudio.AndroidAudioDeviceSelector
-import org.bibletranslationtools.otter.common.device.newaudio.AndroidAudioHardwareProvider
-import org.bibletranslationtools.otter.common.device.newaudio.AndroidAudioSink
-import org.bibletranslationtools.otter.common.device.newaudio.AndroidAudioSource
-import org.bibletranslationtools.otter.common.device.newaudio.AudioDeviceSelector
-import org.bibletranslationtools.otter.common.device.newaudio.AudioHardwareProvider
-import org.bibletranslationtools.otter.common.device.newaudio.AudioSink
-import org.bibletranslationtools.otter.common.device.newaudio.AudioSource
+import org.bibletranslationtools.otter.common.device.AndroidAudioDeviceSelector
+import org.bibletranslationtools.otter.common.device.AndroidAudioHardwareProvider
+import org.bibletranslationtools.otter.common.device.AndroidAudioSink
+import org.bibletranslationtools.otter.common.device.AndroidAudioSource
+import org.bibletranslationtools.otter.common.device.AudioDeviceSelector
+import org.bibletranslationtools.otter.common.device.AudioHardwareProvider
+import org.bibletranslationtools.otter.common.device.AudioSink
+import org.bibletranslationtools.otter.common.device.AudioSource
 import org.bibletranslationtools.otter.database.AndroidAppDatabase
 import org.koin.android.ext.koin.androidContext
 import org.koin.dsl.module

@@ -1,7 +1,7 @@
 package org.bibletranslationtools.shared.ui.playback
 
-import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
-import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
+import org.bibletranslationtools.otter.common.device.AudioFileReader
+import org.bibletranslationtools.otter.common.device.AudioSpec
 import kotlin.math.min
 
 /**

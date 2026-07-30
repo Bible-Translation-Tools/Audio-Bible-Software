@@ -1,6 +1,6 @@
 package org.bibletranslationtools.shared.ui.playback
 
-import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
+import org.bibletranslationtools.otter.common.device.AudioFileReader
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import java.io.File
 

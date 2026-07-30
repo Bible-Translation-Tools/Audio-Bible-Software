@@ -48,7 +48,7 @@ import org.bibletranslationtools.otter.common.data.primitives.MimeType
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.domain.mapper.mapToMetadata
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.IResourceContainerDirectories
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
 import org.bibletranslationtools.otter.common.persistence.entities.WorkbookDescriptorEntity
@@ -69,7 +69,7 @@ import java.time.LocalDateTime
 
 class CollectionRepository(
     private val database: IAppDatabase,
-    private val directoryProvider: IDirectoryProvider,
+    private val directoryProvider: IResourceContainerDirectories,
     private val collectionMapper: CollectionMapper,
     private val metadataMapper: ResourceMetadataMapper,
     private val languageMapper: LanguageMapper

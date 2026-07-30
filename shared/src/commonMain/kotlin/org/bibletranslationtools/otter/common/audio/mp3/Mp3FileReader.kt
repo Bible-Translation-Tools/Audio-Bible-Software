@@ -27,8 +27,8 @@ import org.bibletranslationtools.otter.common.audio.AudioFormatStrategy
 import org.bibletranslationtools.otter.common.audio.DEFAULT_BITS_PER_SAMPLE
 import org.bibletranslationtools.otter.common.audio.DEFAULT_CHANNELS
 import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
-import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
-import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
+import org.bibletranslationtools.otter.common.device.AudioFileReader
+import org.bibletranslationtools.otter.common.device.AudioSpec
 import org.yellowcouch.javazoom.RandomAccessDecoder
 import java.io.OutputStream
 import java.lang.IllegalStateException

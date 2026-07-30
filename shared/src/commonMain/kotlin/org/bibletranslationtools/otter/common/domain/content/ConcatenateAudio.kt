@@ -22,10 +22,10 @@ import io.reactivex.Single
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.data.audio.OratureCueType
 import org.bibletranslationtools.otter.common.data.audio.VerseMarker
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import java.io.File
 
-class ConcatenateAudio(private val directoryProvider: IDirectoryProvider) {
+class ConcatenateAudio(private val directoryProvider: ITempFileProvider) {
 
     fun execute(
         files: List<File>,
