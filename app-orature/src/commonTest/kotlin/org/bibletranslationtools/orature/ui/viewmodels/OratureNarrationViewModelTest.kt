@@ -23,6 +23,8 @@ import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
+import org.bibletranslationtools.otter.common.domain.narration.LoadChapterSourceText
+import org.bibletranslationtools.otter.common.domain.project.OpenWorkbook
 import org.bibletranslationtools.orature.di.oratureViewModelModule
 import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
@@ -59,6 +61,12 @@ class OratureNarrationViewModelTest : KoinTest {
                 module {
                     single { descriptorRepo }
                     single { workbookRepo }
+                    // The :shared use cases the VM injects, built over the stubbed ports above.
+                    // In the app these come from implicitCommonModule (asserted by
+                    // SharedGraphWiringTest); this module is not composed here, so they are
+                    // supplied explicitly rather than left to fail lazily at first use.
+                    single { OpenWorkbook(descriptorRepo, workbookRepo) }
+                    single { LoadChapterSourceText() }
                 }
             )
         }
@@ -182,6 +190,14 @@ class OratureNarrationViewModelTest : KoinTest {
         assertEquals(2, second.activeChapterSort)
     }
 
+    /**
+     * The message assertion matters more than it looks: `error != null` alone passes for ANY
+     * failure during load, including an unresolvable Koin dependency. When OpenWorkbook was
+     * extracted and not yet bound in this module, the four tests above went red while this one
+     * stayed green on a "No definition found for type OpenWorkbook" error — it was reporting the
+     * happy-path-is-broken case as a pass. Pinning the message keeps it honest about *which*
+     * failure it is describing.
+     */
     @Test
     fun `error state when the descriptor is missing`() = runReal {
         coEvery { descriptorRepo.getByIdSuspend(descriptorId) } returns null
@@ -189,7 +205,12 @@ class OratureNarrationViewModelTest : KoinTest {
         val state = newVm().awaitLoaded()
 
         assertEquals(0, state.chapters.size)
-        assertTrue(state.error != null)
+        val error = state.error
+        assertTrue(error != null, "a missing descriptor should surface an error")
+        assertTrue(
+            "descriptor" in error && "$descriptorId" in error,
+            "the error should name the missing descriptor, was: $error"
+        )
     }
 
     // ---- take → audio adapter -----------------------------------------------------------

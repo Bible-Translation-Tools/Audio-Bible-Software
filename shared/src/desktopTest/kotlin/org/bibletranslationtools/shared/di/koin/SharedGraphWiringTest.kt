@@ -12,12 +12,14 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IWork
 import org.bibletranslationtools.otter.common.domain.audio.AudioExporter
 import org.bibletranslationtools.otter.common.domain.audio.WriteTakeMarkers
 import org.bibletranslationtools.otter.common.domain.collections.CreateProject
+import org.bibletranslationtools.otter.common.domain.narration.LoadChapterSourceText
 import org.bibletranslationtools.otter.common.domain.content.SaveAudioAsNewTake
 import org.bibletranslationtools.otter.common.domain.project.exporter.AudioProjectExporter
 import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.BackupProjectExporter
 import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.SourceProjectExporter
 import org.bibletranslationtools.otter.common.domain.project.GlSourceCatalog
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
+import org.bibletranslationtools.otter.common.domain.project.OpenWorkbook
 import org.bibletranslationtools.otter.common.initialization.InitializeLanguages
 import org.bibletranslationtools.otter.common.initialization.InitializeUlb
 import org.bibletranslationtools.otter.common.initialization.InitializeVersification
@@ -110,6 +112,18 @@ class SharedGraphWiringTest : KoinTest {
         val koin = start()
         assertNotNull(koin.get<SaveAudioAsNewTake>())
         assertNotNull(koin.get<WriteTakeMarkers>())
+    }
+
+    /**
+     * OratureNarrationViewModel injects both lazily, so an unbound one would not fail at startup —
+     * it would fail when the narration screen opened. Extracting these out of the ViewModel is
+     * only safe if the graph can actually supply them.
+     */
+    @Test
+    fun `the workbook-open and source-text use cases are bound`() {
+        val koin = start()
+        assertNotNull(koin.get<OpenWorkbook>())
+        assertNotNull(koin.get<LoadChapterSourceText>())
     }
 
     /**

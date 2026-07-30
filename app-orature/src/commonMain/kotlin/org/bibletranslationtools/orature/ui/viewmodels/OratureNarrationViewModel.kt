@@ -28,8 +28,8 @@ import org.bibletranslationtools.shared.ui.playback.buildPeakCache
 import kotlin.math.max
 import org.bibletranslationtools.orature.ui.narration.OratureNarrationFactory
 import org.bibletranslationtools.orature.ui.workbook.OratureWorkbookDataStore
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
+import org.bibletranslationtools.otter.common.domain.narration.LoadChapterSourceText
+import org.bibletranslationtools.otter.common.domain.project.OpenWorkbook
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
 import org.bibletranslationtools.otter.common.data.audio.MarkerType
 import org.bibletranslationtools.orature.resources.Res
@@ -189,8 +189,8 @@ class OratureNarrationViewModel(
     private val workbookDescriptorId: Int
 ) : ViewModel(), KoinComponent {
 
-    private val workbookDescriptorRepo: IWorkbookDescriptorRepository by inject()
-    private val workbookRepository: IWorkbookRepository by inject()
+    private val openWorkbook: OpenWorkbook by inject()
+    private val loadChapterSourceText: LoadChapterSourceText by inject()
     private val workbookDataStore: OratureWorkbookDataStore by inject()
     private val narrationFactory: OratureNarrationFactory by inject()
     private val pluginStore: org.bibletranslationtools.orature.plugins.OraturePluginStore by inject()
@@ -345,18 +345,9 @@ class OratureNarrationViewModel(
         launchLogged {
             _uiState.value = OratureNarrationUiState(isLoading = true)
             try {
-                val loaded = withContext(Dispatchers.IO) {
-                    val descriptor = workbookDescriptorRepo.getByIdSuspend(workbookDescriptorId)
-                        ?: error("No workbook descriptor with id=$workbookDescriptorId")
-                    val workbook = workbookRepository.get(
-                        descriptor.sourceCollection,
-                        descriptor.targetCollection
-                    )
-                    val chapterList = workbook.target.chapters.toList().await().sortedBy { it.sort }
-                    // Snapshot the lightweight completion proxy off the main thread.
-                    val completed = chapterList.associate { it.sort to it.hasSelectedAudio() }
-                    LoadResult(workbook, descriptor.mode, chapterList, completed)
-                }
+                // Descriptor lookup, workbook resolution, chapter ordering and the completion
+                // snapshot all live in OpenWorkbook, which does its own IO dispatch.
+                val loaded = openWorkbook.execute(workbookDescriptorId)
 
                 // open() scaffolds the on-disk project files (RC manifest, source copy, takes/chunks
                 // files) — file I/O, so keep it off the main thread.
@@ -377,7 +368,7 @@ class OratureNarrationViewModel(
                     bookTitle = loaded.workbook.target.title.ifEmpty { loaded.workbook.target.slug.uppercase() },
                     activeChapterTitle = active?.title.orEmpty(),
                     activeChapterSort = active?.sort,
-                    chapters = buildGrid(active?.sort, loaded.completed),
+                    chapters = buildGrid(active?.sort, loaded.completedByChapterSort),
                     hasPreviousChapter = hasNeighbor(active?.sort, step = -1),
                     hasNextChapter = hasNeighbor(active?.sort, step = +1)
                 )
@@ -490,23 +481,23 @@ class OratureNarrationViewModel(
                 val n = narrationFactory.create(workbook, chapter, viewModelScope)
                 n.initialize().await()
                 // Teleprompter text comes from the SOURCE scripture (the target project has no
-                // text yet) — JVM: loadChunks reads workbook.source.chapters matched by sort.
-                val sourceChunks = runCatching {
-                    workbook.source.chapters.toList().await()
-                        .firstOrNull { it.sort == chapter.sort }
-                        ?.chunksSuspend()
-                        .orEmpty()
-                }.getOrDefault(emptyList())
-                val byLabel = sourceChunks.associate { it.title to it.textItem.text }
-                val byIndex = sourceChunks.map { it.textItem.text }
-                Prepared(n, byLabel, byIndex)
+                // text yet) — LoadChapterSourceText matches the source book's chapter by sort.
+                // Missing source text is not fatal: the teleprompter renders empty. It used to be
+                // swallowed silently; now it is logged, matching how the rest of this VM reports
+                // failures.
+                val sourceText = runCatching { loadChapterSourceText.execute(workbook, chapter.sort) }
+                    .getOrElse { e ->
+                        logFailure("loading the chapter source text", e)
+                        LoadChapterSourceText.ChapterSourceText.EMPTY
+                    }
+                Prepared(n, sourceText)
             }
             narration = prepared.narration
             chapterTake = chapter.getSelectedTake()
-            verseTextByLabel = prepared.textByLabel
-            sourceTextByIndex = prepared.textByIndex
+            verseTextByLabel = prepared.sourceText.byVerseLabel
+            sourceTextByIndex = prepared.sourceText.inOrder
             _uiState.value = _uiState.value.copy(
-                sourceText = prepared.textByIndex.joinToString("\n"),
+                sourceText = prepared.sourceText.inOrder.joinToString("\n"),
                 sourceLicense = runCatching { workbook.source.resourceMetadata.license }.getOrDefault("")
             )
 
@@ -1395,17 +1386,9 @@ class OratureNarrationViewModel(
         super.onCleared()
     }
 
-    private class LoadResult(
-        val workbook: org.bibletranslationtools.otter.common.data.workbook.Workbook,
-        val mode: org.bibletranslationtools.otter.common.data.primitives.ProjectMode,
-        val chapters: List<Chapter>,
-        val completed: Map<Int, Boolean>
-    )
-
     private class Prepared(
         val narration: Narration,
-        val textByLabel: Map<String, String>,
-        val textByIndex: List<String>
+        val sourceText: LoadChapterSourceText.ChapterSourceText
     )
 }
 

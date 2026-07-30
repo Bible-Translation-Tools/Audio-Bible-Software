@@ -20,10 +20,12 @@ import org.bibletranslationtools.otter.common.domain.content.ResetChunks
 import org.bibletranslationtools.otter.common.domain.content.SaveAudioAsNewTake
 import org.bibletranslationtools.otter.common.domain.content.TakeCreator
 import org.bibletranslationtools.otter.common.domain.narration.AudioFileUtils
+import org.bibletranslationtools.otter.common.domain.narration.LoadChapterSourceText
 import org.bibletranslationtools.otter.common.domain.narration.PcmTakeTransformer
 import org.bibletranslationtools.otter.common.domain.narration.SplitAudioOnCues
 import org.bibletranslationtools.otter.common.domain.languages.ImportLanguages
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
+import org.bibletranslationtools.otter.common.domain.project.OpenWorkbook
 import org.bibletranslationtools.otter.common.domain.project.ProjectCompletionStatus
 import org.bibletranslationtools.otter.common.domain.project.exporter.AudioProjectExporter
 import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.BackupProjectExporter
@@ -79,6 +81,7 @@ val implicitCommonModule = module {
 
     // Project
     factoryOf(::ImportProjectUseCase)
+    factoryOf(::OpenWorkbook)
     factoryOf(::ImportLanguages)
 //    factoryOf(::ProjectFormatIdentifier)
 
@@ -131,6 +134,7 @@ val implicitCommonModule = module {
     factoryOf(::PcmTakeTransformer)
     factoryOf(::AudioFileUtils)
     factoryOf(::SplitAudioOnCues)
+    factoryOf(::LoadChapterSourceText)
 
     factoryOf(::InitializeVersification)
     factoryOf(::InitializeSources)
