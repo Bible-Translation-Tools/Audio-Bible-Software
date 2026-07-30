@@ -92,29 +92,39 @@ object RecorderUiTestHarness {
     /**
      * Creates an Afar Genesis narration project from the seeded English ULB source so
      * record/playback e2e can open a workbook without depending on the full wizard UI path.
+     * Also marks that workbook active so MainMenu Record can open the recorder directly.
      */
     fun seedGenesisProject() {
         val koin = GlobalContext.get()
         val createProject = koin.get<org.bibletranslationtools.otter.common.domain.collections.CreateProject>()
+        val createTranslation =
+            koin.get<org.bibletranslationtools.otter.common.domain.collections.CreateTranslation>()
         val collectionRepository =
             koin.get<org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository>()
         val languageRepository =
             koin.get<org.bibletranslationtools.otter.common.api.persistence.repositories.ILanguageRepository>()
         val resourceMetadataRepository =
             koin.get<org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository>()
+        val appPreferences = koin.get<org.bibletranslationtools.shared.preferences.IAppPreferences>()
 
         val target = languageRepository.getAll().blockingGet().first { it.slug == "aa" }
         val sourceMeta = resourceMetadataRepository.getAllSources().blockingGet()
             .first { it.language.slug == "en" }
+        val sourceLang = sourceMeta.language
         val root = collectionRepository.getRootSources().blockingGet()
             .first { it.resourceContainer?.id == sourceMeta.id }
         val gen = collectionRepository.getChildren(root).blockingGet().first { it.slug == "gen" }
-        createProject.create(
+        val targetBook = createProject.create(
             sourceProject = gen,
             targetLanguage = target,
             mode = org.bibletranslationtools.otter.common.data.primitives.ProjectMode.NARRATION,
             deriveProjectFromVerses = true
         ).blockingGet()
+        // Single-book create does not insert a Translation row; workbook open needs it.
+        createTranslation.create(sourceLang, target).blockingGet()
+        kotlinx.coroutines.runBlocking {
+            appPreferences.setActiveWorkbook(gen.id, targetBook.id)
+        }
     }
 
     fun stop() {

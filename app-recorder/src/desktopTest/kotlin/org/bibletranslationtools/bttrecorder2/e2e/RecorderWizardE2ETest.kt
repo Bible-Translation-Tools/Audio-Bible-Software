@@ -3,15 +3,12 @@ package org.bibletranslationtools.bttrecorder2.e2e
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onAllNodesWithContentDescription
-import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import org.bibletranslationtools.bttrecorder2.e2e.harness.RecorderUiTestHarness
 import org.bibletranslationtools.bttrecorder2.ui.App
-import org.bibletranslationtools.bttrecorder2.ui.TestTags
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -46,42 +43,42 @@ class RecorderWizardE2ETest {
         }
         onNodeWithContentDescription("New Project").performClick()
         waitUntil(timeoutMillis = 60_000) {
-            onAllNodesWithTag(TestTags.WIZARD_SCREEN).fetchSemanticsNodes().isNotEmpty() ||
+            onAllNodesWithText("Select Source").fetchSemanticsNodes().isNotEmpty() ||
                 onAllNodesWithText("New Project").fetchSemanticsNodes().isNotEmpty()
         }
 
         waitUntil(timeoutMillis = 120_000) {
-            onAllNodesWithTag("wizard-row-en_ulb").fetchSemanticsNodes().isNotEmpty() ||
-                onAllNodesWithTag("wizard-row-en").fetchSemanticsNodes().isNotEmpty() ||
-                onAllNodesWithText("English", substring = true).fetchSemanticsNodes().isNotEmpty()
+            onAllNodesWithText("English", substring = true).fetchSemanticsNodes().isNotEmpty() ||
+                onAllNodesWithText("en_ulb", substring = true).fetchSemanticsNodes().isNotEmpty() ||
+                onAllNodesWithText("en", substring = false).fetchSemanticsNodes().isNotEmpty()
         }
         when {
-            onAllNodesWithTag("wizard-row-en_ulb").fetchSemanticsNodes().isNotEmpty() ->
-                onNodeWithTag("wizard-row-en_ulb").performClick()
-            onAllNodesWithTag("wizard-row-en").fetchSemanticsNodes().isNotEmpty() ->
-                onNodeWithTag("wizard-row-en").performClick()
-            else -> onNodeWithText("English", substring = true).performClick()
+            onAllNodesWithText("en_ulb", substring = true).fetchSemanticsNodes().isNotEmpty() ->
+                onNodeWithText("en_ulb", substring = true).performClick()
+            onAllNodesWithText("English", substring = true).fetchSemanticsNodes().isNotEmpty() ->
+                onNodeWithText("English", substring = true).performClick()
+            else -> onNodeWithText("en").performClick()
         }
 
         waitUntil(timeoutMillis = 120_000) {
-            onAllNodesWithTag("wizard-row-aa").fetchSemanticsNodes().isNotEmpty() ||
-                onAllNodesWithText("Afar", substring = true).fetchSemanticsNodes().isNotEmpty()
+            onAllNodesWithText("Afar", substring = true).fetchSemanticsNodes().isNotEmpty() ||
+                onAllNodesWithText("aa").fetchSemanticsNodes().isNotEmpty()
         }
-        if (onAllNodesWithTag("wizard-row-aa").fetchSemanticsNodes().isNotEmpty()) {
-            onNodeWithTag("wizard-row-aa").performClick()
-        } else {
+        if (onAllNodesWithText("Afar", substring = true).fetchSemanticsNodes().isNotEmpty()) {
             onNodeWithText("Afar", substring = true).performClick()
+        } else {
+            onNodeWithText("aa").performClick()
         }
 
         waitUntil(timeoutMillis = 120_000) {
-            onAllNodesWithTag("wizard-row-gen").fetchSemanticsNodes().isNotEmpty() ||
+            onAllNodesWithText("Choose a Book").fetchSemanticsNodes().isNotEmpty() ||
                 onAllNodesWithText("Genesis", substring = true).fetchSemanticsNodes().isNotEmpty()
         }
-        onNodeWithTag(TestTags.WIZARD_SCREEN).assertIsDisplayed()
-        if (onAllNodesWithTag("wizard-row-gen").fetchSemanticsNodes().isNotEmpty()) {
-            onNodeWithTag("wizard-row-gen").assertIsDisplayed()
-        } else {
+        onNodeWithText("Choose a Book").assertIsDisplayed()
+        if (onAllNodesWithText("Genesis", substring = true).fetchSemanticsNodes().isNotEmpty()) {
             onNodeWithText("Genesis", substring = true).assertIsDisplayed()
+        } else {
+            onNodeWithText("gen").assertIsDisplayed()
         }
     }
 }

@@ -79,13 +79,11 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import org.bibletranslationtools.bttrecorder2.ui.TestTags
 import org.bibletranslationtools.bttrecorder2.ui.theme.TranslationRecorderTheme
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.MarkerKind
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.PlaybackViewModel
@@ -224,7 +222,7 @@ fun PlaybackScreen(
         onDispose { viewModel.cleanup() }
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(Color(0xFF202020)).testTag(TestTags.PLAYBACK_SCREEN)) {
+    Column(modifier = Modifier.fillMaxSize().background(Color(0xFF202020))) {
 
         // ── Top bar ──────────────────────────────────────────────────────────
         if (ui.isVerseMarkerMode) {

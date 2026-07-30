@@ -23,11 +23,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
-import org.bibletranslationtools.bttrecorder2.ui.TestTags
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -252,7 +250,6 @@ fun ProjectManagementContent(
     val sortState = (uiState as? ProjectManagementUiState.Success)?.sortState ?: SortState()
 
     Scaffold(
-        modifier = Modifier.testTag(TestTags.PROJECT_MANAGEMENT),
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text(stringResource(Res.string.pm_title), color = textColor) },
@@ -520,7 +517,6 @@ private fun BookRow(
         modifier = Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface)
-            .testTag(TestTags.projectCard(workbook.targetCollection.slug))
             .clickable(onClick = onClick)
             .padding(start = 32.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -550,8 +546,7 @@ private fun BookRow(
         }
         IconButton(
             onClick = onRecordClick,
-            enabled = !isExporting,
-            modifier = Modifier.testTag(TestTags.projectRecord(workbook.targetCollection.slug))
+            enabled = !isExporting
         ) {
             Icon(
                 imageVector = Icons.Default.Mic,

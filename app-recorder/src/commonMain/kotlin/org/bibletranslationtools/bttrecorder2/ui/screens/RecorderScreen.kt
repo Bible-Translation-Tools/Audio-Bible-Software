@@ -36,14 +36,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.sp
-import org.bibletranslationtools.bttrecorder2.ui.TestTags
 import org.bibletranslationtools.shared.ui.playback.SourceAudioPlayerController
 import org.bibletranslationtools.bttrecorder2.ui.recorder.WaveformView
 import org.bibletranslationtools.bttrecorder2.ui.theme.TranslationRecorderTheme
@@ -107,7 +105,6 @@ fun RecorderScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF202020))
-            .testTag(TestTags.RECORDER_SCREEN)
     ) {
         Row(
             modifier = Modifier
@@ -211,14 +208,12 @@ fun RecorderScreen(
                     }
                     RecorderViewModel.RecordingUiState.Recording -> {
                         OutlinedButton(
-                            onClick = viewModel::stopRecording,
-                            modifier = Modifier.testTag(TestTags.RECORD_STOP)
+                            onClick = viewModel::stopRecording
                         ) { Text(stringResource(Res.string.recorder_stop), color = Color.White) }
                     }
                     RecorderViewModel.RecordingUiState.Paused -> {
                         OutlinedButton(
-                            onClick = viewModel::stopRecording,
-                            modifier = Modifier.testTag(TestTags.RECORD_STOP)
+                            onClick = viewModel::stopRecording
                         ) { Text(stringResource(Res.string.recorder_stop), color = Color.White) }
                     }
                     RecorderViewModel.RecordingUiState.Review -> {
@@ -342,7 +337,7 @@ private fun RecordTransportButton(
             .border(3.dp, Color.White, CircleShape),
         contentAlignment = Alignment.Center
     ) {
-        IconButton(onClick = action, modifier = Modifier.testTag(TestTags.RECORD_TRANSPORT)) {
+        IconButton(onClick = action) {
             Icon(icon, contentDescription = stringResource(Res.string.cd_record_transport), tint = Color.White, modifier = Modifier.size(42.dp))
         }
     }

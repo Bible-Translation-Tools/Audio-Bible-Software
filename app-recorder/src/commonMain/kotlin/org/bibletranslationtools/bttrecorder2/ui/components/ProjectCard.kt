@@ -16,7 +16,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -26,7 +25,6 @@ import org.bibletranslationtools.shared.resources.cd_info
 import org.bibletranslationtools.shared.resources.cd_record
 import io.reactivex.Single
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
-import org.bibletranslationtools.bttrecorder2.ui.TestTags
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -47,7 +45,6 @@ fun ProjectCard(
             .wrapContentHeight()
             .background(cardBgColor)
             .padding(16.dp) // Use dp for dimensions
-            .testTag(TestTags.projectCard(workbook.targetCollection.slug))
             .clickable { onWorkbookClick(workbook) }
     ) {
         Row(
