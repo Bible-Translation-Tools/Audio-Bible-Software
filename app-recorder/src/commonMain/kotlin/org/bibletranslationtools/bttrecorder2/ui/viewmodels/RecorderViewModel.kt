@@ -131,16 +131,16 @@ class RecorderViewModel(
         chapterNumber: Int,
         unitNumber: Int?
     ) {
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(Dispatchers.IO) {
             val projects = workbookRepository.getProjectsSuspend()
             val foundWorkbook = projects.find {
                 it.source.collectionId == sourceId && it.target.collectionId == targetId 
-            } ?: return@launch
+            } ?: return@launchLogged
 
             val chapterList = foundWorkbook.target.chapters.toList().await()
                 .sortedBy { it.sort }
 
-            if (chapterList.isEmpty()) return@launch
+            if (chapterList.isEmpty()) return@launchLogged
 
             val expandedTargets = mutableListOf<RecordingTarget>()
             chapterList.forEach { chapter ->
@@ -313,7 +313,7 @@ class RecorderViewModel(
         )
 
         takeStreamJob?.cancel()
-        takeStreamJob = viewModelScope.launch {
+        takeStreamJob = launchLogged {
             associatedAudio?.takesFlow?.collect {
                 // No-op: the flow keeps this target's take stream hot and up to date for future numbering.
             }
@@ -321,7 +321,7 @@ class RecorderViewModel(
 
         // Load source audio for the new target. Done off the IO dispatcher because
         // the accessor reads from disk (and possibly extracts from a Resource Container).
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(Dispatchers.IO) {
             sourceAudioController.load(wb, target.chapter, target.chunk)
         }
 
@@ -352,7 +352,7 @@ class RecorderViewModel(
         startVolumeMonitor()
 
         if (!recorderInitialized) {
-            recorderJob = viewModelScope.launch(Dispatchers.IO) {
+            recorderJob = launchLogged(Dispatchers.IO) {
                 try {
                     // Keep the recorder running while the screen is visible so the
                     // volume meter shows live mic input even before recording starts.
@@ -360,6 +360,7 @@ class RecorderViewModel(
                     recorderInitialized = true
                     _audioError.value = null
                 } catch (e: Exception) {
+                    logFailure("initializing audio", e)
                     _audioError.value = e.message ?: getString(Res.string.err_record_device_start)
                 }
             }
@@ -397,7 +398,7 @@ class RecorderViewModel(
     fun startRecording() {
         if (associatedAudio == null || _recordingState.value == RecordingUiState.Review || _audioError.value != null) return
         wavFileWriter?.start()
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(Dispatchers.IO) {
             try {
                 audioRecorderFactory.getRecorderWorker().start(AudioSpec())
                 withContext(Dispatchers.Main) {
@@ -410,6 +411,7 @@ class RecorderViewModel(
                     _audioError.value = null
                 }
             } catch (e: Exception) {
+                logFailure("starting the recording", e)
                 wavFileWriter?.pause()
                 withContext(Dispatchers.Main) {
                     _audioError.value = e.message ?: getString(Res.string.err_record_device_start)
@@ -432,7 +434,7 @@ class RecorderViewModel(
     fun resumeRecording() {
         if (_recordingState.value != RecordingUiState.Paused) return
         wavFileWriter?.start()
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(Dispatchers.IO) {
             try {
                 audioRecorderFactory.getRecorderWorker().start(AudioSpec())
                 withContext(Dispatchers.Main) {
@@ -444,6 +446,7 @@ class RecorderViewModel(
                     _audioError.value = null
                 }
             } catch (e: Exception) {
+                logFailure("resuming the recording", e)
                 wavFileWriter?.pause()
                 withContext(Dispatchers.Main) {
                     _audioError.value = e.message ?: getString(Res.string.err_record_device_resume)
@@ -475,7 +478,7 @@ class RecorderViewModel(
         val audio = associatedAudio ?: return
         val namer = currentNamer ?: return
 
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(Dispatchers.IO) {
             try {
                 // Finalize WAV header before copying. Without this, saved takes can report 0 duration.
                 wavFileWriter?.pause()
@@ -592,7 +595,7 @@ class RecorderViewModel(
 
     private fun startTimerTicker() {
         if (timerTickerJob?.isActive == true) return
-        timerTickerJob = viewModelScope.launch {
+        timerTickerJob = launchLogged {
             while (_recordingState.value == RecordingUiState.Recording) {
                 _timerText.value = formatElapsed(timer.timeElapsed)
                 delay(100)
@@ -611,7 +614,7 @@ class RecorderViewModel(
         val recorder = audioRecorderFactory.getRecorderWorker()
         // Read raw audio bytes from the SharedFlow and compute peak amplitude per packet.
         // SharedFlow allows multiple collectors, so this runs alongside the renderer and writer.
-        volumeTickerJob = viewModelScope.launch(Dispatchers.IO) {
+        volumeTickerJob = launchLogged(Dispatchers.IO) {
             try {
                 recorder.audioStream.collect { bytes ->
                     var peak = 0
@@ -671,11 +674,11 @@ class RecorderViewModel(
         volumeTickerJob?.cancel()
         recorderJob?.cancel()
         sourceAudioController.release()
-        viewModelScope.launch {
+        launchLogged {
             try {
                 audioRecorderFactory.getRecorderWorker().stop()
             } catch (e: Exception) {
-                // Ignore
+                logFailure("stopping the recorder worker during cleanup", e)
             }
         }
         currentTempAudioFile?.delete()

@@ -1,7 +1,6 @@
 package org.bibletranslationtools.bttrecorder2.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -65,7 +64,7 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
     }
 
     fun loadWorkbooks() {
-        viewModelScope.launch {
+        launchLogged {
             _uiState.value = ProjectManagementUiState.Loading
             try {
                 val workbooks = workbookDescriptorRepository.getAll().blockingGet()
@@ -75,6 +74,7 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
                     sortState = _sortState.value
                 )
             } catch (e: Exception) {
+                logFailure("loading the project list", e)
                 _uiState.value = ProjectManagementUiState.Error(e.message ?: getString(Res.string.err_unknown))
             }
         }
@@ -141,7 +141,7 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
     fun importProject(platformFile: PlatformFile) {
         if (_importState.value is ProjectImportState.InProgress) return
         _importState.value = ProjectImportState.InProgress
-        viewModelScope.launch {
+        launchLogged {
             var staged: File? = null
             try {
                 val result = withContext(Dispatchers.IO) {
@@ -163,6 +163,7 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("importing the project", e)
                 _importState.value = ProjectImportState.Error(
                     e.message ?: getString(Res.string.import_failed)
                 )
@@ -177,7 +178,7 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
     }
 
     fun deleteWorkbook(workbook: WorkbookDescriptor) {
-        viewModelScope.launch {
+        launchLogged {
             try {
                 withContext(Dispatchers.IO) {
                     workbookDescriptorRepository.deleteSuspend(listOf(workbook))
@@ -186,6 +187,7 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("deleting the project", e)
                 _uiState.value = ProjectManagementUiState.Error(
                     e.message ?: getString(Res.string.err_delete_project)
                 )

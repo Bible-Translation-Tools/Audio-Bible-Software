@@ -1,7 +1,6 @@
 package org.bibletranslationtools.bttrecorder2.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -70,7 +69,7 @@ class SettingsViewModel : ViewModel(), KoinComponent {
             )
         }
         loadDevices()
-        viewModelScope.launch {
+        launchLogged {
             appPreferences.appSettings.collect { settings: AppSettings ->
                 _uiState.update {
                     it.copy(
@@ -87,7 +86,7 @@ class SettingsViewModel : ViewModel(), KoinComponent {
 
     /** (Re)reads the currently-available hardware devices. Safe to call on resume. */
     fun loadDevices() {
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(Dispatchers.IO) {
             val spec = AudioSpec()
             val out = runCatching { deviceSelector.getOutputDevices(spec) }.getOrDefault(emptyList())
             val input = runCatching { deviceSelector.getInputDevices(spec) }.getOrDefault(emptyList())
@@ -98,24 +97,24 @@ class SettingsViewModel : ViewModel(), KoinComponent {
     }
 
     fun setThemeMode(mode: ThemeMode) {
-        viewModelScope.launch { appPreferences.setThemeMode(mode) }
+        launchLogged { appPreferences.setThemeMode(mode) }
     }
 
     fun selectOutputDevice(device: AudioDevice) {
         deviceSelector.selectOutputDevice(device)
-        viewModelScope.launch { appPreferences.setOutputDeviceId(device.id) }
+        launchLogged { appPreferences.setOutputDeviceId(device.id) }
     }
 
     fun selectInputDevice(device: AudioDevice) {
         deviceSelector.selectInputDevice(device)
-        viewModelScope.launch { appPreferences.setInputDeviceId(device.id) }
+        launchLogged { appPreferences.setInputDeviceId(device.id) }
     }
 
     fun setAppLanguage(tag: String?) {
         // Persist, then apply to the JVM default locale (both targets are JVM).
         // Visible UI re-localization additionally requires bundled translations
         // and, on some platforms, an app restart.
-        viewModelScope.launch {
+        launchLogged {
             appPreferences.setAppLanguageTag(tag)
             applyLocale(tag)
         }
@@ -129,13 +128,13 @@ class SettingsViewModel : ViewModel(), KoinComponent {
     }
 
     fun setLangNamesUrl(url: String) {
-        viewModelScope.launch { appPreferences.setLangNamesUrl(url) }
+        launchLogged { appPreferences.setLangNamesUrl(url) }
     }
 
     fun updateLanguageNames() {
         if (_uiState.value.langNamesUpdateState is LangNamesUpdateState.InProgress) return
         val url = _uiState.value.langNamesUrl.ifBlank { DEFAULT_LANG_NAMES_URL }
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(Dispatchers.IO) {
             withContext(Dispatchers.Main) {
                 _uiState.update { it.copy(langNamesUpdateState = LangNamesUpdateState.InProgress) }
             }

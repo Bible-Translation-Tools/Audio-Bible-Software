@@ -225,7 +225,7 @@ class PlaybackViewModel(
         refreshRenderTimeline()
         // Main.immediate runs synchronously when already on main, posts otherwise —
         // snapshot-state writes stay on the main thread either way.
-        viewModelScope.launch(Dispatchers.Main.immediate) { timelineGeneration.intValue++ }
+        launchLogged(Dispatchers.Main.immediate) { timelineGeneration.intValue++ }
     }
 
     private var waveformWidth: Int = 0
@@ -280,7 +280,7 @@ class PlaybackViewModel(
         // PlaybackScreen), so there is nothing to render ahead of time.
         // PlaybackPerfStats renders/s reading 0 during playback is the point.
 
-        viewModelScope.launch {
+        launchLogged {
             audioPlayer.events.collect { event ->
                 when (event) {
                     AudioPlayerEvent.Play -> {
@@ -332,15 +332,15 @@ class PlaybackViewModel(
         takeNumber: Int?
     ) {
         requestedTakeNumber = takeNumber
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(Dispatchers.IO) {
             val projects = workbookRepository.getProjectsSuspend()
             val foundWorkbook = projects.find {
                 it.source.collectionId == sourceId && it.target.collectionId == targetId
-            } ?: return@launch
+            } ?: return@launchLogged
 
             val chapterList = foundWorkbook.target.chapters.toList().await()
                 .sortedBy { it.sort }
-            if (chapterList.isEmpty()) return@launch
+            if (chapterList.isEmpty()) return@launchLogged
 
             val expandedTargets = mutableListOf<PlaybackTarget>()
             chapterList.forEach { chapter ->
@@ -625,13 +625,13 @@ class PlaybackViewModel(
         if (!session.hasEdits()) {
             // getString is suspend; resolve in a coroutine (this guard sits in a
             // synchronous function body before the IO launch below).
-            viewModelScope.launch {
+            launchLogged {
                 updateState { it.copy(error = getString(Res.string.err_no_edits_to_save)) }
             }
             return
         }
 
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(Dispatchers.IO) {
             runCatching {
                 val tempEditedWav = File.createTempFile("edited_", ".wav")
                 val reader = buildReaderForTake(take)
@@ -725,7 +725,7 @@ class PlaybackViewModel(
         audioPlayer.pause()
         clock.advancing = false
 
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(Dispatchers.IO) {
             runCatching {
                 val oaf = OratureAudioFile(take.file)
                 oaf.clearMarkers()
@@ -821,7 +821,7 @@ class PlaybackViewModel(
             secondsOnScreen = 10,
             recordingSampleRate = reader.spec.sampleRate
         )
-        insertWaveformJob = viewModelScope.launch(Dispatchers.Default) {
+        insertWaveformJob = launchLogged(Dispatchers.Default) {
             while (isActive) {
                 val scene = insertScene
                 if (scene != null) {
@@ -881,13 +881,14 @@ class PlaybackViewModel(
         val total = editSession?.editedTotalFrames ?: audioPlayer.getDurationInFrames()
         insertAtFrame = clock.displayFrame.toInt().coerceIn(0, total)
 
-        viewModelScope.launch {
+        launchLogged {
             try {
                 val clip = File.createTempFile("insert_", ".wav")
                 insertRecorder.begin(clip, takeSpec(take), waveformWidth.coerceAtLeast(1))
                 startInsertScene(take, waveformWidth.coerceAtLeast(1))
                 updateState { it.copy(isInsertActive = true, isInsertRecording = false, error = null) }
             } catch (e: Exception) {
+                logFailure("beginning an insert at the playhead", e)
                 insertRecorder.discard()
                 updateState {
                     it.copy(
@@ -915,17 +916,17 @@ class PlaybackViewModel(
     /** Closes the clip and splices it in at the captured playhead, leaving the playhead at its end. */
     fun commitInsert() {
         if (!_uiState.value.isInsertActive) return
-        viewModelScope.launch {
+        launchLogged {
             val clip = insertRecorder.finish()
             stopInsertScene()
             updateState { it.copy(isInsertActive = false, isInsertRecording = false) }
-            if (clip == null) return@launch // nothing captured
+            if (clip == null) return@launchLogged // nothing captured
 
             val session = editSession
             val clipSource = FilePcmSource(clip.file)
             if (session == null || !session.insertRelative(insertAtFrame, clipSource)) {
                 runCatching { clip.file.delete() }
-                return@launch
+                return@launchLogged
             }
             pendingInsertClips.add(clip.file)
             ensureClipPeakCache(clipSource)
@@ -936,7 +937,7 @@ class PlaybackViewModel(
     /** Abandons the session: releases the mic, deletes the partial clip, leaves the take untouched. */
     fun cancelInsert() {
         if (!_uiState.value.isInsertActive) return
-        viewModelScope.launch {
+        launchLogged {
             insertRecorder.discard()
             stopInsertScene()
             updateState { it.copy(isInsertActive = false, isInsertRecording = false) }
@@ -948,7 +949,7 @@ class PlaybackViewModel(
         if (peakCaches.containsKey(source.id)) return
         val cache = WaveformPeakCache(source.totalFrames)
         peakCaches[source.id] = cache
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(Dispatchers.IO) {
             runCatching { buildPeakCache(source, cache) }
             bumpTimelineGeneration()
         }
@@ -1072,7 +1073,7 @@ class PlaybackViewModel(
 
         // Resolve and load source audio for this target. Disk-bound work goes off
         // the main thread; the controller's state flow drives the UI.
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(Dispatchers.IO) {
             val available = sourceAudioController.load(wb, target.chapter, target.chunk)
             updateState { it.copy(sourceAudioAvailable = available) }
         }
@@ -1105,7 +1106,7 @@ class PlaybackViewModel(
         val audio = associatedAudio ?: return
         val takeMap = linkedMapOf<Int, Take>()
 
-        takesJob = viewModelScope.launch {
+        takesJob = launchLogged {
             audio.takesFlow.collect { take ->
                 takeMap[take.number] = take
                 val takes = takeMap.values
@@ -1125,7 +1126,7 @@ class PlaybackViewModel(
             }
         }
 
-        selectedJob = viewModelScope.launch {
+        selectedJob = launchLogged {
             audio.selectedFlow.collect { selectedHolder ->
                 val selectedTake = selectedHolder.value
                 updateState { it.copy(selectedTake = selectedTake) }
@@ -1151,7 +1152,7 @@ class PlaybackViewModel(
         }.onFailure { e ->
             // loadTakeForPlayback is synchronous; getString is suspend, so resolve
             // the fallback in a coroutine.
-            viewModelScope.launch {
+            launchLogged {
                 updateState { it.copy(error = e.message ?: getString(Res.string.err_load_take)) }
             }
         }
@@ -1246,7 +1247,7 @@ class PlaybackViewModel(
         peakCaches.keys.retainAll(stillReferenced)
         val cache = WaveformPeakCache(source.totalFrames)
         peakCaches[source.id] = cache
-        peakCacheJob = viewModelScope.launch(Dispatchers.IO) {
+        peakCacheJob = launchLogged(Dispatchers.IO) {
             runCatching { buildPeakCache(source, cache) }
             bumpTimelineGeneration()
         }
@@ -1339,7 +1340,7 @@ class PlaybackViewModel(
         cleanup()
         // An insert session left open (or spliced-but-unsaved clips) must not leak the mic or files.
         if (insertRecorder.isActive) {
-            viewModelScope.launch { insertRecorder.discard() }
+            launchLogged { insertRecorder.discard() }
         }
         discardPendingInsertClips()
     }
