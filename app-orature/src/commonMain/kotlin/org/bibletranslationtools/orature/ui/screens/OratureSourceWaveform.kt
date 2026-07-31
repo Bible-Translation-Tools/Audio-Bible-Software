@@ -47,11 +47,11 @@ import org.bibletranslationtools.orature.resources.Res
 import org.bibletranslationtools.orature.resources.delete
 import org.bibletranslationtools.orature.ui.OratureColors
 import org.bibletranslationtools.orature.ui.viewmodels.OratureMarkerInfo
-import org.bibletranslationtools.shared.ui.playback.AudioTimeline
-import org.bibletranslationtools.shared.ui.playback.PcmSource
-import org.bibletranslationtools.shared.ui.playback.WaveformPeakCache
-import org.bibletranslationtools.shared.ui.playback.PlaybackDisplayClock
-import org.bibletranslationtools.shared.ui.playback.fillWindow
+import org.bibletranslationtools.shared.audio.engine.AudioTimeline
+import org.bibletranslationtools.shared.audio.engine.PcmSource
+import org.bibletranslationtools.shared.audio.engine.WaveformPeakCache
+import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayClock
+import org.bibletranslationtools.shared.audio.engine.fillWindow
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.withFrameNanos
 import kotlinx.coroutines.isActive

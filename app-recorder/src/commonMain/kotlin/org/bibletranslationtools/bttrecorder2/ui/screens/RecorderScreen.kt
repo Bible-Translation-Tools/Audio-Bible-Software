@@ -42,7 +42,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.sp
-import org.bibletranslationtools.shared.ui.playback.SourceAudioPlayerController
+import org.bibletranslationtools.shared.audio.engine.SourceAudioPlayerController
 import org.bibletranslationtools.bttrecorder2.ui.recorder.WaveformView
 import org.bibletranslationtools.bttrecorder2.ui.theme.TranslationRecorderTheme
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.RecorderViewModel

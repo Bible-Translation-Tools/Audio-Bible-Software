@@ -1,4 +1,4 @@
-package org.bibletranslationtools.shared.ui.playback
+package org.bibletranslationtools.shared.audio.engine
 
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger

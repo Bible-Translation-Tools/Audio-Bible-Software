@@ -1,4 +1,4 @@
-package org.bibletranslationtools.shared.ui.playback
+package org.bibletranslationtools.shared.audio.engine
 
 import kotlinx.coroutines.runBlocking
 import kotlin.coroutines.EmptyCoroutineContext

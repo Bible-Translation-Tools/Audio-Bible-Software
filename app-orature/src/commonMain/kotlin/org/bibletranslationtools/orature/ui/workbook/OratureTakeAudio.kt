@@ -2,8 +2,8 @@ package org.bibletranslationtools.orature.ui.workbook
 
 import org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio
 import org.bibletranslationtools.otter.common.data.workbook.Take
-import org.bibletranslationtools.shared.ui.playback.AudioTimeline
-import org.bibletranslationtools.shared.ui.playback.FilePcmSource
+import org.bibletranslationtools.shared.audio.engine.AudioTimeline
+import org.bibletranslationtools.shared.audio.engine.FilePcmSource
 
 /**
  * The workbook → playback-engine bridge: turns a recorded [Take] (or a recordable's selected

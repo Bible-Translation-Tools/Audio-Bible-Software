@@ -1,4 +1,4 @@
-package org.bibletranslationtools.shared.ui.playback
+package org.bibletranslationtools.shared.audio.engine
 
 import org.bibletranslationtools.otter.common.device.AudioFileReader
 import org.bibletranslationtools.otter.common.device.AudioSpec
