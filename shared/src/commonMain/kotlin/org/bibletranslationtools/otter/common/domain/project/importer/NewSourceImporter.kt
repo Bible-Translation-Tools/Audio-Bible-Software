@@ -132,10 +132,11 @@ class NewSourceImporter(
             )
 
             // A versification problem must not fail the import. This whole path was disabled during
-            // the port because the versification could not be read at all (the bundled file never
-            // reached disk — see InitializeVersification), and the tree builder reaches the file
+            // the port because the versification could not be read at all — the bundled file never
+            // reached disk (see InitializeVersification, fixed in "Read bundled content through a
+            // port instead of the Compose Res object"), and the tree builder reaches that file
             // through a blockingGet() that throws rather than returning empty when it is missing or
-            // malformed. Degrading to a text-only import is what the app did for that entire period,
+            // malformed. Degrading to a text-only import is what the app did for that whole period,
             // so it is a known-good fallback rather than a guess.
             val versificationTrees = runCatching { versificationTreeBuilder.build(container) }
                 .getOrElse {
@@ -147,6 +148,23 @@ class NewSourceImporter(
                     null
                 }
 
+            // NOT yet verified end-to-end. VersificationTreeBuilderTest pins the structure and
+            // PlanImportTest pins this branch, but nothing exercises the join — a real source RC
+            // through importResourceContainer + updateContent against a real database. The original
+            // Orature covered that with an integration tier (DatabaseEnvironment/TestRcImport) this
+            // repo does not have yet.
+            //
+            // What "working" looks like, from TestRcImport.ulb() in the JavaFX app: importing one
+            // en_ulb.zip yields 31104 TEXT, 1189 META and 1255 TITLE contents across 1256
+            // collections. Those are VERSIFICATION totals, not text totals — 1189 is the chapter
+            // count of the Protestant canon, 1255 = 1189 chapter titles + 66 book titles, and
+            // 1256 = 1189 chapters + 66 books + 1 root. So one source import writes on the order of
+            // 34k content rows where a text-only import writes a fraction of that; queries tuned
+            // against the smaller shape are the thing to watch.
+            //
+            // Verses with no text are EXPECTED, not a failed backfill: the original's own
+            // assertChapters filtered on `text != null` to "remove content allocated from
+            // versification without a matching verse in ULB".
             val plan = planImport(container.toCollection(), tree, versificationTrees)
 
             importTree(container, plan.treeToImport, fileToImport)

@@ -283,7 +283,7 @@ class PlaybackViewModel(
                 when (event) {
                     AudioPlayerEvent.Play -> {
                         updateState { it.copy(isPlaying = true, error = null) }
-                        clock.advancing = true
+                        clock.startAdvancing()
                     }
 
                     AudioPlayerEvent.Pause -> {
@@ -373,7 +373,9 @@ class PlaybackViewModel(
         } else {
             updateState { it.copy(isPlaying = true, error = null) }
             audioPlayer.play()
-            clock.advancing = true
+            // startAdvancing, not `advancing = true`: replaying after the take finished rewinds
+            // the player to 0, and the display has to be told or it stalls at the end.
+            clock.startAdvancing()
         }
     }
 

@@ -57,8 +57,25 @@ class AudioPlayerConnection(
         val reader = _reader ?: return
         playRequested = true
         launchControl {
+            // Rewind a finished take BEFORE connecting, not after.
+            //
+            // connect() does load(reader) + seek(position), so connecting at the end position hands
+            // AudioBufferPlayer.play() a reader with nothing remaining. Its loop breaks on the first
+            // iteration without reading, then still falls into the drain block and emits Complete —
+            // so the worker reports Play immediately followed by Complete and no audio, which the UI
+            // shows as a jump to the end with the transport flipped back to paused.
+            //
+            // The worker probe below cannot prevent that on its own: it reads through
+            // coerceAtMost(lastKnownLocationInFrames) and the playback-rate scaling, so it sometimes
+            // reports just under totalFrames and the rewind is skipped. That is why replaying a
+            // finished take failed only sometimes.
+            if (lastPosition >= reader.totalFrames.toLong()) {
+                lastPosition = 0
+            }
             factory.connect(id, reader, lastPosition)
             val worker = factory.getPlayerWorker()
+            // Still needed: the shared worker may have been left at the end by a DIFFERENT
+            // connection, in which case our own lastPosition says nothing about it.
             if (worker.getLocationInFrames() >= reader.totalFrames.toLong()) {
                 lastPosition = 0
                 worker.seek(0)

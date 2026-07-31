@@ -203,15 +203,24 @@ class ContentRepository(
             .subscribeOn(Schedulers.io())
     }
 
+    /**
+     * Bulk update. The entities are mapped without a `collectionFk`, which leaves
+     * `ContentMapper.mapToEntity`'s default of 0 in the entity — harmless here, because
+     * [ContentDao.updateAll] deliberately does not write `collection_fk` (unlike [ContentDao.update],
+     * which does, and which is why [update] re-reads the existing row before mapping).
+     */
     override fun updateAll(content: List<Content>): Completable {
         return Completable
             .fromAction {
                 val entities = content.map { obj ->
-                    val entity = contentMapper.mapToEntity(obj)
-                    entity
+                    contentMapper.mapToEntity(obj)
                 }
                 contentDao.updateAll(entities)
-            }.subscribeOn(Schedulers.io())
+            }
+            .doOnError { e ->
+                logger.error("Error in updateAll for ${content.size} content row(s)", e)
+            }
+            .subscribeOn(Schedulers.io())
     }
 
     override fun linkDerivedToSource(

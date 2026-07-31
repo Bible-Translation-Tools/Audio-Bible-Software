@@ -111,6 +111,29 @@ class PlaybackDisplayClock(
         displayFrameState.longValue = posF.toLong()
     }
 
+    /**
+     * Start following playback. Use this instead of setting [advancing] directly when playback is
+     * being started or resumed.
+     *
+     * It exists for replay-after-completion. On an `AudioPlayerEvent.Complete` a host parks the
+     * display at the end (`snapTo(durationFrames)`), which also clears `sourceSettled`. Pressing play
+     * rewinds the player — `AudioPlayerConnection.play()` seeks to 0 when the worker is at or past
+     * `totalFrames` — but it does that on its control dispatcher, so nothing tells the display. The
+     * clock would wake up parked at the end while the source reports ~0: an error far outside the
+     * slew band, which while unsettled is free-run rather than corrected. The display sticks at the
+     * end and the elapsed time freezes with it (both read [displayFrame]) until the 2 s convergence
+     * valve force-accepts the source and jumps.
+     *
+     * Snapping first makes the display agree with where audio will actually resume, so the normal
+     * settle path applies and there is nothing to jump from.
+     */
+    fun startAdvancing() {
+        if (durationFrames > 0 && posF >= durationFrames.toDouble()) {
+            snapTo(0L)
+        }
+        advancing = true
+    }
+
     /** Jump the display position (seek / scrub / load / pause-commit). */
     fun snapTo(frame: Long) {
         posF = frame.coerceIn(0L, durationFrames).toDouble()

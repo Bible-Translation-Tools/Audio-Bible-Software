@@ -290,7 +290,7 @@ class OratureChapterReviewViewModel(
         clockEventsJob = launchLogged {
             p.events.collect { e ->
                 when (e) {
-                    AudioPlayerEvent.Play -> clock.advancing = true
+                    AudioPlayerEvent.Play -> clock.startAdvancing()
                     AudioPlayerEvent.Pause -> clock.advancing = false
                     AudioPlayerEvent.Stop -> { clock.advancing = false; clock.snapTo(clock.displayFrame) }
                     AudioPlayerEvent.Complete -> { clock.advancing = false; clock.snapTo(clock.durationFrames) }
