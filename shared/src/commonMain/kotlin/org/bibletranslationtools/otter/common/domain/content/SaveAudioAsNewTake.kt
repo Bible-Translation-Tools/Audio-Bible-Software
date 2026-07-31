@@ -28,27 +28,30 @@ import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import java.io.File
 
 /**
- * Registers an existing audio file as a new take of [recordable], and selects it.
+ * Registers an existing audio file as a new take of [recordable].
  *
  * Both apps had their own copy of this sequence — allocate the next take number, build the
  * project's file name for it, create the take in the chapter's audio directory, copy the audio
- * in, then insert and select. The recorder used it to save waveform edits
+ * in, then insert. The recorder used it to save waveform edits
  * (`PlaybackViewModel.persistEditedFileAsNewTake`), Orature to snapshot a chapter before handing
  * it to an external editor (`OratureChapterReviewViewModel`). Neither app is the natural owner,
  * and getting the naming or the directory wrong puts a take somewhere the project cannot find it.
  *
+ * The new take does end up selected — `WorkbookRepository` selects every take it inserts, once the
+ * insert has returned an id. This does not select it itself; doing that raced the insert and wrote a
+ * zero foreign key. See the note at the [execute] call to `insertTake`.
+ *
  * Not to be confused with the recorder's record-finalize path
  * (`RecorderViewModel.commitStagedTake`), which looks similar but is a different operation: it
- * builds its [Take] directly, stages and validates the WAV before committing, and deliberately
- * does not select the result.
+ * builds its [Take] directly and stages and validates the WAV before committing.
  *
  * ### Threading
  * The file system work — take number, naming (which reads chapter/chunk counts), take creation
  * and the copy — runs on [Dispatchers.IO]. The [insertTake][
- * org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio.insertTake] /
- * `selectTake` pair runs on the caller's context, because those push onto relays the UI observes
- * and each caller already chose where it wants that to happen. Call from `Dispatchers.Main` to
- * have the registration land on the main thread.
+ * org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio.insertTake] call runs on the
+ * caller's context, because it pushes onto a relay the UI observes and each caller already chose
+ * where it wants that to happen. Call from `Dispatchers.Main` to have the registration land on the
+ * main thread.
  */
 class SaveAudioAsNewTake(
     private val takeCreator: TakeCreator
@@ -57,7 +60,8 @@ class SaveAudioAsNewTake(
     /**
      * @param audioFile the audio to copy into the new take; must exist
      * @param chunk the chunk being recorded, or null for a whole-chapter take
-     * @return the newly created, now-selected take
+     * @return the newly created take. It also becomes the selected take, but asynchronously and not
+     *   by this method — see the note on [AssociatedAudio.insertTake] below.
      */
     suspend fun execute(
         workbook: Workbook,
@@ -93,8 +97,19 @@ class SaveAudioAsNewTake(
             newTake
         }
 
+        // Insert ONLY. Do not add a selectTake() here.
+        //
+        // WorkbookRepository already selects every newly inserted take, and it does so at the one
+        // moment when that is safe: inside insertTakeForContent's subscribe, after
+        // `modelTake.id = insertionId`. Selecting from here instead ran synchronously on this thread
+        // while the insert was still in flight on Schedulers.io, so `takeMap[wbTake]` handed back a
+        // take whose id was still 0 and the content update wrote `selected_take_fk = 0` — a foreign
+        // key violation that surfaced as "saving a recording" failing outright.
+        //
+        // The JavaFX app never made this call: ChapterReviewViewModel (which this use case was
+        // extracted from), PeerEditViewModel and NarrationHistory all insert and leave selection to
+        // the repository. The recorder's own commitStagedTake does the same and has always worked.
         audio.insertTake(take)
-        audio.selectTake(take)
         return take
     }
 }

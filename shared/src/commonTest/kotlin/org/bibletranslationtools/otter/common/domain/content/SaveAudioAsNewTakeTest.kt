@@ -117,18 +117,36 @@ class SaveAudioAsNewTakeTest {
     }
 
     /**
-     * Registering and selecting is the whole point — a take that is created on disk but never
-     * inserted is invisible to the project, and one that is inserted but not selected leaves the
-     * user looking at the take they just replaced.
+     * Registering is the whole point — a take created on disk but never inserted is invisible to the
+     * project.
      */
     @Test
-    fun `inserts and selects the new take`() = runTest {
+    fun `inserts the new take`() = runTest {
         val (workbook, chapter, audio) = fixture()
 
         val take = saveAudioAsNewTake.execute(workbook, chapter, null, chapter, sourceAudio())
 
         verify(exactly = 1) { audio.insertTake(take) }
-        verify(exactly = 1) { audio.selectTake(take) }
+    }
+
+    /**
+     * Selecting from here is a foreign-key violation, and this test is the guard against it coming
+     * back. `WorkbookRepository` inserts on `Schedulers.io` and only assigns the take's id in that
+     * subscribe; selecting synchronously on this thread beforehand read the take back out of
+     * `takeMap` while its id was still 0 and wrote `selected_take_fk = 0`, which failed the insert
+     * and broke saving a recording outright.
+     *
+     * The take still ends up selected: the repository selects every take it inserts, after the id
+     * lands. The JavaFX app relied on exactly that — ChapterReviewViewModel, PeerEditViewModel and
+     * NarrationHistory all insert and never select — and so does the recorder's commitStagedTake.
+     */
+    @Test
+    fun `does not select the take itself`() = runTest {
+        val (workbook, chapter, audio) = fixture()
+
+        saveAudioAsNewTake.execute(workbook, chapter, null, chapter, sourceAudio())
+
+        verify(exactly = 0) { audio.selectTake(any<Take>()) }
     }
 
     /**

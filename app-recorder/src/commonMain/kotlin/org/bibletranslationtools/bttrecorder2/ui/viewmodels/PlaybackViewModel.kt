@@ -1002,8 +1002,9 @@ class PlaybackViewModel(
         val wb = workbook ?: return
         val target = currentTarget() ?: return
 
-        // Naming, chapter directory, take creation, the copy, and insert/select all live in
-        // SaveAudioAsNewTake — Orature's chapter-review screen performs the same sequence.
+        // Naming, chapter directory, take creation, the copy and the insert all live in
+        // SaveAudioAsNewTake — Orature's chapter-review screen performs the same sequence. The new
+        // take becomes the selected one via WorkbookRepository, once its insert has an id.
         val newTake = saveAudioAsNewTake.execute(
             workbook = wb,
             chapter = target.chapter,

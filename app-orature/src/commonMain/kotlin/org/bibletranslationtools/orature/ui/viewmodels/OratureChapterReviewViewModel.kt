@@ -406,9 +406,10 @@ class OratureChapterReviewViewModel(
             translationVm.setPluginOpen(true)
             navigationLock.lock()
 
-            // Snapshot the selected take into a fresh one for the plugin to edit in place. The
-            // use case does its file work on Dispatchers.IO and leaves insert/select on this
-            // context, which is the main thread — same as the hand-rolled version it replaces.
+            // Snapshot the selected take into a fresh one for the plugin to edit in place. The use
+            // case does its file work on Dispatchers.IO and leaves the insert on this context, which
+            // is the main thread — same as the hand-rolled version it replaces. Selection follows
+            // from WorkbookRepository once the insert has an id; it is not synchronous here.
             val newTake = saveAudioAsNewTake.execute(
                 workbook = wb,
                 chapter = chap,
