@@ -1,4 +1,4 @@
-package org.bibletranslationtools.orature.ui.workbook
+package org.bibletranslationtools.orature.services
 
 import org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio
 import org.bibletranslationtools.otter.common.data.workbook.Take

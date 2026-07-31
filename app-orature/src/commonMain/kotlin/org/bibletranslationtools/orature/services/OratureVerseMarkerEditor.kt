@@ -1,4 +1,4 @@
-package org.bibletranslationtools.orature.ui.viewmodels
+package org.bibletranslationtools.orature.services
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

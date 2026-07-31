@@ -20,6 +20,7 @@ import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.domain.collections.CreateProject
 import org.bibletranslationtools.otter.common.domain.collections.DeleteProject
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
+import org.bibletranslationtools.orature.services.OratureProjectDeletion
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 

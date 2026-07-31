@@ -1,4 +1,4 @@
-package org.bibletranslationtools.bttrecorder2.ui.viewmodels
+package org.bibletranslationtools.bttrecorder2.services
 
 import io.mockk.coEvery
 import io.mockk.every

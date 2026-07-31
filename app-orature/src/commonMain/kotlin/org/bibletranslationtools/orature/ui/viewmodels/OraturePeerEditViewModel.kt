@@ -13,7 +13,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.orature.ui.translation.ChunkingStep
-import org.bibletranslationtools.orature.ui.workbook.OratureWorkbookDataStore
+import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
 import org.bibletranslationtools.shared.audio.engine.AudioTimeline
 import org.bibletranslationtools.shared.audio.engine.FilePcmSource
 import org.bibletranslationtools.shared.audio.engine.PcmSource

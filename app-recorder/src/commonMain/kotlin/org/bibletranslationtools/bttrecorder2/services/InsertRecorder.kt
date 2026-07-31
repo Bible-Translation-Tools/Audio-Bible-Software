@@ -1,4 +1,4 @@
-package org.bibletranslationtools.bttrecorder2.ui.viewmodels
+package org.bibletranslationtools.bttrecorder2.services
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow

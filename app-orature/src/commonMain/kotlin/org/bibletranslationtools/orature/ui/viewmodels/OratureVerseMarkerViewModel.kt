@@ -32,6 +32,8 @@ import org.bibletranslationtools.otter.common.domain.model.UndoableActionHistory
 import org.bibletranslationtools.otter.common.domain.translation.AddMarkerAction
 import org.bibletranslationtools.otter.common.domain.translation.DeleteMarkerAction
 import org.bibletranslationtools.otter.common.domain.translation.MoveMarkerAction
+import org.bibletranslationtools.orature.services.OratureVerseMarkerEditor
+import org.bibletranslationtools.orature.services.OratureVerseText
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 

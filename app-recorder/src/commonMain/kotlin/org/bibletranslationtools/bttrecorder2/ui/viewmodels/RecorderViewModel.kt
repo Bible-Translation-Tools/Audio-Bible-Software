@@ -36,6 +36,8 @@ import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBu
 import org.bibletranslationtools.otter.common.recorder.ActiveRecordingRenderer
 import org.bibletranslationtools.otter.common.recorder.RecordingTimer
 import org.bibletranslationtools.otter.common.recorder.WavFileWriter
+import org.bibletranslationtools.bttrecorder2.services.UnitTarget
+import org.bibletranslationtools.bttrecorder2.services.UnitTargetLoader
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption

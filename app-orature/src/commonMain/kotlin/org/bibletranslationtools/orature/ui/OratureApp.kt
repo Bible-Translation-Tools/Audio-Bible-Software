@@ -34,7 +34,7 @@ import org.bibletranslationtools.orature.ui.navigation.OratureNarrationRoute
 import org.bibletranslationtools.orature.ui.navigation.OratureNavigation
 import org.bibletranslationtools.orature.ui.navigation.OratureTranslationRoute
 import org.bibletranslationtools.orature.ui.screens.OratureCrashScreen
-import org.bibletranslationtools.orature.ui.viewmodels.OratureImportEvents
+import org.bibletranslationtools.orature.services.OratureImportEvents
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.device.AudioDeviceSelector
 import org.bibletranslationtools.otter.common.device.AudioSpec

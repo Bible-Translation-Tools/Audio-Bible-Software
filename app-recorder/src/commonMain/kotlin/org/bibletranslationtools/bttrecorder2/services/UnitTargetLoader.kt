@@ -1,4 +1,4 @@
-package org.bibletranslationtools.bttrecorder2.ui.viewmodels
+package org.bibletranslationtools.bttrecorder2.services
 
 import kotlinx.coroutines.rx2.await
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository

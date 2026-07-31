@@ -27,7 +27,7 @@ import org.bibletranslationtools.shared.audio.engine.WaveformPeakCache
 import org.bibletranslationtools.shared.audio.engine.buildPeakCache
 import kotlin.math.max
 import org.bibletranslationtools.orature.ui.narration.OratureNarrationFactory
-import org.bibletranslationtools.orature.ui.workbook.OratureWorkbookDataStore
+import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
 import org.bibletranslationtools.otter.common.domain.narration.LoadChapterSourceText
 import org.bibletranslationtools.otter.common.domain.project.OpenWorkbook
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
@@ -42,6 +42,8 @@ import org.bibletranslationtools.otter.common.domain.narration.teleprompter.Narr
 import org.bibletranslationtools.otter.common.domain.narration.teleprompter.TeleprompterItemState
 import org.bibletranslationtools.otter.common.domain.narration.teleprompter.TeleprompterStateMachine
 import org.bibletranslationtools.orature.plugins.PluginCapability
+import org.bibletranslationtools.orature.services.OratureVerseMarkerEditor
+import org.bibletranslationtools.orature.services.OratureVerseText
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
