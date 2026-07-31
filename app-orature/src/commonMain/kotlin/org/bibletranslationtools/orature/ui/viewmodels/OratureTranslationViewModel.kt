@@ -12,8 +12,12 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.rx2.asFlow
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
+import org.bibletranslationtools.orature.resources.Res
+import org.bibletranslationtools.orature.resources.errOpenProject
 import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
 import org.bibletranslationtools.orature.ui.translation.ChunkingStep
+import org.jetbrains.compose.resources.getString
+import org.bibletranslationtools.otter.common.domain.project.InitializeProjectFiles
 import org.bibletranslationtools.otter.common.domain.project.OpenWorkbook
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
@@ -191,9 +195,21 @@ class OratureTranslationViewModel(
                 // app-side work that is still file I/O: scaffolding the project files and
                 // probing the source RC for chapter audio.
                 val opened = openWorkbook.openWithChapters(workbookDescriptorId)
+                val scaffolded = workbookDataStore.open(opened.workbook, opened.mode)
+                if (scaffolded is InitializeProjectFiles.Result.Failed) {
+                    logFailure("scaffolding project files (${scaffolded.step})", scaffolded.cause)
+                    // Chunking loads the project RC to copy source audio, so a missing manifest.yaml
+                    // would surface there instead of here, looking like an unrelated failure.
+                    if (!scaffolded.projectUsable) {
+                        _uiState.value = OratureTranslationUiState(
+                            isLoading = false,
+                            error = getString(Res.string.errOpenProject)
+                        )
+                        return@launchLogged
+                    }
+                }
                 val loaded = withContext(Dispatchers.IO) {
                     val workbook = opened.workbook
-                    workbookDataStore.open(workbook, opened.mode)
                     val restoredSort = workbookDataStore.lastChapterSort(workbookDescriptorId)
                     val activeSort = (opened.chapters.firstOrNull { it.sort == restoredSort }
                         ?: opened.chapters.firstOrNull())?.sort

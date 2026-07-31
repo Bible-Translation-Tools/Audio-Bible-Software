@@ -25,6 +25,7 @@ import org.bibletranslationtools.otter.common.domain.narration.PcmTakeTransforme
 import org.bibletranslationtools.otter.common.domain.narration.SplitAudioOnCues
 import org.bibletranslationtools.otter.common.domain.languages.ImportLanguages
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
+import org.bibletranslationtools.otter.common.domain.project.InitializeProjectFiles
 import org.bibletranslationtools.otter.common.domain.project.OpenWorkbook
 import org.bibletranslationtools.otter.common.domain.project.ProjectCompletionStatus
 import org.bibletranslationtools.otter.common.domain.project.exporter.AudioProjectExporter
@@ -82,6 +83,7 @@ val implicitCommonModule = module {
     // Project
     factoryOf(::ImportProjectUseCase)
     factoryOf(::OpenWorkbook)
+    factoryOf(::InitializeProjectFiles)
     factoryOf(::ImportLanguages)
 
     // Exporters

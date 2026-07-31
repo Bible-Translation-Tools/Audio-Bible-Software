@@ -24,6 +24,7 @@ import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.domain.narration.LoadChapterSourceText
+import org.bibletranslationtools.otter.common.domain.project.InitializeProjectFiles
 import org.bibletranslationtools.otter.common.domain.project.OpenWorkbook
 import org.bibletranslationtools.orature.di.oratureViewModelModule
 import org.koin.core.context.startKoin
@@ -67,6 +68,7 @@ class OratureNarrationViewModelTest : KoinTest {
                     // supplied explicitly rather than left to fail lazily at first use.
                     single { OpenWorkbook(descriptorRepo, workbookRepo) }
                     single { LoadChapterSourceText() }
+                    single { InitializeProjectFiles() }
                 }
             )
         }

@@ -8,7 +8,7 @@ import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.shared.logging.logFailure
+import org.bibletranslationtools.otter.common.domain.project.InitializeProjectFiles
 
 /**
  * Orature's central open-project state, shared across the mode-page components (header,
@@ -22,7 +22,8 @@ import org.bibletranslationtools.shared.logging.logFailure
  * derivations (titles, grid rows) belong in the screen ViewModel.
  */
 class OratureWorkbookDataStore(
-    private val workbookRepository: IWorkbookRepository
+    private val workbookRepository: IWorkbookRepository,
+    private val initializeProjectFiles: InitializeProjectFiles
 ) {
     private val _activeWorkbook = MutableStateFlow<Workbook?>(null)
     val activeWorkbook: StateFlow<Workbook?> = _activeWorkbook.asStateFlow()
@@ -46,11 +47,23 @@ class OratureWorkbookDataStore(
     val chapter: Chapter get() = _activeChapter.value ?: error("No active chapter")
 
     /**
-     * Set the active workbook + mode (JVM: `activeWorkbookProperty` / `currentModeProperty`).
+     * Set the active workbook + mode (JVM: `activeWorkbookProperty` / `currentModeProperty`) and
+     * make sure the project's on-disk files exist.
+     *
      * Closes the previously-open workbook (freeing its Rx connections) when switching projects,
      * matching the JVM app's cached `workbookRepo` lifecycle.
+     *
+     * The scaffolding stays wired to this call rather than being left to each screen: two screens
+     * open projects today, and anything that reaches `ResourceContainer.load(projectDir)` depends
+     * on it having run. A caller that forgot would not fail here — it would fail later, elsewhere,
+     * with a missing `manifest.yaml`. The work itself lives in [InitializeProjectFiles]; this only
+     * decides when it runs.
+     *
+     * @return whether the scaffolding succeeded, and if not which step failed. Callers must not
+     *   discard it: on a [InitializeProjectFiles.Result.Failed] with `projectUsable == false` the
+     *   project should not be presented as open.
      */
-    fun open(workbook: Workbook, mode: ProjectMode) {
+    suspend fun open(workbook: Workbook, mode: ProjectMode): InitializeProjectFiles.Result {
         val previous = _activeWorkbook.value
         if (previous != null && previous !== workbook) {
             workbookRepository.closeWorkbook(previous)
@@ -59,26 +72,7 @@ class OratureWorkbookDataStore(
         _currentMode.value = mode
         _activeChapter.value = null
         _activeChunk.value = null
-        initializeProjectFiles(workbook, mode)
-    }
-
-    /**
-     * Scaffold the on-disk project files on open (JVM: `HomePageViewModel2.initializeProjectFiles`,
-     * called from openWorkbook). Writes the project resource container (manifest.yaml), copies the
-     * source files in, and creates the selected-takes / chunks / project-mode files. All steps are
-     * idempotent (no-ops when already present), so this is safe to run on every open. Without it,
-     * anything that does `ResourceContainer.load(projectDir)` (e.g. chunking's source-audio copy)
-     * fails with "missing manifest.yaml". Contributor info is deferred (metadata-only, Phase 11).
-     */
-    private fun initializeProjectFiles(workbook: Workbook, mode: ProjectMode) {
-        runCatching {
-            val pfa = workbook.projectFilesAccessor
-            pfa.initializeResourceContainerInDir(overwrite = false)
-            pfa.copySourceFiles()
-            pfa.createSelectedTakesFile()
-            pfa.createChunksFile()
-            pfa.setProjectMode(mode)
-        }.onFailure { logFailure(this, "scaffolding the project files on open", it) }
+        return initializeProjectFiles.execute(workbook, mode)
     }
 
     /** Set the active chapter and remember it for [workbookDescriptorId] (JVM: `updateLastSelectedChapter`). */

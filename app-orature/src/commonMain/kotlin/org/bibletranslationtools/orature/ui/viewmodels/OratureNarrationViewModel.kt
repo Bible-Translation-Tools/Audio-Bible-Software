@@ -29,10 +29,12 @@ import kotlin.math.max
 import org.bibletranslationtools.orature.ui.narration.OratureNarrationFactory
 import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
 import org.bibletranslationtools.otter.common.domain.narration.LoadChapterSourceText
+import org.bibletranslationtools.otter.common.domain.project.InitializeProjectFiles
 import org.bibletranslationtools.otter.common.domain.project.OpenWorkbook
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
 import org.bibletranslationtools.otter.common.data.audio.MarkerType
 import org.bibletranslationtools.orature.resources.Res
+import org.bibletranslationtools.orature.resources.errOpenProject
 import org.bibletranslationtools.orature.resources.editVerseMarkers
 import org.jetbrains.compose.resources.getString
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
@@ -353,8 +355,22 @@ class OratureNarrationViewModel(
                 val loaded = openWorkbook.openWithChapters(workbookDescriptorId)
 
                 // open() scaffolds the on-disk project files (RC manifest, source copy, takes/chunks
-                // files) — file I/O, so keep it off the main thread.
-                withContext(Dispatchers.IO) { workbookDataStore.open(loaded.workbook, loaded.mode) }
+                // files); InitializeProjectFiles does its own IO dispatch.
+                when (val scaffolded = workbookDataStore.open(loaded.workbook, loaded.mode)) {
+                    is InitializeProjectFiles.Result.Success -> Unit
+                    is InitializeProjectFiles.Result.Failed -> {
+                        logFailure("scaffolding project files (${scaffolded.step})", scaffolded.cause)
+                        // A missing manifest.yaml used to surface much later, inside chunking's
+                        // source-audio copy, as an unrelated-looking ResourceContainer.load failure.
+                        if (!scaffolded.projectUsable) {
+                            _uiState.value = OratureNarrationUiState(
+                                isLoading = false,
+                                error = getString(Res.string.errOpenProject)
+                            )
+                            return@launchLogged
+                        }
+                    }
+                }
                 chapters = loaded.chapters
 
                 // Restore the last-viewed chapter for this workbook, else the first (JVM behavior).

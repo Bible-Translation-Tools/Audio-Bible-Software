@@ -19,6 +19,7 @@ import org.bibletranslationtools.otter.common.domain.project.exporter.resourceco
 import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.SourceProjectExporter
 import org.bibletranslationtools.otter.common.domain.project.GlSourceCatalog
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
+import org.bibletranslationtools.otter.common.domain.project.InitializeProjectFiles
 import org.bibletranslationtools.otter.common.domain.project.OpenWorkbook
 import org.bibletranslationtools.otter.common.initialization.InitializeLanguages
 import org.bibletranslationtools.otter.common.initialization.InitializeUlb
@@ -100,6 +101,18 @@ class SharedGraphWiringTest : KoinTest {
     @Test
     fun `the gl source catalog is bound`() {
         assertNotNull(start().get<GlSourceCatalog>())
+    }
+
+    /**
+     * Orature's [org.bibletranslationtools.orature.services.OratureWorkbookDataStore] takes this by
+     * constructor, and it is a Koin `single` — so an unbound use case fails when the graph builds
+     * the data store, not when the project files are written. Adding it as a constructor parameter
+     * broke four narration ViewModel tests with "Could not create instance for Singleton
+     * OratureWorkbookDataStore" and nothing about the actual missing binding.
+     */
+    @Test
+    fun `initialize project files is bound`() {
+        assertNotNull(start().get<InitializeProjectFiles>())
     }
 
     /**

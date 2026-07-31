@@ -405,4 +405,9 @@
     <string name="systemDefault">System default</string>
     <string name="noDevicesFound">No devices found</string>
     <string name="noAppsConfigured">No external applications configured.</string>
+
+    <!-- ───────────── ViewModel-surfaced errors ─────────────
+         Orature's first localized error string: until now every failure in these ViewModels went
+         to stderr, so there was nothing to translate. Not yet present in the other locales. -->
+    <string name="errOpenProject">Could not prepare this project\'s files, so it cannot be opened. See the log for details.</string>
 </resources>
