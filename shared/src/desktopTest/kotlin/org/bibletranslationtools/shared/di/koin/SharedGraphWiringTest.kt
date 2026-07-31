@@ -19,6 +19,7 @@ import org.bibletranslationtools.otter.common.domain.project.exporter.resourceco
 import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.SourceProjectExporter
 import org.bibletranslationtools.otter.common.domain.project.GlSourceCatalog
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
+import org.bibletranslationtools.otter.common.domain.project.importer.NewSourceImporter
 import org.bibletranslationtools.otter.common.domain.project.InitializeProjectFiles
 import org.bibletranslationtools.otter.common.domain.project.OpenWorkbook
 import org.bibletranslationtools.otter.common.initialization.InitializeLanguages
@@ -113,6 +114,21 @@ class SharedGraphWiringTest : KoinTest {
     @Test
     fun `initialize project files is bound`() {
         assertNotNull(start().get<InitializeProjectFiles>())
+    }
+
+    /**
+     * Restoring the versification pre-allocation swapped `IVersificationRepository` for
+     * `VersificationTreeBuilder` in [NewSourceImporter]'s constructor, and `factoryOf` resolves that
+     * from the graph rather than honouring any default.
+     *
+     * [ImportProjectUseCase] above already fails if that binding goes missing — deleting it turns
+     * three tests here red, not one. This one exists to say *which* dependency broke: the other two
+     * report a resolution failure somewhere under the import graph, which is a much longer walk from
+     * the message to the cause.
+     */
+    @Test
+    fun `the new source importer resolves with its versification tree builder`() {
+        assertNotNull(start().get<NewSourceImporter>())
     }
 
     /**

@@ -29,20 +29,55 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.OtterReso
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.castOrFindImportException
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.IProjectReader
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.IZipEntryTreeBuilder
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.VersificationTreeBuilder
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.toCollection
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceContainerRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import java.io.File
 import java.io.IOException
+
+/**
+ * Which tree a source import writes, and whether the parsed text still has to be applied on top.
+ *
+ * @param treeToImport what [IResourceContainerRepository.importResourceContainer] receives
+ * @param applyParsedTextAfter whether the imported structure still needs the source text filled in
+ */
+internal data class ImportPlan(
+    val treeToImport: OtterTree<CollectionOrContent>,
+    val applyParsedTextAfter: Boolean
+)
+
+/**
+ * Decides what a source resource container import should write.
+ *
+ * With a versification available, the structure comes from the *versification* — every chapter and
+ * verse it declares, seeded onto [containerCollection] — and the source text is applied afterwards.
+ * That is what makes a verse the source text happens to omit still recordable. Without one, the only
+ * structure available is what the text itself contains.
+ *
+ * Split out from [NewSourceImporter.importContainer] because reaching this decision through the
+ * importer requires a real resource container on disk, and the decision is the part worth pinning.
+ */
+internal fun planImport(
+    containerCollection: CollectionOrContent,
+    parsedTree: OtterTree<CollectionOrContent>,
+    versificationTrees: List<OtterTree<CollectionOrContent>>?
+): ImportPlan {
+    if (versificationTrees.isNullOrEmpty()) {
+        return ImportPlan(treeToImport = parsedTree, applyParsedTextAfter = false)
+    }
+    val preallocation = OtterTree<CollectionOrContent>(containerCollection)
+    versificationTrees.forEach { preallocation.addChild(it) }
+    return ImportPlan(treeToImport = preallocation, applyParsedTextAfter = true)
+}
 
 class NewSourceImporter(
     private val directoryProvider: IDirectoryProvider,
     private val resourceContainerRepository: IResourceContainerRepository,
     resourceMetadataRepository: IResourceMetadataRepository,
-    private val versificationRepository: IVersificationRepository,
+    private val versificationTreeBuilder: VersificationTreeBuilder,
     private val zipEntryTreeBuilder: IZipEntryTreeBuilder
 ) : RCImporter(directoryProvider, resourceMetadataRepository) {
 
@@ -96,16 +131,36 @@ class NewSourceImporter(
                 localizeKey = "importingSource", percent = 50.0
             )
 
-            // TODO: versification pre-allocation is NOT running. The JavaFX importer built a
-            //  preallocation tree with `VersificationTreeBuilder(versificationRepository)`, added
-            //  its nodes to a tree seeded from `container.toCollection()`, imported *that*, and
-            //  then backfilled text with `updateContentFromTextContent(container, tree)`. That
-            //  path was disabled during the port (hard-coded to null), which left the branch
-            //  below as the only reachable one: a source RC is imported purely from its parsed
-            //  text, so chapters/verses the versification declares but the text omits are never
-            //  pre-allocated. [versificationRepository] is still injected for whoever restores it.
-            //  Restoring it needs a test — that is why it is not being switched back on here.
-            importTree(container, tree, fileToImport)
+            // A versification problem must not fail the import. This whole path was disabled during
+            // the port because the versification could not be read at all (the bundled file never
+            // reached disk — see InitializeVersification), and the tree builder reaches the file
+            // through a blockingGet() that throws rather than returning empty when it is missing or
+            // malformed. Degrading to a text-only import is what the app did for that entire period,
+            // so it is a known-good fallback rather than a guess.
+            val versificationTrees = runCatching { versificationTreeBuilder.build(container) }
+                .getOrElse {
+                    logger.error(
+                        "Could not build the versification tree for ${file.name}; " +
+                            "importing from the source text only",
+                        it
+                    )
+                    null
+                }
+
+            val plan = planImport(container.toCollection(), tree, versificationTrees)
+
+            importTree(container, plan.treeToImport, fileToImport)
+                .flatMap { result ->
+                    // Only backfill text into a structure that actually imported. The JavaFX code
+                    // chained this unconditionally, but importTree reports failure as a VALUE, so a
+                    // failed import fell straight through into updateContent — where a second
+                    // failure would replace the first and hide what actually went wrong.
+                    if (plan.applyParsedTextAfter && result == ImportResult.SUCCESS) {
+                        updateContentFromTextContent(container, tree)
+                    } else {
+                        Single.just(result)
+                    }
+                }
                 .subscribe { result ->
                     notifyCallback(result, callback, file)
                     emitter.onSuccess(result)
