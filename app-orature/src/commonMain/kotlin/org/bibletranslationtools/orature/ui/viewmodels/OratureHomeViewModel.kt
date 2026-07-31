@@ -148,7 +148,7 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
                 // (getAllSuspend already runs its DB work on the Rx IO scheduler.)
                 val t0 = System.currentTimeMillis()
                 val descriptors = workbookDescriptorRepository.getAllSuspend(computeSourceAudio = false)
-                System.err.println("[home-perf] getAllSuspend (${descriptors.size}, no source-audio) took ${System.currentTimeMillis() - t0}ms")
+                logDebug { "getAllSuspend (${descriptors.size}, no source-audio) took ${System.currentTimeMillis() - t0}ms" }
                 // Phase A: build + publish the list IMMEDIATELY with progress (0.0) and source audio
                 // (false) unresolved. The per-book progress scans and the source-RC zip opens are the
                 // expensive parts; keeping them off the critical path is what makes the home page
@@ -201,7 +201,7 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
                     logFailure("resolving source audio availability", e)
                     emptyMap()
                 }
-                System.err.println("[home-perf] source-audio $label (${batch.size}) resolved at +${System.currentTimeMillis() - tStart}ms")
+                logDebug { "source-audio $label (${batch.size}) resolved at +${System.currentTimeMillis() - tStart}ms" }
                 applyBookSourceAudio(byId)
             }
             progressJobs.add(job)

@@ -50,6 +50,12 @@ fun main() {
         System.setProperty("org.slf4j.simpleLogger.logFile", java.io.File(logsDir, "orature.log").absolutePath)
         System.setProperty("org.slf4j.simpleLogger.showDateTime", "true")
         System.setProperty("org.slf4j.simpleLogger.dateTimeFormat", "yyyy-MM-dd HH:mm:ss.SSS")
+        // ORATURE_LOG_LEVEL=debug turns on the shared.logging.logDebug diagnostics — narration
+        // clock/position traces and the home-screen load timings. Off by default: the narration
+        // position ticker traces roughly once a second for the whole of playback.
+        System.getenv("ORATURE_LOG_LEVEL")?.let {
+            System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", it)
+        }
     }
 
     // Compose the shared backend/engine Koin graph + Orature's own directory provider

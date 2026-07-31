@@ -8,6 +8,7 @@ import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
+import org.bibletranslationtools.shared.logging.logFailure
 
 /**
  * Orature's central open-project state, shared across the mode-page components (header,
@@ -77,7 +78,7 @@ class OratureWorkbookDataStore(
             pfa.createSelectedTakesFile()
             pfa.createChunksFile()
             pfa.setProjectMode(mode)
-        }.onFailure { System.err.println("[workbook] initializeProjectFiles failed: $it") }
+        }.onFailure { logFailure(this, "scaffolding the project files on open", it) }
     }
 
     /** Set the active chapter and remember it for [workbookDescriptorId] (JVM: `updateLastSelectedChapter`). */

@@ -606,7 +606,7 @@ class OratureChapterReviewViewModel(
                     runCatching {
                         playing = p.isPlaying()
                         if (playing) positionFrames = p.getLocationInFrames()
-                    }.onFailure { System.err.println("[review] take state poll failed: $it") }
+                    }.onFailure { logFailure("polling take state on the chapter review screen", it) }
                 }
                 if (current.isPlaying != playing) {
                     _uiState.value = _uiState.value.copy(isPlaying = playing)
@@ -657,7 +657,7 @@ class OratureChapterReviewViewModel(
     private fun writeMarkersBlocking() {
         val model = markerModel ?: return
         runCatching { model.writeMarkers().blockingAwait() }
-            .onFailure { System.err.println("Chapter-review marker save failed: $it") }
+            .onFailure { logFailure("saving chapter review markers", it) }
     }
 
     private fun stopAll() {

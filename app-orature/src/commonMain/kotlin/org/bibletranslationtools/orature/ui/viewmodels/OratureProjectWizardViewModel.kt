@@ -175,20 +175,20 @@ class OratureProjectWizardViewModel(
                 val result = linkedSetOf<Language>()
                 runCatching {
                     resourceMetadataRepo.getAllSources().await().map { it.language }
-                }.onFailure { System.err.println("[orature-wizard] getAllSources failed: $it") }
+                }.onFailure { logFailure("loading all sources for the project wizard", it) }
                     .getOrDefault(emptyList()).let(result::addAll)
                 runCatching {
                     collectionRepo.getRootSources().await()
                         .mapNotNull { it.resourceContainer }.map { it.language }
-                }.onFailure { System.err.println("[orature-wizard] getRootSources failed: $it") }
+                }.onFailure { logFailure("loading root sources for the project wizard", it) }
                     .getOrDefault(emptyList()).let(result::addAll)
                 runCatching {
                     languageRepo.getAvailableGatewaySources().await()
-                }.onFailure { System.err.println("[orature-wizard] getAvailableGatewaySources failed: $it") }
+                }.onFailure { logFailure("loading available gateway sources for the project wizard", it) }
                     .getOrDefault(emptyList()).let(result::addAll)
                 result.toList()
             }
-            System.err.println("[orature-wizard] source languages loaded: ${languages.size}")
+            logDebug { "source languages loaded: ${languages.size}" }
             _uiState.value = _uiState.value.copy(sourceLanguages = languages)
         }
     }

@@ -147,7 +147,7 @@ class OratureChunkingViewModel(
                     .await()
                 ChunkAudioUseCase(directoryProvider, accessor).createChunkedSourceAudio(src, cues)
                 dirty = false
-            }.onFailure { System.err.println("Chunk save failed: $it") }
+            }.onFailure { logFailure("saving chunks", it) }
         }
     }
 
@@ -348,7 +348,7 @@ class OratureChunkingViewModel(
                         if (_uiState.value.isPlaying != playing) {
                             _uiState.value = _uiState.value.copy(isPlaying = playing)
                         }
-                    }.onFailure { System.err.println("[chunking] player state poll failed: $it") }
+                    }.onFailure { logFailure("polling player state on the chunking screen", it) }
                 }
                 delay(33)
             }
@@ -372,7 +372,7 @@ class OratureChunkingViewModel(
                     .andThen(createChunks.createUserDefinedChunks(wb, chap, cues))
                     .await()
                 ChunkAudioUseCase(directoryProvider, accessor).createChunkedSourceAudio(src, cues)
-            }.onFailure { System.err.println("Chunk backstop save failed: $it") }
+            }.onFailure { logFailure("saving chunks on the backstop path", it) }
         }
     }
 

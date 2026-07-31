@@ -548,7 +548,7 @@ class OraturePeerEditViewModel(
                     runCatching {
                         playing = p.isPlaying()
                         if (playing) positionFrames = p.getLocationInFrames()
-                    }.onFailure { System.err.println("[peeredit] take state poll failed: $it") }
+                    }.onFailure { logFailure("polling take state on the peer edit screen", it) }
                 }
                 if (current.isPlaying != playing) {
                     _uiState.value = _uiState.value.copy(isPlaying = playing)

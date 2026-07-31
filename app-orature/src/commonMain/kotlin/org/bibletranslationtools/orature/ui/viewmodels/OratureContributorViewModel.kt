@@ -91,7 +91,7 @@ class OratureContributorViewModel(
         launchLogged {
             withContext(Dispatchers.IO) {
                 runCatching { wb.projectFilesAccessor.setContributorInfo(contributors) }
-                    .onFailure { System.err.println("Failed to save contributors: $it") }
+                    .onFailure { logFailure("saving contributors", it) }
             }
         }
     }

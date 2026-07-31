@@ -275,7 +275,7 @@ class OratureVerseMarkerViewModel : ViewModel(), KoinComponent {
             stopPlayback()
             withContext(Dispatchers.IO) { writeMarkersBlocking() }
             runCatching { request?.onSaved?.invoke() }
-                .onFailure { System.err.println("[verse-marker] host reload failed: $it") }
+                .onFailure { logFailure("reloading the host screen after writing verse markers", it) }
             editor.close()
             onClosed()
         }
@@ -338,7 +338,7 @@ class OratureVerseMarkerViewModel : ViewModel(), KoinComponent {
                         if (_uiState.value.isPlaying != playing) {
                             _uiState.value = _uiState.value.copy(isPlaying = playing)
                         }
-                    }.onFailure { System.err.println("[verse-marker] take state poll failed: $it") }
+                    }.onFailure { logFailure("polling take state on the verse marker screen", it) }
                 }
                 delay(33)
             }
@@ -348,7 +348,7 @@ class OratureVerseMarkerViewModel : ViewModel(), KoinComponent {
     private fun writeMarkersBlocking() {
         val model = markerModel ?: return
         runCatching { model.writeMarkers().blockingAwait() }
-            .onFailure { System.err.println("[verse-marker] marker save failed: $it") }
+            .onFailure { logFailure("saving verse markers", it) }
     }
 
     private fun stopPlayback() {

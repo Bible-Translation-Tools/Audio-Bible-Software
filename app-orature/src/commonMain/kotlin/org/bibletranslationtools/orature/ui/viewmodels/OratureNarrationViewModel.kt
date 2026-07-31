@@ -336,7 +336,7 @@ class OratureNarrationViewModel(
         clock.durationFrames = total.toLong()
         peakBuildJob = launchLogged(Dispatchers.IO) {
             runCatching { buildPeakCache(source, cache) }
-                .onFailure { System.err.println("[narration] peak cache build failed: $it") }
+                .onFailure { logFailure("building the narration peak cache", it) }
         }
     }
 
@@ -511,7 +511,7 @@ class OratureNarrationViewModel(
             // Mic runs for the whole narration session; the writer only captures while a verse
             // is recording. Guard so a missing input device doesn't crash the page.
             runCatching { prepared.narration.startMicrophone() }
-                .onFailure { System.err.println("[narration] startMicrophone failed: $it") }
+                .onFailure { logFailure("starting the microphone for narration", it) }
             micStarted = true
 
             // Waveform: composite the recorded chapter audio (its own reader connection) with the
@@ -540,7 +540,7 @@ class OratureNarrationViewModel(
             playerEventsJob = launchLogged {
                 prepared.narration.getPlayer().events.collect { event ->
                     if (event is AudioPlayerEvent.Complete) {
-                        System.err.println("[narr-diag] COMPLETE loc=${prepared.narration.getLocationInFrames()} dur=${prepared.narration.getDurationInFrames()} clock=${clock.displayFrame} playingVerse=$playingVerseIndex")
+                        logDebug { "COMPLETE loc=${prepared.narration.getLocationInFrames()} dur=${prepared.narration.getDurationInFrames()} clock=${clock.displayFrame} playingVerse=$playingVerseIndex" }
                         prepared.narration.onPlaybackFinished()
                         playbackReachedEnd = true
                         clock.advancing = false
@@ -691,7 +691,7 @@ class OratureNarrationViewModel(
             launchLogged(Dispatchers.IO) {
                 runCatching { n.createChapterTake().await() }
                     .onSuccess { chapterTake = it }
-                    .onFailure { System.err.println("[narration] createChapterTake failed: $it") }
+                    .onFailure { logFailure("creating the chapter take", it) }
             }
         } else if (existing != null && !allRecorded) {
             n.deleteChapterTake()
@@ -730,7 +730,7 @@ class OratureNarrationViewModel(
                         // render; the Canvas must never read it mid-update).
                         waveformFront = buffer.copyOf()
                         lastViewports = viewports
-                    }.onFailure { System.err.println("[narration] waveform render failed: $it") }
+                    }.onFailure { logFailure("rendering the narration waveform", it) }
                 }
                 delay(33) // ~30 fps; the workspace redraws the published snapshot every display frame
             }
@@ -1051,7 +1051,7 @@ class OratureNarrationViewModel(
             } catch (e: Exception) {
                 logFailure("launching the chapter plugin", e)
                 endPluginOpen()
-                System.err.println("Chapter external plugin failed: $e")
+                logFailure("running the chapter through an external plugin", e)
             }
         }
     }
@@ -1107,7 +1107,7 @@ class OratureNarrationViewModel(
             } catch (e: Exception) {
                 logFailure("editing a verse with an external plugin", e)
                 endPluginOpen()
-                System.err.println("Narration external edit failed: $e")
+                logFailure("editing a narration verse in an external plugin", e)
             }
         }
     }
@@ -1190,14 +1190,14 @@ class OratureNarrationViewModel(
             // AudioPlayerConnection.play() sees the paused worker position >= the verse length and
             // auto-rewinds to 0 ("jumps back to the beginning" when paused near the verse end).
             val relStart = (start - verseStartFrame(index)).coerceAtLeast(0)
-            System.err.println("[narr-diag] PLAY VERSE index=$index RESUME start=$start rel=$relStart label=${n.totalVerses.getOrNull(index)?.label}")
+            logDebug { "PLAY VERSE index=$index RESUME start=$start rel=$relStart label=${n.totalVerses.getOrNull(index)?.label}" }
             n.seek(relStart)
             player.play()
         } else {
             player.pause()
             n.loadSectionIntoPlayer(n.totalVerses[index])
             start = verseStartFrame(index)
-            System.err.println("[narr-diag] PLAY VERSE index=$index FRESH start=$start label=${n.totalVerses.getOrNull(index)?.label}")
+            logDebug { "PLAY VERSE index=$index FRESH start=$start label=${n.totalVerses.getOrNull(index)?.label}" }
             player.play()
             clock.snapTo(start.toLong())
         }
@@ -1206,7 +1206,7 @@ class OratureNarrationViewModel(
         startPositionTicker()
         launchLogged {
             kotlinx.coroutines.delay(150)
-            System.err.println("[narr-diag] PLAY VERSE +150ms index=$index resuming=$resuming loc=${n.getLocationInFrames()} clock=${clock.displayFrame}")
+            logDebug { "PLAY VERSE +150ms index=$index resuming=$resuming loc=${n.getLocationInFrames()} clock=${clock.displayFrame}" }
         }
     }
 
@@ -1243,7 +1243,7 @@ class OratureNarrationViewModel(
         // explicitly so both the audio and the player's own sessionStart are re-anchored accurately —
         // this is what breaks the per-cycle "jump ahead" compounding.
         val resume = if (playbackReachedEnd) 0 else clock.displayFrame.toInt()
-        System.err.println("[narr-diag] PLAY resume=$resume clockDisplay=${clock.displayFrame} reachedEnd=$playbackReachedEnd loc=${n.getLocationInFrames()} total=${n.getTotalFrames()} dur=${n.getDurationInFrames()} windowFrames=441000 (~${n.getTotalFrames() / 44100.0}s vs 10s window)")
+        logDebug { "PLAY resume=$resume clockDisplay=${clock.displayFrame} reachedEnd=$playbackReachedEnd loc=${n.getLocationInFrames()} total=${n.getTotalFrames()} dur=${n.getDurationInFrames()} windowFrames=441000 (~${n.getTotalFrames() / 44100.0}s vs 10s window)" }
         playbackReachedEnd = false
         n.seek(resume)
         player.play()
@@ -1267,7 +1267,7 @@ class OratureNarrationViewModel(
 
     fun onPausePlayback() {
         val n = narration ?: return
-        System.err.println("[narr-diag] PAUSE clock=${clock.displayFrame} loc=${n.getLocationInFrames()}")
+        logDebug { "PAUSE clock=${clock.displayFrame} loc=${n.getLocationInFrames()}" }
         performTransition(NarrationStateTransition.PAUSE_AUDIO_PLAYBACK, playingVerseIndex.takeIf { it >= 0 })
         n.getPlayer().pause()
         clock.advancing = false
@@ -1341,10 +1341,10 @@ class OratureNarrationViewModel(
                 // periodic heartbeat.
                 val now = clock.displayFrame
                 if (now < prevClock - 22050) {
-                    System.err.println("[narr-diag] CLOCK JUMP BACK ${prevClock} -> ${now} (loc=${n.getLocationInFrames()})")
+                    logDebug { "CLOCK JUMP BACK ${prevClock} -> ${now} (loc=${n.getLocationInFrames()})" }
                 }
                 if (tick++ % 20 == 0) {
-                    System.err.println("[narr-diag] TICK clock=$now loc=${n.getLocationInFrames()}")
+                    logDebug { "TICK clock=$now loc=${n.getLocationInFrames()}" }
                 }
                 prevClock = now
                 delay(50)

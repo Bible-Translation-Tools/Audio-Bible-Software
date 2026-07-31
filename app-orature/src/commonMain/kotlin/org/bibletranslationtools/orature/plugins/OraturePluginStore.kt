@@ -3,6 +3,7 @@ package org.bibletranslationtools.orature.plugins
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import org.bibletranslationtools.otter.common.api.persistence.IAppDirectories
+import org.bibletranslationtools.shared.logging.logFailure
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.io.File
@@ -38,7 +39,7 @@ class OraturePluginStore : KoinComponent {
         runCatching {
             file.parentFile?.mkdirs()
             mapper.writerWithDefaultPrettyPrinter().writeValue(file, registry)
-        }.onFailure { System.err.println("Failed to save plugins: $it") }
+        }.onFailure { logFailure(this, "saving the plugin registry", it) }
     }
 
     /**

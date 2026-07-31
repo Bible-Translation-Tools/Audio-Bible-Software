@@ -220,7 +220,7 @@ class OratureConsumeViewModel(
                         if (_uiState.value.isPlaying != playing) {
                             _uiState.value = _uiState.value.copy(isPlaying = playing)
                         }
-                    }.onFailure { System.err.println("[consume] player state poll failed: $it") }
+                    }.onFailure { logFailure("polling player state on the consume screen", it) }
                 }
                 delay(33)
             }
