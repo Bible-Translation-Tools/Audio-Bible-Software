@@ -1,6 +1,7 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -54,10 +55,16 @@ data class OratureSettingsUiState(
  * deliberately, since both apps target the same shared backend — but it lives in
  * Orature's package.
  */
+/**
+ * @param ioDispatcher where DB/file work runs. Injected rather than hard-coded so a test can supply
+ *   its own scheduler; with `Dispatchers.IO` baked in that work escaped the test dispatcher and had
+ *   to be awaited on a wall clock, which made these tests flaky.
+ */
 class OratureSettingsViewModel(
     private val appPreferences: IAppPreferences,
     private val deviceSelector: AudioDeviceSelector,
-    private val importLanguages: ImportLanguages
+    private val importLanguages: ImportLanguages,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel(), KoinComponent {
 
     // Koin no-arg constructor for production; the injected constructor is used by tests.
@@ -93,7 +100,7 @@ class OratureSettingsViewModel(
 
     /** (Re)reads the currently-available hardware devices. Safe to call on drawer open. */
     fun loadDevices() {
-        launchLogged(Dispatchers.IO) {
+        launchLogged(ioDispatcher) {
             val spec = AudioSpec()
             val out = runCatching { deviceSelector.getOutputDevices(spec) }.getOrDefault(emptyList())
             val input = runCatching { deviceSelector.getInputDevices(spec) }.getOrDefault(emptyList())
@@ -145,7 +152,7 @@ class OratureSettingsViewModel(
     fun updateLanguageNames() {
         if (_uiState.value.langNamesUpdateState is OratureLangNamesUpdateState.InProgress) return
         val url = _uiState.value.langNamesUrl.ifBlank { DEFAULT_LANG_NAMES_URL }
-        launchLogged(Dispatchers.IO) {
+        launchLogged(ioDispatcher) {
             withContext(Dispatchers.Main) {
                 _uiState.update { it.copy(langNamesUpdateState = OratureLangNamesUpdateState.InProgress) }
             }

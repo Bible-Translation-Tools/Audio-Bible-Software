@@ -2,6 +2,7 @@ package org.bibletranslationtools.orature.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -113,10 +114,16 @@ internal fun filterAndSortLanguages(languages: List<Language>, query: String): L
  * SAME shared backend. Reproduces the four-step flow, the language search behaviour, the
  * quick-create paths, and the create logic (bookmark existing / sideload source / createAllBooks).
  *
- * DB/IO work runs on [Dispatchers.IO]; the state is only mutated from the main scope.
+ * DB/IO work runs on [ioDispatcher]; the state is only mutated from the main scope.
+ */
+/**
+ * @param ioDispatcher where DB/file work runs. Injected rather than hard-coded so a test can supply
+ *   its own scheduler; with `Dispatchers.IO` baked in that work escaped the test dispatcher and had
+ *   to be awaited on a wall clock, which made these tests flaky.
  */
 class OratureProjectWizardViewModel(
-    private val onComplete: () -> Unit = {}
+    private val onComplete: () -> Unit = {},
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel(), KoinComponent {
 
     private val creationUseCase: CreateProject by inject()
@@ -163,7 +170,7 @@ class OratureProjectWizardViewModel(
     /** Source languages = root-source RC languages ∪ available gateway sources (VM.loadSourceLanguages). */
     fun loadSourceLanguages() {
         launchLogged {
-            val languages = withContext(Dispatchers.IO) {
+            val languages = withContext(ioDispatcher) {
                 // Union of every "available source" signal, each fetched independently so
                 // one failing path can't wipe the others (and errors are logged, not
                 // swallowed). The JVM VM used getRootSources ∪ getAvailableGatewaySources;
@@ -197,7 +204,7 @@ class OratureProjectWizardViewModel(
     private fun loadTargetLanguages() {
         launchLogged {
             try {
-                val languages = withContext(Dispatchers.IO) { languageRepo.getAll().await() }
+                val languages = withContext(ioDispatcher) { languageRepo.getAll().await() }
                 _uiState.value = _uiState.value.copy(targetLanguages = languages)
             } catch (e: CancellationException) {
                 throw e
@@ -310,7 +317,7 @@ class OratureProjectWizardViewModel(
      * in state (so the next-step version table and the multi-version branch can read them).
      */
     private suspend fun getResourceVersions(language: Language): List<OratureResourceVersion> {
-        return withContext(Dispatchers.IO) {
+        return withContext(ioDispatcher) {
             val exists = resourceMetadataRepo.exists { it.language == language }.await()
             if (!exists) {
                 importer.sideloadSource(language).await()
@@ -362,7 +369,7 @@ class OratureProjectWizardViewModel(
             return
         }
 
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher) {
             val sourceExists = collectionRepo.getRootSources().await()
                 .any { it.resourceContainer?.language == sourceLanguage }
             if (!sourceExists) {
@@ -400,7 +407,7 @@ class OratureProjectWizardViewModel(
         resourceVersion: OratureResourceVersion?,
         sourceLanguage: Language,
         targetLanguage: Language
-    ) = withContext(Dispatchers.IO) {
+    ) = withContext(ioDispatcher) {
         workbookDescriptorRepo.getAll().await().firstOrNull { wb ->
             val sourceVersionMatches = resourceVersion?.slug?.let {
                 wb.sourceCollection.resourceContainer?.identifier == it

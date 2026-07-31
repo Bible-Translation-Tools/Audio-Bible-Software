@@ -18,6 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.domain.narration
 
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
@@ -35,7 +36,9 @@ import org.bibletranslationtools.otter.common.data.workbook.Workbook
  * hanging off it — but it is still database-backed work behind those observables, hence
  * [Dispatchers.IO].
  */
-class LoadChapterSourceText {
+class LoadChapterSourceText(
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+) {
 
     /**
      * @param byVerseLabel verse label (`"3"`, `"3-4"`) to that verse's text
@@ -52,7 +55,7 @@ class LoadChapterSourceText {
     }
 
     suspend fun execute(workbook: Workbook, chapterSort: Int): ChapterSourceText =
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher) {
             val sourceChunks = workbook.source.chapters.toList().await()
                 .firstOrNull { it.sort == chapterSort }
                 ?.chunksSuspend()

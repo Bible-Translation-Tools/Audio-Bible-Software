@@ -19,6 +19,7 @@
 package org.bibletranslationtools.otter.common.domain.project
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
@@ -42,7 +43,9 @@ import org.bibletranslationtools.otter.common.data.workbook.Workbook
  *
  * Contributor info is deliberately not written here (metadata-only, deferred).
  */
-class InitializeProjectFiles {
+class InitializeProjectFiles(
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+) {
 
     /**
      * The steps in the order they run. Later steps assume the resource container exists, so
@@ -82,14 +85,14 @@ class InitializeProjectFiles {
     }
 
     /**
-     * Runs the steps in [Step] order on [Dispatchers.IO], stopping at the first failure.
+     * Runs the steps in [Step] order on [ioDispatcher], stopping at the first failure.
      *
      * Stopping rather than continuing is deliberate: the later steps write into the resource
      * container directory, so once [Step.RESOURCE_CONTAINER] has failed the rest would either fail
      * in turn or write files nothing can read, and the interesting failure would be buried under
      * four consequential ones.
      */
-    suspend fun execute(workbook: Workbook, mode: ProjectMode): Result = withContext(Dispatchers.IO) {
+    suspend fun execute(workbook: Workbook, mode: ProjectMode): Result = withContext(ioDispatcher) {
         val accessor = workbook.projectFilesAccessor
         val steps: List<Pair<Step, () -> Unit>> = listOf(
             Step.RESOURCE_CONTAINER to { accessor.initializeResourceContainerInDir(overwrite = false) },

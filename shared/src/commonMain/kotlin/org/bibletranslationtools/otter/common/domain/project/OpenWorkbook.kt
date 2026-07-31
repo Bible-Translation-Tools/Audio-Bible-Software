@@ -18,6 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.domain.project
 
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
@@ -38,10 +39,16 @@ import org.bibletranslationtools.otter.common.data.workbook.Workbook
  *
  * All of it is repository orchestration with no screen state in it, which is why it lives here
  * rather than in either app.
+ *
+ * @param ioDispatcher where the repository work runs. Injected rather than hard-coded so a test can
+ *   supply its own scheduler. With `Dispatchers.IO` baked in, this work escaped the caller's test
+ *   dispatcher and the only way to wait for it was a wall-clock timeout — which is what made the
+ *   Orature ViewModel tests flaky.
  */
 class OpenWorkbook(
     private val workbookDescriptorRepository: IWorkbookDescriptorRepository,
-    private val workbookRepository: IWorkbookRepository
+    private val workbookRepository: IWorkbookRepository,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
 
     data class OpenedProject(
@@ -70,7 +77,7 @@ class OpenWorkbook(
      * @throws IllegalStateException if no descriptor has this id, which means the caller was
      *   navigated to with an id that no longer exists — not something a screen can recover from.
      */
-    suspend fun open(workbookDescriptorId: Int): OpenedProject = withContext(Dispatchers.IO) {
+    suspend fun open(workbookDescriptorId: Int): OpenedProject = withContext(ioDispatcher) {
         val descriptor = workbookDescriptorRepository.getByIdSuspend(workbookDescriptorId)
             ?: error("No workbook descriptor with id=$workbookDescriptorId")
         OpenedProject(
@@ -85,12 +92,12 @@ class OpenWorkbook(
     /**
      * [open], plus the target book's chapters in sort order and each one's completion.
      *
-     * Runs entirely on [Dispatchers.IO]: the repositories hit the database, and
+     * Runs entirely on [ioDispatcher]: the repositories hit the database, and
      * [Chapter.hasSelectedAudio] resolves each chapter's selected take, which is cheap per call
      * but not free across a whole book — it should not be sampled on the main thread.
      */
     suspend fun openWithChapters(workbookDescriptorId: Int): OpenedWorkbook =
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher) {
             val opened = open(workbookDescriptorId)
             val chapters = opened.workbook.target.chapters.toList().await().sortedBy { it.sort }
             OpenedWorkbook(

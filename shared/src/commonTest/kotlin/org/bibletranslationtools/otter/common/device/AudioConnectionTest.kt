@@ -1,12 +1,16 @@
 package org.bibletranslationtools.otter.common.device
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlin.test.assertFalse
+import kotlin.test.fail
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AudioConnectionTest {
@@ -56,6 +60,8 @@ class AudioConnectionTest {
     @Test
     fun testRecorderExclusiveAccess() = runTest {
         val source = MockAudioSource()
+        // The recorder's read loop stays on a real dispatcher: it runs until cancelled, so putting it
+        // on the test scheduler would make advanceUntilIdle() spin forever trying to drain it.
         val factory = AudioRecorderConnectionFactory(source)
 
         val rec1 = AudioRecorderConnection(id = 1, factory = factory, scope = this)
@@ -66,18 +72,33 @@ class AudioConnectionTest {
         assertTrue(source.isStarted)
 
         rec2.start(AudioSpec()) // Should evict rec1
-        var switched = false
-        repeat(20) {
-            runCurrent()
-            if (factory.isActiveRecorder(2)) {
-                switched = true
-                return@repeat
-            }
-        }
+
+        // The handover crosses the recorder's real dispatcher (stop() now joins the read loop before
+        // releasing the source), so it is awaited in real time against the actual condition. The spin
+        // this replaces called runCurrent() twenty times and then asserted — no wait at all for the
+        // real-thread part, and its `return@repeat` was a continue rather than a break, so the
+        // "switched" flag it checked was only ever set by luck of timing.
+        awaitReal("recorder 2 to own the hardware") { factory.isActiveRecorder(2) }
 
         // Logic check: Factory should have stopped rec1's worker before starting rec2
-        assertTrue(switched)
         assertTrue(factory.isActiveRecorder(2))
         assertFalse(factory.isActiveRecorder(1))
+    }
+
+    /**
+     * Polls [predicate] in REAL time, because the thing being awaited genuinely happens on another
+     * dispatcher. Unlike a fixed number of scheduler pumps this cannot pass or fail by luck: it
+     * either observes the condition or reports what it was waiting for.
+     */
+    private suspend fun awaitReal(
+        what: String,
+        timeoutMs: Long = 5_000,
+        predicate: () -> Boolean
+    ) = withContext(Dispatchers.Default) {
+        val deadlineNanos = System.nanoTime() + timeoutMs * 1_000_000
+        while (!predicate()) {
+            if (System.nanoTime() > deadlineNanos) fail("timed out after ${timeoutMs}ms waiting for $what")
+            delay(5)
+        }
     }
 }

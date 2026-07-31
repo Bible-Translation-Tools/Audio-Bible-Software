@@ -82,8 +82,12 @@ val implicitCommonModule = module {
 
     // Project
     factoryOf(::ImportProjectUseCase)
-    factoryOf(::OpenWorkbook)
-    factoryOf(::InitializeProjectFiles)
+    // Bound explicitly, NOT with factoryOf: these take an `ioDispatcher` with a default, and
+    // Koin's constructor DSL resolves every parameter from the graph rather than honouring
+    // Kotlin defaults — factoryOf would fail looking for a CoroutineDispatcher binding.
+    // Production wants the default (Dispatchers.IO); only tests pass their own.
+    factory { OpenWorkbook(get(), get()) }
+    factory { InitializeProjectFiles() }
     factoryOf(::ImportLanguages)
 
     // Exporters
@@ -131,7 +135,8 @@ val implicitCommonModule = module {
     factoryOf(::PcmTakeTransformer)
     factoryOf(::AudioFileUtils)
     factoryOf(::SplitAudioOnCues)
-    factoryOf(::LoadChapterSourceText)
+    // Explicit for the same reason as OpenWorkbook above: it takes a defaulted ioDispatcher.
+    factory { LoadChapterSourceText() }
 
     factoryOf(::InitializeVersification)
     factoryOf(::InitializeSources)

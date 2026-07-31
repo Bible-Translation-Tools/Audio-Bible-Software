@@ -69,10 +69,24 @@ class AudioRecorder(
         }
     }
 
+    /**
+     * Stops recording and waits for the read loop to finish unwinding before releasing the source.
+     *
+     * The join is load-bearing, not tidiness. The read loop's `finally` runs
+     * `mutex.withLock { _source.stop() }`, so a bare `cancel()` returns while that cleanup is still
+     * pending on [scope]'s dispatcher. When one recorder is swapped for another —
+     * `AudioRecorderConnectionFactory.startRecording` calls `stop()` then `start()` — the old loop's
+     * cleanup could land *after* the new recording had already called `_source.start()`, stopping the
+     * source out from under it. That is what made `AudioConnectionTest.testRecorderExclusiveAccess`
+     * fail under a loaded suite: not a slow test, a real handover race.
+     *
+     * No deadlock: the mutex is taken only after the join, so the unwinding loop can still acquire it.
+     */
     suspend fun stop() {
         isPaused = false
-        recordingJob?.cancel()
+        val job = recordingJob
         recordingJob = null
+        job?.cancelAndJoin()
 
         mutex.withLock {
             _source.stop()

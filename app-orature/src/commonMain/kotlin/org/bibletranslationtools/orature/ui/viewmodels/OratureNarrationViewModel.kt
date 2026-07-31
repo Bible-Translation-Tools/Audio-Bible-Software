@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.reactivex.disposables.Disposable
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -190,8 +191,14 @@ internal fun buildVerseItems(
  * replaces it with the real `ProjectCompletionStatus.getChapterNarrationProgress == 1.0`
  * (the JVM signal) once narration state is wired.
  */
+/**
+ * @param ioDispatcher where DB/file work runs. Injected rather than hard-coded so a test can supply
+ *   its own scheduler; with `Dispatchers.IO` baked in that work escaped the test dispatcher and had
+ *   to be awaited on a wall clock, which made these tests flaky.
+ */
 class OratureNarrationViewModel(
-    private val workbookDescriptorId: Int
+    private val workbookDescriptorId: Int,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel(), KoinComponent {
 
     private val openWorkbook: OpenWorkbook by inject()
@@ -336,7 +343,7 @@ class OratureNarrationViewModel(
         peakCache = cache
         peakSource = source
         clock.durationFrames = total.toLong()
-        peakBuildJob = launchLogged(Dispatchers.IO) {
+        peakBuildJob = launchLogged(ioDispatcher) {
             runCatching { buildPeakCache(source, cache) }
                 .onFailure { logFailure("building the narration peak cache", it) }
         }
@@ -496,7 +503,7 @@ class OratureNarrationViewModel(
 
         try {
             val workbook = workbookDataStore.workbook
-            val prepared = withContext(Dispatchers.IO) {
+            val prepared = withContext(ioDispatcher) {
                 val n = narrationFactory.create(workbook, chapter, viewModelScope)
                 n.initialize().await()
                 // Teleprompter text comes from the SOURCE scripture (the target project has no
@@ -704,7 +711,7 @@ class OratureNarrationViewModel(
         val allRecorded = n.activeVerses.isNotEmpty() && n.activeVerses.size == n.totalVerses.size
         val existing = chapterTake
         if (allRecorded && (existing == null || existing.isDeleted())) {
-            launchLogged(Dispatchers.IO) {
+            launchLogged(ioDispatcher) {
                 runCatching { n.createChapterTake().await() }
                     .onSuccess { chapterTake = it }
                     .onFailure { logFailure("creating the chapter take", it) }
@@ -953,7 +960,7 @@ class OratureNarrationViewModel(
         val n = narration ?: return
         launchLogged {
             try {
-                withContext(Dispatchers.IO) { n.onEditVerse(index, file).blockingAwait() }
+                withContext(ioDispatcher) { n.onEditVerse(index, file).blockingAwait() }
                 refreshVerses()
                 resetNarratableList()
             } catch (e: CancellationException) {
@@ -997,7 +1004,7 @@ class OratureNarrationViewModel(
             try {
                 // Reuse the compiled chapter take, or compile one from what's recorded (JVM:
                 // chapterTakeProperty ?: createChapterTakeWithAudio) — same as launchChapterPlugin.
-                val take = chapterTake ?: withContext(Dispatchers.IO) {
+                val take = chapterTake ?: withContext(ioDispatcher) {
                     runCatching { n.createChapterTakeWithAudio().await() }.getOrNull()
                 }
                 if (take == null) return@launchLogged // nothing recorded yet to mark
@@ -1036,7 +1043,7 @@ class OratureNarrationViewModel(
      *  (JVM: onChapterReturnFromPlugin → loadFromSelectedChapterFile). */
     private suspend fun reloadAfterMarkerEdit() {
         val n = narration ?: return
-        withContext(Dispatchers.IO) { runCatching { n.loadFromSelectedChapterFile().blockingAwait() } }
+        withContext(ioDispatcher) { runCatching { n.loadFromSelectedChapterFile().blockingAwait() } }
         refreshVerses()
         resetNarratableList()
     }
@@ -1051,7 +1058,7 @@ class OratureNarrationViewModel(
             try {
                 // Reuse the compiled chapter take, or compile one on the fly from what's recorded
                 // (JVM: chapterTakeProperty ?: narration.createChapterTakeWithAudio()).
-                val take = chapterTake ?: withContext(Dispatchers.IO) {
+                val take = chapterTake ?: withContext(ioDispatcher) {
                     runCatching { n.createChapterTakeWithAudio().await() }.getOrNull()
                 }
                 if (take == null) return@launchLogged // nothing recorded yet to compile
@@ -1059,7 +1066,7 @@ class OratureNarrationViewModel(
                 beginPluginOpen()
                 org.bibletranslationtools.orature.plugins.launchPlugin(plugin, take.file, narrationPluginParams(0))
                 endPluginOpen()
-                withContext(Dispatchers.IO) { runCatching { n.loadFromSelectedChapterFile().blockingAwait() } }
+                withContext(ioDispatcher) { runCatching { n.loadFromSelectedChapterFile().blockingAwait() } }
                 refreshVerses()
                 resetNarratableList()
             } catch (e: CancellationException) {
@@ -1089,7 +1096,7 @@ class OratureNarrationViewModel(
         val n = narration ?: return
         launchLogged {
             try {
-                withContext(Dispatchers.IO) { n.importChapterAudioFile(java.io.File(path)).blockingAwait() }
+                withContext(ioDispatcher) { n.importChapterAudioFile(java.io.File(path)).blockingAwait() }
                 refreshVerses()
                 resetNarratableList()
             } catch (e: CancellationException) {
@@ -1111,11 +1118,11 @@ class OratureNarrationViewModel(
         _audioScene.value?.clear()
         launchLogged {
             try {
-                val file = withContext(Dispatchers.IO) { n.getSectionAsFile(index) }
+                val file = withContext(ioDispatcher) { n.getSectionAsFile(index) }
                 beginPluginOpen()
                 org.bibletranslationtools.orature.plugins.launchPlugin(plugin, file, narrationPluginParams(index))
                 endPluginOpen()
-                withContext(Dispatchers.IO) { n.onEditVerse(index, file).blockingAwait() }
+                withContext(ioDispatcher) { n.onEditVerse(index, file).blockingAwait() }
                 refreshVerses()
                 resetNarratableList()
             } catch (e: CancellationException) {
