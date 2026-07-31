@@ -83,7 +83,6 @@ val implicitCommonModule = module {
     factoryOf(::ImportProjectUseCase)
     factoryOf(::OpenWorkbook)
     factoryOf(::ImportLanguages)
-//    factoryOf(::ProjectFormatIdentifier)
 
     // Exporters
     factoryOf(::AudioProjectExporter)
@@ -106,7 +105,6 @@ val implicitCommonModule = module {
     factoryOf(::TakeCreator)
     factoryOf(::SaveAudioAsNewTake)
     factoryOf(::ConcatenateAudio)
-//    factoryOf(::PluginActions)
     factoryOf(::ResetChunks)
     factoryOf(::CreateChunks)
 
@@ -115,9 +113,6 @@ val implicitCommonModule = module {
     factoryOf(::VersificationTreeBuilder)
     factoryOf(::BurritoToResourceContainerConverter)
     factoryOf(::ScriptureBurritoUtils)
-
-    // Plugins
-//    factoryOf(::LaunchPlugin)
 
     // Mappers
     factoryOf(::AudioPluginDataMapper)

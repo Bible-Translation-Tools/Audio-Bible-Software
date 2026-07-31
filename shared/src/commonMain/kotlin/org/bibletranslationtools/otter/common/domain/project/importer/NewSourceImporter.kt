@@ -29,7 +29,6 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.OtterReso
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.castOrFindImportException
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.IProjectReader
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.IZipEntryTreeBuilder
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.VersificationTreeBuilder
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.toCollection
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceContainerRepository
@@ -93,35 +92,24 @@ class NewSourceImporter(
                 return@create
             }
 
-            val preallocationTree = OtterTree<CollectionOrContent>(container.toCollection())
-//            val versificationTree = VersificationTreeBuilder(versificationRepository)
-//                .build(container)
-//                ?.apply {
-//                    for (node in this) {
-//                        preallocationTree.addChild(node)
-//                    }
-//                }
-            val versificationTree = null
             callback?.onNotifyProgress(
                 localizeKey = "importingSource", percent = 50.0
             )
 
-            if (versificationTree != null) {
-                importTree(container, preallocationTree, fileToImport)
-                    .flatMap {
-                        updateContentFromTextContent(container, tree)
-                    }
-                    .subscribe { result ->
-                        notifyCallback(result, callback, file)
-                        emitter.onSuccess(result)
-                    }
-            } else { // No versification found, just import the tree from the parsed text
-                importTree(container, tree, fileToImport)
-                    .subscribe { result ->
-                        notifyCallback(result, callback, file)
-                        emitter.onSuccess(result)
-                    }
-            }
+            // TODO: versification pre-allocation is NOT running. The JavaFX importer built a
+            //  preallocation tree with `VersificationTreeBuilder(versificationRepository)`, added
+            //  its nodes to a tree seeded from `container.toCollection()`, imported *that*, and
+            //  then backfilled text with `updateContentFromTextContent(container, tree)`. That
+            //  path was disabled during the port (hard-coded to null), which left the branch
+            //  below as the only reachable one: a source RC is imported purely from its parsed
+            //  text, so chapters/verses the versification declares but the text omits are never
+            //  pre-allocated. [versificationRepository] is still injected for whoever restores it.
+            //  Restoring it needs a test — that is why it is not being switched back on here.
+            importTree(container, tree, fileToImport)
+                .subscribe { result ->
+                    notifyCallback(result, callback, file)
+                    emitter.onSuccess(result)
+                }
         }.onErrorReturn { e ->
             logger.error("Error in importContainer, file: $file", e)
             e.castOrFindImportException()?.result ?: throw e

@@ -104,8 +104,6 @@ class AppDatabase(
     override val subtreeHasResourceDao = SubtreeHasResourceDao(dsl)
     override val takeDao = TakeDao(dsl)
     override val markerDao = MarkerDao(dsl)
-//    override val audioPluginDao = AudioPluginDao(dsl)
-//    override val preferenceDao = PreferenceDao(dsl)
     override val installedEntityDao = InstalledEntityDao(dsl)
     override val translationDao = TranslationDao(dsl)
     override val versificationDao = VersificationDao(dsl)

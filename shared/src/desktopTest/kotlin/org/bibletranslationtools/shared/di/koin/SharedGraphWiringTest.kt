@@ -184,9 +184,9 @@ class SharedGraphWiringTest : KoinTest {
      *
      * [SourceProjectExporter] cannot be resolved. It needs `ScriptureBurritoUtils`, whose
      * constructor takes `AuthProvider` and `IAppInfo`; both are interfaces with no
-     * implementation anywhere in the repo, and both Koin bindings are commented out in
-     * KoinModules.kt (`authModule`, `metadataModule` — the old JavaFX `WacsIdAuthority` and
-     * `AppInfo` were never ported).
+     * implementation anywhere in the repo, and neither is bound in KoinModules.kt — the old
+     * JavaFX `WacsIdAuthority` and `AppInfo` were never ported. See the note above
+     * `sharedCommonModules` in KoinModules.kt.
      *
      * This is not dormant: both apps declare `private val sourceExporter: SourceProjectExporter
      * by inject()` in their export ViewModels. `by inject()` resolves lazily, so it throws the

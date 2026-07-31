@@ -8,13 +8,11 @@ class MockAudioSink : AudioSink {
     override var isRunning = false
 
     override fun open(spec: AudioSpec) { isOpen = true }
-   // override fun start() { isStarted = true; isRunning = true }
     override fun write(data: ByteArray, offset: Int, size: Int): Int {
         bytesWritten += size
         framePosition += (size / 2) // Simplified for 16-bit Mono
         return size
     }
-   // override fun stop() { isStarted = false; isRunning = false }
     override fun drain() {}
     override fun flush() {}
     override fun close() { isOpen = false }

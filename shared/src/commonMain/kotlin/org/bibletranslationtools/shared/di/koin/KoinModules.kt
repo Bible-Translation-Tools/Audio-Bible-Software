@@ -42,25 +42,6 @@ import org.bibletranslationtools.otter.common.persistence.repositories.TakeRepos
 import org.bibletranslationtools.otter.common.persistence.repositories.VersificationRepository
 import org.bibletranslationtools.otter.common.persistence.repositories.WorkbookDescriptorRepository
 
-val audioModule = module {
-//    single { AudioConnectionFactory() }
-//    single<IAudioRecorder> { get<AudioConnectionFactory>().getRecorder() }
-//    single<IAudioPlayer> { get<AudioConnectionFactory>().getPlayer() }
-//    single<IWaveFileCreator> { WaveFileCreator() }
-//    single { AudioDeviceProvider(DEFAULT_AUDIO_FORMAT) }
-}
-
-//val appDatabaseModule = module {
-//    single {
-//        val directoryProvider = get<IDirectoryProvider>()
-//        AppDatabase(
-//            directoryProvider.databaseDirectory.resolve(File(DB_FILE_NAME)),
-//            directoryProvider
-//        )
-//    }
-////    single<IBurritoLoader> { BurritoLoader() }
-//}
-
 val appPreferencesModule = module {
     single<IAppPreferences> {
         val dir = get<IAppDirectories>().getAppDataDirectory("preferences")
@@ -78,8 +59,7 @@ val appRepositoriesModule = module {
     singleOf(::ResourceContainerRepository) { bind<IResourceContainerRepository>() }
     singleOf(::ResourceMetadataRepository) { bind<IResourceMetadataRepository>() }
     singleOf(::TakeRepository) { bind<ITakeRepository>() }
-//    singleOf(::AudioPluginRepository) { bind<IAudioPluginRepository>() }
-// Explicitly define WorkbookRepository to disambiguate constructors
+    // Explicitly defined to disambiguate WorkbookRepository's constructors.
     single<IWorkbookRepository> {
         WorkbookRepository(
             get(), // directoryProvider
@@ -94,14 +74,7 @@ val appRepositoriesModule = module {
     }
     singleOf(::WorkbookDescriptorRepository) { bind<IWorkbookDescriptorRepository>() }
     singleOf(::InstalledEntityRepository) { bind<IInstalledEntityRepository>() }
-//    singleOf(::AudioPluginRegistrar) { bind<IAudioPluginRegistrar>() }
-//    singleOf(::AppPreferencesRepository) { bind<IAppPreferencesRepository>() }
-    single<IVersificationRepository>{
-        VersificationRepository(
-        get(),
-        get()
-    ) }
-//    singleOf(::LocaleDataSource) { bind<ILocaleDataSource>() }
+    single<IVersificationRepository> { VersificationRepository(get(), get()) }
     singleOf(::LanguageDataSource) { bind<ILanguageDataSource>() }
 }
 
@@ -133,13 +106,12 @@ val directoryPortsModule = module {
     single<IFileIOFactory> { get<IDirectoryProvider>() }
 }
 
-val metadataModule = module {
-//    single<IAppInfo> { AppInfo() }
-}
-
-val authModule = module {
-//    single<AuthProvider> { WacsIdAuthority() }
-}
+// NOT bound here, and deliberately not stubbed: `AuthProvider` and `IAppInfo`, the two ports
+// `ScriptureBurritoUtils` needs. The JavaFX implementations (`WacsIdAuthority`, `AppInfo`) were
+// never ported, so `SourceProjectExporter` cannot be resolved and source / Scripture Burrito
+// export throws the first time a user picks it. Tracked by
+// `SharedGraphWiringTest.source project exporter is unresolvable while AuthProvider and IAppInfo
+// are unbound` — implement the two ports, bind them here, and that test will tell you it is done.
 
 // The shared, platform-agnostic Koin modules both apps compose. Backend use-cases +
 // audio + prefs + repositories only — NO ViewModels (each app owns its own) and NO
@@ -151,7 +123,5 @@ val sharedCommonModules = listOf(
     appRepositoriesModule,
     zipEntryTreeBuilderModule,
     bundledContentModule,
-    directoryPortsModule,
-    metadataModule,
-    authModule
+    directoryPortsModule
 )

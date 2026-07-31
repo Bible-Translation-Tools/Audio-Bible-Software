@@ -79,21 +79,6 @@ fun AudioDashboard(
         }
     }
 
-//    // FileKit Picker Launcher
-//    val picker = rememberFilePickerLauncher(
-//        type = FileKitType.File(extensions = listOf("wav", "mp3")),
-//        title = "Select Audio File"
-//    ) { file ->
-//        file?.let {
-//            // Note: On JVM, 'it.path' gives us the absolute path for our reader
-//            val reader = OratureAudioFile(File(it.path)).reader()
-//            // We'll need a way to track which slot was being updated
-//            // For simplicity in this snippet, let's assume we update the first empty slot
-//            val index = fileSlots.indexOf(null).takeIf { i -> i != -1 } ?: 0
-//            fileSlots[index] = reader as AudioFileReader?
-//        }
-//    }
-
     Column(Modifier.padding(16.dp).fillMaxSize()) {
         Text("Otter Audio Control", style = MaterialTheme.typography.h4)
 
