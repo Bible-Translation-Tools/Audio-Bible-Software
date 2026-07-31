@@ -55,78 +55,98 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             dependencies {
-                // :shared holds ENGINES + infrastructure, NOT UI pages/themes (each app
-                // owns its full UI + ViewModels + branding). So only the minimal Compose
-                // surface: `runtime` for the engine's snapshot-state holders
-                // (mutable*StateOf in the playback clock / peak cache) and the
-                // PlatformBackHandler primitive, plus `resources` because the backend
-                // reads bundled files/ via Res.readBytes (Initialize{Ulb,Languages}).
-                // `api` so the apps see them transitively.
+                // ── api: reachable from the apps ────────────────────────────────────────
+                // Everything below appears in :shared's PUBLIC API — a type an app names, or a
+                // package an app imports directly. Adding to this list widens what a Compose
+                // screen is allowed to reach for, so check first whether the app can declare the
+                // dependency itself (both already declare their own Compose, lifecycle and
+                // navigation).
+                //
+                // compose: `runtime` only, and only because the engine's snapshot-state holders
+                // are public API (WaveformPeakCache.builtBuckets is a MutableIntState). `resources`
+                // because the backend reads bundled files/ via Res.readBytes
+                // (Initialize{Ulb,Languages}) and both apps call org.jetbrains.compose.resources
+                // directly. NOT `foundation`: :shared imports nothing from it.
                 api(compose.runtime)
-                api(compose.foundation)
                 api(compose.components.resources)
 
                 api(libs.kotlinx.coroutines.core)
                 api(libs.kotlinx.coroutines.rx2)
 
+                // The entity layer's public API is RxRelay-shaped (AssociatedAudio.takes/selected),
+                // so both apps see Rx whether they want to or not. Demoting these means fixing
+                // that first.
                 api("io.reactivex.rxjava2:rxkotlin:$rxkotlinVer")
                 api("com.jakewharton.rxrelay2:rxrelay:$rxrelayVer")
-                api("org.jooq:jooq:$jooqVer")
+
                 api("org.slf4j:slf4j-api:$slf4jApiVer")
-                api("de.sciss:jump3r:$jump3rVer")
-                api("org.wycliffeassociates:kotlin-tstudio2rc:$tstudio2rcVer")
-
-                api("org.bibletranslationtools:otter-db:1.0")
-                api("org.wycliffeassociates:kotlin-resource-container:$kotlinresourcecontainerVer")
-                api("org.wycliffeassociates:usfmtools:$usfmToolsVer")
-
-                api("org.jetbrains.kotlin:kotlin-reflect:$kotlinVer")
-                api("com.fasterxml.jackson.module:jackson-module-kotlin:$jacksonVer")
-                api("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:$jacksonVer")
-                api("com.fasterxml.jackson.dataformat:jackson-dataformat-csv:$jacksonVer")
-
-                api("com.squareup.retrofit2:retrofit:$retrofitVer")
-                api("com.squareup.retrofit2:converter-jackson:$retrofitJacksonVer")
-                api("com.squareup.retrofit2:adapter-rxjava2:$retrofitRxJava2Ver")
-
-                api("org.apache.tika:tika-core:$tikaVer")
-
-                api("org.bibletranslationtools:kotlin-scripture-burrito:$kotlinscriptureburritoVer")
-                api("org.bibletranslationtools:kotlin-vtt:$kotlinVttVer")
-                api("org.bibletranslationtools:kotlin-scripture-alignment:$kotlinScriptureAlignmentVer")
-
-                api("javazoom.jl:SeekableJlayer:$jlayerVer")
-                api("org.digitalmediaserver:cuelib-core:$cuelibVer")
-                api("com.mpatric:mp3agic:$mp3TagVer")
-                api("be.tarsos:tarsosdsp:$tarsosDspVer")
-
-                api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
-
-                api("io.insert-koin:koin-core:$koinVer")
                 api(libs.koin.core)
 
-                api(libs.datastore.preferences)
+                // Orature's plugin registry reads its YAML definitions with these directly.
+                api("com.fasterxml.jackson.module:jackson-module-kotlin:$jacksonVer")
+                api("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:$jacksonVer")
+
+                api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
 
                 api("io.github.vinceglb:filekit-core:0.12.0")
                 api("io.github.vinceglb:filekit-dialogs:0.12.0")
                 api("io.github.vinceglb:filekit-dialogs-compose:0.12.0")
                 api("io.github.vinceglb:filekit-coil:0.12.0")
+
+                // ── implementation: :shared's own business ──────────────────────────────
+                // None of these appears in an app source file. Keeping them off the apps'
+                // compile classpath is what stops a screen importing org.jooq: until now
+                // `api(projects.shared)` made the database library, the HTTP stack and five audio
+                // codecs visible from every @Composable in both apps.
+                implementation("org.jooq:jooq:$jooqVer")
+                implementation("org.bibletranslationtools:otter-db:1.0")
+
+                implementation("org.wycliffeassociates:kotlin-resource-container:$kotlinresourcecontainerVer")
+                implementation("org.wycliffeassociates:usfmtools:$usfmToolsVer")
+                implementation("org.wycliffeassociates:kotlin-tstudio2rc:$tstudio2rcVer")
+
+                implementation("org.bibletranslationtools:kotlin-scripture-burrito:$kotlinscriptureburritoVer")
+                implementation("org.bibletranslationtools:kotlin-vtt:$kotlinVttVer")
+                implementation("org.bibletranslationtools:kotlin-scripture-alignment:$kotlinScriptureAlignmentVer")
+
+                implementation("com.squareup.retrofit2:retrofit:$retrofitVer")
+                implementation("com.squareup.retrofit2:converter-jackson:$retrofitJacksonVer")
+                implementation("com.squareup.retrofit2:adapter-rxjava2:$retrofitRxJava2Ver")
+
+                implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-csv:$jacksonVer")
+                implementation("org.apache.tika:tika-core:$tikaVer")
+                implementation("org.jetbrains.kotlin:kotlin-reflect:$kotlinVer")
+
+                // Audio codecs, used only behind the audio/ and domain/audio/ facades.
+                implementation("de.sciss:jump3r:$jump3rVer")
+                implementation("javazoom.jl:SeekableJlayer:$jlayerVer")
+                implementation("org.digitalmediaserver:cuelib-core:$cuelibVer")
+                implementation("com.mpatric:mp3agic:$mp3TagVer")
+                implementation("be.tarsos:tarsosdsp:$tarsosDspVer")
+
+                // Behind IAppPreferences / DataStoreAppPreferences.
+                implementation(libs.datastore.preferences)
             }
         }
 
         val desktopMain by getting {
             dependencies {
-                api("org.xerial:sqlite-jdbc:3.49.0.0")
+                // Both are runtime-only: a JDBC driver and a logging binding, neither named in any
+                // app source. They stay on the runtime classpath as `implementation` deps.
+                implementation("org.xerial:sqlite-jdbc:3.49.0.0")
                 // SLF4J console binding so backend logger.error() is visible from a
                 // terminal (otherwise export/import/audio failures are silent).
-                api("org.slf4j:slf4j-simple:2.0.13")
+                implementation("org.slf4j:slf4j-simple:2.0.13")
             }
         }
 
         val androidMain by getting {
             dependencies {
-                api(libs.sqldroid)
-                api("com.readystatesoftware.sqliteasset:sqliteassethelper:2.0.1")
+                // Runtime-only sqlite plumbing for the android AppDatabase actual.
+                implementation(libs.sqldroid)
+                implementation("com.readystatesoftware.sqliteasset:sqliteassethelper:2.0.1")
+                // api: the android apps call org.koin.android.ext.koin.androidContext in their
+                // Application classes.
                 api(libs.koin.android)
                 // BackHandler for the android PlatformBackHandler actual.
                 implementation(libs.androidx.activity.compose)
@@ -145,9 +165,10 @@ kotlin {
             }
         }
 
-        // langnames data (ivy artifact) consumed by the backend language init.
+        // langnames data (ivy artifact) consumed by the backend language init. A JSON data file,
+        // not code — nothing imports it, so it has no business on the apps' compile classpath.
         dependencies {
-            api("bibleineverylanguage:langnames@json")
+            implementation("bibleineverylanguage:langnames@json")
         }
     }
 }
