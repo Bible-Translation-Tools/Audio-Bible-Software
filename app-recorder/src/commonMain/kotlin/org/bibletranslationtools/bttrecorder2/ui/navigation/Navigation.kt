@@ -10,6 +10,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.rx2.await
 import org.bibletranslationtools.shared.preferences.IAppPreferences
 import org.bibletranslationtools.bttrecorder2.ui.screens.ChapterListScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.MainMenuScreen
@@ -53,19 +54,12 @@ fun Navigation(
         composable<SplashScreenRoute> {
             val vm = viewModel { SplashScreenViewModel() }
             LaunchedEffect(Unit) {
-                val disposable = vm
-                    .initApp()
-                    .subscribe {
-                        launch {
-                            navController.navigate(MainMenuRoute) {
-                                popUpTo(SplashScreenRoute) { inclusive = true }
-                            }
-                        }
-                    }
-                try {
-                    kotlinx.coroutines.awaitCancellation()
-                } finally {
-                    disposable.dispose()
+                // Keep navigate inside composition (not Handler.post). Posting navigate onto the
+                // main looper outside NavHost sync leaves entries in INITIALIZED and crashes on
+                // Activity destroy: "State must be at least CREATED to be moved to DESTROYED".
+                vm.initApp().await()
+                navController.navigate(MainMenuRoute) {
+                    popUpTo(SplashScreenRoute) { inclusive = true }
                 }
             }
             SplashScreen()
@@ -73,32 +67,27 @@ fun Navigation(
 
         composable<MainMenuRoute> {
             val vm = viewModel { MainMenuViewModel() }
+            // Read nav from StateFlow in composition so Record navigates synchronously.
+            // scope.launch + navState.first() often never runs under Android Compose UI tests
+            // (test dispatcher / idling), leaving the home screen stuck after splash.
+            val nav by vm.navState.collectAsState()
             MainMenuScreen(
                 viewModel = vm,
                 onFilesClick = {
                     navController.navigate(ProjectManagementRoute)
                 },
                 onRecordClick = {
-                    scope.launch {
-                        val nav = appPreferences.navState.first()
-                        // The home Record button always drops the user straight into
-                        // the recorder for the active project (like the original),
-                        // never onto a chapter/unit list. It resumes the exact verse
-                        // if one is saved, otherwise the chapter's first verse, or the
-                        // project's first verse. With no active project, fall back to
-                        // the project list to pick/create one.
-                        when {
-                            nav.hasActiveUnit -> navController.navigate(
-                                RecorderRoute(nav.workbookSourceId, nav.workbookTargetId, nav.chapterSort, nav.unitSort)
-                            )
-                            nav.hasActiveChapter -> navController.navigate(
-                                RecorderRoute(nav.workbookSourceId, nav.workbookTargetId, nav.chapterSort, -1)
-                            )
-                            nav.hasActiveWorkbook -> navController.navigate(
-                                RecorderRoute(nav.workbookSourceId, nav.workbookTargetId, -1, -1)
-                            )
-                            else -> navController.navigate(ProjectManagementRoute)
-                        }
+                    when {
+                        nav.hasActiveUnit -> navController.navigate(
+                            RecorderRoute(nav.workbookSourceId, nav.workbookTargetId, nav.chapterSort, nav.unitSort)
+                        )
+                        nav.hasActiveChapter -> navController.navigate(
+                            RecorderRoute(nav.workbookSourceId, nav.workbookTargetId, nav.chapterSort, -1)
+                        )
+                        nav.hasActiveWorkbook -> navController.navigate(
+                            RecorderRoute(nav.workbookSourceId, nav.workbookTargetId, -1, -1)
+                        )
+                        else -> navController.navigate(ProjectManagementRoute)
                     }
                 }
             )
