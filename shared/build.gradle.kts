@@ -26,7 +26,26 @@ kotlin {
         }
     }
 
-    jvm("desktop")
+    jvm("desktop") {
+        // A separate compilation for the integration tier, so `desktopTest` stays a fast unit-test
+        // task. Those tests import a real resource container into a real SQLite database: 13 tests
+        // take ~64s against ~28s for the ~180 unit tests, and they would otherwise dominate the loop
+        // that gets run on every change. The JavaFX app split them out for the same reason.
+        //
+        // associateWith(main) gives this compilation main's classpath AND its internals, which it
+        // needs — IntegrationEnvironment composes the production Koin graph and reaches
+        // DesktopDirectoryProvider directly.
+        compilations {
+            val main by getting
+            val integrationTest by creating {
+                associateWith(main)
+                defaultSourceSet.dependencies {
+                    implementation(libs.kotlin.test)
+                    implementation(libs.kotlin.test.junit)
+                }
+            }
+        }
+    }
 
     // Backend library versions (moved verbatim from the recorder app during the split).
     val rxkotlinVer = "2.4.0"
@@ -290,4 +309,21 @@ tasks.matching {
         n.startsWith("generateResourceAccessors")
 }.configureEach {
     dependsOn("generateEmbeddedSourcesManifest")
+}
+
+// ── integration test task ────────────────────────────────────────────────────────────
+// Runs the `desktopIntegrationTest` compilation (see the jvm("desktop") block). Deliberately NOT
+// wired into `check`: it imports a full resource container into a real database, which is worth
+// paying for in CI and on demand, not on every `desktopTest`.
+tasks.register<Test>("integrationTest") {
+    description = "Runs the integration tier: real Koin graph, real SQLite, real resource containers."
+    group = "verification"
+
+    val compilation = kotlin.targets.getByName("desktop").compilations.getByName("integrationTest")
+    testClassesDirs = compilation.output.classesDirs
+    classpath = files(compilation.output.allOutputs, compilation.runtimeDependencyFiles)
+
+    // kotlin-test-junit, matching the unit tests.
+    useJUnit()
+    testLogging { events("passed", "failed", "skipped") }
 }

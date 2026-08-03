@@ -300,7 +300,7 @@ cmake-build-*/
 # counts in the integration tests are pinned to these exact revisions, so they have to be committed
 # for the assertions to mean anything. (The GL source zips under composeResources/files/content/ stay
 # ignored — those are downloaded by the downloadGLSources task and may change.)
-!shared/src/desktopTest/resources/resource-containers/*.zip
+!shared/src/desktopIntegrationTest/resources/resource-containers/*.zip
 
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 

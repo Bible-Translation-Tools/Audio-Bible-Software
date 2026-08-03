@@ -56,6 +56,11 @@ import kotlin.test.assertTrue
  *
  * Each environment owns a temp directory and a Koin instance, so [close] is not optional. Koin's
  * global state also means these tests cannot run in parallel with each other.
+ *
+ * ### Running these
+ * `./gradlew :shared:integrationTest` — a separate compilation from `desktopTest`, and deliberately
+ * not wired into `check`. A ULB import into a real database costs seconds per test, which is worth
+ * paying on demand and in CI but not on the loop that runs after every edit.
  */
 class IntegrationEnvironment private constructor(
     private val tempRoot: File,
@@ -73,7 +78,7 @@ class IntegrationEnvironment private constructor(
     // ── actions ──────────────────────────────────────────────────────────────────────────
 
     /**
-     * Imports a resource container from `desktopTest/resources/resource-containers/`, asserting it
+     * Imports a resource container from `desktopIntegrationTest/resources/resource-containers/`, asserting it
      * succeeded. Returns `this` so a test can chain imports the way the original did.
      */
     fun import(rcFile: String): IntegrationEnvironment = import(rcResourceFile(rcFile))
@@ -349,7 +354,7 @@ class IntegrationEnvironment private constructor(
             assertNotNull(
                 url,
                 "fixture 'resource-containers/$rcFile' is not on the test classpath — it belongs in " +
-                    "shared/src/desktopTest/resources/resource-containers/"
+                    "shared/src/desktopIntegrationTest/resources/resource-containers/"
             )
             return File(url.toURI())
         }
