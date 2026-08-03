@@ -102,8 +102,8 @@ class RcImportTest {
 
     /**
      * The ULB covers its versification completely, so nothing is pre-allocated-and-left-empty. Pinned
-     * as an equality rather than dropped: if this ever becomes non-zero, either the fixture or the
-     * versification changed, and the divergence case above becomes testable with this very fixture.
+     * as an equality rather than dropped: it is the reason this fixture alone cannot demonstrate
+     * pre-allocation, and if it ever becomes non-zero that reason has changed.
      */
     @Test
     fun `the ULB text covers every verse its versification declares`() {
@@ -113,5 +113,42 @@ class RcImportTest {
             uncovered.isEmpty(),
             "expected no uncovered verses for a complete ULB, found ${uncovered.size}"
         )
+    }
+
+    // ── the divergence: a source whose text is incomplete ────────────────────────────────
+
+    /**
+     * The point of the whole feature, and the only test here that fails if pre-allocation is off.
+     *
+     * Jude is one chapter of 25 verses. Truncated to 10, the versification still declares 25, so a
+     * pre-allocating import must produce 25 verse rows with 10 of them carrying text — those 15 empty
+     * rows are what a translator records into. A text-only import produces 10 rows and no way to
+     * record verses 11-25 at all.
+     *
+     * Every other assertion in this file is satisfied by both paths; this is the discriminator.
+     */
+    @Test
+    fun `pre-allocates the verses a truncated source omits`() {
+        val environment = environment()
+        val truncated = environment.withBookTruncated("en_ulb.zip", "66-JUD.usfm", keepVerses = 10)
+
+        environment.import(truncated)
+
+        val jude = environment.verseCounts("jud_1")
+        assertEquals(10, jude.withText, "verses the truncated text supplies")
+        assertEquals(25, jude.total, "verses the versification declares — the rest are pre-allocated")
+    }
+
+    /** Truncating one book must not disturb the others: the gap is Jude's, not the import's. */
+    @Test
+    fun `truncating one book leaves the rest of the canon intact`() {
+        val environment = environment()
+        val truncated = environment.withBookTruncated("en_ulb.zip", "66-JUD.usfm", keepVerses = 10)
+
+        environment.import(truncated)
+
+        val genesis = environment.verseCounts("gen_1")
+        assertEquals(31, genesis.withText)
+        assertEquals(31, genesis.total)
     }
 }

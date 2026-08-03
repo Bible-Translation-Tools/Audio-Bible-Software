@@ -4,6 +4,9 @@ import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.primitives.Language
+import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
+import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.ILanguageRepository
 import org.bibletranslationtools.otter.common.domain.collections.CreateProject
 import org.bibletranslationtools.otter.common.domain.languages.ImportLanguages
 import org.bibletranslationtools.otter.common.domain.project.importer.RCImporterFactory
@@ -24,6 +27,9 @@ import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
 import org.koin.dsl.module
 import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -70,14 +76,97 @@ class IntegrationEnvironment private constructor(
      * Imports a resource container from `desktopTest/resources/resource-containers/`, asserting it
      * succeeded. Returns `this` so a test can chain imports the way the original did.
      */
-    fun import(rcFile: String): IntegrationEnvironment {
-        val result = importer.import(rcResourceFile(rcFile)).blockingGet()
-        assertEquals(ImportResult.SUCCESS, result, "importing $rcFile")
+    fun import(rcFile: String): IntegrationEnvironment = import(rcResourceFile(rcFile))
+
+    /** Imports an arbitrary resource container file — see [withBookTruncated]. */
+    fun import(rc: File): IntegrationEnvironment {
+        val result = importer.import(rc).blockingGet()
+        assertEquals(ImportResult.SUCCESS, result, "importing ${rc.name}")
         return this
     }
 
-    fun createProject(sourceProject: Collection, targetLanguage: Language): Collection =
-        koin.get<CreateProject>().create(sourceProject, targetLanguage).blockingGet()
+    /**
+     * Derives a copy of [rcFile] in this environment's temp directory whose [usfmEntry] stops after
+     * [keepVerses] verses, and returns it.
+     *
+     * This is what makes the versification pre-allocation observable. For a source whose text covers
+     * its versification completely — the committed ULB — pre-allocating and not pre-allocating
+     * produce byte-identical databases, so no assertion over that fixture can tell them apart.
+     * Truncating one book creates the gap the feature exists to fill: the versification still declares
+     * the whole chapter, the text no longer supplies it.
+     *
+     * Derived at test time rather than committed as a second fixture, so there is one binary in the
+     * repo and the difference between the two inputs is stated in code rather than hidden in a zip.
+     */
+    fun withBookTruncated(rcFile: String, usfmEntry: String, keepVerses: Int): File {
+        val source = rcResourceFile(rcFile)
+        val target = File(tempRoot, "truncated-${usfmEntry.substringBefore('.')}-$keepVerses.zip")
+
+        ZipFile(source).use { zip ->
+            val entry = zip.getEntry(usfmEntry)
+            assertNotNull(entry, "'$usfmEntry' is not in $rcFile")
+            val usfm = zip.getInputStream(entry).bufferedReader().readText()
+
+            // Cut at the first verse marker beyond the keep count. USFM is read forward, so dropping
+            // the tail simply means those verses are not in the text.
+            val cutAt = usfm.indexOf("\\v ${keepVerses + 1}")
+            assertTrue(cutAt > 0, "no verse ${keepVerses + 1} marker in '$usfmEntry' to truncate at")
+            val truncated = usfm.substring(0, cutAt)
+
+            ZipOutputStream(target.outputStream().buffered()).use { out ->
+                zip.entries().asSequence().forEach { source ->
+                    if (source.isDirectory) return@forEach
+                    out.putNextEntry(ZipEntry(source.name))
+                    if (source.name == usfmEntry) {
+                        out.write(truncated.toByteArray())
+                    } else {
+                        zip.getInputStream(source).use { it.copyTo(out) }
+                    }
+                    out.closeEntry()
+                }
+            }
+        }
+        return target
+    }
+
+    /**
+     * @param deriveProjectFromVerses whether verse rows are derived into the target. NOT inferred from
+     *   [mode] — `CreateProject.create` takes the two independently, and only `createAllBooks` couples
+     *   them (`isVerseByVerse = projectMode != TRANSLATION`). The recorder passes both explicitly.
+     */
+    fun createProject(
+        sourceProject: Collection,
+        targetLanguage: Language,
+        mode: ProjectMode? = null,
+        deriveProjectFromVerses: Boolean = false
+    ): Collection = koin.get<CreateProject>()
+        .create(sourceProject, targetLanguage, mode, resourceId = null, deriveProjectFromVerses)
+        .blockingGet()
+
+    /** An imported source book by slug, e.g. "jud". */
+    fun sourceBook(slug: String): Collection {
+        val projects = koin.get<ICollectionRepository>().getSourceProjects().blockingGet()
+        return projects.firstOrNull { it.slug == slug }
+            ?: error("no source project '$slug'; imported: ${projects.map { it.slug }.sorted().take(10)}…")
+    }
+
+    fun language(slug: String): Language = koin.get<ILanguageRepository>().getBySlug(slug).blockingGet()
+
+    fun derivedProjects(): List<Collection> =
+        koin.get<ICollectionRepository>().getDerivedProjects().blockingGet()
+
+    fun childrenOf(collection: Collection): List<Collection> =
+        koin.get<ICollectionRepository>().getChildren(collection).blockingGet()
+
+    /**
+     * Content rows for a collection, and for each one the source content it derives from.
+     *
+     * The `content_derivative` links are what make a target project a *translation of* something
+     * rather than a set of unrelated rows — chapter compilation and the source-text panels both walk
+     * back through them.
+     */
+    fun contentWithSources(collection: Collection): Map<ContentEntity, List<ContentEntity>> =
+        db.contentDao.fetchByCollectionId(collection.id).associateWith { db.contentDao.fetchSources(it) }
 
     // ── assertions ───────────────────────────────────────────────────────────────────────
 
@@ -155,6 +244,21 @@ class IntegrationEnvironment private constructor(
      */
     fun versificationTreesFor(rcFile: String): List<*>? =
         VersificationTreeBuilder(koin.get()).build(ResourceContainer.load(rcResourceFile(rcFile)))
+
+    /**
+     * Verse rows for one chapter, split by whether they carry text.
+     *
+     * [total] is what the versification allocated and [withText] what the source supplied, so the
+     * difference is the pre-allocation. Both are the point: a total on its own cannot distinguish
+     * "pre-allocated 25" from "parsed 25 out of the text".
+     */
+    fun verseCounts(chapterSlug: String): VerseCounts {
+        val chapter = db.collectionDao.fetchAll().firstOrNull { it.slug == chapterSlug }
+        assertNotNull(chapter, "no chapter collection '$chapterSlug'")
+        val textType = db.contentTypeDao.fetchId(ContentType.TEXT)
+        val verses = db.contentDao.fetchByCollectionId(chapter.id).filter { it.type_fk == textType }
+        return VerseCounts(total = verses.size, withText = verses.count { it.text != null })
+    }
 
     private fun contentRowCounts(): Map<ContentType, Int> =
         db.contentDao.fetchAll()
@@ -272,3 +376,6 @@ data class RowCount(
 
 /** A chapter slug and the number of verses that should carry text. */
 data class ChapterVerse(val chapter: String, val verses: Int)
+
+/** Verse rows in a chapter: how many exist, and how many the source text filled in. */
+data class VerseCounts(val total: Int, val withText: Int)
