@@ -218,18 +218,39 @@ android {
 // JVM classpath). The content lives in :shared, so BOTH apps get the sources.
 //
 // Downloads are SYNCHRONOUS + per-file guarded on purpose: the wa-catalog manifest has gone
-// partly stale (~24 URLs 404), and undercouch's DownloadAction runs on the Worker API async,
-// so its failures escape a surrounding try/catch and fail the whole build. A plain blocking
-// HttpURLConnection per file lets us skip a dead URL (404/error) and keep the rest.
+// stale, and undercouch's DownloadAction runs on the Worker API async, so its failures escape a
+// surrounding try/catch and fail the whole build. A plain blocking HttpURLConnection per file
+// lets us skip a dead URL (404/error) and keep the rest.
+//
+// Measured 2026-08-03: 66 of the 96 catalogue entries are unavailable, and 30 are bundled. This
+// comment previously said "~24 URLs 404", which was optimistic by a factor of nearly three — so
+// two thirds of the gateway-language catalogue is dead and the project wizard offers the 30 that
+// are not (see generateEmbeddedSourcesManifest). Worth fixing at the catalogue, not here.
 val glContentDir = file("src/commonMain/composeResources/files/content")
 val embeddedManifest = file("src/commonMain/composeResources/files/embedded_gl_sources.json")
+val glSourcesManifest = file("src/commonMain/composeResources/files/gl_sources.json")
+
+// Which sources were unavailable last time, as {name: the url that failed}. Deliberately NOT under
+// composeResources/ — anything there is packed into both apps, and this is build state.
+//
+// Without it, a source with no zip is re-probed on every task run: the ~24 stale catalogue entries
+// each cost up to a 30 s connect timeout, so a run that downloads nothing still burns minutes. The
+// existence check below only caches SUCCESSES; this caches the failures.
+//
+// Keyed by url, not just name, so fixing an entry in gl_sources.json re-probes it automatically.
+// Force a full re-check with -PrecheckGlSources (or delete the file).
+val glUnavailableCache = file(".gl-sources-unavailable.json")
+val recheckGlSources = providers.gradleProperty("recheckGlSources").isPresent
 
 tasks.register("downloadGLSources") {
     // The zips land directly in src/ (survives `clean`), so guarding on existence means a
     // clean build re-checks but does not re-download the ~100MB set every time.
+    inputs.file(glSourcesManifest).withPropertyName("catalogue")
+    inputs.property("recheck", recheckGlSources)
     outputs.dir(glContentDir)
+    outputs.file(glUnavailableCache)
     doLast {
-        val jsonFile = file("src/commonMain/composeResources/files/gl_sources.json")
+        val jsonFile = glSourcesManifest
         if (!jsonFile.exists()) {
             println("GL sources file not found: ${jsonFile.absolutePath}")
             return@doLast
@@ -237,15 +258,35 @@ tasks.register("downloadGLSources") {
         glContentDir.mkdirs()
         @Suppress("UNCHECKED_CAST")
         val jsonData = groovy.json.JsonSlurper().parse(jsonFile) as List<Map<String, String>>
+
+        @Suppress("UNCHECKED_CAST")
+        val unavailable: MutableMap<String, String> = when {
+            recheckGlSources || !glUnavailableCache.isFile -> mutableMapOf()
+            else -> runCatching {
+                (groovy.json.JsonSlurper().parse(glUnavailableCache) as Map<String, String>).toMutableMap()
+            }.getOrElse {
+                println("GL sources: unreadable cache at ${glUnavailableCache.name}, re-checking everything")
+                mutableMapOf()
+            }
+        }
+        val knownBad = unavailable.size
+
         var downloaded = 0
         var skipped = 0
         var failed = 0
+        var cached = 0
         jsonData.forEach { dependency ->
             val artifactName = dependency["name"] ?: return@forEach
             val artifactUrl = dependency["url"] ?: return@forEach
             val outputPath = glContentDir.resolve("$artifactName.zip")
             if (outputPath.exists()) {
                 skipped++
+                // Present now (downloaded earlier, or placed by hand) — it is not unavailable.
+                unavailable.remove(artifactName)
+                return@forEach
+            }
+            if (unavailable[artifactName] == artifactUrl) {
+                cached++
                 return@forEach
             }
             try {
@@ -258,6 +299,7 @@ tasks.register("downloadGLSources") {
                 val code = conn.responseCode
                 if (code != HttpURLConnection.HTTP_OK) {
                     failed++
+                    unavailable[artifactName] = artifactUrl
                     println("Skipping $artifactName (HTTP $code): $artifactUrl")
                     conn.disconnect()
                     return@forEach
@@ -268,13 +310,30 @@ tasks.register("downloadGLSources") {
                 conn.disconnect()
                 tmp.renameTo(outputPath)
                 downloaded++
+                unavailable.remove(artifactName)
                 println("Downloaded $artifactName")
             } catch (e: Exception) {
                 failed++
+                unavailable[artifactName] = artifactUrl
                 println("Failed to download $artifactName from $artifactUrl: ${e.message}")
             }
         }
-        println("GL sources: $downloaded downloaded, $skipped already present, $failed unavailable.")
+
+        // Drop names no longer in the catalogue, so the cache cannot grow without bound.
+        val catalogued = jsonData.mapNotNull { it["name"] }.toSet()
+        unavailable.keys.retainAll(catalogued)
+        glUnavailableCache.writeText(groovy.json.JsonBuilder(unavailable.toSortedMap()).toPrettyString())
+
+        println(
+            "GL sources: $downloaded downloaded, $skipped already present, " +
+                "$cached skipped as known-unavailable, $failed newly unavailable."
+        )
+        if (cached > 0) {
+            println("GL sources: re-check the $cached skipped with -PrecheckGlSources.")
+        }
+        if (knownBad > 0 && recheckGlSources) {
+            println("GL sources: re-checked $knownBad previously unavailable source(s).")
+        }
     }
 }
 

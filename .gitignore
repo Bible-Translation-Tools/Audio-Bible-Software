@@ -302,6 +302,11 @@ cmake-build-*/
 # ignored — those are downloaded by the downloadGLSources task and may change.)
 !shared/src/desktopIntegrationTest/resources/resource-containers/*.zip
 
+# downloadGLSources' negative cache: which catalogue entries were unavailable last run, so the ~24
+# stale URLs are not re-probed (30s connect timeout each) on every task run. Machine-local build
+# state, not shared — committing it would freeze a transient outage into the repo for everyone.
+shared/.gl-sources-unavailable.json
+
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 
 ### macOS ###
