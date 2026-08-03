@@ -23,6 +23,10 @@ import androidx.compose.runtime.mutableLongStateOf
  * and produced either a speed wobble (chasing the lie) or a deferred hard snap
  * (ignoring it past the window).
  *
+ * Mid-playback stalls are the opposite case and must NOT free-run: once the source has
+ * settled, an unreliable position means the device stopped presenting audio (an underrun
+ * clears SourceDataLine.isRunning), so the display freezes with it. See [onFrame].
+ *
  * Threading: onFrame/snapTo and all property writes MUST happen on the main thread.
  * [displayFrame] is snapshot state — read it ONLY inside draw lambdas (or gesture
  * handlers); a composition-scope read would reinstate per-frame recomposition.
@@ -67,11 +71,33 @@ class PlaybackDisplayClock(
         val dt = (frameTimeNanos - lastNanos) / 1e9
         lastNanos = frameTimeNanos
 
+        val reliable = positionReliable()
+
+        // An unreliable position means one of two opposite things, and [sourceSettled] is what tells
+        // them apart.
+        //
+        // Not settled yet: playback is starting or a seek is landing. The sink is not running, audio is
+        // about to begin at the frame we snapped to, and free-running at 1.0× from there is right.
+        //
+        // Already settled: the source agreed with us, and has now stopped being reliable mid-playback —
+        // the device stalled. A JavaSound line clears isRunning the moment its buffer empties, which an
+        // underrun does (the playback loop reads from disk on the same thread it writes to the line, so
+        // a disk hiccup or a GC pause is enough). Audio is FROZEN, so free-running walks the display
+        // away from it at exactly 1.0×, and the moment the position comes back the error is seek-sized
+        // and gets hard-snapped — backwards, by the length of the stall. Measured: a 400 ms stall jumped
+        // the drawn position back 385 ms. Freezing with the audio is both correct and invisible.
+        if (!reliable && sourceSettled) {
+            // Not observing the error, so the DC estimate of it is meaningless — start the slew clean
+            // when the device comes back.
+            errAvg = 0.0
+            return
+        }
+
         posF += dt * sampleRate                                   // rate lock
 
         // Corrections only when the source reflects the audible position; while the
         // sink is spinning up (or a seek is settling) we free-run at exactly 1.0×.
-        if (positionReliable()) {
+        if (reliable) {
             val error = positionSource().toDouble() - posF
             val inBand = kotlin.math.abs(error) <= sampleRate * 0.25
 

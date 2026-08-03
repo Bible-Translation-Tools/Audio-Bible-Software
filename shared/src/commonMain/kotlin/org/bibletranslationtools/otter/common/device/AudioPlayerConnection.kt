@@ -30,8 +30,10 @@ class AudioPlayerConnection(
     override val frameEnd: Int
         get() = _reader?.totalFrames ?: 0
 
+    // This connection's own events, not the shared worker's whole stream — see
+    // AudioPlayerConnectionFactory.eventsFor.
     override val events: Flow<AudioPlayerEvent>
-        get() = factory.getPlayerWorker().events
+        get() = factory.eventsFor(id)
 
     override fun load(reader: AudioFileReader) {
         this._reader = reader
