@@ -1,4 +1,4 @@
-package org.bibletranslationtools.recorder2.e2e
+package org.bibletranslationtools.recorder2.e2e.flow
 
 import android.Manifest
 import android.os.SystemClock
@@ -8,7 +8,16 @@ import androidx.test.rule.GrantPermissionRule
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Until
 import org.bibletranslationtools.recorder2.MainActivity
+import org.bibletranslationtools.recorder2.e2e.E2eLog
+import org.bibletranslationtools.recorder2.e2e.clickContentDescription
+import org.bibletranslationtools.recorder2.e2e.clickText
 import org.bibletranslationtools.recorder2.e2e.harness.RecorderAndroidUiTestHarness
+import org.bibletranslationtools.recorder2.e2e.uiDevice
+import org.bibletranslationtools.recorder2.e2e.waitForActiveProjectOnMainMenu
+import org.bibletranslationtools.recorder2.e2e.waitForActiveWorkbook
+import org.bibletranslationtools.recorder2.e2e.waitForContentDescription
+import org.bibletranslationtools.recorder2.e2e.waitForMainMenuAfterSplash
+import org.bibletranslationtools.recorder2.e2e.waitForRecorderTransportOrFail
 import org.junit.After
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -16,8 +25,11 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
+/**
+ * Seed Afar Genesis in-process → home with active project → Record → engage transport.
+ */
 @RunWith(AndroidJUnit4::class)
-class RecorderRecordPlaybackAndroidE2ETest {
+class SeededRecordPlaybackFlowTest {
 
     @get:Rule(order = 0)
     val permissionRule: GrantPermissionRule =

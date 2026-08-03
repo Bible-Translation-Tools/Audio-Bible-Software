@@ -1,4 +1,4 @@
-package org.bibletranslationtools.recorder2.e2e
+package org.bibletranslationtools.recorder2.e2e.flow
 
 import android.Manifest
 import android.os.SystemClock
@@ -8,6 +8,14 @@ import androidx.test.rule.GrantPermissionRule
 import androidx.test.uiautomator.By
 import kotlinx.coroutines.runBlocking
 import org.bibletranslationtools.recorder2.MainActivity
+import org.bibletranslationtools.recorder2.e2e.E2eLog
+import org.bibletranslationtools.recorder2.e2e.clickContentDescription
+import org.bibletranslationtools.recorder2.e2e.clickTextContains
+import org.bibletranslationtools.recorder2.e2e.searchAndClickResult
+import org.bibletranslationtools.recorder2.e2e.uiDevice
+import org.bibletranslationtools.recorder2.e2e.waitForMainMenuAfterSplash
+import org.bibletranslationtools.recorder2.e2e.waitForText
+import org.bibletranslationtools.recorder2.e2e.waitForTextContains
 import org.bibletranslationtools.shared.preferences.IAppPreferences
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -17,13 +25,12 @@ import org.junit.runner.RunWith
 import org.koin.core.context.GlobalContext
 
 /**
- * UI-driven project creation:
- * launch → splash → home → Files → New Project → source → target → book → Project Management.
+ * Launch → splash → home → Files → New Project → English → Afar → Genesis → Project Management.
  *
  * Uses [ActivityScenarioRule] (not ComposeTestRule) so navigation matches a normal install.
  */
 @RunWith(AndroidJUnit4::class)
-class RecorderWizardAndroidE2ETest {
+class CreateProjectWizardFlowTest {
 
     @get:Rule(order = 0)
     val permissionRule: GrantPermissionRule =

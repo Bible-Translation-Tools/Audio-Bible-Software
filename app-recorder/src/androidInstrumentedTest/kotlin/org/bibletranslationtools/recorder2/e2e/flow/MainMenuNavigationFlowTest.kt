@@ -1,4 +1,4 @@
-package org.bibletranslationtools.recorder2.e2e
+package org.bibletranslationtools.recorder2.e2e.flow
 
 import android.Manifest
 import androidx.test.ext.junit.rules.ActivityScenarioRule
@@ -6,6 +6,13 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
 import kotlinx.coroutines.runBlocking
 import org.bibletranslationtools.recorder2.MainActivity
+import org.bibletranslationtools.recorder2.e2e.E2eLog
+import org.bibletranslationtools.recorder2.e2e.assertDisplayedContentDescription
+import org.bibletranslationtools.recorder2.e2e.assertDisplayedText
+import org.bibletranslationtools.recorder2.e2e.clickContentDescription
+import org.bibletranslationtools.recorder2.e2e.clickText
+import org.bibletranslationtools.recorder2.e2e.waitForMainMenuAfterSplash
+import org.bibletranslationtools.recorder2.e2e.waitForText
 import org.bibletranslationtools.shared.preferences.IAppPreferences
 import org.junit.Before
 import org.junit.Rule
@@ -13,8 +20,11 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.koin.core.context.GlobalContext
 
+/**
+ * Splash → home, Files → Settings, and Record-with-no-project → Project Management.
+ */
 @RunWith(AndroidJUnit4::class)
-class RecorderSmokeAndroidE2ETest {
+class MainMenuNavigationFlowTest {
 
     @get:Rule(order = 0)
     val permissionRule: GrantPermissionRule =

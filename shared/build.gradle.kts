@@ -186,13 +186,26 @@ android {
 // partly stale (~24 URLs 404), and undercouch's DownloadAction runs on the Worker API async,
 // so its failures escape a surrounding try/catch and fail the whole build. A plain blocking
 // HttpURLConnection per file lets us skip a dead URL (404/error) and keep the rest.
+//
+// Fast local / Android e2e: -PminimalGlSources (or minimalGlSources=true in gradle.properties)
+// downloads only en_ulb. Full release catalogs still use the default (all gl_sources.json).
 val glContentDir = file("src/commonMain/composeResources/files/content")
 val embeddedManifest = file("src/commonMain/composeResources/files/embedded_gl_sources.json")
+val minimalGlSources: Boolean = run {
+    val raw = findProperty("minimalGlSources")?.toString()
+    when {
+        raw == null -> false
+        raw.isEmpty() -> true // bare -PminimalGlSources
+        else -> raw.toBoolean()
+    }
+}
+val glSourceAllowlist: Set<String>? = if (minimalGlSources) setOf("en_ulb") else null
 
 tasks.register("downloadGLSources") {
     // The zips land directly in src/ (survives `clean`), so guarding on existence means a
     // clean build re-checks but does not re-download the ~100MB set every time.
     outputs.dir(glContentDir)
+    inputs.property("minimalGlSources", minimalGlSources)
     doLast {
         val jsonFile = file("src/commonMain/composeResources/files/gl_sources.json")
         if (!jsonFile.exists()) {
@@ -202,10 +215,16 @@ tasks.register("downloadGLSources") {
         glContentDir.mkdirs()
         @Suppress("UNCHECKED_CAST")
         val jsonData = groovy.json.JsonSlurper().parse(jsonFile) as List<Map<String, String>>
+        val toFetch = if (glSourceAllowlist == null) {
+            jsonData
+        } else {
+            println("minimalGlSources=true — downloading only: ${glSourceAllowlist.joinToString()}")
+            jsonData.filter { (it["name"] ?: "") in glSourceAllowlist }
+        }
         var downloaded = 0
         var skipped = 0
         var failed = 0
-        jsonData.forEach { dependency ->
+        toFetch.forEach { dependency ->
             val artifactName = dependency["name"] ?: return@forEach
             val artifactUrl = dependency["url"] ?: return@forEach
             val outputPath = glContentDir.resolve("$artifactName.zip")
@@ -240,6 +259,16 @@ tasks.register("downloadGLSources") {
             }
         }
         println("GL sources: $downloaded downloaded, $skipped already present, $failed unavailable.")
+        if (glSourceAllowlist != null) {
+            val extras = (glContentDir.listFiles() ?: emptyArray())
+                .filter { it.isFile && it.extension == "zip" && it.nameWithoutExtension !in glSourceAllowlist }
+            if (extras.isNotEmpty()) {
+                println(
+                    "NOTE: ${extras.size} other zip(s) still under content/ will be packed into the APK. " +
+                        "Delete them for a truly minimal bundle (e2e only needs en_ulb.zip)."
+                )
+            }
+        }
     }
 }
 
@@ -250,10 +279,12 @@ tasks.register("downloadGLSources") {
 tasks.register("generateEmbeddedSourcesManifest") {
     dependsOn("downloadGLSources")
     outputs.file(embeddedManifest)
+    inputs.property("minimalGlSources", minimalGlSources)
     doLast {
         val names = (glContentDir.listFiles() ?: emptyArray())
             .filter { it.isFile && it.extension == "zip" }
             .map { it.nameWithoutExtension }
+            .filter { glSourceAllowlist == null || it in glSourceAllowlist }
             .sorted()
         embeddedManifest.writeText(groovy.json.JsonBuilder(names).toPrettyString())
         println("Embedded GL sources manifest: ${names.size} sources bundled.")
