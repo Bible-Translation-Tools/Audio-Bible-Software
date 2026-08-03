@@ -88,12 +88,7 @@ kotlin {
                 implementation(libs.androidx.test.junit)
                 implementation(libs.androidx.test.runner)
                 implementation(libs.androidx.test.rules)
-                implementation(libs.androidx.espresso.core)
                 implementation(libs.androidx.uiautomator)
-                implementation(libs.androidx.compose.ui.test.junit4)
-                implementation(compose.uiTest)
-                implementation(libs.kotlinx.coroutines.test)
-                implementation(libs.koin.test)
                 implementation(libs.koin.android)
             }
         }

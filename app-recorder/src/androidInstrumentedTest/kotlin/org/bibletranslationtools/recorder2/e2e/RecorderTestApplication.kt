@@ -1,10 +1,6 @@
 package org.bibletranslationtools.recorder2.e2e
 
 import android.app.Application
-import android.os.Handler
-import android.os.Looper
-import androidx.arch.core.executor.ArchTaskExecutor
-import androidx.arch.core.executor.TaskExecutor
 import org.bibletranslationtools.bttrecorder2.di.koin.recorderViewModelModule
 import org.bibletranslationtools.di.koin.androidContextModule
 import org.bibletranslationtools.di.koin.directoryProviderModule
@@ -21,15 +17,12 @@ import org.koin.core.context.startKoin
 
 /**
  * Production-like Koin graph for Android e2e with mock audio (no mic/speakers). App init stays on
- * the splash path so [Application.onCreate] does not block the main thread with [org.bibletranslationtools.otter.common.initialization.InitializeApp].
+ * the splash path so [Application.onCreate] does not block the main thread with
+ * [org.bibletranslationtools.otter.common.initialization.InitializeApp].
  */
 class RecorderTestApplication : Application() {
     override fun onCreate() {
         super.onCreate()
-        // Compose UI-test frame deferral can resume coroutines off the Android main looper.
-        // Lifecycle/NavController then throw; treat all threads as main for e2e only (desktop
-        // harness disables MainDispatcherChecker for the same reason).
-        relaxLifecycleMainThreadEnforcement()
 
         startKoin {
             androidLogger()
@@ -51,30 +44,5 @@ class RecorderTestApplication : Application() {
         config.start()
         selector.getOutputDevices(spec).firstOrNull()?.let(selector::selectOutputDevice)
         selector.getInputDevices(spec).firstOrNull()?.let(selector::selectInputDevice)
-    }
-
-    private fun relaxLifecycleMainThreadEnforcement() {
-        runCatching {
-            val field = Class.forName("androidx.lifecycle.MainDispatcherChecker")
-                .getDeclaredField("isMainDispatcherAvailable")
-            field.isAccessible = true
-            field.setBoolean(null, false)
-        }
-        runCatching {
-            val ioExecutor = java.util.concurrent.Executors.newCachedThreadPool()
-            ArchTaskExecutor.getInstance().setDelegate(
-                object : TaskExecutor() {
-                    override fun executeOnDiskIO(runnable: Runnable) {
-                        ioExecutor.execute(runnable)
-                    }
-
-                    override fun postToMainThread(runnable: Runnable) {
-                        Handler(Looper.getMainLooper()).post(runnable)
-                    }
-
-                    override fun isMainThread(): Boolean = true
-                }
-            )
-        }
     }
 }
