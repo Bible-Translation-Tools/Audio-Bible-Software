@@ -187,8 +187,8 @@ android {
 // so its failures escape a surrounding try/catch and fail the whole build. A plain blocking
 // HttpURLConnection per file lets us skip a dead URL (404/error) and keep the rest.
 //
-// Fast local / Android e2e: -PminimalGlSources (or minimalGlSources=true in gradle.properties)
-// downloads only en_ulb. Full release catalogs still use the default (all gl_sources.json).
+// Fast local / e2e builds: pass -PminimalGlSources (or -PminimalGlSources=true) to download
+// and embed only en_ulb. Default is the full gl_sources.json catalog for normal/release builds.
 val glContentDir = file("src/commonMain/composeResources/files/content")
 val embeddedManifest = file("src/commonMain/composeResources/files/embedded_gl_sources.json")
 val minimalGlSources: Boolean = run {

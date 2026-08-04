@@ -5,13 +5,19 @@ Instrumented UI tests on a real device/emulator: mock audio + Koin via `Recorder
 ## Run
 
 ```bat
-gradlew.bat :app-recorder:connectedDebugAndroidTest
+gradlew.bat :app-recorder:connectedDebugAndroidTest -PminimalGlSources=true
 ```
 
 One class (FQCN under `…e2e.flow`):
 
 ```bat
-gradlew.bat :app-recorder:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=<fully.qualified.ClassName>
+gradlew.bat :app-recorder:connectedDebugAndroidTest -PminimalGlSources=true -Pandroid.testInstrumentationRunnerArguments.class=<fully.qualified.ClassName>
+```
+
+Desktop suite:
+
+```bat
+gradlew.bat :app-recorder:desktopTest -PminimalGlSources=true
 ```
 
 Logs: tag `RecorderE2E`. Flow suites live in `e2e/flow/` (independent; no fixed order). JDK 17/21 fine.
@@ -34,13 +40,13 @@ Runner: `RecorderE2ERunner` → `RecorderTestApplication` (Koin + mock audio).
 
 | Property | Effect |
 |----------|--------|
-| `leaveApksInstalledAfterRun=true` | Keep app installed after tests |
-| `minimalGlSources=true` | Download/list only `en_ulb` (avoids slow full GL catalog at build time) |
+| `leaveApksInstalledAfterRun=true` | Keep app installed after tests (currently in root `gradle.properties`) |
+| `-PminimalGlSources=true` | Download/list only `en_ulb` (pass on the Gradle command; not a repo default) |
 
-Zips under `shared/.../files/content/` are gitignored; extras on disk still pack into the APK — delete them for a minimal bundle. Set `minimalGlSources=false` for a full multi-language build.
+Zips under `shared/.../files/content/` are gitignored; extras on disk still pack into the APK — delete them for a truly minimal bundle. Omit `-PminimalGlSources` for a full multi-language build.
 
 ## Open items
 
-- No CI yet for these tests
+- Android instrumented e2e not in CI yet (desktop suite: `.github/workflows/recorder-desktop-e2e.yml`)
 - Record/playback soft-passes if Stop never appears
 - Device DB persists across runs
