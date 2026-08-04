@@ -1,7 +1,6 @@
 package org.bibletranslationtools.bttrecorder2.e2e
 
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -14,9 +13,8 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 
 /**
- * Phase 2 wizard UI coverage: drive source/target/book selection. Project creation is
- * validated via [RecorderUiTestHarness.seedGenesisProject] + [RecorderRecordPlaybackE2ETest]
- * because in-process create can race Compose test dispatchers with Rx blocking calls.
+ * Full wizard create — parity with Android [CreateProjectWizardFlowTest]:
+ * Files → New Project → English → Afar → Genesis → Project Management.
  */
 @OptIn(ExperimentalTestApi::class)
 class RecorderWizardE2ETest {
@@ -32,15 +30,17 @@ class RecorderWizardE2ETest {
     }
 
     @Test
-    fun wizardSourceTargetBookStepsReachable() = runRecorderUiTest {
+    fun createNewProjectViaWizard() = runRecorderUiTest {
         setContent { App() }
         waitUntil(timeoutMillis = 180_000) {
             onAllNodesWithContentDescription("Files").fetchSemanticsNodes().isNotEmpty()
         }
+
         onNodeWithContentDescription("Files").performClick()
         waitUntil(timeoutMillis = 30_000) {
-            onAllNodesWithContentDescription("New Project").fetchSemanticsNodes().isNotEmpty()
+            onAllNodesWithText("Project Management").fetchSemanticsNodes().isNotEmpty()
         }
+
         onNodeWithContentDescription("New Project").performClick()
         waitUntil(timeoutMillis = 60_000) {
             onAllNodesWithText("Select Source").fetchSemanticsNodes().isNotEmpty() ||
@@ -61,24 +61,21 @@ class RecorderWizardE2ETest {
         }
 
         waitUntil(timeoutMillis = 120_000) {
-            onAllNodesWithText("Afar", substring = true).fetchSemanticsNodes().isNotEmpty() ||
-                onAllNodesWithText("aa").fetchSemanticsNodes().isNotEmpty()
-        }
-        if (onAllNodesWithText("Afar", substring = true).fetchSemanticsNodes().isNotEmpty()) {
-            onNodeWithText("Afar", substring = true).performClick()
-        } else {
-            onNodeWithText("aa").performClick()
+            onAllNodesWithText("Choose Target Language").fetchSemanticsNodes().isNotEmpty()
         }
 
+        searchAndClickResult(query = "aa", resultSubstring = "Afar", timeoutMillis = 120_000)
         waitUntil(timeoutMillis = 120_000) {
-            onAllNodesWithText("Choose a Book").fetchSemanticsNodes().isNotEmpty() ||
-                onAllNodesWithText("Genesis", substring = true).fetchSemanticsNodes().isNotEmpty()
+            onAllNodesWithText("Choose a Book").fetchSemanticsNodes().isNotEmpty()
         }
-        onNodeWithText("Choose a Book").assertIsDisplayed()
-        if (onAllNodesWithText("Genesis", substring = true).fetchSemanticsNodes().isNotEmpty()) {
-            onNodeWithText("Genesis", substring = true).assertIsDisplayed()
-        } else {
-            onNodeWithText("gen").assertIsDisplayed()
+
+        searchAndClickResult(query = "gen", resultSubstring = "Genesis", timeoutMillis = 120_000)
+
+        waitUntil(timeoutMillis = 180_000) {
+            onAllNodesWithText("Project Management").fetchSemanticsNodes().isNotEmpty()
+        }
+        waitUntil(timeoutMillis = 60_000) {
+            onAllNodesWithText("Genesis", substring = true).fetchSemanticsNodes().isNotEmpty()
         }
     }
 }

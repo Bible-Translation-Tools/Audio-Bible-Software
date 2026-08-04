@@ -90,9 +90,12 @@ object RecorderUiTestHarness {
     }
 
     /**
-     * Creates an Afar Genesis narration project from the seeded English ULB source so
-     * record/playback e2e can open a workbook without depending on the full wizard UI path.
-     * Also marks that workbook active so MainMenu Record can open the recorder directly.
+     * Creates an Afar Genesis narration project from the seeded English ULB source and marks
+     * it active so MainMenu Record opens the recorder directly.
+     *
+     * Used by [org.bibletranslationtools.bttrecorder2.e2e.RecorderRecordPlaybackE2ETest]
+     * (parity with Android seeded record flow). Full UI create is covered by
+     * [org.bibletranslationtools.bttrecorder2.e2e.RecorderWizardE2ETest].
      */
     fun seedGenesisProject() {
         val koin = GlobalContext.get()
