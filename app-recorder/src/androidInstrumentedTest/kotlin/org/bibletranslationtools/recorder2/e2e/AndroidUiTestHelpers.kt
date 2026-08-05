@@ -170,6 +170,28 @@ internal fun waitForRecorderTransportOrFail(timeoutMillis: Long = 120_000) {
 }
 
 /**
+ * [RecorderViewModel.loadTarget] is async; [RecorderViewModel.startRecording] no-ops while
+ * `associatedAudio` is still null. Wait for the seeded project's header labels so the
+ * transport mic click actually engages recording.
+ */
+internal fun waitForRecorderTargetLoaded(timeoutMillis: Long = 60_000) {
+    E2eLog.step("WAIT recorder target labels (timeout=${timeoutMillis}ms)")
+    val device = uiDevice()
+    val deadline = SystemClock.uptimeMillis() + timeoutMillis
+    while (SystemClock.uptimeMillis() < deadline) {
+        // Header is "ULB  Genesis" (source identifier + target book label) once switchToTarget runs.
+        if (device.hasObject(By.textContains("Genesis")) ||
+            device.hasObject(By.textContains("ULB"))
+        ) {
+            E2eLog.step("FOUND recorder target labels")
+            return
+        }
+        SystemClock.sleep(100)
+    }
+    assertTrue("Timed out waiting for recorder target labels (Genesis/ULB)", false)
+}
+
+/**
  * Opens the wizard search field, types [query], then taps a row matching [resultSubstring].
  */
 internal fun searchAndClickResult(

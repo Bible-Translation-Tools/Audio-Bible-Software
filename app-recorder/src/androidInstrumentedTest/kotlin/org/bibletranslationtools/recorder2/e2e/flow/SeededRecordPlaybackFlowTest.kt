@@ -17,6 +17,7 @@ import org.bibletranslationtools.recorder2.e2e.waitForActiveProjectOnMainMenu
 import org.bibletranslationtools.recorder2.e2e.waitForActiveWorkbook
 import org.bibletranslationtools.recorder2.e2e.waitForContentDescription
 import org.bibletranslationtools.recorder2.e2e.waitForMainMenuAfterSplash
+import org.bibletranslationtools.recorder2.e2e.waitForRecorderTargetLoaded
 import org.bibletranslationtools.recorder2.e2e.waitForRecorderTransportOrFail
 import org.junit.After
 import org.junit.Assert.assertTrue
@@ -89,6 +90,8 @@ class SeededRecordPlaybackFlowTest {
         clickContentDescription("Record")
 
         waitForRecorderTransportOrFail(timeoutMillis = 120_000)
+        // Transport is visible before loadTarget finishes; startRecording no-ops until then.
+        waitForRecorderTargetLoaded()
         clickContentDescription("Record transport")
 
         val device = uiDevice()
