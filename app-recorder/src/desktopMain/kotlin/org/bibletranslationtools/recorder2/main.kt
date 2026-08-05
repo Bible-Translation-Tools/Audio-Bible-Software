@@ -8,6 +8,7 @@ import java.awt.Toolkit
 import org.bibletranslationtools.bttrecorder2.di.koin.recorderViewModelModule
 import org.bibletranslationtools.bttrecorder2.ui.App
 import org.bibletranslationtools.di.koin.directoryProviderModule
+import org.bibletranslationtools.otter.common.device.AudioConfig
 import org.bibletranslationtools.shared.di.koin.sharedCommonModules
 import org.bibletranslationtools.shared.di.koin.sharedDesktopModules
 import org.bibletranslationtools.otter.common.device.AudioDeviceSelector
@@ -43,7 +44,7 @@ fun main() {
         // dummy hardware.
         val config = koin.get<AudioSystemConfig>()
         val selector = koin.get<AudioDeviceSelector>()
-        val defaultSpec = AudioSpec()
+        val defaultSpec = koin.get<AudioConfig>().spec
         config.start()
         selector.getOutputDevices(defaultSpec).firstOrNull()?.let { selector.selectOutputDevice(it) }
         selector.getInputDevices(defaultSpec).firstOrNull()?.let { selector.selectInputDevice(it) }

@@ -23,7 +23,7 @@ import org.bibletranslationtools.shared.audio.engine.AudioTimeline
 import org.bibletranslationtools.shared.audio.engine.FilePcmSource
 import org.bibletranslationtools.shared.audio.engine.PcmSource
 import org.bibletranslationtools.shared.audio.engine.TimelineAudioFileReader
-import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayClock
+import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayPosition
 import org.bibletranslationtools.shared.audio.engine.PlaybackPerfStats
 import org.bibletranslationtools.shared.audio.engine.SourceAudioPlayerController
 import org.bibletranslationtools.shared.audio.engine.WaveEditSession
@@ -103,7 +103,7 @@ class PlaybackViewModel(
         val currentTakeNumber: Int? = null,
         val isPlaying: Boolean = false,
         // Per-frame position (currentFrame/progress/elapsed) intentionally does NOT
-        // live here: it flows through PlaybackDisplayClock and is read only in draw
+        // live here: it flows through PlaybackDisplayPosition and is read only in draw
         // scopes / leaf composables, so playback does not recompose the screen.
         val durationFrames: Int = 0,
         val sampleRate: Int = 44100,
@@ -264,7 +264,7 @@ class PlaybackViewModel(
     // The display-side playback clock. The UI drives onFrame per display frame
     // (withFrameNanos in PlaybackScreen); the VM owns all control transitions
     // (seek/scrub/pause/freeze). All writes main-thread.
-    val clock = PlaybackDisplayClock(
+    val clock = PlaybackDisplayPosition(
         positionSource = { audioPlayer.getLocationInFrames().toLong() },
         positionReliable = { audioPlayer.isPositionReliable() }
     )
@@ -1268,8 +1268,8 @@ class PlaybackViewModel(
     }
 
     // The 60 Hz ticker + interpolation that used to live here is replaced by
-    // PlaybackDisplayClock, driven per display frame from PlaybackScreen. Per-frame
-    // position lives ONLY in the clock; uiState carries just the slow-changing
+    // the display position (PlaybackDisplayPosition), driven per display frame from
+    // PlaybackScreen. Per-frame position lives ONLY in the clock; uiState carries just the slow-changing
     // duration fields. The time readout is a leaf composable reading the clock.
 
     // Sets the display clock (position) and the slow transport fields (durations)

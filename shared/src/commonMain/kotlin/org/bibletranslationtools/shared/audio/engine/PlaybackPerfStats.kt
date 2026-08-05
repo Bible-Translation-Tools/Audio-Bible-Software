@@ -2,6 +2,7 @@ package org.bibletranslationtools.shared.audio.engine
 
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -31,6 +32,17 @@ object PlaybackPerfStats {
     @PublishedApi internal val frames = AtomicInteger(0)
     @PublishedApi internal val framesOver20ms = AtomicInteger(0)
 
+    // Drift between what is DRAWN and what the player REPORTS, sampled per display frame. These answer
+    // one question: when the audio is ahead of the waveform, is the clock failing to track its source,
+    // or is the source itself reporting a position the audio has already passed? The first shows up as
+    // a large drift; the second as a drift near zero while the sound says otherwise.
+    @PublishedApi internal val lastDisplayFrame = AtomicLong(0)
+    @PublishedApi internal val lastSourceFrame = AtomicLong(0)
+    @PublishedApi internal val driftMinFrames = AtomicLong(Long.MAX_VALUE)
+    @PublishedApi internal val driftMaxFrames = AtomicLong(Long.MIN_VALUE)
+    @PublishedApi internal val unreliableFrames = AtomicInteger(0)
+    @PublishedApi internal val notAdvancingFrames = AtomicInteger(0)
+
     private val loggingStarted = AtomicBoolean(false)
 
     /** Call on every `_uiState` emission (via the VM's `updateState` helper). */
@@ -53,6 +65,25 @@ object PlaybackPerfStats {
     }
 
     /**
+     * Call once per display frame with the drawn position and the position the player reports.
+     *
+     * Guard the call site with `if (PLAYBACK_PERF_STATS)` rather than relying on the check inside:
+     * reading the source position is not free, and arguments are evaluated before an inline body.
+     */
+    fun onDrift(displayFrame: Long, sourceFrame: Long, reliable: Boolean, advancing: Boolean) {
+        if (!PLAYBACK_PERF_STATS) return
+        lastDisplayFrame.set(displayFrame)
+        lastSourceFrame.set(sourceFrame)
+        if (!reliable) unreliableFrames.incrementAndGet()
+        if (!advancing) notAdvancingFrames.incrementAndGet()
+        // Drift is only meaningful where the clock is supposed to be following the source.
+        if (!reliable || !advancing) return
+        val drift = displayFrame - sourceFrame
+        driftMinFrames.getAndUpdate { minOf(it, drift) }
+        driftMaxFrames.getAndUpdate { maxOf(it, drift) }
+    }
+
+    /**
      * Launches (once) a background loop that prints one summary line per second and
      * resets the per-second counters. Safe to call from multiple sites; only the
      * first call actually starts the loop.
@@ -69,9 +100,25 @@ object PlaybackPerfStats {
                 val framesPerSec = frames.getAndSet(0)
                 val framesOver20msPerSec = framesOver20ms.getAndSet(0)
 
+                val display = lastDisplayFrame.get()
+                val source = lastSourceFrame.get()
+                val driftMin = driftMinFrames.getAndSet(Long.MAX_VALUE)
+                val driftMax = driftMaxFrames.getAndSet(Long.MIN_VALUE)
+                val unreliable = unreliableFrames.getAndSet(0)
+                val notAdvancing = notAdvancingFrames.getAndSet(0)
+                // Drift is negative when the drawn playhead is BEHIND the reported position, which is
+                // the direction that sounds like the audio running ahead of the waveform.
+                val driftText = if (driftMin == Long.MAX_VALUE) {
+                    "n/a"
+                } else {
+                    "${driftMin}..${driftMax}"
+                }
+
                 println(
                     "[PERF] emissions/s=$emissionsPerSec recomp/s=$recompositionsPerSec " +
-                        "frames/s=$framesPerSec framesOver20ms=$framesOver20msPerSec"
+                        "frames/s=$framesPerSec framesOver20ms=$framesOver20msPerSec " +
+                        "display=$display source=$source drift=$driftText " +
+                        "unreliable/s=$unreliable notAdvancing/s=$notAdvancing"
                 )
             }
         }

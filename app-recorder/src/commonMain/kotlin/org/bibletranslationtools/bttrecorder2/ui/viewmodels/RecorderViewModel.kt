@@ -2,6 +2,7 @@ package org.bibletranslationtools.bttrecorder2.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import org.bibletranslationtools.otter.common.device.AudioConfig
 import org.jetbrains.compose.resources.getString
 import org.bibletranslationtools.shared.resources.Res
 import org.bibletranslationtools.shared.resources.err_record_device_start
@@ -46,7 +47,9 @@ import java.time.LocalDate
 class RecorderViewModel(
     private val unitTargetLoader: UnitTargetLoader,
     private val audioRecorderFactory: AudioRecorderConnectionFactory,
-    audioPlayerFactory: AudioPlayerConnectionFactory
+    audioPlayerFactory: AudioPlayerConnectionFactory,
+    /** The format to capture at. See [AudioConfig.spec] — this is the one place it is decided. */
+    private val audioConfig: AudioConfig = AudioConfig()
 ) : ViewModel() {
 
     private val sourceAudioController = SourceAudioPlayerController(
@@ -323,7 +326,7 @@ class RecorderViewModel(
                 try {
                     // Keep the recorder running while the screen is visible so the
                     // volume meter shows live mic input even before recording starts.
-                    recorder.start(AudioSpec())
+                    recorder.start(audioConfig.spec)
                     recorderInitialized = true
                     _audioError.value = null
                 } catch (e: Exception) {
@@ -367,7 +370,7 @@ class RecorderViewModel(
         wavFileWriter?.start()
         launchLogged(Dispatchers.IO) {
             try {
-                audioRecorderFactory.getRecorderWorker().start(AudioSpec())
+                audioRecorderFactory.getRecorderWorker().start(audioConfig.spec)
                 withContext(Dispatchers.Main) {
                     _isRecording.value = true
                     _recordingState.value = RecordingUiState.Recording
@@ -403,7 +406,7 @@ class RecorderViewModel(
         wavFileWriter?.start()
         launchLogged(Dispatchers.IO) {
             try {
-                audioRecorderFactory.getRecorderWorker().start(AudioSpec())
+                audioRecorderFactory.getRecorderWorker().start(audioConfig.spec)
                 withContext(Dispatchers.Main) {
                     _isRecording.value = true
                     _recordingState.value = RecordingUiState.Recording

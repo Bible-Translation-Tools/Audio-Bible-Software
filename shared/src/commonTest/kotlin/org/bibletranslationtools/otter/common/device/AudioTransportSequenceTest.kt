@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
  * replay, plus the audio that did or did not reach the hardware alongside it.
  *
  * Nothing else in this repo tests transport *state transitions*: the other audio tests check
- * arithmetic (`AudioTimelineTest`, `WaveformPeakCacheTest`, `PlaybackDisplayClockSmoothnessTest`) or a
+ * arithmetic (`AudioTimelineTest`, `WaveformPeakCacheTest`, `PlaybackDisplayPositionSmoothnessTest`) or a
  * single regression each. Every transport bug this project has shipped, though, was a wrong
  * *sequence* — a `Complete` with no audio behind it, a `play()` that emitted nothing, a `Complete`
  * from a finished session landing on the current one. Consumers drive their entire UI state off this
@@ -78,7 +78,7 @@ class AudioTransportSequenceTest {
     /** Contract. A pause mid-take must not look like a finished take. */
     @Test
     fun pausingMidTakeEmitsPauseAndNeverCompletes() = runTest {
-        withTransport {
+        withTransport(takeFrames = MID_TAKE_FRAMES) {
             worker.load(take)
             worker.play()
             awaitWrites(15)
@@ -103,13 +103,27 @@ class AudioTransportSequenceTest {
     }
 
     /**
-     * Contract. Pause stops and flushes the hardware but must not close it: the flush is what
-     * discards already-queued audio so a resume does not replay the buffer, and keeping the line open
-     * is what makes the resume cheap.
+     * Contract, and the shape of it is the whole of what a pause costs.
+     *
+     * Pause flushes and does nothing else to the device. Each of the three things it must NOT do was the
+     * implementation at some point, and each has a measurement against it:
+     *
+     *  - **stop** — `SourceDataLine.start()` costs 230-310ms on real hardware, however it was stopped, so a
+     *    pause that halts the line pays a quarter-second of dead air on the way back. That is the reported
+     *    symptom, not a refinement.
+     *  - **drain** — exact (played == written afterwards), but it blocks for a bufferful per pause, and
+     *    transport commands are serialised, so rapid toggling paid it N times over and stopped responding.
+     *  - **close** — makes the resume pay for a hardware open on top of everything else.
+     *
+     * Flushing used to be the objectionable one, because discarding the queue meant guessing where to
+     * resume from. It is safe now for a reason outside this test: the sink reports the AUDIBLE position, so
+     * [AudioBufferPlayer.pause] puts the reader back over exactly what it discarded rather than guessing.
+     * [org.bibletranslationtools.shared.audio.engine.PlaybackDisplayDriftTest] is what proves that, by
+     * counting frames actually heard.
      */
     @Test
-    fun pausingStopsAndFlushesTheHardwareWithoutClosingIt() = runTest {
-        withTransport {
+    fun pausingFlushesTheQueueWithoutStoppingOrClosingTheLine() = runTest {
+        withTransport(takeFrames = MID_TAKE_FRAMES) {
             worker.load(take)
             worker.play()
             awaitWrites(15)
@@ -119,10 +133,12 @@ class AudioTransportSequenceTest {
             assertSequence("Load", "Play", "Pause")
 
             val duringPause = sinkCalls().drop(callsBeforePause)
-            // Not an ordered comparison: the cancelled playback job's own `finally` block races the
-            // pause and may add a second `stop`. Both stops are harmless; the flush is mandatory.
-            assertTrue("stop" in duringPause, "pause should stop the sink, saw $duringPause")
-            assertTrue("flush" in duringPause, "pause should flush the sink, saw $duringPause")
+            assertTrue(
+                "flush" in duringPause,
+                "pause must flush, so the sound stops now rather than a bufferful later. Saw $duringPause"
+            )
+            assertFalse("stop" in duringPause, "pause must NOT stop the line, saw $duringPause")
+            assertFalse("drain" in duringPause, "pause must NOT drain, saw $duringPause")
             assertFalse("close" in sinkCalls(), "pause must not close the hardware line")
         }
     }
@@ -134,7 +150,7 @@ class AudioTransportSequenceTest {
      */
     @Test
     fun resumingAfterPauseEmitsASecondPlayAndPlaysEveryFrameOnce() = runTest {
-        withTransport {
+        withTransport(takeFrames = MID_TAKE_FRAMES) {
             worker.load(take)
             worker.play()
             awaitWrites(15)
@@ -163,13 +179,14 @@ class AudioTransportSequenceTest {
      * stopped and flushed in between.
      *
      * That happens to be survivable — a consumer toggling on Play/Pause ends up in the right state —
-     * but it means the stream carries no signal that a seek occurred. That silence is exactly why
-     * [org.bibletranslationtools.shared.audio.engine.PlaybackDisplayClock] needs its settle latch and
-     * two-second safety valve to discover where playback actually went.
+     * but it means the stream carries no signal that a seek occurred, so the display has to discover
+     * where playback went by watching the position. That is why
+     * [org.bibletranslationtools.shared.audio.engine.PlaybackDisplayPosition] keeps a seek latch: after a
+     * `snapTo` it holds rather than follows, until the reported position agrees it has landed.
      */
     @Test
     fun seekingWhilePlayingRestartsAtTheTargetWithNoPauseEvent() = runTest {
-        withTransport {
+        withTransport(takeFrames = MID_TAKE_FRAMES) {
             val target = (takeFrames - BUFFER_FRAMES * 10).toLong()
             worker.load(take)
             worker.play()
@@ -232,35 +249,31 @@ class AudioTransportSequenceTest {
      * event and no error. The guard is now the playback *session*: the completed session has released
      * production, so the request is accepted.
      *
-     * Accepted is not the same as immediate. The new session still waits for the old one's teardown,
-     * because that teardown stops the sink and would otherwise land after the new session started it.
-     * [PacedAudioSink.holdStop] freezes the old job inside that teardown, which turns a
-     * microsecond-wide race into something that can actually be asserted: the request survives the
-     * whole time the old session is unwinding, and the sink is started only after it was stopped.
+     * This used to pin the race with a `holdStop` hook on the fake sink, freezing the old job in a teardown
+     * that stopped the sink, and then assert the new session started the line only after the old one
+     * stopped it. That teardown no longer touches the hardware at all — the line is left running because
+     * restarting it costs 230-310ms (see [AudioBufferPlayer.pause]) — so there is nothing left to hold and
+     * no ordering left to observe. Sessions are still joined; the join simply has no side effect to assert
+     * against any more. What remains testable is the part that regressed: the request is accepted.
      */
     @Test
     fun aPlayIssuedWhileTheFinishedJobIsUnwindingIsQueuedNotDropped() = runTest {
         withTransport {
             worker.load(take)
             worker.play()
-            sink.holdStop() // the job will block in its teardown, after emitting Complete
             assertSequence("Load", "Play", "Complete")
-            val callsAtComplete = sinkCalls().size
 
-            worker.play() // accepted, but must not start while the old session holds the hardware
+            // Issued the instant Complete lands, which is when a replay-on-completion fires and when the
+            // job is still alive inside its own finally.
+            worker.play()
 
-            assertNoFurtherEvents()
-
-            sink.releaseStop()
-
-            // The request was held, not lost. (This second session finds an exhausted reader, so it
-            // completes without audio — that hazard is the connection's to prevent, and
-            // AudioPlayerConnectionTransportTest covers the rewind that does it.)
+            // Accepted. (This second session finds an exhausted reader, so it completes without audio —
+            // that hazard is the connection's to prevent, and AudioPlayerConnectionTransportTest covers
+            // the rewind that does it.)
             assertSequence("Load", "Play", "Complete", "Play", "Complete")
-            assertEquals(
-                listOf("stop", "start"),
-                sinkCalls().drop(callsAtComplete).take(2),
-                "the new session must start the sink only after the old session stopped it"
+            assertFalse(
+                "close" in sinkCalls(),
+                "a completed session must not close the hardware out from under the next one"
             )
         }
     }
@@ -320,5 +333,14 @@ class AudioTransportSequenceTest {
             assertEquals(ids.size, ids.distinct().size, "each transition should end the session: $ids")
             assertEquals(ids.sorted(), ids, "session ids should advance, never go backwards: $ids")
         }
+    }
+
+    private companion object {
+        /**
+         * Long enough that the take cannot finish while the scenario is still being set up. Every test
+         * below whose premise is "playback is still in flight" must outlast its own control calls, or a
+         * loaded machine turns the premise false and the test fails for a reason that is not a bug.
+         */
+        const val MID_TAKE_FRAMES = BUFFER_FRAMES * 600
     }
 }

@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.rx2.await
+import org.bibletranslationtools.otter.common.device.AudioConfig
 import org.bibletranslationtools.shared.preferences.AppSettings
 import org.bibletranslationtools.shared.preferences.AppSettings.Companion.DEFAULT_LANG_NAMES_URL
 import org.bibletranslationtools.shared.preferences.IAppPreferences
@@ -50,6 +51,7 @@ class SettingsViewModel : ViewModel(), KoinComponent {
 
     private val appPreferences: IAppPreferences by inject()
     private val deviceSelector: AudioDeviceSelector by inject()
+    private val audioConfig: AudioConfig by inject()
     private val importLanguages: ImportLanguages by inject()
 
 
@@ -87,7 +89,7 @@ class SettingsViewModel : ViewModel(), KoinComponent {
     /** (Re)reads the currently-available hardware devices. Safe to call on resume. */
     fun loadDevices() {
         launchLogged(Dispatchers.IO) {
-            val spec = AudioSpec()
+            val spec = audioConfig.spec
             val out = runCatching { deviceSelector.getOutputDevices(spec) }.getOrDefault(emptyList())
             val input = runCatching { deviceSelector.getInputDevices(spec) }.getOrDefault(emptyList())
             withContext(Dispatchers.Main) {

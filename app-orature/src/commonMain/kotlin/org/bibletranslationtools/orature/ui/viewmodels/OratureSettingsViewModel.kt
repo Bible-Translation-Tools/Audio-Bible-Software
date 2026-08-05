@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.rx2.await
+import org.bibletranslationtools.otter.common.device.AudioConfig
 import org.bibletranslationtools.shared.preferences.AppSettings
 import org.bibletranslationtools.shared.preferences.AppSettings.Companion.DEFAULT_LANG_NAMES_URL
 import org.bibletranslationtools.shared.preferences.IAppPreferences
@@ -64,14 +65,21 @@ class OratureSettingsViewModel(
     private val appPreferences: IAppPreferences,
     private val deviceSelector: AudioDeviceSelector,
     private val importLanguages: ImportLanguages,
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    /**
+     * Defaulted rather than resolved here: the injected constructor is used by tests, which run without
+     * a Koin context. Production comes through the no-arg constructor below, which does resolve it — so
+     * the app really does share the one instance, and a test really does get an inert copy.
+     */
+    private val audioConfig: AudioConfig = AudioConfig()
 ) : ViewModel(), KoinComponent {
 
     // Koin no-arg constructor for production; the injected constructor is used by tests.
     constructor() : this(
         appPreferences = koinGet(),
         deviceSelector = koinGet(),
-        importLanguages = koinGet()
+        importLanguages = koinGet(),
+        audioConfig = koinGet()
     )
 
     private val _uiState = MutableStateFlow(
@@ -101,7 +109,7 @@ class OratureSettingsViewModel(
     /** (Re)reads the currently-available hardware devices. Safe to call on drawer open. */
     fun loadDevices() {
         launchLogged(ioDispatcher) {
-            val spec = AudioSpec()
+            val spec = audioConfig.spec
             val out = runCatching { deviceSelector.getOutputDevices(spec) }.getOrDefault(emptyList())
             val input = runCatching { deviceSelector.getInputDevices(spec) }.getOrDefault(emptyList())
             withContext(Dispatchers.Main) {

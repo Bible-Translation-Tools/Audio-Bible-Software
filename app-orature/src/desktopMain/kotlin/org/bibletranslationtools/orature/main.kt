@@ -25,6 +25,7 @@ import org.bibletranslationtools.orature.ui.OratureNavigationLock
 import org.bibletranslationtools.orature.ui.OratureTheme
 import org.bibletranslationtools.orature.ui.screens.OratureSplashScreen
 import org.bibletranslationtools.orature.ui.viewmodels.OratureSplashViewModel
+import org.bibletranslationtools.otter.common.device.AudioConfig
 import org.bibletranslationtools.otter.common.persistence.DesktopDirectoryProvider
 import org.bibletranslationtools.otter.common.device.AudioDeviceSelector
 import org.bibletranslationtools.otter.common.device.AudioSpec
@@ -73,7 +74,7 @@ fun main() {
     // App.kt's LaunchedEffect later re-applies the user's remembered devices over these defaults.
     val config = koin.get<AudioSystemConfig>()
     val selector = koin.get<AudioDeviceSelector>()
-    val defaultSpec = AudioSpec()
+    val defaultSpec = koin.get<AudioConfig>().spec
     config.start()
     selector.getOutputDevices(defaultSpec).firstOrNull()?.let(selector::selectOutputDevice)
     selector.getInputDevices(defaultSpec).firstOrNull()?.let(selector::selectInputDevice)

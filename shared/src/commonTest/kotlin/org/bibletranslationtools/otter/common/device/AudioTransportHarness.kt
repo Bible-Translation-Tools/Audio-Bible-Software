@@ -45,10 +45,17 @@ import kotlin.test.fail
 class AudioTransportHarness internal constructor(
     /** Length of [take], in frames. */
     val takeFrames: Int,
-    millisPerWrite: Long
+    val sink: ObservableAudioSink,
+    /** The take under test. */
+    val take: AudioFileReader
 ) {
-    val sink = PacedAudioSink(millisPerWrite)
     val processor = IdentityAudioProcessor()
+
+    /**
+     * The sink as a [BufferedAudioSink], for the tests that need to ask what is actually audible.
+     * Only valid under [withBufferedTransport].
+     */
+    val bufferedSink: BufferedAudioSink get() = sink as BufferedAudioSink
 
     /**
      * Real threads, not the test scheduler — see the class comment. Owned by the harness so
@@ -70,9 +77,6 @@ class AudioTransportHarness internal constructor(
      * test body is suspended in real time.
      */
     val transportScope: CoroutineScope get() = scope
-
-    /** The take under test. Frames are silence; only the frame accounting matters here. */
-    val take = MockAudioFileReader(totalFrames = takeFrames)
 
     private val recorded = MutableStateFlow<List<String>>(emptyList())
     private val owners = MutableStateFlow<List<Int?>>(emptyList())
@@ -180,6 +184,15 @@ class AudioTransportHarness internal constructor(
 
     // ── the sink ────────────────────────────────────────────────────────────────────────
 
+    /** Polls [predicate] in real time, for a condition that isn't exposed as a flow. */
+    suspend fun awaitCondition(what: String, predicate: () -> Boolean) {
+        val deadline = System.nanoTime() + TIMEOUT_MILLIS * 1_000_000
+        while (!predicate()) {
+            if (System.nanoTime() > deadline) fail("timed out after ${TIMEOUT_MILLIS}ms waiting for $what")
+            delay(2)
+        }
+    }
+
     suspend fun awaitWrites(count: Int) =
         awaitFlow(sink.writes, "$count buffers to reach the sink") { it >= count }
 
@@ -227,7 +240,6 @@ class AudioTransportHarness internal constructor(
     }
 
     internal fun shutdown() {
-        sink.releaseStop()
         recorder.cancel()
         worker.release()
         scope.cancel()
@@ -269,8 +281,37 @@ suspend fun withTransport(
     takeFrames: Int = AudioTransportHarness.DEFAULT_TAKE_FRAMES,
     millisPerWrite: Long = 1L,
     block: suspend AudioTransportHarness.() -> Unit
+) = withHarness(
+    takeFrames = takeFrames,
+    sink = PacedAudioSink(millisPerWrite),
+    take = MockAudioFileReader(totalFrames = takeFrames),
+    block = block
+)
+
+/**
+ * A transport whose sink has a real hardware queue, and whose audio identifies itself so a test can ask
+ * which frame of the take is audible. Use this for anything about where playback actually resumes; see
+ * [BufferedAudioSink].
+ */
+suspend fun withBufferedTransport(
+    takeFrames: Int = AudioTransportHarness.DEFAULT_TAKE_FRAMES,
+    bufferFrames: Int = 44_100 * 4 / 10,
+    nanoTime: () -> Long = System::nanoTime,
+    block: suspend AudioTransportHarness.() -> Unit
+) = withHarness(
+    takeFrames = takeFrames,
+    sink = BufferedAudioSink(bufferFrames = bufferFrames, nanoTime = nanoTime),
+    take = IndexedAudioFileReader(totalFrames = takeFrames),
+    block = block
+)
+
+private suspend fun withHarness(
+    takeFrames: Int,
+    sink: ObservableAudioSink,
+    take: AudioFileReader,
+    block: suspend AudioTransportHarness.() -> Unit
 ) = withContext(Dispatchers.Default) {
-    val harness = AudioTransportHarness(takeFrames, millisPerWrite)
+    val harness = AudioTransportHarness(takeFrames, sink, take)
     harness.awaitRecorderSubscription()
     try {
         harness.block()

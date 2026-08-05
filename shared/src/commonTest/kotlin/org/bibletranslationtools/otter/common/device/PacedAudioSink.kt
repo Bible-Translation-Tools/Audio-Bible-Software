@@ -18,24 +18,26 @@ import kotlinx.coroutines.flow.update
  *    [AudioBufferPlayer]'s `sessionStartFrame` / `sinkFrameBaseline` pair exists to absorb, so a
  *    mock that never resets (or always resets) silently skips half of that logic.
  *
- * 3. **Teardown is not instantaneous.** [holdStop] makes [stop] block until [releaseStop], which
- *    pins the window where [AudioBufferPlayer]'s playback job has already emitted `Complete` but has
- *    not yet finished its `finally` block — the window in which `play()` is silently swallowed
- *    because `playbackJob?.isActive` is still true.
+ * 3. **Lifecycle calls are not instantaneous.** [holdOpen] makes [open] block until released, which
+ *    turns a microsecond-wide race into something assertable: it pins the window where `load()` holds
+ *    the player's mutex while the hardware opens, which is when a caller that takes that mutex to read
+ *    the position gets blocked. (There was a `holdStop` too, pinning the window where a finished job
+ *    had emitted `Complete` but not finished its `finally`. That teardown no longer touches the
+ *    hardware, so there is nothing left to hold.)
  *
  * Every observable is a [StateFlow] so tests can await a condition instead of guessing a delay.
  */
-class PacedAudioSink(private val millisPerWrite: Long = 1L) : AudioSink {
+class PacedAudioSink(private val millisPerWrite: Long = 1L) : ObservableAudioSink {
 
     private val _writes = MutableStateFlow(0)
 
     /** Number of completed [write] calls — one per buffer the playback loop has pushed. */
-    val writes: StateFlow<Int> = _writes
+    override val writes: StateFlow<Int> = _writes
 
     private val _framesWritten = MutableStateFlow(0L)
 
     /** Total frames pushed across every play session, never reset. */
-    val framesWritten: StateFlow<Long> = _framesWritten
+    override val framesWritten: StateFlow<Long> = _framesWritten
 
     private val _calls = MutableStateFlow<List<String>>(emptyList())
 
@@ -43,7 +45,7 @@ class PacedAudioSink(private val millisPerWrite: Long = 1L) : AudioSink {
      * Log of lifecycle calls (`open`, `start`, `stop`, `drain`, `flush`, `close`) in order.
      * Writes are excluded — there are hundreds of them, and [writes] already counts them.
      */
-    val calls: StateFlow<List<String>> = _calls
+    override val calls: StateFlow<List<String>> = _calls
 
     @Volatile
     override var framePosition: Long = 0L
@@ -56,10 +58,21 @@ class PacedAudioSink(private val millisPerWrite: Long = 1L) : AudioSink {
     @Volatile
     private var bytesPerFrame: Int = AudioSpec().bytesPerFrame
 
+
     @Volatile
-    private var stopHeld: Boolean = false
+    private var openHeld: Boolean = false
+
+    private val _openEntered = MutableStateFlow(false)
+
+    /** True once [open] has been entered — so a test can know the player's mutex is held. */
+    override val openEntered: StateFlow<Boolean> = _openEntered
 
     override fun open(spec: AudioSpec) {
+        _openEntered.value = true
+        // Real hardware is slow to open: a SourceDataLine takes tens of milliseconds, sometimes far
+        // more. AudioBufferPlayer.load() holds its mutex across this call, so anything that takes that
+        // mutex waits for the hardware.
+        awaitRelease { openHeld }
         bytesPerFrame = spec.bytesPerFrame.coerceAtLeast(1)
         record("open")
     }
@@ -79,7 +92,6 @@ class PacedAudioSink(private val millisPerWrite: Long = 1L) : AudioSink {
     }
 
     override fun stop() {
-        awaitStopRelease()
         // Deliberately does NOT reset framePosition — see the class comment.
         isRunning = false
         record("stop")
@@ -97,22 +109,23 @@ class PacedAudioSink(private val millisPerWrite: Long = 1L) : AudioSink {
         record("close")
     }
 
-    /** Makes the next [stop] block until [releaseStop] is called. */
-    fun holdStop() {
-        stopHeld = true
+
+    /** Makes the next [open] block until [releaseOpen] is called. */
+    override fun holdOpen() {
+        openHeld = true
     }
 
-    fun releaseStop() {
-        stopHeld = false
+    override fun releaseOpen() {
+        openHeld = false
     }
 
     /**
-     * Blocks while [stopHeld], with a hard cap so a test that forgets [releaseStop] fails on its own
+     * Blocks while [held], with a hard cap so a test that forgets to release fails on its own
      * assertions rather than hanging the whole suite.
      */
-    private fun awaitStopRelease() {
-        val deadline = System.nanoTime() + HELD_STOP_CAP_MILLIS * 1_000_000
-        while (stopHeld && System.nanoTime() < deadline) {
+    private fun awaitRelease(held: () -> Boolean) {
+        val deadline = System.nanoTime() + HELD_CALL_CAP_MILLIS * 1_000_000
+        while (held() && System.nanoTime() < deadline) {
             Thread.sleep(1)
         }
     }
@@ -120,6 +133,6 @@ class PacedAudioSink(private val millisPerWrite: Long = 1L) : AudioSink {
     private fun record(call: String) = _calls.update { it + call }
 
     private companion object {
-        const val HELD_STOP_CAP_MILLIS = 5_000L
+        const val HELD_CALL_CAP_MILLIS = 5_000L
     }
 }

@@ -50,7 +50,7 @@ import org.bibletranslationtools.orature.ui.viewmodels.OratureMarkerInfo
 import org.bibletranslationtools.shared.audio.engine.AudioTimeline
 import org.bibletranslationtools.shared.audio.engine.PcmSource
 import org.bibletranslationtools.shared.audio.engine.WaveformPeakCache
-import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayClock
+import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayPosition
 import org.bibletranslationtools.shared.audio.engine.fillWindow
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.withFrameNanos
@@ -76,7 +76,7 @@ private const val PCM_MAX = 32768f
 fun OratureSourceWaveform(
     timelineProvider: () -> AudioTimeline?,
     peakCacheFor: (PcmSource) -> WaveformPeakCache?,
-    clock: PlaybackDisplayClock,
+    clock: PlaybackDisplayPosition,
     sampleRate: Int,
     totalFramesProvider: () -> Int,
     markers: List<OratureMarkerInfo>,
@@ -183,7 +183,7 @@ private fun SourceMarkerNode(
     widthPx: Float,
     framesOnScreen: Int,
     editable: Boolean,
-    clock: PlaybackDisplayClock,
+    clock: PlaybackDisplayPosition,
     onMove: (newFrame: Int) -> Unit,
     onDelete: () -> Unit
 ) {

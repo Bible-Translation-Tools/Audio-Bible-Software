@@ -47,7 +47,7 @@ import androidx.compose.ui.text.font.FontFamily
 import org.bibletranslationtools.shared.ui.platform.PlatformBackHandler
 import org.bibletranslationtools.shared.audio.engine.AudioTimeline
 import org.bibletranslationtools.shared.audio.engine.PcmSource
-import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayClock
+import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayPosition
 import org.bibletranslationtools.shared.audio.engine.PlaybackPerfStats
 import org.bibletranslationtools.shared.audio.engine.SourceAudioPlayerController
 import org.bibletranslationtools.shared.audio.engine.WaveformPeakCache
@@ -144,7 +144,7 @@ fun PlaybackScreen(
     SideEffect { PlaybackPerfStats.onRecomposition() }
 
     // The display frame loop: drives the playback display clock once per frame
-    // (rate-locked, slew-corrected — see PlaybackDisplayClock). Runs unconditionally
+    // (see PlaybackDisplayPosition). Runs unconditionally
     // while the screen is composed; the clock no-ops when not advancing, and
     // unchanged-value state writes don't invalidate anything (free when paused).
     // Also feeds the frame-pacing PERF counter (no-op unless PLAYBACK_PERF_STATS).
@@ -540,7 +540,7 @@ private fun PlaybackWaveform(
     isInsertActive: Boolean = false,
     insertWaveform: () -> FloatArray = { FloatArray(0) },
     insertWaveformGeneration: IntState? = null,
-    clock: PlaybackDisplayClock,
+    clock: PlaybackDisplayPosition,
     markerFrames: List<Int>,
     markerLabels: List<String>,
     markerKinds: List<MarkerKind> = emptyList(),
@@ -884,7 +884,7 @@ private fun MinimapWidget(
     timeline: () -> AudioTimeline?,
     peakCacheFor: (PcmSource) -> WaveformPeakCache?,
     timelineGeneration: IntState,
-    clock: PlaybackDisplayClock,
+    clock: PlaybackDisplayPosition,
     markerFrames: List<Int>,
     durationFrames: Int,
     sampleRate: Int,
@@ -1063,7 +1063,7 @@ private fun SourceAudioPanel(
 @Composable
 private fun MinimapCanvas(
     samples: FloatArray,
-    clock: PlaybackDisplayClock,
+    clock: PlaybackDisplayPosition,
     markerFrames: List<Int>,
     durationFrames: Int,
     sampleRate: Int,
@@ -1185,7 +1185,7 @@ private fun MinimapCanvas(
  */
 @Composable
 private fun TimeReadout(
-    clock: PlaybackDisplayClock,
+    clock: PlaybackDisplayPosition,
     durationText: String,
     color: Color,
     modifier: Modifier = Modifier
@@ -1209,7 +1209,7 @@ private fun TimeReadout(
 @Composable
 private fun PlaybackTools(
     isPlaying: Boolean,
-    clock: PlaybackDisplayClock,
+    clock: PlaybackDisplayPosition,
     durationText: String,
     hasStart: Boolean,
     hasEnd: Boolean,
@@ -1367,7 +1367,7 @@ private fun MarkerCounterBar(
 @Composable
 private fun MarkerToolbar(
     isPlaying: Boolean,
-    clock: PlaybackDisplayClock,
+    clock: PlaybackDisplayPosition,
     durationText: String,
     onSeekBackward: () -> Unit,
     onPlayPause: () -> Unit,

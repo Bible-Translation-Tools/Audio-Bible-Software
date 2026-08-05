@@ -26,7 +26,7 @@ import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactor
 import org.bibletranslationtools.otter.common.device.AudioPlayerEvent
 import org.bibletranslationtools.otter.common.device.IAudioPlayer
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
-import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayClock
+import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayPosition
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -66,7 +66,7 @@ class OratureConsumeViewModel(
     private var peakBuildJob: Job? = null
     // Rate-locked display clock (see OratureChapterReviewViewModel) — the screen advances it each
     // display frame so the waveform scrolls smoothly instead of in the ticker's 30 fps steps.
-    val clock = PlaybackDisplayClock(
+    val clock = PlaybackDisplayPosition(
         positionSource = { player?.getLocationInFrames()?.toLong() ?: 0L },
         positionReliable = { player?.isPositionReliable() ?: false }
     )

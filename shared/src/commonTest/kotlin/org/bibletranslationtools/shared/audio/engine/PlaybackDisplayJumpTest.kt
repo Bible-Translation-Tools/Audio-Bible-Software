@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
 /**
  * Whether the drawn playhead can move BACKWARDS while audio is playing forwards.
  *
- * Every visualisation — waveform, minimap, elapsed time — reads [PlaybackDisplayClock.displayFrame],
+ * Every visualisation — waveform, minimap, elapsed time — reads [PlaybackDisplayPosition.displayFrame],
  * so a backwards step there is a visible jump back. The clock corrects itself toward the player's
  * position, and for errors above the slew band (250 ms) that correction is a hard snap in whichever
  * direction the error points. So any moment where the player reports a position *behind* the display
@@ -29,7 +29,7 @@ class PlaybackDisplayJumpTest {
      */
     @Test
     fun theDrawnPositionNeverMovesBackwardsDuringForwardPlayback() = runTest {
-        withTransport(takeFrames = BUFFER_FRAMES * 400) {
+        withTransport(takeFrames = OUTLASTING_TAKE_FRAMES) {
             val connection = connection()
             val probe = ClockProbe(this, connection, connectionId = 1)
 
@@ -91,7 +91,7 @@ class PlaybackDisplayJumpTest {
         var audibleFrame = 0L
         var reliable = true
 
-        val clock = PlaybackDisplayClock(
+        val clock = PlaybackDisplayPosition(
             positionSource = { audibleFrame },
             positionReliable = { reliable }
         ).apply {
@@ -142,7 +142,7 @@ class PlaybackDisplayJumpTest {
      */
     @Test
     fun theDrawnPositionDoesNotJumpBackWhenAnotherPlayerUsesTheSharedWorker() = runTest {
-        withTransport(takeFrames = BUFFER_FRAMES * 400) {
+        withTransport(takeFrames = OUTLASTING_TAKE_FRAMES) {
             val takePlayer = connection(id = 1)
             val otherPlayer = connection(id = 2)
             val probe = ClockProbe(this, takePlayer, connectionId = 1)
@@ -179,7 +179,16 @@ class PlaybackDisplayJumpTest {
 private const val FRAME_MILLIS = 16L
 
 /**
- * Drives a [PlaybackDisplayClock] at display-frame rate against a live connection and records every
+ * A take that cannot finish while the scenario is still running. These tests drive the clock for the best
+ * part of a second in real time, and a take that completes mid-scenario changes what the host does — it
+ * parks the display at the end, and the next `startAdvancing()` legitimately rewinds to 0. That is
+ * correct behaviour producing a backwards step, so the take has to outlast the scenario or the test
+ * fails on a loaded machine for a reason that is not a bug.
+ */
+private const val OUTLASTING_TAKE_FRAMES = 1024 * 2000
+
+/**
+ * Drives a [PlaybackDisplayPosition] at display-frame rate against a live connection and records every
  * backwards movement of the drawn position.
  */
 private class ClockProbe(
@@ -187,7 +196,7 @@ private class ClockProbe(
     connection: AudioPlayerConnection,
     private val connectionId: Int
 ) {
-    private val clock = PlaybackDisplayClock(
+    private val clock = PlaybackDisplayPosition(
         positionSource = { connection.getLocationInFrames().toLong() },
         positionReliable = { connection.isPositionReliable() }
     ).apply {

@@ -5,10 +5,18 @@ import javax.sound.sampled.DataLine
 import javax.sound.sampled.SourceDataLine
 import javax.sound.sampled.TargetDataLine
 
-class JvmAudioHardwareProvider : AudioHardwareProvider {
+class JvmAudioHardwareProvider(
+    /**
+     * The engine settings the created hardware is built to. Only [AudioConfig.outputBufferMillis] is
+     * used here: the format a sink opens at is the take's, decided at `load()`, but the buffer depth is
+     * the engine's and has to be handed over at construction. Before this the sink was built with its
+     * own default and nothing could reach it.
+     */
+    private val config: AudioConfig = AudioConfig()
+) : AudioHardwareProvider {
 
     override fun createSink(device: AudioDevice): AudioSink {
-        return JvmAudioSink {
+        return JvmAudioSink(config.outputBufferMillis) {
             // Match the selected device by name AND output-line capability. macOS exposes a Bluetooth
             // headset (e.g. AirPods) as TWO mixers sharing the same name once the mic engages and it
             // switches to the HFP profile — an input-only one and an output one. Matching by name

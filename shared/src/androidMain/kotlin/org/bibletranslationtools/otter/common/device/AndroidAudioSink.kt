@@ -64,10 +64,15 @@ class AndroidAudioSink : AudioSink {
     }
 
     override fun stop() {
-        // Immediate stop logic: Pause first to cut audio, then flush the buffer
+        // pause(), not stop(): AudioTrack.stop() plays the remaining queue out before halting, which is
+        // drain-then-stop, and AudioSink.stop() is specified to halt immediately. pause() halts at once
+        // and KEEPS what is queued, which is the other half of the contract.
+        //
+        // This used to flush in between. That is the one thing stop() must not do: AudioBufferPlayer
+        // pauses by stopping and resuming by starting, counting on the queue surviving, so flushing here
+        // discarded up to a bufferful of audio on every pause — content the reader had already moved past,
+        // so nothing downstream could tell it had gone missing.
         audioTrack?.pause()
-        audioTrack?.flush()
-        audioTrack?.stop()
     }
 
     override fun drain() {

@@ -14,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.flow.first
+import org.bibletranslationtools.otter.common.device.AudioConfig
 import org.bibletranslationtools.shared.preferences.AppSettings
 import org.bibletranslationtools.shared.preferences.IAppPreferences
 import org.bibletranslationtools.shared.preferences.ThemeMode
@@ -40,7 +41,7 @@ fun App() {
         }
         runCatching {
             val selector = getKoin().get<AudioDeviceSelector>()
-            val spec = AudioSpec()
+            val spec = getKoin().get<AudioConfig>().spec
             s.outputDeviceId?.let { id ->
                 selector.getOutputDevices(spec).firstOrNull { it.id == id }
                     ?.let(selector::selectOutputDevice)

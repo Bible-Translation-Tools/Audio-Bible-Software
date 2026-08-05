@@ -84,14 +84,15 @@ class AudioPlayerConnectionTransportTest {
      * from zero and dropping the tail, both of which the frame count catches and the event sequence
      * does not.
      *
-     * The sequence itself carries two artifacts, both from `connect()` re-taking the hardware at the
-     * new start position: a **second consecutive `Pause`** and a **redundant `Load`** on resume. A
-     * consumer that resets its view on `Load` will flash back to the start of the take on every
-     * resume, which is worth knowing before someone reintroduces such a consumer.
+     * Both of the artifacts this used to pin are gone. A resume no longer goes through `connect()` — the
+     * hardware still holds our audio and the reader is where the loop left it, so it is a plain `start()` —
+     * so there is no second consecutive `Pause` and no redundant `Load`, and no hardware reload costing
+     * ~250ms of silence. The frame count is now exact rather than bracketed, because nothing is discarded
+     * and nothing is replayed.
      */
     @Test
     fun pausingAndResumingMidTakePlaysEveryFrameOnce() = runTest {
-        withTransport {
+        withTransport(takeFrames = MID_TAKE_FRAMES) {
             val connection = connection()
             loadAndPlay(connection)
             awaitWrites(15)
@@ -102,15 +103,11 @@ class AudioPlayerConnectionTransportTest {
 
             connection.play()
 
-            assertSequence("Pause", "Load", "Play", "Pause", "Pause", "Load", "Play", "Complete")
-            // Not an exact count: the connection reads the worker's position and then pauses it, so
-            // whatever was written between those two calls is played twice. That overlap is under a
-            // handful of buffers and inaudible; replaying from zero (≈2× the take) or losing the tail
-            // are the failures this brackets.
-            assertFramesWrittenBetween(
-                atLeast = takeFrames.toLong(),
-                atMost = takeFrames.toLong() + BUFFER_FRAMES * 10,
-                message = "resume should have played the remainder, not the take over again"
+            assertSequence("Pause", "Load", "Play", "Pause", "Play", "Complete")
+            assertFramesWritten(
+                takeFrames.toLong(),
+                "resume should have played the remainder exactly once: not the take over again, and not " +
+                    "short of the end"
             )
             assertEquals(takeFrames.toLong(), positionInFrames(), "position should land on the end")
         }
@@ -126,7 +123,7 @@ class AudioPlayerConnectionTransportTest {
      */
     @Test
     fun stopEmitsPauseRatherThanStopAndRewindsTheTake() = runTest {
-        withTransport {
+        withTransport(takeFrames = MID_TAKE_FRAMES) {
             val connection = connection()
             loadAndPlay(connection)
             awaitWrites(15)
@@ -166,7 +163,7 @@ class AudioPlayerConnectionTransportTest {
      */
     @Test
     fun aTakeoverPausesTheEvictedConnectionAndTellsItNothingElse() = runTest {
-        withTransport {
+        withTransport(takeFrames = MID_TAKE_FRAMES) {
             val first = connection(id = 1)
             val second = connection(id = 2)
             loadAndPlay(first)
@@ -201,7 +198,7 @@ class AudioPlayerConnectionTransportTest {
      */
     @Test
     fun aConnectionsOwnEventStreamCarriesOnlyItsOwnEvents() = runTest {
-        withTransport {
+        withTransport(takeFrames = MID_TAKE_FRAMES) {
             val first = connection(id = 1)
             val second = connection(id = 2)
             val firstSaw = MutableStateFlow<List<String>>(emptyList())
@@ -249,7 +246,7 @@ class AudioPlayerConnectionTransportTest {
      */
     @Test
     fun aConnectionDoesNotReceiveAnotherConnectionsCompletion() = runTest {
-        withTransport {
+        withTransport(takeFrames = MID_TAKE_FRAMES) {
             val first = connection(id = 1)
             val second = connection(id = 2)
             loadAndPlay(first)
@@ -267,5 +264,14 @@ class AudioPlayerConnectionTransportTest {
                 "the evicted connection's take never finished, so it must see no Complete"
             )
         }
+    }
+
+    private companion object {
+        /**
+         * Long enough that the take cannot finish while the scenario is still being set up. Every test
+         * below whose premise is "playback is still in flight" must outlast its own control calls, or a
+         * loaded machine turns the premise false and the test fails for a reason that is not a bug.
+         */
+        const val MID_TAKE_FRAMES = BUFFER_FRAMES * 600
     }
 }

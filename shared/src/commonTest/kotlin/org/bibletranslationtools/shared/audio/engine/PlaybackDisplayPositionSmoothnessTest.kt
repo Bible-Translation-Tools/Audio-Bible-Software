@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
  * advance, never the position source's staircase. Reading getLocationInFrames() directly (what the
  * old 30 fps ticker effectively did) is exactly the staircase this replaces.
  */
-class PlaybackDisplayClockSmoothnessTest {
+class PlaybackDisplayPositionSmoothnessTest {
 
     private val SR = 44100
     private val FPS = 60
@@ -22,7 +22,7 @@ class PlaybackDisplayClockSmoothnessTest {
     /** Run [frames] display frames advancing a smooth true position; source is quantized to [quantum]. */
     private fun run(quantum: Int, frames: Int, reliable: () -> Boolean = { true }): List<Long> {
         var trueFrames = 0.0
-        val clock = PlaybackDisplayClock(
+        val clock = PlaybackDisplayPosition(
             // The player only reports on a coarse grid — the staircase we must smooth out.
             positionSource = { (floor(trueFrames / quantum) * quantum).toLong() },
             positionReliable = reliable
@@ -46,16 +46,57 @@ class PlaybackDisplayClockSmoothnessTest {
 
     @Test
     fun advancesMonotonicallyWithoutStaircaseJumps() {
-        // Android worst case: ~186 ms quantum ≈ 8200 frames. The raw source jumps 8200 at once every
-        // ~11 display frames; the clock must instead advance ~735/frame and never jump a full quantum.
-        val quantum = 8192
-        val displays = run(quantum, frames = 600) // 10 s
+        // Desktop: the player writes 1024 frames at a time, so it reports on a ~23 ms grid. That is inside
+        // the lead budget, so the staircase is smoothed away completely.
+        val displays = run(quantum = 1024, frames = 600) // 10 s
         for (i in 1 until displays.size) {
             val delta = displays[i] - displays[i - 1]
-            assertTrue(delta >= 0, "clock went backwards at frame $i (delta=$delta)")
-            // Smooth: within a few × the ideal per-frame step, and FAR below one source quantum.
-            assertTrue(delta < perFrame * 3, "clock jumped $delta at frame $i (quantum=$quantum) — not smooth")
+            assertTrue(delta >= 0, "position went backwards at frame $i (delta=$delta)")
+            assertTrue(delta < perFrame * 3, "position jumped $delta at frame $i — not smooth")
         }
+    }
+
+    /**
+     * Characterisation, and a known cost of following rather than simulating.
+     *
+     * Interpolation is capped at one update interval, and that cap is itself capped (50 ms) — past it the
+     * position would be guessing more than following, which is the whole thing this exists not to do. So a
+     * source coarser than the cap CANNOT be fully smoothed: Android's worst-case head-position quantum is
+     * ~186 ms, and against that the position advances for 50 ms and then holds until the next report,
+     * arriving in visible steps.
+     *
+     * That is the deliberate trade. The implementation this replaced smoothed a 186 ms quantum perfectly by
+     * running its own clock, at the cost of being able to sit ahead of the sound — and on a compressed
+     * waveform, being 186 ms ahead reads as broken in a way that stepping does not. What must still hold
+     * even here is the part that matters: monotonic, and never leading.
+     *
+     * If the Android validation pass finds the stepping unacceptable, the fix is a finer position source
+     * (smaller writes), NOT a larger budget.
+     */
+    @Test
+    fun stepsRatherThanLeadsWhenTheSourceIsCoarserThanTheLeadBudget() {
+        val quantum = 8192 // ~186 ms at 44.1k: Android's worst case
+        val displays = run(quantum, frames = 600)
+        var worstStep = 0L
+        for (i in 1 until displays.size) {
+            val delta = displays[i] - displays[i - 1]
+            assertTrue(delta >= 0, "position went backwards at frame $i (delta=$delta)")
+            worstStep = maxOf(worstStep, delta)
+        }
+        // Never ahead of what the source last said, by more than the budget.
+        val budgetFrames = SR.toLong() * 50 / 1_000
+        for (i in displays.indices) {
+            val reported = (floor((i + 1) * perFrame / quantum) * quantum).toLong()
+            assertTrue(
+                displays[i] <= reported + budgetFrames,
+                "position ${displays[i]} led the reported $reported by more than ${budgetFrames}f at frame $i"
+            )
+        }
+        assertTrue(
+            worstStep > perFrame * 3,
+            "this test exists to pin the stepping; if it is now smooth the budget or the source changed " +
+                "and the trade above should be re-read (worst step $worstStep)"
+        )
     }
 
     @Test
@@ -64,7 +105,7 @@ class PlaybackDisplayClockSmoothnessTest {
         // sits within ~one quantum + a slew margin of the true (smooth) position.
         val quantum = 2048
         var trueFrames = 0.0
-        val clock = PlaybackDisplayClock(
+        val clock = PlaybackDisplayPosition(
             positionSource = { (floor(trueFrames / quantum) * quantum).toLong() },
             positionReliable = { true }
         )
@@ -86,7 +127,7 @@ class PlaybackDisplayClockSmoothnessTest {
     @Test
     fun frozenWhenNotAdvancing() {
         // Paused: onFrame must not move the playhead at all (no drift while stopped).
-        val clock = PlaybackDisplayClock(positionSource = { 123_456L }, positionReliable = { true })
+        val clock = PlaybackDisplayPosition(positionSource = { 123_456L }, positionReliable = { true })
         clock.sampleRate = SR
         clock.durationFrames = SR.toLong() * 1000
         clock.advancing = false
@@ -99,7 +140,7 @@ class PlaybackDisplayClockSmoothnessTest {
     @Test
     fun seekSnapsImmediately() {
         // A seek (snapTo) jumps the display exactly, with no chase-back ramp.
-        val clock = PlaybackDisplayClock(positionSource = { 0L }, positionReliable = { false })
+        val clock = PlaybackDisplayPosition(positionSource = { 0L }, positionReliable = { false })
         clock.sampleRate = SR
         clock.durationFrames = SR.toLong() * 1000
         clock.snapTo(1_000_000L)
@@ -116,7 +157,7 @@ class PlaybackDisplayClockSmoothnessTest {
         // reporting the short value. This guards "the waveform reaches its drawn end when audio stops."
         val end = 425_984L
         val shortByBuffer = end - 860L // what the sink under-reports at completion
-        val clock = PlaybackDisplayClock(
+        val clock = PlaybackDisplayPosition(
             positionSource = { shortByBuffer },
             positionReliable = { true }
         )
@@ -131,24 +172,9 @@ class PlaybackDisplayClockSmoothnessTest {
         assertTrue(clock.displayFrame == end, "playhead must REST on the end (not drift to the short sink position), was ${clock.displayFrame}")
     }
 
-    @Test
-    fun freeRunsWhilePositionUnreliable() {
-        // During the sink spin-up transient the source lies (write cursor, far ahead). While
-        // positionReliable is false the clock must free-run at exactly 1.0× from the last snapTo,
-        // NOT jump to the lie — the guard that a naive {isPlaying} gate loses.
-        val clock = PlaybackDisplayClock(
-            positionSource = { 5_000_000L }, // an absurd "ahead" lie
-            positionReliable = { false }
-        )
-        clock.sampleRate = SR
-        clock.durationFrames = SR.toLong() * 1000
-        clock.advancing = true
-        clock.snapTo(0L)
-        var nanos = 0L
-        clock.onFrame(nanos)
-        repeat(60) { nanos += frameNanos; clock.onFrame(nanos) }
-        // ~1 s of free-run ≈ SR frames, NOT the 5,000,000 lie.
-        val expected = SR.toLong()
-        assertTrue(abs(clock.displayFrame - expected) < SR * 0.1, "free-run drifted to ${clock.displayFrame}")
-    }
+    // The free-running-while-unreliable case that used to live here is gone with the implementation it
+    // described. It asserted that the display kept advancing at 1.0x through the sink spin-up, which was
+    // the least-bad option for a clock that had to be somewhere; the position now HOLDS instead, and
+    // PlaybackDisplayPositionClampTest.itDrawsNothingUntilTheAudioHasActuallyStarted asserts that.
+    // Holding is what removes the click-to-audio lead at source rather than correcting it afterwards.
 }

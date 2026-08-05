@@ -9,7 +9,7 @@ import org.bibletranslationtools.bttrecorder2.ui.demo.AudioDashboard
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.device.AudioDeviceSelector
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
-import org.bibletranslationtools.otter.common.device.AudioSpec
+import org.bibletranslationtools.otter.common.device.AudioConfig
 import org.bibletranslationtools.otter.common.device.AudioSystemConfig
 import org.koin.core.context.startKoin
 
@@ -27,14 +27,15 @@ fun main() = application {
     config.start()
 
     // Load initial defaults if needed
-    val defaultSpec = AudioSpec()
+    val audioConfig = koinApp.get<AudioConfig>()
+    val defaultSpec = audioConfig.spec
     selector.getOutputDevices(defaultSpec).firstOrNull()?.let {
         selector.selectOutputDevice(it)
     }
 
     Window(onCloseRequest = ::exitApplication, title = "Otter Audio Test") {
         MaterialTheme {
-            AudioDashboard(playerFactory, selector, directoryProvider)
+            AudioDashboard(playerFactory, selector, directoryProvider, audioConfig)
         }
     }
 }
