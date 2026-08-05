@@ -26,6 +26,8 @@ Logs: tag `RecorderE2E`. Flow suites live in `e2e/flow/` (independent; no fixed 
 
 **Use `ActivityScenarioRule` + UiAutomator only.** `ComposeTestRule` owns the frame clock — taps show ripple but navigation never applies.
 
+MainMenu Record / project open navigate on the click path (no `scope.launch { navState.first() }`). Reintroducing a deferred prefs await can leave home stuck under instrumented idling.
+
 ## Layout
 
 ```

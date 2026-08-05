@@ -14,6 +14,10 @@ import org.junit.Assert.assertTrue
  *
  * Prefer [ActivityScenarioRule] over ComposeTestRule: the latter replaces the frame clock so
  * taps show ripple but NavHost never recomposes (unlike a normal installDebug launch).
+ *
+ * App navigation is sync on the click path (collected nav state, navigate before prefs I/O).
+ * Do not reintroduce `scope.launch { navState.first() }` for MainMenu Record — under an
+ * instrumented test dispatcher / idling that coroutine often never runs and home stays stuck.
  */
 
 internal fun waitForMainMenuAfterSplash(timeoutMillis: Long = 120_000) {

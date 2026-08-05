@@ -67,9 +67,8 @@ fun Navigation(
 
         composable<MainMenuRoute> {
             val vm = viewModel { MainMenuViewModel() }
-            // Read nav from StateFlow in composition so Record navigates synchronously.
-            // scope.launch + navState.first() often never runs under Android Compose UI tests
-            // (test dispatcher / idling), leaving the home screen stuck after splash.
+            // Collect active-nav in composition so Record navigates on the click path
+            // (no deferred coroutine awaiting prefs).
             val nav by vm.navState.collectAsState()
             MainMenuScreen(
                 viewModel = vm,
@@ -101,9 +100,8 @@ fun Navigation(
                     navController.navigate(ProjectWizardRoute)
                 },
                 onProjectClick = { workbookDesc ->
-                    // Persist active workbook off the UI path; navigate immediately so
-                    // Compose UI tests (and users) are not blocked on prefs I/O or a
-                    // deferred coroutine dispatcher.
+                    // Persist active workbook in the background; navigate immediately
+                    // so the UI is not blocked on prefs I/O.
                     scope.launch {
                         appPreferences.setActiveWorkbook(
                             workbookDesc.sourceCollection.id,

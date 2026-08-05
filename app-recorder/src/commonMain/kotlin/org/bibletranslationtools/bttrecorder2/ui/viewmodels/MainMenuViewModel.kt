@@ -32,6 +32,7 @@ class MainMenuViewModel : ViewModel(), KoinComponent {
     private val collectionRepository: ICollectionRepository by inject()
     private val workbookRepository: IWorkbookRepository by inject()
 
+    // Eager so active-nav is current as soon as the menu composes (Record reads it).
     val navState: StateFlow<ActiveNavState> = appPreferences.navState
         .stateIn(viewModelScope, SharingStarted.Eagerly, ActiveNavState())
 

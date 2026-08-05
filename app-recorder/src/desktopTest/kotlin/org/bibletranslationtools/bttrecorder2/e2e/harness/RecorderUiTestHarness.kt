@@ -35,8 +35,9 @@ object RecorderUiTestHarness {
         // Prefer software rendering for headless / CI Compose UI tests.
         System.setProperty("skiko.renderApi", "SOFTWARE")
         System.setProperty("java.awt.headless", "false")
-        // Compose UI test pointer events are not always on Dispatchers.Main; Navigation's
-        // LifecycleRegistry otherwise throws "setCurrentState must be called on the main thread".
+        // Desktop Compose UI-test pointer events are not always on Dispatchers.Main;
+        // Navigation's LifecycleRegistry otherwise throws
+        // "setCurrentState must be called on the main thread".
         disableLifecycleMainThreadCheck()
         stop()
         val root = File(System.getProperty("java.io.tmpdir"), "recorder-e2e-${UUID.randomUUID()}")
