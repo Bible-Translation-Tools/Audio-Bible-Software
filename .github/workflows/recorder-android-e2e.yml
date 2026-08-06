@@ -75,7 +75,12 @@ jobs:
             gradle :app-recorder:connectedDebugAndroidTest -PminimalGlSources=true --stacktrace
             STATUS=$?
             mkdir -p e2e-screenshots
-            adb pull /data/local/tmp/recorder-e2e-failures/. e2e-screenshots/ || true
+            # App-private filesDir — plain adb pull cannot read this; use run-as (debug APK).
+            adb shell "run-as org.bibletranslationtools.recorder2 ls files/e2e-failures" || true
+            adb exec-out run-as org.bibletranslationtools.recorder2 tar c files/e2e-failures 2>/dev/null \
+              | tar x -C e2e-screenshots --strip-components=2 2>/dev/null || true
+            # Host-side capture of whatever is still on screen.
+            adb exec-out screencap -p > e2e-screenshots/host-screencap.png || true
             ls -la e2e-screenshots || true
             exit $STATUS
 

@@ -37,7 +37,10 @@ internal fun waitForMainMenuAfterSplash(timeoutMillis: Long = 120_000) {
 
 internal fun captureE2eScreenshot(label: String) {
     val safe = label.replace(Regex("[^A-Za-z0-9._-]"), "_")
-    val dir = java.io.File(E2E_SCREENSHOT_DEVICE_DIR).apply { mkdirs() }
+    val dir = java.io.File(
+        InstrumentationRegistry.getInstrumentation().targetContext.filesDir,
+        E2E_SCREENSHOT_DIR_NAME,
+    ).apply { mkdirs() }
     val file = java.io.File(dir, "$safe.png")
     try {
         val ok = uiDevice().takeScreenshot(file)
@@ -50,8 +53,8 @@ internal fun captureE2eScreenshot(label: String) {
     }
 }
 
-/** Emulator-writable path that `adb pull` can read without run-as (not app-private). */
-internal const val E2E_SCREENSHOT_DEVICE_DIR = "/data/local/tmp/recorder-e2e-failures"
+/** Under targetContext.filesDir — pull in CI with `adb shell run-as <applicationId>`. */
+internal const val E2E_SCREENSHOT_DIR_NAME = "e2e-failures"
 
 internal fun waitForText(text: String, timeoutMillis: Long = 60_000) {
     E2eLog.step("WAIT text=\"$text\" (timeout=${timeoutMillis}ms)")
