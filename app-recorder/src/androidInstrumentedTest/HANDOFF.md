@@ -47,8 +47,13 @@ Runner: `RecorderE2ERunner` → `RecorderTestApplication` (Koin + mock audio).
 
 Zips under `shared/.../files/content/` are gitignored; extras on disk still pack into the APK — delete them for a truly minimal bundle. Omit `-PminimalGlSources` for a full multi-language build.
 
+## CI
+
+GitHub Actions: [`.github/workflows/recorder-android-e2e.yml`](../../../.github/workflows/recorder-android-e2e.yml)  
+Runs `:app-recorder:connectedDebugAndroidTest -PminimalGlSources=true` on an API 34 `aosp_atd` emulator (KVM). Triggers on every push. On failure, uploads reports plus screenshots from `FailureScreenshotRule`.
+
 ## Open items
 
-- Android instrumented e2e not in CI yet (desktop suite: `.github/workflows/recorder-desktop-e2e.yml`)
 - Record/playback soft-passes if Stop never appears
 - Device DB persists across runs
+- Desktop suite CI (`.github/workflows/recorder-desktop-e2e.yml`) not added yet
