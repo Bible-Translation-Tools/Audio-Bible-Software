@@ -7,7 +7,6 @@ import androidx.test.rule.GrantPermissionRule
 import kotlinx.coroutines.runBlocking
 import org.bibletranslationtools.recorder2.MainActivity
 import org.bibletranslationtools.recorder2.e2e.E2eLog
-import org.bibletranslationtools.recorder2.e2e.FailureScreenshotRule
 import org.bibletranslationtools.recorder2.e2e.assertDisplayedContentDescription
 import org.bibletranslationtools.recorder2.e2e.assertDisplayedText
 import org.bibletranslationtools.recorder2.e2e.clickContentDescription
@@ -33,9 +32,6 @@ class MainMenuNavigationFlowTest {
 
     @get:Rule(order = 1)
     val activityRule = ActivityScenarioRule(MainActivity::class.java)
-
-    @get:Rule(order = 2)
-    val failureScreenshotRule = FailureScreenshotRule()
 
     @Before
     fun clearActiveWorkbook() {

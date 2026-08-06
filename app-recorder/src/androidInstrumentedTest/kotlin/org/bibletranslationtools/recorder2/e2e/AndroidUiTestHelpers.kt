@@ -22,7 +22,6 @@ import org.junit.Assert.assertTrue
 
 internal fun waitForMainMenuAfterSplash(timeoutMillis: Long = 120_000) {
     E2eLog.step("WAIT splash→main menu (timeout=${timeoutMillis}ms)")
-    captureE2eScreenshot("main-menu-wait")
     val device = uiDevice()
     val deadline = SystemClock.uptimeMillis() + timeoutMillis
     while (SystemClock.uptimeMillis() < deadline) {
@@ -30,30 +29,9 @@ internal fun waitForMainMenuAfterSplash(timeoutMillis: Long = 120_000) {
             E2eLog.step("FOUND Files+Record (main menu)")
             return
         }
-        SystemClock.sleep(500)
+        SystemClock.sleep(50)
     }
-    captureE2eScreenshot("main-menu-timeout")
     assertTrue("Timed out waiting for main menu after splash (Files + Record)", false)
-}
-
-internal fun captureE2eScreenshot(label: String) {
-    val safe = label.replace(Regex("[^A-Za-z0-9._-]"), "_")
-    try {
-        val bitmap = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
-        if (bitmap == null) {
-            E2eLog.step("SCREENSHOT uiAutomation returned null for $safe")
-            return
-        }
-        // Gradle connectedAndroidTest pulls TestStorage outputs onto the host under
-        // app-recorder/build/outputs/connected_android_test_additional_output/
-        androidx.test.platform.io.PlatformTestStorageRegistry.getInstance()
-            .openOutputFile("e2e-failures/$safe.png")
-            .use { out -> bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 90, out) }
-        bitmap.recycle()
-        E2eLog.step("SCREENSHOT saved TestStorage e2e-failures/$safe.png")
-    } catch (t: Throwable) {
-        E2eLog.step("SCREENSHOT error for $safe: ${t.message}")
-    }
 }
 
 internal fun waitForText(text: String, timeoutMillis: Long = 60_000) {

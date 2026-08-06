@@ -89,7 +89,6 @@ kotlin {
                 implementation(libs.androidx.test.runner)
                 implementation(libs.androidx.test.rules)
                 implementation(libs.androidx.uiautomator)
-                implementation(libs.androidx.test.storage)
                 implementation(libs.koin.android)
             }
         }
@@ -114,7 +113,6 @@ android {
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "org.bibletranslationtools.recorder2.e2e.RecorderE2ERunner"
-        testInstrumentationRunnerArguments["useTestStorageService"] = "true"
     }
     packaging {
         resources {
@@ -136,7 +134,6 @@ dependencies {
     implementation(libs.androidx.runtime.android)
     implementation(libs.androidx.ui.android)
     debugImplementation(compose.uiTooling)
-    "androidTestUtil"(libs.androidx.test.services)
 }
 
 compose.desktop {

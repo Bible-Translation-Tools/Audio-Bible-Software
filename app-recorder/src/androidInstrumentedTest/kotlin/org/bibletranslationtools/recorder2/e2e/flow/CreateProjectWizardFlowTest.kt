@@ -9,7 +9,6 @@ import androidx.test.uiautomator.By
 import kotlinx.coroutines.runBlocking
 import org.bibletranslationtools.recorder2.MainActivity
 import org.bibletranslationtools.recorder2.e2e.E2eLog
-import org.bibletranslationtools.recorder2.e2e.FailureScreenshotRule
 import org.bibletranslationtools.recorder2.e2e.clickContentDescription
 import org.bibletranslationtools.recorder2.e2e.clickTextContains
 import org.bibletranslationtools.recorder2.e2e.searchAndClickResult
@@ -39,9 +38,6 @@ class CreateProjectWizardFlowTest {
 
     @get:Rule(order = 1)
     val activityRule = ActivityScenarioRule(MainActivity::class.java)
-
-    @get:Rule(order = 2)
-    val failureScreenshotRule = FailureScreenshotRule()
 
     @Before
     fun clearActiveWorkbook() {
