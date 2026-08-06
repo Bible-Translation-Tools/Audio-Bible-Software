@@ -203,10 +203,11 @@ internal fun searchAndClickResult(
     clickContentDescription("Search")
     val device = uiDevice()
     assertTrue(
-        "Wizard search EditText not found",
-        device.wait(Until.hasObject(By.clazz("android.widget.EditText")), 10_000)
+        "Wizard search did not open (Close search not found)",
+        device.wait(Until.hasObject(By.desc("Close search")), 10_000)
     )
-    device.findObject(By.clazz("android.widget.EditText")).text = query
+    SystemClock.sleep(300)
+    InstrumentationRegistry.getInstrumentation().sendStringSync(query)
     waitForTextContains(resultSubstring, timeoutMillis)
     clickTextContains(resultSubstring)
 }
