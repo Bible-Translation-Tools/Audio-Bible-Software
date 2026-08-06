@@ -22,6 +22,7 @@ import org.junit.Assert.assertTrue
 
 internal fun waitForMainMenuAfterSplash(timeoutMillis: Long = 120_000) {
     E2eLog.step("WAIT splash→main menu (timeout=${timeoutMillis}ms)")
+    captureE2eScreenshot("main-menu-wait")
     val device = uiDevice()
     val deadline = SystemClock.uptimeMillis() + timeoutMillis
     while (SystemClock.uptimeMillis() < deadline) {
@@ -29,9 +30,27 @@ internal fun waitForMainMenuAfterSplash(timeoutMillis: Long = 120_000) {
             E2eLog.step("FOUND Files+Record (main menu)")
             return
         }
-        SystemClock.sleep(50)
+        SystemClock.sleep(500)
     }
     assertTrue("Timed out waiting for main menu after splash (Files + Record)", false)
+}
+
+internal fun captureE2eScreenshot(label: String) {
+    val safe = label.replace(Regex("[^A-Za-z0-9._-]"), "_")
+    val dir = java.io.File(
+        InstrumentationRegistry.getInstrumentation().targetContext.getExternalFilesDir(null),
+        FailureScreenshotRule.SCREENSHOT_DIR_NAME,
+    ).apply { mkdirs() }
+    val file = java.io.File(dir, "$safe.png")
+    try {
+        val ok = uiDevice().takeScreenshot(file)
+        E2eLog.step(
+            if (ok) "SCREENSHOT saved ${file.absolutePath}"
+            else "SCREENSHOT takeScreenshot returned false for $safe"
+        )
+    } catch (t: Throwable) {
+        E2eLog.step("SCREENSHOT error for $safe: ${t.message}")
+    }
 }
 
 internal fun waitForText(text: String, timeoutMillis: Long = 60_000) {

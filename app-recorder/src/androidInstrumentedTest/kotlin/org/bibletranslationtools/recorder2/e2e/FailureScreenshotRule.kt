@@ -1,10 +1,7 @@
 package org.bibletranslationtools.recorder2.e2e
 
-import androidx.test.platform.app.InstrumentationRegistry
-import androidx.test.uiautomator.UiDevice
 import org.junit.rules.TestWatcher
 import org.junit.runner.Description
-import java.io.File
 
 /**
  * Innermost rule (order after ActivityScenarioRule) so the PNG is taken while the
@@ -18,22 +15,7 @@ class FailureScreenshotRule : TestWatcher() {
             append('_')
             append(description.methodName ?: "unknown")
         }.replace(Regex("[^A-Za-z0-9._-]"), "_")
-
-        val dir = File(
-            InstrumentationRegistry.getInstrumentation().targetContext.getExternalFilesDir(null),
-            SCREENSHOT_DIR_NAME,
-        ).apply { mkdirs() }
-        val file = File(dir, "$safeName.png")
-        try {
-            val ok = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
-                .takeScreenshot(file)
-            E2eLog.step(
-                if (ok) "SCREENSHOT saved ${file.absolutePath}"
-                else "SCREENSHOT takeScreenshot returned false for $safeName"
-            )
-        } catch (t: Throwable) {
-            E2eLog.step("SCREENSHOT error for $safeName: ${t.message}")
-        }
+        captureE2eScreenshot(safeName)
     }
 
     companion object {
