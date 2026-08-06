@@ -75,7 +75,8 @@ jobs:
             gradle :app-recorder:connectedDebugAndroidTest -PminimalGlSources=true --stacktrace
             STATUS=$?
             mkdir -p e2e-screenshots
-            adb pull /sdcard/Android/data/org.bibletranslationtools.recorder2/files/e2e-failures e2e-screenshots/ || true
+            adb pull /data/local/tmp/recorder-e2e-failures/. e2e-screenshots/ || true
+            ls -la e2e-screenshots || true
             exit $STATUS
 
       - name: Upload failure artifacts
@@ -84,8 +85,8 @@ jobs:
         with:
           name: recorder-android-e2e-failures
           path: |
-            e2e-screenshots/**
-            app-recorder/build/reports/androidTests/connected/**
-            app-recorder/build/outputs/androidTest-results/connected/**
+            e2e-screenshots/
+            app-recorder/build/reports/androidTests/connected/
+            app-recorder/build/outputs/androidTest-results/connected/
           if-no-files-found: ignore
           retention-days: 14
