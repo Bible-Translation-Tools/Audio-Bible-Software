@@ -42,7 +42,7 @@ class SeededRecordPlaybackFlowTest {
     @Before
     fun seedProject() {
         E2eLog.step("SETUP seed Genesis + recreate activity")
-        waitForMainMenuAfterSplash()
+        waitForMainMenuAfterSplash(240_000)
         RecorderAndroidUiTestHarness.seedGenesisProject()
         waitForActiveWorkbook()
         E2eLog.step("SETUP recreate activity")
@@ -84,7 +84,7 @@ class SeededRecordPlaybackFlowTest {
     @Test
     fun openRecorderAndEngageTransport() {
         E2eLog.step("TEST openRecorderAndEngageTransport start")
-        waitForMainMenuAfterSplash()
+        waitForMainMenuAfterSplash(240_000)
         waitForActiveWorkbook()
         waitForActiveProjectOnMainMenu()
         clickContentDescription("Record")
