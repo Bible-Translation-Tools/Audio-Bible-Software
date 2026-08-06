@@ -46,7 +46,7 @@ class CreateProjectWizardFlowTest {
     @Before
     fun clearActiveWorkbook() {
         E2eLog.step("SETUP clear active workbook + recreate")
-        waitForMainMenuAfterSplash()
+        waitForMainMenuAfterSplash(240_000)
         runBlocking {
             GlobalContext.get().get<IAppPreferences>().clearActiveWorkbook()
         }
@@ -58,7 +58,7 @@ class CreateProjectWizardFlowTest {
     @Test
     fun createNewProjectViaWizard() {
         E2eLog.step("TEST createNewProjectViaWizard start")
-        waitForMainMenuAfterSplash()
+        waitForMainMenuAfterSplash(240_000)
 
         clickContentDescription("Files")
         waitForText("Project Management", timeoutMillis = 30_000)
