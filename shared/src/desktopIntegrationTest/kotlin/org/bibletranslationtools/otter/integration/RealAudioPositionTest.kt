@@ -85,6 +85,13 @@ class RealAudioPositionTest {
      * Each segment's clock starts only once the position is moving, so what is left is the accounting
      * error: the flushed queue that a resume replays, and nothing else. Any shortfall here is audio that
      * was heard but never counted; any excess is audio replayed.
+     *
+     * The subtlety is where a playing segment ENDS. `connection.pause()` is asynchronous and pausing is
+     * not instantaneous — it joins a playback loop that may be blocked in a write, and the device keeps
+     * presenting audio for that whole stretch. Ending the segment at the call therefore under-counts what
+     * was heard by however long the pause took to land, which was measured at 29-48ms per cycle and read
+     * as a -200ms accounting error that did not exist. So the segment ends when the audio does: the
+     * position going quiet is the observable, and [awaitPositionQuiet] returns the instant it last moved.
      */
     @Test
     fun theReportedPositionDoesNotFallBehindAcrossPauseAndResume() = withPlayer { connection ->
@@ -99,9 +106,11 @@ class RealAudioPositionTest {
             // Audio is confirmed flowing at this point, so this stretch really was heard.
             val segmentStart = System.nanoTime()
             delay(400)
-            heardNanos += System.nanoTime() - segmentStart
 
             connection.pause()
+            // Audio plays on until the pause actually lands. Count it — it came out of the speaker.
+            heardNanos += awaitPositionQuiet(connection) - segmentStart
+
             delay(250) // paused: nothing is heard, and nothing is counted
             connection.play()
             // Excluded from `heard`: this is dead time, and charging it to position tracking is exactly
@@ -129,6 +138,70 @@ class RealAudioPositionTest {
             "position advanced $reported frames while $heardFrames frames were heard — " +
                 "${shortfallMillis}ms short, over stretches where audio was confirmed flowing. A playhead " +
                 "drawn from this sits that far behind the sound."
+        )
+    }
+
+    /**
+     * The position must never outrun the clock — a forward jump is the visible fault.
+     *
+     * The aggregate above cannot see this. It compares totals, so a position that stalls for 35ms and
+     * then leaps 35ms nets to zero and passes, while on screen the playhead sat still and then teleported.
+     * That is exactly what a pause/resume did: `AudioPlayerConnection.pause()` recorded the position
+     * BEFORE asking the worker to pause, so it under-reported for the whole pause and re-synced in one
+     * frame on resume.
+     *
+     * Sampling densely and comparing each step against the wall clock catches it, because audio advances
+     * at exactly one frame per 1/sampleRate of real time and nothing legitimate can beat that.
+     */
+    @Test
+    fun theReportedPositionNeverOutrunsTheClockAcrossPauseAndResume() = withPlayer { connection ->
+        connection.play()
+        awaitPlaybackStart(connection)
+
+        val samples = mutableListOf<Pair<Long, Long>>() // nanoTime to frame
+        suspend fun sampleFor(millis: Long) {
+            val deadline = System.nanoTime() + millis * 1_000_000
+            while (System.nanoTime() < deadline) {
+                samples += System.nanoTime() to connection.getLocationInFrames().toLong()
+                delay(2)
+            }
+        }
+
+        repeat(JUMP_CYCLES) {
+            sampleFor(300)
+            connection.pause()
+            sampleFor(400) // the pause lands somewhere in here, then goes quiet
+            connection.play()
+            sampleFor(400) // and starts again
+        }
+        connection.pause()
+        delay(200)
+
+        var worstExcess = 0L
+        var worstBackward = 0L
+        for (i in 1 until samples.size) {
+            val (t0, p0) = samples[i - 1]
+            val (t1, p1) = samples[i]
+            val wallFrames = (t1 - t0) * spec.sampleRate / 1_000_000_000L
+            worstExcess = maxOf(worstExcess, (p1 - p0) - wallFrames)
+            worstBackward = maxOf(worstBackward, p0 - p1)
+        }
+        val excessMillis = worstExcess * 1_000 / spec.sampleRate
+        val backwardMillis = worstBackward * 1_000 / spec.sampleRate
+        println(
+            "[AUDIO] $JUMP_CYCLES pause/resume boundaries over ${samples.size} samples: " +
+                "worstForwardJump=${excessMillis}ms worstBackwardStep=${backwardMillis}ms"
+        )
+
+        assertTrue(
+            excessMillis <= JUMP_TOLERANCE_MILLIS,
+            "the position advanced ${excessMillis}ms more than the clock did between two samples 2ms " +
+                "apart. Audio cannot do that, so this is a correction being applied in one step — the " +
+                "playhead teleporting forward, which is what a viewer actually sees."
+        )
+        assertTrue(
+            backwardMillis <= JUMP_TOLERANCE_MILLIS,
+            "the position stepped ${backwardMillis}ms backwards during forward playback."
         )
     }
 
@@ -312,6 +385,31 @@ class RealAudioPositionTest {
                 "did not start at all, or the position is not tracking it"
         )
 
+    /**
+     * Suspends until the reported position has stopped moving, and returns the wall time at which it
+     * last moved — i.e. when the audio actually stopped, which is later than the `pause()` call that
+     * asked for it. Quiet is judged over [QUIET_POLLS] polls so one slow scheduler tick cannot end a
+     * segment early.
+     */
+    private suspend fun awaitPositionQuiet(connection: AudioPlayerConnection): Long {
+        var last = connection.getLocationInFrames().toLong()
+        var lastMovedNanos = System.nanoTime()
+        var quiet = 0
+        val deadline = System.nanoTime() + START_TIMEOUT_MILLIS * 1_000_000
+        while (System.nanoTime() < deadline) {
+            val now = connection.getLocationInFrames().toLong()
+            if (now != last) {
+                last = now
+                lastMovedNanos = System.nanoTime()
+                quiet = 0
+            } else if (++quiet >= QUIET_POLLS) {
+                return lastMovedNanos
+            }
+            delay(2)
+        }
+        return lastMovedNanos
+    }
+
     /** Milliseconds until the position clearly moves, or null if it never did. */
     private suspend fun measurePlaybackStart(
         connection: AudioPlayerConnection,
@@ -398,6 +496,18 @@ class RealAudioPositionTest {
         const val STARTUP_CEILING_MILLIS = 1_500
 
         const val START_TIMEOUT_MILLIS = 5_000L
+
+        /** ~30ms of no movement means the audio has stopped, not that a poll landed between updates. */
+        const val QUIET_POLLS = 15
+
+        const val JUMP_CYCLES = 4
+
+        /**
+         * Slack for scheduler jitter between two samples. Deliberately far below the 29-48ms re-sync this
+         * exists to catch, and well above anything a busy machine produces: the position and the clock
+         * both stretch when a poll is late, so the DIFFERENCE stays near zero regardless.
+         */
+        const val JUMP_TOLERANCE_MILLIS = 10
     }
 }
 

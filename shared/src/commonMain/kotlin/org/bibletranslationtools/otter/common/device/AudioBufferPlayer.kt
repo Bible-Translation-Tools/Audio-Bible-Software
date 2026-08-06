@@ -184,6 +184,17 @@ class AudioBufferPlayer(
     val isProducing: Boolean
         get() = producingSession.get() != NO_SESSION
 
+    /**
+     * Whether audio this player wrote is still coming out of the device.
+     *
+     * Different again from [isProducing]: a pause ends the session (nothing is producing) but the queue is
+     * only discarded once the writer has been joined, and the device keeps playing for that whole stretch
+     * — 25-48ms, measured. Anything drawing a playhead wants to keep following the position through it,
+     * or it stalls at the click and then jumps forward when the pause finally lands.
+     */
+    val isDeliveringAudio: Boolean
+        get() = _sink.isRunning && sinkHoldsOurAudio
+
     suspend fun load(reader: AudioFileReader) {
         mutex.withLock {
             // A different reader invalidates anything in flight: without this a running loop would keep

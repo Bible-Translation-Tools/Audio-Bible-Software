@@ -30,10 +30,13 @@ data class AudioConfig(
      * sink is opened from the reader's spec. This is the format for audio this app *creates*, and the
      * one a device must support to be offered in the first place.
      *
-     * 48 kHz / 24-bit / stereo has been verified end to end on real hardware
-     * (`RealAudioConfigTest`); changing this line is all it takes. It stays at 44.1/16/mono because
-     * that is what existing takes are, and raising it is a product decision rather than a technical
-     * one.
+     * 48 kHz / 24-bit / stereo is verified through the device (`RealAudioConfigTest`) and through the
+     * file layer (`WavFormatRoundTripTest`); changing this line is all it takes. Both verifications had
+     * to be built before that was true — the WAV writer discarded the format it was handed, and wrote a
+     * malformed `fmt ` chunk at anything other than 16-bit.
+     *
+     * It stays at 44.1/16/mono because that is what existing takes are, and raising it is a product
+     * decision rather than a technical one.
      */
     val spec: AudioSpec = AudioSpec(),
 

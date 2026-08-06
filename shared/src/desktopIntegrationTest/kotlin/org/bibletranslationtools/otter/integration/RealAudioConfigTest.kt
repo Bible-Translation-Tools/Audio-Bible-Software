@@ -16,6 +16,7 @@ import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactor
 import org.bibletranslationtools.otter.common.device.AudioSpec
 import org.bibletranslationtools.otter.common.device.DefaultAudioProcessor
 import org.bibletranslationtools.otter.common.device.JvmAudioDeviceSelector
+import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.device.JvmAudioHardwareProvider
 import kotlin.math.abs
 import kotlin.test.Test
@@ -105,6 +106,99 @@ class RealAudioConfigTest {
                 "measure because it is what breaks first when a format is mis-plumbed — a wrong " +
                 "bytes-per-frame anywhere makes the position advance at the wrong rate rather than throw."
         )
+    }
+
+    /**
+     * Playback follows the FILE's format, not the configured one.
+     *
+     * [AudioConfig.spec] says what this app records at. What it plays at is whatever the take happens to
+     * be, because a take is read back through its own reader — and getting that wrong is not subtle: a
+     * 48k file opened as 44.1k plays ~9% slow, and every marker and waveform frame lands in the wrong
+     * place. So the config here is deliberately set to something the files are NOT, which is what makes a
+     * pass mean something.
+     *
+     * Round-tripped through real WAV files on disk rather than a synthetic reader, because the header is
+     * half of what is being checked.
+     */
+    @Test
+    fun playbackOpensTheDeviceAtTheFilesFormatNotTheConfiguredOne() {
+        if (!hasOutputDevice()) return
+        val config = AudioConfig(spec = AudioSpec(sampleRate = 44_100, bitDepth = 16, channels = 1))
+
+        val formats = listOf(
+            AudioSpec(sampleRate = 48_000, bitDepth = 16, channels = 1),
+            AudioSpec(sampleRate = 48_000, bitDepth = 24, channels = 2),
+            AudioSpec(sampleRate = 44_100, bitDepth = 16, channels = 2)
+        )
+        val report = mutableListOf<String>()
+
+        for (fileSpec in formats) {
+            val file = writeSilentWav(fileSpec, millis = 400)
+            try {
+                val reader = OratureAudioFile(file).reader()
+                val opened = mutableListOf<AudioSpec>()
+                val sink = RecordingSink(
+                    JvmAudioHardwareProvider(config).createSink(defaultOutputDevice()),
+                    opened
+                )
+                val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+                try {
+                    val factory =
+                        AudioPlayerConnectionFactory.createForScope(sink, DefaultAudioProcessor(), scope)
+                    val connection = AudioPlayerConnection(1, factory, scope, Dispatchers.Default)
+                    runBlocking {
+                        connection.load(reader)
+                        delay(400)
+                        connection.pause()
+                        delay(100)
+                    }
+                } finally {
+                    scope.cancel()
+                    sink.close()
+                }
+
+                val label = "${fileSpec.sampleRate}/${fileSpec.bitDepth}/${fileSpec.channels}ch"
+                report += "$label read=${describe(reader.spec)} opened=${opened.map(::describe)}"
+
+                assertEquals(fileSpec, reader.spec, "the reader did not report the format the file was written in ($label)")
+                assertTrue(opened.isNotEmpty(), "the device was never opened for $label")
+                assertEquals(
+                    fileSpec,
+                    opened.last(),
+                    "the device was opened at ${describe(opened.last())} for a $label file. Playback must " +
+                        "follow the file, not AudioConfig.spec (${describe(config.spec)}) — a mismatched " +
+                        "rate plays at the wrong speed and puts every marker frame in the wrong place."
+                )
+            } finally {
+                file.delete()
+            }
+        }
+        println("[AUDIO] playback follows the file: ${report.joinToString("; ")}")
+    }
+
+    /** Wraps a sink to record the specs it is opened with. */
+    private class RecordingSink(
+        private val inner: org.bibletranslationtools.otter.common.device.AudioSink,
+        private val opened: MutableList<AudioSpec>
+    ) : org.bibletranslationtools.otter.common.device.AudioSink by inner {
+        override fun open(spec: AudioSpec) {
+            opened += spec
+            inner.open(spec)
+        }
+    }
+
+    private fun describe(spec: AudioSpec) = "${spec.sampleRate}/${spec.bitDepth}/${spec.channels}ch"
+
+    private fun writeSilentWav(spec: AudioSpec, millis: Int): java.io.File {
+        val file = java.io.File.createTempFile("fmt_", ".wav")
+        val audio = OratureAudioFile(file, spec.channels, spec.sampleRate, spec.bitDepth)
+        val frames = spec.sampleRate * millis / 1_000
+        // append: the header was just written by the constructor above, so samples go AFTER it.
+        audio.writer(append = true, buffered = true).use { writer ->
+            writer.write(ByteArray(frames * spec.bytesPerFrame))
+            writer.flush()
+        }
+        return file
     }
 
     /**

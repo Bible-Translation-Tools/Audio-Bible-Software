@@ -83,6 +83,22 @@ class RecorderViewModel(
     private var currentTargetIndex = -1
 
     private var associatedAudio: AssociatedAudio? = null
+
+    /**
+     * The format to capture in, and to write the WAV header with.
+     *
+     * Normally [AudioConfig.spec]. But a re-record replaces an existing take, and the replacement has to
+     * be in that take's format: the two are read back through the same reader, and a take recorded at a
+     * different rate plays at the wrong speed while its waveform and marker frames land in the wrong
+     * places. So an existing take wins over the configured default.
+     *
+     * The mic and the WAV header must agree, which is the other half of this. They previously could not:
+     * the mic opened at the configured spec while the header was hardcoded to 1/44100/16, so any change
+     * to the default would have written files whose header said one thing and whose samples were another
+     * — silent corruption, since nothing downstream can tell.
+     */
+    @Volatile
+    private var captureSpec: AudioSpec = audioConfig.spec
     private var targetDirectory: File? = null
     private var currentNamer: org.bibletranslationtools.otter.common.domain.content.FileNamer? = null
 
@@ -282,6 +298,10 @@ class RecorderViewModel(
             canGoNextUnit = target.chunk != null && chunkSortsInChapter.any { it > target.chunk.sort } && _recordingState.value == RecordingUiState.Idle
         )
 
+        // Before anything opens the mic or the writer: a re-record must match what it replaces.
+        captureSpec = audioConfig.spec
+        launchLogged(Dispatchers.IO) { captureSpec = specOfExistingTake() ?: audioConfig.spec }
+
         takeStreamJob?.cancel()
         takeStreamJob = launchLogged {
             associatedAudio?.takesFlow?.collect {
@@ -296,6 +316,29 @@ class RecorderViewModel(
         }
 
         resetSessionForTarget()
+    }
+
+    /**
+     * The format of the take this target already has, or null if it has none (or the file cannot be read,
+     * in which case the configured default is the safer answer than a guess).
+     *
+     * Prefers the selected take, falling back to the most recent, because that is the one a re-record is
+     * standing in for. Touches the disk, so callers keep it off the main thread.
+     */
+    private fun specOfExistingTake(): AudioSpec? {
+        val audio = associatedAudio ?: return null
+        // `takes` is an untyped RxRelay replay buffer, hence the filter.
+        val take = audio.selected.value?.value
+            ?: audio.takes.values.filterIsInstance<Take>().maxByOrNull { it.number }
+        val file = take?.file ?: return null
+        return runCatching {
+            val audioFile = OratureAudioFile(file)
+            AudioSpec(
+                sampleRate = audioFile.sampleRate,
+                bitDepth = audioFile.bitsPerSample,
+                channels = audioFile.channels
+            )
+        }.getOrNull()
     }
 
     fun toggleSourcePlayback() {
@@ -326,7 +369,7 @@ class RecorderViewModel(
                 try {
                     // Keep the recorder running while the screen is visible so the
                     // volume meter shows live mic input even before recording starts.
-                    recorder.start(audioConfig.spec)
+                    recorder.start(captureSpec)
                     recorderInitialized = true
                     _audioError.value = null
                 } catch (e: Exception) {
@@ -349,8 +392,11 @@ class RecorderViewModel(
             val tempFile = File.createTempFile("rec_", ".wav")
             currentTempAudioFile = tempFile
 
-            // Initialize with explicit format so a valid WAV header is created on first write.
-            val oratureFile = OratureAudioFile(tempFile, 1, 44100, 16)
+            // Explicit format so a valid WAV header is created on first write — and the SAME format the
+            // mic was opened with, or the header describes audio the file does not contain.
+            val oratureFile = OratureAudioFile(
+                tempFile, captureSpec.channels, captureSpec.sampleRate, captureSpec.bitDepth
+            )
 
             wavFileWriter = WavFileWriter(
                 oratureAudioFile = oratureFile,
@@ -370,7 +416,7 @@ class RecorderViewModel(
         wavFileWriter?.start()
         launchLogged(Dispatchers.IO) {
             try {
-                audioRecorderFactory.getRecorderWorker().start(audioConfig.spec)
+                audioRecorderFactory.getRecorderWorker().start(captureSpec)
                 withContext(Dispatchers.Main) {
                     _isRecording.value = true
                     _recordingState.value = RecordingUiState.Recording
@@ -406,7 +452,7 @@ class RecorderViewModel(
         wavFileWriter?.start()
         launchLogged(Dispatchers.IO) {
             try {
-                audioRecorderFactory.getRecorderWorker().start(audioConfig.spec)
+                audioRecorderFactory.getRecorderWorker().start(captureSpec)
                 withContext(Dispatchers.Main) {
                     _isRecording.value = true
                     _recordingState.value = RecordingUiState.Recording
@@ -504,7 +550,9 @@ class RecorderViewModel(
         // Guarantee a parseable WAV so downstream loading never fails on invalid header.
         runCatching {
             if (sessionFile.length() < 44L) {
-                val fresh = OratureAudioFile(sessionFile, 1, 44100, 16)
+                val fresh = OratureAudioFile(
+                    sessionFile, captureSpec.channels, captureSpec.sampleRate, captureSpec.bitDepth
+                )
                 fresh.writer(append = true, buffered = true).use { writer ->
                     writer.write(ByteArray(2))
                     writer.flush()

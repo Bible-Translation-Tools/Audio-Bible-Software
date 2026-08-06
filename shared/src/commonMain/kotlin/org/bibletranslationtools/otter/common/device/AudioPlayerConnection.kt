@@ -132,8 +132,22 @@ class AudioPlayerConnection(
         if (factory.isActiveConnection(id)) {
             launchControl {
                 val worker = factory.getPlayerWorker()
-                lastPosition = worker.getLocationInFrames()
+                // AFTER, not before. Pausing is not instantaneous — it joins a playback loop that may be
+                // blocked in a write, and audio keeps coming out of the device for that whole stretch, so
+                // a position read beforehand is stale by however long the join took. Measured: 29-48ms
+                // behind the frame the take actually stopped on.
+                //
+                // The damage was visible twice over. While paused, the drawn playhead sat that far behind
+                // where the sound stopped. And on resume the connection went back to reading the worker
+                // and the position jumped forward by the gap in a single frame — a forward jump on every
+                // resume, which is the shape of bug this whole rework exists to remove. It also accounted
+                // for the entire pause/resume "shortfall": ~35ms per cycle of position that appeared out
+                // of nowhere the moment play was pressed.
+                //
+                // Afterwards the worker reports its rewind point — the exact frame it put the reader back
+                // to — which is the only position a resume can honestly start from.
                 worker.pause()
+                lastPosition = worker.getLocationInFrames()
             }
         }
     }
@@ -207,18 +221,25 @@ class AudioPlayerConnection(
     }
 
     override fun getLocationInFrames(): Int {
-        // Trust the sink worker's live position ONLY while we actually hold the hardware AND it is
-        // producing frames. Otherwise (idle, paused, or seeked-while-stopped — e.g. the narration
-        // player during recording/re-record) the worker reports a stale 0, which would make the
-        // domain's getLocationInFrames() lose the seek target. In those cases return the last known
-        // logical position (the seek/pause target). This mirrors Orature's
-        // ChapterRepresentationConnection position-pointer semantics that narration relies on.
+        // Follow the worker while WE asked for playback, or while the device is still delivering audio
+        // we wrote. That second clause is the fix for a visible jump: `playRequested` is cleared the
+        // instant pause() is called, but the pause has to join the writer before it can discard the
+        // queue, and the device plays on for that whole stretch — 25-48ms, measured. Gating on
+        // playRequested alone froze the reading at the click and then jumped forward to catch up when
+        // the pause landed.
+        //
+        // Kept rather than dropped, though, because it is doing real work: an idle or
+        // seeked-while-stopped worker must not be read at all (narration relies on the seek target
+        // surviving, mirroring Orature's ChapterRepresentationConnection pointer semantics), and
+        // isDeliveringAudio is false in exactly those states. Ownership is checked either way, so
+        // another connection's playback can never be read as ours.
         // Lock-free throughout: the display clock calls this once per display frame on the main thread,
         // so isSinkRunning's `runBlocking { mutex.withLock { … } }` would stall the UI for as long as the
         // worker holds its mutex — measured at 427ms across a load(), which is ~25 dropped frames, seen
         // as the playhead freezing while the audio plays on untroubled.
         val worker = factory.getPlayerWorker()
-        if (playRequested && factory.isActiveConnection(id) && worker.isPositionReliable) {
+        val following = playRequested || worker.isDeliveringAudio
+        if (following && factory.isActiveConnection(id) && worker.isPositionReliable) {
             val workerPosition = worker.getLocationInFrames().toInt()
             lastPosition = workerPosition.toLong()
             return workerPosition
