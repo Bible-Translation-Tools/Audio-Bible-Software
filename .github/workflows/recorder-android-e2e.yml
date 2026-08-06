@@ -74,14 +74,13 @@ jobs:
             set +e
             gradle :app-recorder:connectedDebugAndroidTest -PminimalGlSources=true --stacktrace
             STATUS=$?
-            mkdir -p e2e-screenshots
-            # App-private filesDir — plain adb pull cannot read this; use run-as (debug APK).
-            adb shell "run-as org.bibletranslationtools.recorder2 ls files/e2e-failures" || true
-            adb exec-out run-as org.bibletranslationtools.recorder2 tar c files/e2e-failures 2>/dev/null \
-              | tar x -C e2e-screenshots --strip-components=2 2>/dev/null || true
-            # Host-side capture of whatever is still on screen.
-            adb exec-out screencap -p > e2e-screenshots/host-screencap.png || true
-            ls -la e2e-screenshots || true
+            OUT="${GITHUB_WORKSPACE}/e2e-screenshots"
+            mkdir -p "$OUT"
+            echo "gradle_exit=$STATUS" > "$OUT/status.txt"
+            adb shell screencap -p /sdcard/host-screencap.png
+            adb pull /sdcard/host-screencap.png "$OUT/host-screencap.png" || true
+            find app-recorder/build/outputs -iname '*.png' 2>/dev/null | head -50 >> "$OUT/status.txt" || true
+            ls -la "$OUT" || true
             exit $STATUS
 
       - name: Upload failure artifacts
@@ -91,6 +90,7 @@ jobs:
           name: recorder-android-e2e-failures
           path: |
             e2e-screenshots/
+            app-recorder/build/outputs/connected_android_test_additional_output/
             app-recorder/build/reports/androidTests/connected/
             app-recorder/build/outputs/androidTest-results/connected/
           if-no-files-found: ignore
