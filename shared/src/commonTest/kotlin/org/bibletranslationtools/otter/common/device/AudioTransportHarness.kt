@@ -157,16 +157,42 @@ class AudioTransportHarness internal constructor(
         }
         awaitEventCount(expected.size)
         assertEquals(expected.toList(), events(), "transport event sequence")
+        // Everything asserted is accounted for, so a later awaitEvent looks past it rather than
+        // matching something this call already covered.
+        consumedEvents = maxOf(consumedEvents, expected.size)
     }
 
-    /** Suspends until at least one [label] event lands beyond those already recorded. */
+    /**
+     * How much of the stream has been accounted for. [awaitEvent] consumes up to and including what it
+     * matched, so successive waits move forward through the stream rather than each re-deciding what
+     * counts as "new".
+     *
+     * Only ever touched from the test body, which is single-threaded per test.
+     */
+    private var consumedEvents = 0
+
+    /**
+     * Suspends until the next unconsumed [label] event, then consumes up to and including it.
+     *
+     * This used to snapshot `events().size` on entry and wait for a match *beyond* that point. That is a
+     * race, and it was the cause of an intermittent 5-second timeout that took a long time to pin down:
+     * every control call is asynchronous, so between `connection.play()` and the snapshot the Play event
+     * may already have landed — in which case the snapshot counts it as old and the wait sits there
+     * waiting for a SECOND one that is never coming. The failure message said it plainly and was easy to
+     * misread: "waiting for a Play event after the first 3; events so far: [Pause, Load, Play]".
+     *
+     * It failed roughly one run in ten and never in isolation, because whether the event beats the
+     * snapshot depends entirely on how busy the machine is. A cursor cannot race: an event that arrived
+     * early is simply still unconsumed, and satisfies the wait immediately.
+     */
     suspend fun awaitEvent(label: String) {
-        val seen = events().size
+        val from = consumedEvents
         // Predicate over the *growing* list, never over an emission, so StateFlow's conflation
         // cannot drop the event we are waiting for.
-        awaitFlow(recorded, "a $label event after the first $seen") { current ->
-            current.size > seen && label in current.drop(seen)
+        awaitFlow(recorded, "a $label event after the first $from") { current ->
+            label in current.drop(from)
         }
+        consumedEvents = from + recorded.value.drop(from).indexOf(label) + 1
     }
 
     suspend fun awaitEventCount(count: Int): List<String> =
@@ -256,6 +282,7 @@ class AudioTransportHarness internal constructor(
                 "; buffers written: ${sink.writes.value}" +
                 "; sink calls: ${sinkCalls()}"
         )
+
 
     companion object {
         /** Frames the playback loop moves per [AudioSink.write], given [IdentityAudioProcessor]. */

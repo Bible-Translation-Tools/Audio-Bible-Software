@@ -150,7 +150,10 @@ compose.desktop {
             //  - suggestRuntimeModules (static bytecode scan): java.compiler, java.instrument,
             //    java.sql, jdk.security.auth, jdk.unsupported
             //  - modules reached reflectively / via ServiceLoader, which that scan cannot see:
-            //    java.naming (jackson-dataformat-yaml) and java.xml (XML parsing).
+            //    java.naming (jackson-dataformat-yaml), java.xml (XML parsing), and jdk.zipfs,
+            //    whose ZipFileSystemProvider is found only through FileSystems.newFileSystem —
+            //    without it every NioZipFileReader fails with ProviderNotFoundException("jar"),
+            //    which kills the bundled-ULB import on FIRST RUN and nothing else.
             // Keep both sets — dropping the reflective ones only fails at runtime, never at build.
             modules(
                 "java.compiler",
@@ -159,7 +162,8 @@ compose.desktop {
                 "java.sql",
                 "java.xml",
                 "jdk.security.auth",
-                "jdk.unsupported"
+                "jdk.unsupported",
+                "jdk.zipfs"
             )
 
             macOS {

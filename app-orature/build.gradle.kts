@@ -154,7 +154,10 @@ compose.desktop {
             packageVersion = "1.0.0"
             // jpackage trims the bundled JRE to the declared modules only. UNION of
             // suggestRuntimeModules (static scan) + modules reached reflectively / via ServiceLoader
-            // that the scan can't see (java.naming for jackson-yaml, java.xml for XML parsing).
+            // that the scan can't see (java.naming for jackson-yaml, java.xml for XML parsing, and
+            // jdk.zipfs, whose ZipFileSystemProvider is reached only through
+            // FileSystems.newFileSystem — without it NioZipFileReader throws
+            // ProviderNotFoundException("jar") and the bundled-ULB import fails on FIRST RUN).
             modules(
                 "java.compiler",
                 "java.instrument",
@@ -162,7 +165,8 @@ compose.desktop {
                 "java.sql",
                 "java.xml",
                 "jdk.security.auth",
-                "jdk.unsupported"
+                "jdk.unsupported",
+                "jdk.zipfs"
             )
             macOS {
                 iconFile.set(project.file("src/desktopMain/resources/icons/ic_launcher.icns"))
