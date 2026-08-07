@@ -10,6 +10,7 @@ import org.bibletranslationtools.recorder2.e2e.E2eLog
 import org.bibletranslationtools.recorder2.e2e.assertDisplayedContentDescription
 import org.bibletranslationtools.recorder2.e2e.assertDisplayedText
 import org.bibletranslationtools.recorder2.e2e.clickContentDescription
+import org.bibletranslationtools.recorder2.e2e.clickContentDescriptionUntilText
 import org.bibletranslationtools.recorder2.e2e.clickText
 import org.bibletranslationtools.recorder2.e2e.waitForMainMenuAfterSplash
 import org.bibletranslationtools.recorder2.e2e.waitForText
@@ -59,8 +60,7 @@ class MainMenuNavigationFlowTest {
     fun filesOpensProjectManagementAndSettings() {
         E2eLog.step("TEST filesOpensProjectManagementAndSettings start")
         waitForMainMenuAfterSplash()
-        clickContentDescription("Files")
-        waitForText("Project Management", timeoutMillis = 30_000)
+        clickContentDescriptionUntilText("Files", "Project Management", timeoutMillis = 60_000)
 
         clickContentDescription("More options")
         waitForText("Settings", timeoutMillis = 15_000)
@@ -69,7 +69,7 @@ class MainMenuNavigationFlowTest {
         assertDisplayedText("Audio")
 
         clickContentDescription("Back")
-        waitForText("Project Management", timeoutMillis = 30_000)
+        waitForText("Project Management", timeoutMillis = 60_000)
         E2eLog.step("TEST filesOpensProjectManagementAndSettings done")
     }
 
@@ -77,8 +77,7 @@ class MainMenuNavigationFlowTest {
     fun recordWithoutActiveProjectGoesToProjectManagement() {
         E2eLog.step("TEST recordWithoutActiveProjectGoesToProjectManagement start")
         waitForMainMenuAfterSplash()
-        clickContentDescription("Record")
-        waitForText("Project Management", timeoutMillis = 60_000)
+        clickContentDescriptionUntilText("Record", "Project Management", timeoutMillis = 60_000)
         assertDisplayedText("Project Management")
         E2eLog.step("TEST recordWithoutActiveProjectGoesToProjectManagement done")
     }

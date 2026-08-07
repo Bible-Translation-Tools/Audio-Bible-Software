@@ -10,6 +10,7 @@ import kotlinx.coroutines.runBlocking
 import org.bibletranslationtools.recorder2.MainActivity
 import org.bibletranslationtools.recorder2.e2e.E2eLog
 import org.bibletranslationtools.recorder2.e2e.clickContentDescription
+import org.bibletranslationtools.recorder2.e2e.clickContentDescriptionUntilText
 import org.bibletranslationtools.recorder2.e2e.clickTextContains
 import org.bibletranslationtools.recorder2.e2e.searchAndClickResult
 import org.bibletranslationtools.recorder2.e2e.uiDevice
@@ -56,8 +57,7 @@ class CreateProjectWizardFlowTest {
         E2eLog.step("TEST createNewProjectViaWizard start")
         waitForMainMenuAfterSplash(240_000)
 
-        clickContentDescription("Files")
-        waitForText("Project Management", timeoutMillis = 30_000)
+        clickContentDescriptionUntilText("Files", "Project Management", timeoutMillis = 60_000)
 
         clickContentDescription("New Project")
         waitForWizardSourceStep()

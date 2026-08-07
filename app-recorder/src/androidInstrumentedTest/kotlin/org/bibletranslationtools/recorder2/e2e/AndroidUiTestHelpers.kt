@@ -3,6 +3,7 @@ package org.bibletranslationtools.recorder2.e2e
 import android.os.SystemClock
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
+import androidx.test.uiautomator.BySelector
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import kotlinx.coroutines.flow.first
@@ -68,7 +69,7 @@ internal fun clickContentDescription(label: String) {
         "No node with contentDescription \"$label\" to click",
         device.wait(Until.hasObject(By.desc(label)), 5_000)
     )
-    device.findObject(By.desc(label)).click()
+    clickNodeCenter(By.desc(label))
 }
 
 internal fun clickText(text: String) {
@@ -78,7 +79,7 @@ internal fun clickText(text: String) {
         "No node with text \"$text\" to click",
         device.wait(Until.hasObject(By.text(text)), 5_000)
     )
-    device.findObject(By.text(text)).click()
+    clickNodeCenter(By.text(text))
 }
 
 internal fun clickTextContains(substring: String) {
@@ -88,7 +89,51 @@ internal fun clickTextContains(substring: String) {
         "No node with text containing \"$substring\" to click",
         device.wait(Until.hasObject(By.textContains(substring)), 5_000)
     )
-    device.findObject(By.textContains(substring)).click()
+    clickNodeCenter(By.textContains(substring))
+}
+
+/**
+ * Click [contentDescription] and retry until [text] appears. Needed on API 34 ATD where
+ * Compose clickables are often found by UiAutomator but the first gesture misses onClick.
+ */
+internal fun clickContentDescriptionUntilText(
+    contentDescription: String,
+    text: String,
+    timeoutMillis: Long = 60_000,
+) {
+    E2eLog.step(
+        "CLICK contentDescription=\"$contentDescription\" until text=\"$text\" " +
+            "(timeout=${timeoutMillis}ms)"
+    )
+    val device = uiDevice()
+    val deadline = SystemClock.uptimeMillis() + timeoutMillis
+    var attempt = 0
+    while (SystemClock.uptimeMillis() < deadline) {
+        if (device.hasObject(By.text(text))) {
+            E2eLog.step("FOUND text=\"$text\"")
+            return
+        }
+        if (device.hasObject(By.desc(contentDescription))) {
+            attempt++
+            E2eLog.step("CLICK contentDescription=\"$contentDescription\" (attempt $attempt)")
+            clickNodeCenter(By.desc(contentDescription))
+            if (device.wait(Until.hasObject(By.text(text)), 3_000)) {
+                E2eLog.step("FOUND text=\"$text\"")
+                return
+            }
+        }
+        SystemClock.sleep(200)
+    }
+    assertTrue(
+        "Timed out waiting for text: $text (after clicking contentDescription \"$contentDescription\")",
+        false
+    )
+}
+
+private fun clickNodeCenter(selector: BySelector) {
+    val node = uiDevice().findObject(selector)
+    val bounds = node.visibleBounds
+    uiDevice().click(bounds.centerX(), bounds.centerY())
 }
 
 internal fun assertDisplayedContentDescription(label: String) {
