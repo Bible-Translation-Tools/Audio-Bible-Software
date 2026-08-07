@@ -171,6 +171,19 @@ compose.desktop {
             }
             windows {
                 iconFile.set(project.file("src/desktopMain/resources/icons/ic_launcher.ico"))
+                // --win-shortcut: the MSI drops a desktop shortcut. Also a prerequisite for
+                // jpackage's --win-shortcut-prompt (the "create shortcuts?" checkbox), which
+                // the Compose DSL does not expose — see WindowsPlatformSettings.
+                shortcut = true
+                // --win-menu / --win-menu-group: Start menu entry under a WA folder, so the two
+                // apps group together rather than sitting loose in the app list.
+                menu = true
+                menuGroup = "Wycliffe Associates"
+                // --win-upgrade-uuid: the MSI UpgradeCode. It identifies "this product" across
+                // versions, so installing 1.0.1 over 1.0.0 REPLACES it instead of leaving two
+                // entries in Programs and Features and two desktop shortcuts. It must therefore
+                // stay fixed forever, and must differ from Orature's — never regenerate it.
+                upgradeUuid = "46D06A56-B75B-4B11-A1E6-9D3999A1BC5E"
             }
             linux {
                 iconFile.set(project.file("src/desktopMain/resources/icons/ic_launcher.png"))
