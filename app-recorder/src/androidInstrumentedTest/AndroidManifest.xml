@@ -1,0 +1,4 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Timeout screenshots upload to tmpfiles.org from the instrumented process. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+</manifest>

@@ -9,6 +9,10 @@ import androidx.test.uiautomator.Until
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
+import java.io.DataOutputStream
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URI
 
 /**
  * UiAutomator helpers for recorder Android e2e.
@@ -32,15 +36,17 @@ internal fun waitForMainMenuAfterSplash(timeoutMillis: Long = 120_000) {
         }
         SystemClock.sleep(50)
     }
+    captureAndUploadTimeoutScreenshot("main-menu-timeout")
     assertTrue("Timed out waiting for main menu after splash (Files + Record)", false)
 }
 
 internal fun waitForText(text: String, timeoutMillis: Long = 60_000) {
     E2eLog.step("WAIT text=\"$text\" (timeout=${timeoutMillis}ms)")
-    assertTrue(
-        "Timed out waiting for text: $text",
-        uiDevice().wait(Until.hasObject(By.text(text)), timeoutMillis)
-    )
+    val found = uiDevice().wait(Until.hasObject(By.text(text)), timeoutMillis)
+    if (!found) {
+        captureAndUploadTimeoutScreenshot("wait-text-${text.take(40)}")
+    }
+    assertTrue("Timed out waiting for text: $text", found)
     E2eLog.step("FOUND text=\"$text\"")
 }
 
@@ -124,10 +130,67 @@ internal fun clickContentDescriptionUntilText(
         }
         SystemClock.sleep(200)
     }
+    captureAndUploadTimeoutScreenshot("click-$contentDescription-until-$text")
     assertTrue(
         "Timed out waiting for text: $text (after clicking contentDescription \"$contentDescription\")",
         false
     )
+}
+
+/**
+ * Saves a PNG under `/data/local/tmp/e2e-screenshots` (adb-pullable) and POSTs it to
+ * tmpfiles.org so the view URL appears in the Gradle / CI log.
+ */
+internal fun captureAndUploadTimeoutScreenshot(label: String) {
+    val safe = label.replace(Regex("[^A-Za-z0-9._-]"), "_").take(60)
+    val dir = File("/data/local/tmp/e2e-screenshots").also { it.mkdirs() }
+    val file = File(dir, "${safe}_${System.currentTimeMillis()}.png")
+    val ok = runCatching { uiDevice().takeScreenshot(file) }.getOrDefault(false)
+    E2eLog.step(
+        "SCREENSHOT label=$safe ok=$ok path=${file.absolutePath} " +
+            "exists=${file.exists()} size=${if (file.exists()) file.length() else 0}"
+    )
+    if (!ok || !file.exists() || file.length() == 0L) return
+    runCatching { uploadScreenshotToTmpfiles(file) }
+        .onFailure { E2eLog.step("SCREENSHOT upload failed: ${it.message}") }
+}
+
+private fun uploadScreenshotToTmpfiles(file: File) {
+    val boundary = "----RecorderE2E${System.currentTimeMillis()}"
+    val conn = (URI("https://tmpfiles.org/api/v1/upload").toURL().openConnection() as HttpURLConnection).apply {
+        requestMethod = "POST"
+        doOutput = true
+        connectTimeout = 30_000
+        readTimeout = 60_000
+        setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+    }
+    DataOutputStream(conn.outputStream).use { out ->
+        out.writeBytes("--$boundary\r\n")
+        out.writeBytes("Content-Disposition: form-data; name=\"expire\"\r\n\r\n")
+        out.writeBytes("86400\r\n")
+        out.writeBytes("--$boundary\r\n")
+        out.writeBytes(
+            "Content-Disposition: form-data; name=\"file\"; filename=\"${file.name}\"\r\n"
+        )
+        out.writeBytes("Content-Type: image/png\r\n\r\n")
+        out.flush()
+        file.inputStream().use { it.copyTo(out) }
+        out.writeBytes("\r\n--$boundary--\r\n")
+        out.flush()
+    }
+    val code = conn.responseCode
+    val body = (if (code in 200..299) conn.inputStream else conn.errorStream)
+        ?.bufferedReader()
+        ?.use { it.readText() }
+        .orEmpty()
+    conn.disconnect()
+    E2eLog.step("SCREENSHOT tmpfiles HTTP $code body=$body")
+    // Response url is a view page; raw bytes need /dl/ inserted after the host.
+    Regex("\"url\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.getOrNull(1)?.let { viewUrl ->
+        val dlHint = viewUrl.replace("://tmpfiles.org/", "://tmpfiles.org/dl/")
+        E2eLog.step("SCREENSHOT view=$viewUrl")
+        E2eLog.step("SCREENSHOT dl_hint=$dlHint")
+    }
 }
 
 private fun clickNodeCenter(selector: BySelector) {
