@@ -50,7 +50,7 @@ Zips under `shared/.../files/content/` are gitignored; extras on disk still pack
 ## CI
 
 GitHub Actions: [`.github/workflows/recorder-android-e2e.yml`](../../../.github/workflows/recorder-android-e2e.yml)  
-Runs `:app-recorder:assembleDebug` + `assembleDebugAndroidTest` (with `-PminimalGlSources=true`) before the emulator, then `:app-recorder:connectedDebugAndroidTest` on an API 34 `aosp_atd` emulator (KVM). Triggers on every push. On failure, uploads test reports.
+Runs `:app-recorder:assembleDebug` + `assembleDebugAndroidTest` (with `-PminimalGlSources=true`) before the emulator, then `:app-recorder:connectedDebugAndroidTest` on an API 34 `google_apis` Pixel 6 AVD under Xvfb (headed, not headless ATD). Triggers on every push. On failure, uploads APKs + test reports.
 
 ## Open items
 
