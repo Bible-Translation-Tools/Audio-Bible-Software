@@ -42,7 +42,7 @@ Runner: `RecorderE2ERunner` → `RecorderTestApplication` (Koin + mock audio).
 
 | Property | Effect |
 |----------|--------|
-| `leaveApksInstalledAfterRun=true` | Keep app installed after tests (currently in root `gradle.properties`) |
+| `leaveApksInstalledAfterRun=false` | Uninstall app after tests (root `gradle.properties`; avoids dirty CI AVDs) |
 | `-PminimalGlSources=true` | Download/list only `en_ulb` (pass on the Gradle command; not a repo default) |
 
 Zips under `shared/.../files/content/` are gitignored; extras on disk still pack into the APK — delete them for a truly minimal bundle. Omit `-PminimalGlSources` for a full multi-language build.
@@ -50,7 +50,7 @@ Zips under `shared/.../files/content/` are gitignored; extras on disk still pack
 ## CI
 
 GitHub Actions: [`.github/workflows/recorder-android-e2e.yml`](../../../.github/workflows/recorder-android-e2e.yml)  
-Runs `:app-recorder:assembleDebug` + `assembleDebugAndroidTest` (with `-PminimalGlSources=true`) before the emulator, then `:app-recorder:connectedDebugAndroidTest` on an API 34 `google_apis` Pixel Tablet AVD (headless, BTT-Writer-style settle + Vulkan-off). On timeout, screenshots upload to tmpfiles.org (link in the log). Triggers on every push. On failure, uploads test reports.
+Runs `:app-recorder:assembleDebug` + `assembleDebugAndroidTest` (with `-PminimalGlSources=true`) before the emulator, then `:app-recorder:connectedDebugAndroidTest` on an API 34 `google_apis` Pixel Tablet AVD (headless; Vulkan-off + boot settle). AVD cache is saved only after a clean snapshot create. CI uninstalls app/test packages before install. On timeout, screenshots go to tmpfiles.org (link in the log). Triggers on every push. On failure, uploads test reports.
 
 ## Open items
 

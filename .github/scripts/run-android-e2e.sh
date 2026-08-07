@@ -4,6 +4,11 @@ set -u
 
 bash .github/scripts/wait-for-emulator-ready.sh
 
+# Clear leftovers from a poisoned AVD cache or a prior install that crashed before
+# leaveApksInstalledAfterRun=false could uninstall (avoids UPDATE_INCOMPATIBLE).
+adb uninstall org.bibletranslationtools.recorder2 2>/dev/null || true
+adb uninstall org.bibletranslationtools.recorder2.test 2>/dev/null || true
+
 gradle :app-recorder:connectedDebugAndroidTest -PminimalGlSources=true --stacktrace
 STATUS=$?
 

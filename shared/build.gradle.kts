@@ -260,6 +260,13 @@ tasks.register("downloadGLSources") {
         }
         println("GL sources: $downloaded downloaded, $skipped already present, $failed unavailable.")
         if (glSourceAllowlist != null) {
+            val missing = glSourceAllowlist.filter { !glContentDir.resolve("$it.zip").exists() }
+            if (missing.isNotEmpty()) {
+                throw GradleException(
+                    "minimalGlSources requires these zips but they are missing after download: " +
+                        missing.joinToString()
+                )
+            }
             val extras = (glContentDir.listFiles() ?: emptyArray())
                 .filter { it.isFile && it.extension == "zip" && it.nameWithoutExtension !in glSourceAllowlist }
             if (extras.isNotEmpty()) {
@@ -286,6 +293,15 @@ tasks.register("generateEmbeddedSourcesManifest") {
             .map { it.nameWithoutExtension }
             .filter { glSourceAllowlist == null || it in glSourceAllowlist }
             .sorted()
+        if (glSourceAllowlist != null) {
+            val missing = glSourceAllowlist.filter { it !in names }
+            if (missing.isNotEmpty()) {
+                throw GradleException(
+                    "Embedded GL sources manifest missing required minimal sources: " +
+                        missing.joinToString()
+                )
+            }
+        }
         embeddedManifest.writeText(groovy.json.JsonBuilder(names).toPrettyString())
         println("Embedded GL sources manifest: ${names.size} sources bundled.")
     }
