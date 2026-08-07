@@ -1,0 +1,56 @@
+appId: org.bibletranslationtools.recorder2
+tags:
+  - helper
+---
+# Files → New Project → English → Afar → Genesis → Project Management.
+# Mirrors CreateProjectWizardFlowTest / seed used by SeededRecordPlaybackFlowTest.
+- runFlow: shared/open_files.yaml
+- tapOn: "New Project"
+- extendedWaitUntil:
+    visible: "New Project|Select Source"
+    timeout: 60000
+
+# Prefer en_ulb, else English, else search "en".
+- runFlow:
+    when:
+      visible: ".*en_ulb.*"
+    commands:
+      - tapOn: ".*en_ulb.*"
+- runFlow:
+    when:
+      notVisible: "Choose Target Language"
+      visible: ".*English.*"
+    commands:
+      - tapOn: ".*English.*"
+- runFlow:
+    when:
+      notVisible: "Choose Target Language"
+    commands:
+      - runFlow:
+          file: shared/search_and_tap.yaml
+          env:
+            QUERY: "en"
+            RESULT: ".*English.*"
+
+- extendedWaitUntil:
+    visible: "Choose Target Language"
+    timeout: 120000
+- runFlow:
+    file: shared/search_and_tap.yaml
+    env:
+      QUERY: "aa"
+      RESULT: ".*Afar.*"
+
+- extendedWaitUntil:
+    visible: "Choose a Book"
+    timeout: 120000
+- runFlow:
+    file: shared/search_and_tap.yaml
+    env:
+      QUERY: "gen"
+      RESULT: ".*Genesis.*"
+
+- extendedWaitUntil:
+    visible: "Project Management"
+    timeout: 180000
+- assertVisible: ".*Genesis.*"

@@ -1,0 +1,24 @@
+appId: org.bibletranslationtools.recorder2
+tags:
+  - main-menu
+---
+# MainMenuNavigationFlowTest.filesOpensProjectManagementAndSettings
+- runFlow: shared/launch_clear.yaml
+- runFlow: shared/wait_main_menu.yaml
+- runFlow: shared/open_files.yaml
+
+- tapOn: "More options"
+- extendedWaitUntil:
+    visible: "Settings"
+    timeout: 15000
+- tapOn: "Settings"
+- extendedWaitUntil:
+    visible: "Audio"
+    timeout: 30000
+- assertVisible: "Audio"
+
+- tapOn: "Back"
+- extendedWaitUntil:
+    visible: "Project Management"
+    timeout: 60000
+- assertVisible: "Project Management"

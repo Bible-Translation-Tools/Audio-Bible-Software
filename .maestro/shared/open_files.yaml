@@ -1,0 +1,12 @@
+appId: org.bibletranslationtools.recorder2
+tags:
+  - helper
+---
+# Retry tap — Compose clickables can miss on first gesture (API 34).
+- repeat:
+    times: 20
+    while:
+      notVisible: "Project Management"
+    commands:
+      - tapOn: "Files"
+- assertVisible: "Project Management"

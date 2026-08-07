@@ -1,0 +1,10 @@
+appId: org.bibletranslationtools.recorder2
+tags:
+  - helper
+---
+# Splash can take a long time on first launch (en_ulb unpack).
+- extendedWaitUntil:
+    visible: "Files"
+    timeout: 240000
+- assertVisible: "Files"
+- assertVisible: "Record"

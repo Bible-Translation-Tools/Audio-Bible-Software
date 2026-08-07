@@ -1,0 +1,15 @@
+appId: org.bibletranslationtools.recorder2
+tags:
+  - main-menu
+---
+# MainMenuNavigationFlowTest.recordWithoutActiveProjectGoesToProjectManagement
+- runFlow: shared/launch_clear.yaml
+- runFlow: shared/wait_main_menu.yaml
+
+- repeat:
+    times: 20
+    while:
+      notVisible: "Project Management"
+    commands:
+      - tapOn: "Record"
+- assertVisible: "Project Management"

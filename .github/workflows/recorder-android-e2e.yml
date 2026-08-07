@@ -8,8 +8,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  instrumented-e2e:
-    name: connectedDebugAndroidTest (API 34 google_apis)
+  maestro-smoke:
+    name: Maestro smoke (API 34 google_apis)
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
@@ -51,8 +51,8 @@ jobs:
           key: en-ulb-${{ hashFiles('shared/src/commonMain/composeResources/files/gl_sources.json') }}
 
       # Assemble before the emulator so Gradle is not contending with the AVD.
-      - name: Assemble app and androidTest APKs
-        run: gradle :app-recorder:assembleDebug :app-recorder:assembleDebugAndroidTest -PminimalGlSources=true --stacktrace
+      - name: Assemble debug APK
+        run: gradle :app-recorder:assembleDebug -PminimalGlSources=true --stacktrace
 
       - name: AVD cache
         uses: actions/cache@v4
@@ -77,7 +77,7 @@ jobs:
           enable-hw-keyboard: true
           script: echo "Generated AVD snapshot for caching."
 
-      - name: Run Android instrumented e2e
+      - name: Run Maestro smoke
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -90,26 +90,23 @@ jobs:
           enable-hw-keyboard: true
           script: bash .github/scripts/run-android-e2e.sh
 
-      - name: Upload APKs
+      - name: Upload APK
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: recorder-android-e2e-apks
           path: |
             app-recorder/build/outputs/apk/debug/*.apk
-            app-recorder/build/outputs/apk/androidTest/debug/*.apk
             shared/src/commonMain/composeResources/files/embedded_gl_sources.json
             shared/src/commonMain/composeResources/files/content/en_ulb.zip
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Upload test reports
+      - name: Upload Maestro results
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: recorder-android-e2e-reports
-          path: |
-            app-recorder/build/reports/androidTests/connected/
-            app-recorder/build/outputs/androidTest-results/connected/
+          name: recorder-maestro-results
+          path: maestro-results/
           if-no-files-found: ignore
           retention-days: 14
