@@ -23,11 +23,11 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      # Headed emulator needs a display; runners have none, so use a virtual framebuffer.
-      - name: Start Xvfb
+      # Headed emulator needs a display (Xvfb) and libpulse (qemu links it even with -noaudio).
+      - name: Start Xvfb and install emulator deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb
+          sudo apt-get install -y xvfb libpulse0
           Xvfb :99 -screen 0 1280x800x24 -ac +extension GLX +render -noreset &
           echo "DISPLAY=:99" >> "$GITHUB_ENV"
           sleep 1
