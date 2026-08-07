@@ -9,6 +9,7 @@ import androidx.test.uiautomator.By
 import kotlinx.coroutines.runBlocking
 import org.bibletranslationtools.recorder2.MainActivity
 import org.bibletranslationtools.recorder2.e2e.E2eLog
+import org.bibletranslationtools.recorder2.e2e.captureAndUploadTimeoutScreenshot
 import org.bibletranslationtools.recorder2.e2e.clickContentDescription
 import org.bibletranslationtools.recorder2.e2e.clickContentDescriptionUntilText
 import org.bibletranslationtools.recorder2.e2e.clickTextContains
@@ -43,11 +44,13 @@ class CreateProjectWizardFlowTest {
     @Before
     fun clearActiveWorkbook() {
         E2eLog.step("SETUP clear active workbook + recreate")
+        captureSplashScreenshot("setup-before-clear")
         waitForMainMenuAfterSplash(240_000)
         runBlocking {
             GlobalContext.get().get<IAppPreferences>().clearActiveWorkbook()
         }
         activityRule.scenario.recreate()
+        captureSplashScreenshot("setup-after-recreate")
         waitForMainMenuAfterSplash()
         E2eLog.step("SETUP done")
     }
@@ -55,6 +58,7 @@ class CreateProjectWizardFlowTest {
     @Test
     fun createNewProjectViaWizard() {
         E2eLog.step("TEST createNewProjectViaWizard start")
+        captureSplashScreenshot("test-before-main-menu")
         waitForMainMenuAfterSplash(240_000)
 
         clickContentDescriptionUntilText("Files", "Project Management", timeoutMillis = 60_000)
@@ -110,5 +114,11 @@ class CreateProjectWizardFlowTest {
             SystemClock.sleep(100)
         }
         searchAndClickResult(query = "en", resultSubstring = "English", timeoutMillis = 120_000)
+    }
+
+    /** Brief settle so splash can paint, then capture + upload to tmpfiles (link in log). */
+    private fun captureSplashScreenshot(label: String) {
+        SystemClock.sleep(500)
+        captureAndUploadTimeoutScreenshot("splash-$label")
     }
 }
