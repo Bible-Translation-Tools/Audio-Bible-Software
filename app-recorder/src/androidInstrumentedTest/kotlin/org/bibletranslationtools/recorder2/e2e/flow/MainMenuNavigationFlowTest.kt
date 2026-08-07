@@ -36,13 +36,13 @@ class MainMenuNavigationFlowTest {
     @Before
     fun clearActiveWorkbook() {
         E2eLog.step("SETUP clear active workbook + recreate")
-        waitForMainMenuAfterSplash()
+        waitForMainMenuAfterSplash(240_000)
         runBlocking {
             GlobalContext.get().get<IAppPreferences>().clearActiveWorkbook()
         }
         E2eLog.step("SETUP recreate activity")
         activityRule.scenario.recreate()
-        waitForMainMenuAfterSplash()
+        waitForMainMenuAfterSplash(240_000)
         E2eLog.step("SETUP done")
     }
 

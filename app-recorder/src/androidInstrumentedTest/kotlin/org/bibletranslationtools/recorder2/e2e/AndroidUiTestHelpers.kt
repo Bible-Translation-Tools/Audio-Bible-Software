@@ -193,6 +193,9 @@ internal fun waitForRecorderTargetLoaded(timeoutMillis: Long = 60_000) {
 
 /**
  * Opens the wizard search field, types [query], then taps a row matching [resultSubstring].
+ *
+ * UiAutomator clicks on Compose IconButtons are flaky on API 34 ATD (node found but
+ * onClick never runs). Retry until "Close search" appears rather than failing on one miss.
  */
 internal fun searchAndClickResult(
     query: String,
@@ -200,16 +203,37 @@ internal fun searchAndClickResult(
     timeoutMillis: Long = 60_000,
 ) {
     E2eLog.step("SEARCH query=\"$query\" then click textContains=\"$resultSubstring\"")
-    clickContentDescription("Search")
-    val device = uiDevice()
-    assertTrue(
-        "Wizard search did not open (Close search not found)",
-        device.wait(Until.hasObject(By.desc("Close search")), 10_000)
-    )
+    openWizardSearch()
     SystemClock.sleep(300)
     InstrumentationRegistry.getInstrumentation().sendStringSync(query)
     waitForTextContains(resultSubstring, timeoutMillis)
     clickTextContains(resultSubstring)
+}
+
+internal fun openWizardSearch(timeoutMillis: Long = 30_000) {
+    val device = uiDevice()
+    val deadline = SystemClock.uptimeMillis() + timeoutMillis
+    var attempt = 0
+    while (SystemClock.uptimeMillis() < deadline) {
+        if (device.hasObject(By.desc("Close search"))) {
+            E2eLog.step("FOUND contentDescription=\"Close search\"")
+            return
+        }
+        if (device.hasObject(By.desc("Search"))) {
+            attempt++
+            E2eLog.step("CLICK contentDescription=\"Search\" (attempt $attempt)")
+            // Prefer bounds center: UiObject2.click() sometimes misses Compose hit targets on ATD.
+            val search = device.findObject(By.desc("Search"))
+            val bounds = search.visibleBounds
+            device.click(bounds.centerX(), bounds.centerY())
+            if (device.wait(Until.hasObject(By.desc("Close search")), 3_000)) {
+                E2eLog.step("FOUND contentDescription=\"Close search\"")
+                return
+            }
+        }
+        SystemClock.sleep(200)
+    }
+    assertTrue("Wizard search did not open (Close search not found)", false)
 }
 
 internal fun uiDevice(): UiDevice =

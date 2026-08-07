@@ -94,7 +94,8 @@ class CreateProjectWizardFlowTest {
     private fun selectEnglishSource() {
         E2eLog.step("SELECT English / en_ulb source")
         val device = uiDevice()
-        val deadline = SystemClock.uptimeMillis() + 15_000
+        // Source list is filled async after wizard open; CI ATD needs more than a short poll.
+        val deadline = SystemClock.uptimeMillis() + 60_000
         while (SystemClock.uptimeMillis() < deadline) {
             when {
                 device.hasObject(By.textContains("en_ulb")) -> {
