@@ -1,7 +1,6 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.readBytes
@@ -12,7 +11,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.orature.resources.Res
@@ -20,13 +18,15 @@ import org.bibletranslationtools.orature.resources.importFailed
 import org.bibletranslationtools.orature.resources.importFailedMessage
 import org.bibletranslationtools.orature.resources.importProjectSuccessfulMessage
 import org.bibletranslationtools.orature.resources.importSourceSuccessfulMessage
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
 import org.bibletranslationtools.otter.common.domain.project.importer.ImportCallbackParameter
 import org.bibletranslationtools.otter.common.domain.project.importer.ImportOptions
 import org.bibletranslationtools.otter.common.domain.project.importer.ProjectImporterCallback
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
+import org.bibletranslationtools.orature.services.OratureImportEvents
+import org.bibletranslationtools.orature.services.OratureImportNotification
 import org.jetbrains.compose.resources.getString
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -59,7 +59,7 @@ class OratureImportViewModel : ViewModel(), KoinComponent {
     private val logger = LoggerFactory.getLogger(OratureImportViewModel::class.java)
 
     private val importProjectUseCase: ImportProjectUseCase by inject()
-    private val directoryProvider: IDirectoryProvider by inject()
+    private val directoryProvider: ITempFileProvider by inject()
     private val importEvents: OratureImportEvents by inject()
 
     private val _importState = MutableStateFlow<OratureImportState>(OratureImportState.Idle)
@@ -88,7 +88,7 @@ class OratureImportViewModel : ViewModel(), KoinComponent {
         successBookId = null
         successBookMode = null
         _importState.value = OratureImportState.InProgress()
-        viewModelScope.launch {
+        launchLogged {
             var staged: File? = null
             try {
                 logger.info("Importing ${platformFile.name}")

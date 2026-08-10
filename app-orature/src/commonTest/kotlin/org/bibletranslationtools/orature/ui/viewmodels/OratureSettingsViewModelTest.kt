@@ -11,15 +11,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import org.bibletranslationtools.otter.common.device.newaudio.AudioDevice
-import org.bibletranslationtools.otter.common.device.newaudio.AudioDeviceSelector
-import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
+import org.bibletranslationtools.otter.common.device.AudioDevice
+import org.bibletranslationtools.otter.common.device.AudioDeviceSelector
+import org.bibletranslationtools.otter.common.device.AudioSpec
 import org.bibletranslationtools.otter.common.domain.languages.ImportLanguages
 import org.bibletranslationtools.shared.preferences.AppSettings
 import org.bibletranslationtools.shared.preferences.IAppPreferences
@@ -65,26 +66,16 @@ class OratureSettingsViewModelTest {
     }
 
     private fun createViewModel() =
-        OratureSettingsViewModel(appPreferences, deviceSelector, importLanguages)
+        OratureSettingsViewModel(appPreferences, deviceSelector, importLanguages, testDispatcher)
 
     @Test
-    fun `output and input device lists map from the device selector`() {
-        // loadDevices() runs on Dispatchers.IO then republishes on Dispatchers.Main. Use
-        // a real main dispatcher (not the virtual test scheduler) so both actually run,
-        // and await the mapped state with real wall-clock time.
-        Dispatchers.resetMain()
-        try {
-            val vm = createViewModel()
-            val state = runBlocking {
-                withTimeout(5_000) {
-                    vm.uiState.first { it.outputDevices.isNotEmpty() && it.inputDevices.isNotEmpty() }
-                }
-            }
-            assertEquals(listOf(outA, outB), state.outputDevices)
-            assertEquals(listOf(inA), state.inputDevices)
-        } finally {
-            Dispatchers.setMain(testDispatcher)
-        }
+    fun `output and input device lists map from the device selector`() = runVmTest {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertEquals(listOf(outA, outB), state.outputDevices)
+        assertEquals(listOf(inA), state.inputDevices)
     }
 
     @Test
@@ -204,7 +195,7 @@ class OratureSettingsViewModelTest {
     }
 
     @Test
-    fun `updateLanguageNames reaches Success when the fetch completes`() = runReal {
+    fun `updateLanguageNames reaches Success when the fetch completes`() = runVmTest {
         every { importLanguages.update(any()) } returns Completable.complete()
 
         val vm = createViewModel()
@@ -218,7 +209,7 @@ class OratureSettingsViewModelTest {
     }
 
     @Test
-    fun `updateLanguageNames reaches Error with the message when the fetch fails`() = runReal {
+    fun `updateLanguageNames reaches Error with the message when the fetch fails`() = runVmTest {
         every { importLanguages.update(any()) } returns
             Completable.error(RuntimeException("boom"))
 
@@ -233,7 +224,7 @@ class OratureSettingsViewModelTest {
     }
 
     @Test
-    fun `dismissLangNamesResult returns state to Idle`() = runReal {
+    fun `dismissLangNamesResult returns state to Idle`() = runVmTest {
         every { importLanguages.update(any()) } returns Completable.complete()
         val vm = createViewModel()
         vm.uiState.first { it.outputDevices.isNotEmpty() }
@@ -246,16 +237,12 @@ class OratureSettingsViewModelTest {
     }
 
     /**
-     * Runs a block against REAL dispatchers (IO + Main). updateLanguageNames() and
-     * loadDevices() hop through Dispatchers.IO then republish on Dispatchers.Main, so the
-     * virtual test scheduler can't drive them; this uses wall-clock time with a timeout.
+     * Runs the body on [testDispatcher], which is where the VM now sends its IO work.
+     *
+     * This replaces a `runReal` helper that dropped to real dispatchers and awaited state on a wall
+     * clock, because `loadDevices()` and `updateLanguageNames()` hopped to a hard-coded
+     * `Dispatchers.IO` that the virtual scheduler could not drive. The VM takes a dispatcher now,
+     * so it can.
      */
-    private fun runReal(block: suspend () -> Unit) {
-        Dispatchers.resetMain()
-        try {
-            runBlocking { withTimeout(5_000) { block() } }
-        } finally {
-            Dispatchers.setMain(testDispatcher)
-        }
-    }
+    private fun runVmTest(block: suspend TestScope.() -> Unit) = runTest(testDispatcher) { block() }
 }

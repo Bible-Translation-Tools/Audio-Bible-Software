@@ -15,23 +15,23 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
-import org.bibletranslationtools.orature.ui.workbook.OratureWorkbookDataStore
-import org.bibletranslationtools.shared.ui.playback.AudioTimeline
-import org.bibletranslationtools.shared.ui.playback.FilePcmSource
-import org.bibletranslationtools.shared.ui.playback.PcmSource
-import org.bibletranslationtools.shared.ui.playback.WaveformPeakCache
-import org.bibletranslationtools.shared.ui.playback.buildPeakCache
+import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
+import org.bibletranslationtools.shared.audio.engine.AudioTimeline
+import org.bibletranslationtools.shared.audio.engine.FilePcmSource
+import org.bibletranslationtools.shared.audio.engine.PcmSource
+import org.bibletranslationtools.shared.audio.engine.WaveformPeakCache
+import org.bibletranslationtools.shared.audio.engine.buildPeakCache
 import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
 import org.bibletranslationtools.otter.common.data.audio.ChunkMarker
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnection
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerEvent
-import org.bibletranslationtools.otter.common.device.newaudio.IAudioPlayer
+import org.bibletranslationtools.otter.common.device.AudioFileReader
+import org.bibletranslationtools.otter.common.device.AudioPlayerConnection
+import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
+import org.bibletranslationtools.otter.common.device.AudioPlayerEvent
+import org.bibletranslationtools.otter.common.device.IAudioPlayer
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
-import org.bibletranslationtools.shared.ui.playback.PlaybackDisplayClock
+import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayPosition
 import org.bibletranslationtools.otter.common.domain.content.CreateChunks
 import org.bibletranslationtools.otter.common.domain.content.ResetChunks
 import org.bibletranslationtools.otter.common.domain.model.DEFAULT_CHUNK_MARKER_TOTAL
@@ -40,7 +40,7 @@ import org.bibletranslationtools.otter.common.domain.model.MarkerPlacementModel
 import org.bibletranslationtools.otter.common.domain.model.MarkerPlacementType
 import org.bibletranslationtools.orature.ui.translation.ChunkingStep
 import org.bibletranslationtools.otter.common.domain.translation.ChunkAudioUseCase
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.io.File
@@ -75,7 +75,7 @@ class OratureChunkingViewModel(
 
     private val workbookDataStore: OratureWorkbookDataStore by inject()
     private val playerFactory: AudioPlayerConnectionFactory by inject()
-    private val directoryProvider: IDirectoryProvider by inject()
+    private val directoryProvider: ITempFileProvider by inject()
     private val createChunks: CreateChunks by inject()
     private val resetChunks: ResetChunks by inject()
 
@@ -89,7 +89,7 @@ class OratureChunkingViewModel(
     private var peakSource: PcmSource? = null
     private var peakBuildJob: Job? = null
     // Rate-locked display clock (see OratureChapterReviewViewModel) for smooth waveform scroll.
-    val clock = PlaybackDisplayClock(
+    val clock = PlaybackDisplayPosition(
         positionSource = { player?.getLocationInFrames()?.toLong() ?: 0L },
         positionReliable = { player?.isPositionReliable() ?: false }
     )
@@ -147,12 +147,12 @@ class OratureChunkingViewModel(
                     .await()
                 ChunkAudioUseCase(directoryProvider, accessor).createChunkedSourceAudio(src, cues)
                 dirty = false
-            }.onFailure { System.err.println("Chunk save failed: $it") }
+            }.onFailure { logFailure("saving chunks", it) }
         }
     }
 
     private fun load() {
-        viewModelScope.launch {
+        launchLogged {
             _uiState.value = OratureChunkingUiState(isLoading = true)
             try {
                 val prepared = withContext(Dispatchers.IO) {
@@ -198,7 +198,7 @@ class OratureChunkingViewModel(
                 peakCache = prepared.cache
                 peakSource = prepared.source
                 peakBuildJob?.cancel()
-                peakBuildJob = viewModelScope.launch(Dispatchers.IO) {
+                peakBuildJob = launchLogged(Dispatchers.IO) {
                     runCatching { buildPeakCache(prepared.source, prepared.cache) }
                 }
                 val p = AudioPlayerConnection(PLAYER_ID, playerFactory, viewModelScope, Dispatchers.Default)
@@ -216,6 +216,7 @@ class OratureChunkingViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("loading the chunking screen", e)
                 _uiState.value = OratureChunkingUiState(isLoading = false, error = e.message ?: "Unknown error")
             }
         }
@@ -288,10 +289,10 @@ class OratureChunkingViewModel(
     /** Drive the display clock from the player's transport events (main thread). */
     private fun observePlayerForClock(p: IAudioPlayer) {
         clockEventsJob?.cancel()
-        clockEventsJob = viewModelScope.launch {
+        clockEventsJob = launchLogged {
             p.events.collect { e ->
                 when (e) {
-                    AudioPlayerEvent.Play -> clock.advancing = true
+                    AudioPlayerEvent.Play -> clock.startAdvancing()
                     AudioPlayerEvent.Pause -> clock.advancing = false
                     AudioPlayerEvent.Stop -> { clock.advancing = false; clock.snapTo(clock.displayFrame) }
                     AudioPlayerEvent.Complete -> { clock.advancing = false; clock.snapTo(clock.durationFrames) }
@@ -334,7 +335,7 @@ class OratureChunkingViewModel(
      *  window/allocation here anymore. */
     private fun startWaveformTicker() {
         waveformTickerJob?.cancel()
-        waveformTickerJob = viewModelScope.launch(Dispatchers.Default) {
+        waveformTickerJob = launchLogged(Dispatchers.Default) {
             while (isActive) {
                 val p = player
                 if (p != null) {
@@ -347,7 +348,7 @@ class OratureChunkingViewModel(
                         if (_uiState.value.isPlaying != playing) {
                             _uiState.value = _uiState.value.copy(isPlaying = playing)
                         }
-                    }.onFailure { System.err.println("[chunking] player state poll failed: $it") }
+                    }.onFailure { logFailure("polling player state on the chunking screen", it) }
                 }
                 delay(33)
             }
@@ -371,7 +372,7 @@ class OratureChunkingViewModel(
                     .andThen(createChunks.createUserDefinedChunks(wb, chap, cues))
                     .await()
                 ChunkAudioUseCase(directoryProvider, accessor).createChunkedSourceAudio(src, cues)
-            }.onFailure { System.err.println("Chunk backstop save failed: $it") }
+            }.onFailure { logFailure("saving chunks on the backstop path", it) }
         }
     }
 

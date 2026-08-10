@@ -16,7 +16,7 @@
  * You should have received a copy of the GNU General Public License
  * along with Orature.  If not, see <https://www.gnu.org/licenses/>.
  */
-package org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories
+package org.bibletranslationtools.otter.common.persistence.repositories
 
 import io.reactivex.Completable
 import io.reactivex.Maybe
@@ -48,15 +48,15 @@ import org.bibletranslationtools.otter.common.data.primitives.MimeType
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.domain.mapper.mapToMetadata
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.IResourceContainerDirectories
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
-import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.WorkbookDescriptorEntity
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.CollectionEntity
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.ResourceMetadataEntity
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.CollectionMapper
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.LanguageMapper
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.ResourceMetadataMapper
+import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.entities.WorkbookDescriptorEntity
+import org.bibletranslationtools.otter.common.persistence.entities.CollectionEntity
+import org.bibletranslationtools.otter.common.persistence.entities.ResourceMetadataEntity
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.CollectionMapper
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.LanguageMapper
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.ResourceMetadataMapper
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import org.wycliffeassociates.resourcecontainer.entity.Checking
 import org.wycliffeassociates.resourcecontainer.entity.Manifest
@@ -66,11 +66,10 @@ import java.io.File
 import java.lang.Exception
 import java.time.LocalDate
 import java.time.LocalDateTime
-import javax.inject.Inject
 
-class CollectionRepository @Inject constructor(
+class CollectionRepository(
     private val database: IAppDatabase,
-    private val directoryProvider: IDirectoryProvider,
+    private val directoryProvider: IResourceContainerDirectories,
     private val collectionMapper: CollectionMapper,
     private val metadataMapper: ResourceMetadataMapper,
     private val languageMapper: LanguageMapper

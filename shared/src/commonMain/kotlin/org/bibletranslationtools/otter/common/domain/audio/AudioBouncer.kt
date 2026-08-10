@@ -4,12 +4,11 @@ import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.audio.wav.WavFile
 import org.bibletranslationtools.otter.common.audio.wav.WavOutputStream
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
-import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
+import org.bibletranslationtools.otter.common.device.AudioFileReader
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
-import javax.inject.Inject
 
-class AudioBouncer @Inject constructor() {
+class AudioBouncer() {
 
     private val logger = LoggerFactory.getLogger(AudioBouncer::class.java)
 

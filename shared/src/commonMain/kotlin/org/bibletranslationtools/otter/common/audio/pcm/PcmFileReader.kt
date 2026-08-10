@@ -18,8 +18,8 @@
  */
 package org.bibletranslationtools.otter.common.audio.pcm
 
-import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
-import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
+import org.bibletranslationtools.otter.common.device.AudioFileReader
+import org.bibletranslationtools.otter.common.device.AudioSpec
 import java.io.RandomAccessFile
 import java.lang.Exception
 import java.lang.IllegalStateException

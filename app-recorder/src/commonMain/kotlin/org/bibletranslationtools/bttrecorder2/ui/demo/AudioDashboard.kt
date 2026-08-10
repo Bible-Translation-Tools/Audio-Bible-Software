@@ -32,11 +32,11 @@ import io.github.vinceglb.filekit.path
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
-import org.bibletranslationtools.otter.common.device.newaudio.AudioDeviceSelector
-import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
-import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
+import org.bibletranslationtools.otter.common.device.AudioDeviceSelector
+import org.bibletranslationtools.otter.common.device.AudioFileReader
+import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
+import org.bibletranslationtools.otter.common.device.AudioConfig
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.io.saveAudioToFile
 import java.io.File
@@ -46,7 +46,8 @@ import kotlin.let
 fun AudioDashboard(
     playerFactory: AudioPlayerConnectionFactory,
     selector: AudioDeviceSelector,
-    directoryProvider: IDirectoryProvider
+    directoryProvider: ITempFileProvider,
+    audioConfig: AudioConfig
 ) {
     val scope = rememberCoroutineScope()
 
@@ -79,21 +80,6 @@ fun AudioDashboard(
         }
     }
 
-//    // FileKit Picker Launcher
-//    val picker = rememberFilePickerLauncher(
-//        type = FileKitType.File(extensions = listOf("wav", "mp3")),
-//        title = "Select Audio File"
-//    ) { file ->
-//        file?.let {
-//            // Note: On JVM, 'it.path' gives us the absolute path for our reader
-//            val reader = OratureAudioFile(File(it.path)).reader()
-//            // We'll need a way to track which slot was being updated
-//            // For simplicity in this snippet, let's assume we update the first empty slot
-//            val index = fileSlots.indexOf(null).takeIf { i -> i != -1 } ?: 0
-//            fileSlots[index] = reader as AudioFileReader?
-//        }
-//    }
-
     Column(Modifier.padding(16.dp).fillMaxSize()) {
         Text("Otter Audio Control", style = MaterialTheme.typography.h4)
 
@@ -104,13 +90,13 @@ fun AudioDashboard(
             DeviceDropdown(
                 "Speaker",
                 activeOutput,
-                selector.getOutputDevices(AudioSpec()) // Simplified spec for discovery
+                selector.getOutputDevices(audioConfig.spec)
             ) { selector.selectOutputDevice(it) }
 
             DeviceDropdown(
                 "Mic",
                 activeInput,
-                selector.getInputDevices(AudioSpec())
+                selector.getInputDevices(audioConfig.spec)
             ) { selector.selectInputDevice(it) }
         }
 
@@ -146,7 +132,7 @@ fun AudioDashboard(
                         }
 
                         IconButton(onClick = {
-                            playerFactory.getPlayerWorker().pause()
+                            scope.launch { playerFactory.getPlayerWorker().pause() }
                         }) {
                             Icon(Icons.Default.Close, contentDescription = "Pause")
                         }

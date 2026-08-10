@@ -25,10 +25,9 @@ import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
 import org.bibletranslationtools.otter.common.audio.pcm.PcmFile
 import org.bibletranslationtools.otter.common.audio.wav.WavFile
 import java.io.File
-import javax.inject.Inject
 import de.sciss.jump3r.Main as jump3r
 
-class AudioConverter @Inject constructor() {
+class AudioConverter() {
     fun wavToMp3(
         wavFile: File,
         mp3File: File,

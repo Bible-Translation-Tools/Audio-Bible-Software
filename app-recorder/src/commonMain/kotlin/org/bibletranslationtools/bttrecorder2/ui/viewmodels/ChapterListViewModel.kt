@@ -23,10 +23,10 @@ import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.DateHolder
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnection
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerEvent
-import org.bibletranslationtools.otter.common.device.newaudio.IAudioPlayer
+import org.bibletranslationtools.otter.common.device.AudioPlayerConnection
+import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
+import org.bibletranslationtools.otter.common.device.AudioPlayerEvent
+import org.bibletranslationtools.otter.common.device.IAudioPlayer
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.content.ChapterTranslationBuilder
 import org.jetbrains.compose.resources.getString
@@ -106,7 +106,7 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
             scope = viewModelScope,
             controlDispatcher = Dispatchers.Default
         ).also { player ->
-            viewModelScope.launch {
+            launchLogged {
                 player.events.collect { event ->
                     if (event is AudioPlayerEvent.Error) {
                         _uiState.update { it.copy(error = event.message) }
@@ -127,13 +127,13 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
             refreshProgress()
             return
         }
-        loadingJob = viewModelScope.launch(Dispatchers.IO) {
+        loadingJob = launchLogged(Dispatchers.IO) {
             _uiState.update { it.copy(isLoading = true, chapters = emptyList()) }
             try {
                 val nav = appPreferences.navState.first()
                 if (!nav.hasActiveWorkbook) {
                     _uiState.update { it.copy(isLoading = false, error = getString(Res.string.err_no_active_project)) }
-                    return@launch
+                    return@launchLogged
                 }
 
                 val sourceC = collectionRepository.getProjectSuspend(nav.workbookSourceId)
@@ -141,13 +141,13 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
 
                 if (sourceC == null || targetC == null) {
                     _uiState.update { it.copy(isLoading = false, error = getString(Res.string.err_project_not_found)) }
-                    return@launch
+                    return@launchLogged
                 }
 
                 val workbook = workbookRepository.get(sourceC, targetC)
                 if (workbook == null) {
                     _uiState.update { it.copy(isLoading = false, error = getString(Res.string.err_workbook_not_found)) }
-                    return@launch
+                    return@launchLogged
                 }
 
                 _uiState.update { it.copy(workbook = workbook) }
@@ -200,6 +200,7 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("loading the chapter list", e)
                 _uiState.update { it.copy(isLoading = false, error = e.message ?: getString(Res.string.err_unknown)) }
             }
         }
@@ -215,7 +216,7 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
     private fun refreshProgress() {
         val rows = _uiState.value.chapters
         if (rows.isEmpty()) return
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(Dispatchers.IO) {
             rows.forEach { row ->
                 val verses = row.chapter.chunksSuspend().filter { it.contentType == ContentType.TEXT }
                 val total = verses.size
@@ -271,7 +272,7 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
         if (!row.canCompile || state.compilingChapterSort != null) return
 
         _uiState.update { it.copy(compilingChapterSort = chapter.sort, error = null) }
-        viewModelScope.launch {
+        launchLogged {
             try {
                 withContext(Dispatchers.IO) {
                     // getOrCompile inserts the compiled take, and inserting AUTO-selects
@@ -286,6 +287,7 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("compiling the chapter", e)
                 _uiState.update { it.copy(error = getString(Res.string.err_compile_failed, e.message ?: getString(Res.string.err_unknown))) }
             } finally {
                 _uiState.update { it.copy(compilingChapterSort = null) }
@@ -305,7 +307,7 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
     fun prepareChapterPlayback(chapter: Chapter) {
         val take = chapter.audio.getSelectedTake() ?: return
         if (_uiState.value.loadedChapterSort == chapter.sort) return
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(Dispatchers.IO) {
             try {
                 // If a different chapter is currently in the player, stop it first
                 // so its duration/elapsed don't bleed into the new row.
@@ -327,6 +329,7 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
                     )
                 }
             } catch (e: Exception) {
+                logFailure("preparing chapter playback", e)
                 _uiState.update { it.copy(error = getString(Res.string.err_load_chapter_audio, e.message ?: "")) }
             }
         }
@@ -334,7 +337,7 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
 
     fun toggleChapterPlayback(chapter: Chapter) {
         val take = chapter.audio.getSelectedTake() ?: return
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(Dispatchers.IO) {
             try {
                 val state = _uiState.value
                 // Ensure the player is holding *this* chapter's take. If it is
@@ -363,6 +366,7 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
                     startProgressTicker()
                 }
             } catch (e: Exception) {
+                logFailure("toggling chapter playback", e)
                 _uiState.update { it.copy(error = getString(Res.string.err_play_chapter_audio, e.message ?: "")) }
             }
         }
@@ -408,7 +412,7 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
      */
     private fun startProgressTicker() {
         if (tickerJob?.isActive == true) return
-        tickerJob = viewModelScope.launch {
+        tickerJob = launchLogged {
             while (isActive) {
                 delay(100)
 

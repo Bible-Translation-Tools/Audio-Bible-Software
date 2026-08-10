@@ -18,103 +18,27 @@
  */
 package org.bibletranslationtools.otter.common.api.persistence
 
-import org.bibletranslationtools.otter.common.data.primitives.Collection
-import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
-import org.bibletranslationtools.otter.common.api.io.zip.IFileReader
-import org.bibletranslationtools.otter.common.api.io.zip.IFileWriter
-import org.wycliffeassociates.resourcecontainer.ResourceContainer
-import java.io.File
-
-interface IDirectoryProvider {
-
-    /** Directory to store the user's application projects/documents */
-    fun getUserDataDirectory(appendedPath: String = ""): File
-
-    /** Directory to store the application's private data */
-    fun getAppDataDirectory(appendedPath: String = ""): File
-
-    /** Directory for project */
-    fun getProjectDirectory(
-        source: ResourceMetadata,
-        target: ResourceMetadata?,
-        book: Collection
-    ): File
-
-    /** Directory for project */
-    fun getProjectDirectory(
-        source: ResourceMetadata,
-        target: ResourceMetadata?,
-        bookSlug: String
-    ): File
-
-    /** Directory for project audio */
-    fun getProjectAudioDirectory(
-        source: ResourceMetadata,
-        target: ResourceMetadata?,
-        book: Collection
-    ): File
-
-    /** Directory for project audio */
-    fun getProjectAudioDirectory(
-        source: ResourceMetadata,
-        target: ResourceMetadata?,
-        bookSlug: String
-    ): File
-
-    /** Directory for source */
-    fun getProjectSourceDirectory(
-        source: ResourceMetadata,
-        target: ResourceMetadata?,
-        book: Collection
-    ): File
-
-    /** Directory for source */
-    fun getProjectSourceDirectory(
-        source: ResourceMetadata,
-        target: ResourceMetadata?,
-        bookSlug: String
-    ): File
-
-    fun getProjectSourceAudioDirectory(
-        source: ResourceMetadata,
-        target: ResourceMetadata?,
-        bookSlug: String
-    ): File
-
-    /** Internal-use directory of the given source RC */
-    fun getSourceContainerDirectory(container: ResourceContainer): File
-
-    /** Internal-use directory of the given source RC */
-    fun getSourceContainerDirectory(metadata: ResourceMetadata): File
-
-    /** Internal-use directory of the given derived RC */
-    fun getDerivedContainerDirectory(metadata: ResourceMetadata, source: ResourceMetadata): File
-
-    /** Create a new IFileWriter */
-    fun newFileWriter(file: File): IFileWriter
-
-    /** Create a new IFileReader */
-    fun newFileReader(file: File): IFileReader
-
-    /** Create temp file */
-    fun createTempFile(prefix: String, suffix: String? = null): File
-
-    /** Clean temporary directory */
-    fun cleanTempDirectory()
-
-    /**
-     * Opens the given filePath in the current OS file manager/explorer.
-     */
-    fun openInFileManager(path: String)
-
-    val databaseDirectory: File
-    val resourceContainerDirectory: File
-    val internalSourceRCDirectory: File
-    val userProfileImageDirectory: File
-    val userProfileAudioDirectory: File
-    val audioPluginDirectory: File
-    val versificationDirectory: File
-    val logsDirectory: File
-    val cacheDirectory: File
-    val tempDirectory: File
-}
+/**
+ * Everything the platform knows about where files go, in one object.
+ *
+ * This used to declare all 27 members itself, which meant a use case that only needed
+ * `createTempFile` still compiled against the database directory, the audio plugin directory
+ * and the resource container layout. It is now purely the composite of the five ports below,
+ * and exists for the two kinds of code that legitimately want the whole thing:
+ *
+ *  - the platform implementations (`DesktopDirectoryProvider`, `AndroidDirectoryProvider`),
+ *    which supply all of it from one notion of "where this installation lives", and
+ *  - the DI modules and pass-through factories, which hand the object on without calling it.
+ *
+ * **Do not inject this into a use case, repository or ViewModel.** Depend on the narrowest of
+ * [IAppDirectories], [ITempFileProvider], [IProjectDirectories],
+ * [IResourceContainerDirectories] or [IFileIOFactory] that the code actually calls; Koin binds
+ * each of them to this same instance. `DirectoryProviderPortsTest` holds the line on the
+ * member count so the composite cannot quietly grow members of its own again.
+ */
+interface IDirectoryProvider :
+    IAppDirectories,
+    ITempFileProvider,
+    IProjectDirectories,
+    IResourceContainerDirectories,
+    IFileIOFactory

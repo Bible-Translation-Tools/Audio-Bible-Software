@@ -23,7 +23,7 @@ import org.jooq.DSLContext
 import org.jooq.exception.DataAccessException
 import org.jooq.impl.DSL.max
 import org.bibletranslationtools.otter.common.persistence.database.InsertionException
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.ResourceMetadataEntity
+import org.bibletranslationtools.otter.common.persistence.entities.ResourceMetadataEntity
 
 class ResourceMetadataDao(
     private val instanceDsl: DSLContext

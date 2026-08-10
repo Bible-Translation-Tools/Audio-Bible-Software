@@ -39,7 +39,7 @@ class MainMenuViewModel : ViewModel(), KoinComponent {
     val uiState: StateFlow<MainMenuUiState> = _uiState.asStateFlow()
 
     init {
-        viewModelScope.launch {
+        launchLogged {
             appPreferences.navState.collect { state ->
                 if (state.hasActiveWorkbook) {
                     loadDisplayInfo(state)
@@ -64,6 +64,8 @@ class MainMenuViewModel : ViewModel(), KoinComponent {
             )
         } catch (e: CancellationException) {
             throw e
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            logFailure("loading the main menu display info", e)
+        }
     }
 }

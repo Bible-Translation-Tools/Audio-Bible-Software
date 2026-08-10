@@ -15,16 +15,16 @@ import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import kotlinx.coroutines.flow.firstOrNull
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnection
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
-import org.bibletranslationtools.otter.common.device.newaudio.IAudioPlayer
+import org.bibletranslationtools.otter.common.device.AudioPlayerConnection
+import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
+import org.bibletranslationtools.otter.common.device.IAudioPlayer
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
 import org.bibletranslationtools.otter.common.data.workbook.DateHolder
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerEvent
+import org.bibletranslationtools.otter.common.device.AudioPlayerEvent
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -106,7 +106,7 @@ class UnitListViewModel(
         //
         // Instead, isPlaying is owned by user intent (set in playTake) and the
         // ticker; events are only used to surface errors.
-        viewModelScope.launch {
+        launchLogged {
             audioPlayer?.events?.collect { event ->
                 if (event is AudioPlayerEvent.Error) {
                     _uiState.update { it.copy(error = event.message) }
@@ -123,7 +123,7 @@ class UnitListViewModel(
      */
     private fun startProgressTicker() {
         if (playbackJob?.isActive == true) return
-        playbackJob = viewModelScope.launch {
+        playbackJob = launchLogged {
             while (isActive) {
                 delay(100)
                 val durationMs = audioPlayer?.getDurationMs() ?: 0
@@ -176,13 +176,13 @@ class UnitListViewModel(
         // and a leaked duplicate collection, and keeps the list populated so the
         // LazyColumn restores its scroll position (e.g. after recording a verse).
         if (loadingJob?.isActive == true) return
-        loadingJob = viewModelScope.launch(ioDispatcher) {
+        loadingJob = launchLogged(ioDispatcher) {
             _uiState.update { it.copy(isLoading = true) }
             try {
                 val nav = appPreferences.navState.first()
                 if (!nav.hasActiveChapter) {
                     _uiState.update { it.copy(isLoading = false, error = getString(Res.string.err_no_active_chapter)) }
-                    return@launch
+                    return@launchLogged
                 }
 
                 val sourceC = collectionRepository.getProjectSuspend(nav.workbookSourceId)
@@ -190,7 +190,7 @@ class UnitListViewModel(
 
                 if (sourceC == null || targetC == null) {
                     _uiState.update { it.copy(isLoading = false, error = getString(Res.string.err_project_not_found)) }
-                    return@launch
+                    return@launchLogged
                 }
 
                 val workbook = workbookRepository.get(sourceC, targetC)
@@ -198,7 +198,7 @@ class UnitListViewModel(
 
                 if (chapter == null) {
                     _uiState.update { it.copy(isLoading = false, error = getString(Res.string.err_chapter_not_found), workbook = workbook) }
-                    return@launch
+                    return@launchLogged
                 }
 
                 _uiState.update { it.copy(workbook = workbook, chapter = chapter) }
@@ -266,6 +266,7 @@ class UnitListViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("loading the unit list", e)
                 _uiState.update { it.copy(isLoading = false, error = e.message ?: getString(Res.string.err_unknown)) }
             }
         }
@@ -292,7 +293,7 @@ class UnitListViewModel(
     }
 
     fun playTake(take: Take) {
-        viewModelScope.launch(ioDispatcher) {
+        launchLogged(ioDispatcher) {
             try {
                 val state = _uiState.value
                 val isSameTakeLoaded = state.currentPlayingTake?.file?.absolutePath ==
@@ -335,6 +336,7 @@ class UnitListViewModel(
                     startProgressTicker()
                 }
             } catch (e: Exception) {
+                logFailure("playing the take", e)
                 _uiState.update { it.copy(error = getString(Res.string.err_play_audio, e.message ?: "")) }
             }
         }

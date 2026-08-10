@@ -31,9 +31,8 @@ import retrofit2.Retrofit
 import retrofit2.adapter.rxjava2.RxJava2CallAdapterFactory
 import retrofit2.converter.jackson.JacksonConverterFactory
 import java.io.File
-import javax.inject.Inject
 
-class LanguageDataSource @Inject constructor() : ILanguageDataSource {
+class LanguageDataSource() : ILanguageDataSource {
     override fun fetchLanguageNames(url: String): Observable<List<Language>> {
         return if (File(url).exists()) {
             fetchLocalFile(url)

@@ -18,8 +18,8 @@
  */
 package org.bibletranslationtools.otter.common.audio.wav
 
-import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
-import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
+import org.bibletranslationtools.otter.common.device.AudioFileReader
+import org.bibletranslationtools.otter.common.device.AudioSpec
 import org.slf4j.LoggerFactory
 import java.io.RandomAccessFile
 import java.lang.Exception

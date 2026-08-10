@@ -16,20 +16,19 @@
  * You should have received a copy of the GNU General Public License
  * along with Orature.  If not, see <https://www.gnu.org/licenses/>.
  */
-package org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories
+package org.bibletranslationtools.otter.common.persistence.repositories
 
 import io.reactivex.Completable
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.rx2.await
-import javax.inject.Inject
 import org.jooq.DSLContext
 import org.jooq.Record3
 import org.jooq.Select
 import org.jooq.impl.DSL
 import org.slf4j.LoggerFactory
-import org.wycliffeassociates.otter.common.collections.OtterTree
-import org.wycliffeassociates.otter.common.collections.OtterTreeNode
+import org.bibletranslationtools.otter.common.collections.OtterTree
+import org.bibletranslationtools.otter.common.collections.OtterTreeNode
 import org.bibletranslationtools.otter.common.data.primitives.*
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.domain.mapper.mapToMetadata
@@ -38,14 +37,14 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportExc
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.castOrFindImportException
 import org.bibletranslationtools.otter.common.api.persistence.repositories.*
-import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.CollectionMapper
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.ContentMapper
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.LanguageMapper
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.ResourceMetadataMapper
+import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.CollectionMapper
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.ContentMapper
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.LanguageMapper
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.ResourceMetadataMapper
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 
-class ResourceContainerRepository @Inject constructor(
+class ResourceContainerRepository(
     private val database: IAppDatabase,
     private val collectionRepository: ICollectionRepository,
     private val contentRepository: IContentRepository,

@@ -20,16 +20,18 @@ package org.bibletranslationtools.otter.common.domain.resourcecontainer.artwork
 
 import org.bibletranslationtools.otter.common.data.primitives.ImageRatio
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.IAppDirectories
+import org.bibletranslationtools.otter.common.api.persistence.IResourceContainerDirectories
 
 class ArtworkAccessor(
-    val directoryProvider: IDirectoryProvider,
+    val appDirectories: IAppDirectories,
+    val rcDirectories: IResourceContainerDirectories,
     val metadata: ResourceMetadata,
     val projectSlug: String
 ) {
     private val artworkDataSources = listOf<ArtworkDataSource>(
-        ResourceContainerArtworkDataSource(directoryProvider),
-        BibleArtworkDataSource(directoryProvider)
+        ResourceContainerArtworkDataSource(appDirectories),
+        BibleArtworkDataSource(appDirectories, rcDirectories)
     )
 
     /**

@@ -26,7 +26,7 @@ import java.lang.Exception
 import java.nio.ByteBuffer
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.audio.*
-import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
+import org.bibletranslationtools.otter.common.device.AudioFileReader
 
 
 enum class WavType {
@@ -130,7 +130,13 @@ class WavFile private constructor() : AudioFormatStrategy {
     ) : this() {
         this.file = file
         this.metadata = wavMetadata
-        header = WavHeader()
+        // These three used to be accepted and then dropped on the floor — the header was built at its
+        // defaults — so EVERY file this app wrote was 44100/16/mono no matter what the caller asked for.
+        // Nothing caught it while the only format in use was the default. It matters now: an insert
+        // records at the take's format and writes its clip through here, so inserting into a 48k take
+        // produced a clip whose header claimed 44.1k while its samples were 48k. Nothing downstream can
+        // detect that — it simply plays at the wrong speed.
+        header = WavHeader(channels = channels, sampleRate = sampleRate, bitsPerSample = bitsPerSample)
         initializeWavFile()
     }
 

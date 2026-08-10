@@ -20,7 +20,7 @@ package org.bibletranslationtools.otter.common.domain.resourcecontainer.artwork
 
 import org.bibletranslationtools.otter.common.data.primitives.ImageRatio
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.IAppDirectories
 import org.bibletranslationtools.otter.common.utils.filePathWithSuffix
 import org.wycliffeassociates.resourcecontainer.entity.Media
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
@@ -28,7 +28,7 @@ import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 class ResourceContainerArtworkDataSource(
-    private val directoryProvider: IDirectoryProvider
+    private val directoryProvider: IAppDirectories
 ) : ArtworkDataSource {
 
     private val cacheDir = File(

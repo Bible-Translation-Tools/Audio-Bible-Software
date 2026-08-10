@@ -20,7 +20,7 @@ package org.bibletranslationtools.otter.common.persistence.database.daos
 
 import org.bibletranslationtools.otter_db.jooq.Tables.*
 import org.jooq.Record
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.*
+import org.bibletranslationtools.otter.common.persistence.entities.*
 
 typealias ContentEntityTable = org.bibletranslationtools.otter_db.jooq.tables.ContentEntity
 

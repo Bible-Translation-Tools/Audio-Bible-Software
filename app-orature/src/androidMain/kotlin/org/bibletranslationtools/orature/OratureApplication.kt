@@ -6,7 +6,7 @@ import org.bibletranslationtools.orature.crash.OratureCrashReporter
 import org.bibletranslationtools.orature.crash.SentryCrashReporter
 import org.bibletranslationtools.orature.di.oratureDirectoryProviderModule
 import org.bibletranslationtools.orature.di.oratureViewModelModule
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.IAppDirectories
 import org.bibletranslationtools.shared.di.koin.sharedAndroidModules
 import org.bibletranslationtools.shared.di.koin.sharedCommonModules
 import org.koin.android.ext.koin.androidContext
@@ -29,7 +29,7 @@ class OratureApplication : Application() {
 
         // Global crash handler (JVM: OtterExceptionHandler). No separate window on Android, so the
         // root composable shows the crash screen; close = quit the process.
-        val directoryProvider = koin.get<IDirectoryProvider>()
+        val directoryProvider = koin.get<IAppDirectories>()
         OratureCrashReporter.install(
             uploaders = listOfNotNull(
                 GithubCrashReportUploader.fromClasspath(),

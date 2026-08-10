@@ -25,18 +25,17 @@ import kotlinx.coroutines.rx2.await
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.workbook.Translation
-import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase.Companion.glSources
-import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase.Companion.embeddedSourceNames
+import org.bibletranslationtools.otter.common.domain.project.GlSourceCatalog
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ILanguageRepository
-import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.LanguageMapper
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.TranslationMapper
-import javax.inject.Inject
+import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.LanguageMapper
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.TranslationMapper
 
-class LanguageRepository @Inject constructor(
+class LanguageRepository(
     database: IAppDatabase,
     private val mapper: LanguageMapper,
-    private val translationMapper: TranslationMapper
+    private val translationMapper: TranslationMapper,
+    private val glSourceCatalog: GlSourceCatalog
 ) : ILanguageRepository {
     private val logger = LoggerFactory.getLogger(LanguageRepository::class.java)
 
@@ -276,12 +275,13 @@ class LanguageRepository @Inject constructor(
      * The bundled GL zips are Compose Multiplatform resources (composeResources/files/content/),
      * not JVM classpath entries, and Compose exposes no cheap "does this resource exist" probe
      * (Res.readBytes reads the whole file). So we consult the build-generated manifest of what
-     * actually got bundled ([embeddedSourceNames]) — the source catalog is partly stale, so this
-     * offers only gateway languages whose zip is really present and can be sideloaded.
+     * actually got bundled ([GlSourceCatalog.embeddedSourceNames]) — the source catalog is
+     * partly stale, so this offers only gateway languages whose zip is really present and can
+     * be sideloaded.
      */
     private fun listEmbeddedSourceLanguages(): List<String> {
-        return glSources
-            .filter { it.name in embeddedSourceNames }
+        return glSourceCatalog.sources
+            .filter { it.name in glSourceCatalog.embeddedSourceNames }
             .map { it.languageCode }
     }
 }

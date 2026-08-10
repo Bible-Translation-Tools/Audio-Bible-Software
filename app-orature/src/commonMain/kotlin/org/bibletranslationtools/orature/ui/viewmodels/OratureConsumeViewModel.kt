@@ -12,21 +12,21 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.bibletranslationtools.orature.ui.workbook.OratureWorkbookDataStore
-import org.bibletranslationtools.shared.ui.playback.AudioTimeline
-import org.bibletranslationtools.shared.ui.playback.FilePcmSource
-import org.bibletranslationtools.shared.ui.playback.PcmSource
-import org.bibletranslationtools.shared.ui.playback.WaveformPeakCache
-import org.bibletranslationtools.shared.ui.playback.buildPeakCache
+import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
+import org.bibletranslationtools.shared.audio.engine.AudioTimeline
+import org.bibletranslationtools.shared.audio.engine.FilePcmSource
+import org.bibletranslationtools.shared.audio.engine.PcmSource
+import org.bibletranslationtools.shared.audio.engine.WaveformPeakCache
+import org.bibletranslationtools.shared.audio.engine.buildPeakCache
 import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
 import org.bibletranslationtools.otter.common.data.audio.VerseMarker
-import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnection
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerEvent
-import org.bibletranslationtools.otter.common.device.newaudio.IAudioPlayer
+import org.bibletranslationtools.otter.common.device.AudioFileReader
+import org.bibletranslationtools.otter.common.device.AudioPlayerConnection
+import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
+import org.bibletranslationtools.otter.common.device.AudioPlayerEvent
+import org.bibletranslationtools.otter.common.device.IAudioPlayer
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
-import org.bibletranslationtools.shared.ui.playback.PlaybackDisplayClock
+import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayPosition
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -44,7 +44,7 @@ data class OratureConsumeUiState(
  * Drives the Consume step: plays the chapter's SOURCE audio (read-only), rendering its waveform +
  * verse markers so the translator can listen and internalize the passage before drafting. Mirrors
  * the JVM `ConsumeViewModel`, but the waveform routes through our live renderer ([AudioReaderDrawable])
- * instead of the retired image-precompute `MarkerWaveform`, and playback uses the shared newaudio
+ * instead of the retired image-precompute `MarkerWaveform`, and playback uses the shared audio
  * player. Read-only: markers can't be moved or deleted here.
  */
 class OratureConsumeViewModel(
@@ -66,7 +66,7 @@ class OratureConsumeViewModel(
     private var peakBuildJob: Job? = null
     // Rate-locked display clock (see OratureChapterReviewViewModel) — the screen advances it each
     // display frame so the waveform scrolls smoothly instead of in the ticker's 30 fps steps.
-    val clock = PlaybackDisplayClock(
+    val clock = PlaybackDisplayPosition(
         positionSource = { player?.getLocationInFrames()?.toLong() ?: 0L },
         positionReliable = { player?.isPositionReliable() ?: false }
     )
@@ -93,7 +93,7 @@ class OratureConsumeViewModel(
     }
 
     private fun load() {
-        viewModelScope.launch {
+        launchLogged {
             _uiState.value = OratureConsumeUiState(isLoading = true)
             try {
                 val prepared = withContext(Dispatchers.IO) {
@@ -113,7 +113,7 @@ class OratureConsumeViewModel(
                     Prepared(playerReader, sr, source, tl, cache, verseMarkers)
                 } ?: run {
                     _uiState.value = OratureConsumeUiState(isLoading = false, sourceMissing = true)
-                    return@launch
+                    return@launchLogged
                 }
 
                 sampleRate = prepared.sampleRate
@@ -122,7 +122,7 @@ class OratureConsumeViewModel(
                 peakCache = prepared.cache
                 peakSource = prepared.source
                 peakBuildJob?.cancel()
-                peakBuildJob = viewModelScope.launch(Dispatchers.IO) {
+                peakBuildJob = launchLogged(Dispatchers.IO) {
                     runCatching { buildPeakCache(prepared.source, prepared.cache) }
                 }
                 markerInfos = prepared.markers.mapIndexed { i, m ->
@@ -143,6 +143,7 @@ class OratureConsumeViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("loading the consume screen", e)
                 _uiState.value = OratureConsumeUiState(isLoading = false, error = e.message ?: "Unknown error")
             }
         }
@@ -179,10 +180,10 @@ class OratureConsumeViewModel(
     /** Drive the display clock from the player's transport events (main thread). */
     private fun observePlayerForClock(p: IAudioPlayer) {
         clockEventsJob?.cancel()
-        clockEventsJob = viewModelScope.launch {
+        clockEventsJob = launchLogged {
             p.events.collect { e ->
                 when (e) {
-                    AudioPlayerEvent.Play -> clock.advancing = true
+                    AudioPlayerEvent.Play -> clock.startAdvancing()
                     AudioPlayerEvent.Pause -> clock.advancing = false
                     AudioPlayerEvent.Stop -> { clock.advancing = false; clock.snapTo(clock.displayFrame) }
                     AudioPlayerEvent.Complete -> { clock.advancing = false; clock.snapTo(clock.durationFrames) }
@@ -209,7 +210,7 @@ class OratureConsumeViewModel(
      *  or allocates a waveform window each tick. */
     private fun startWaveformTicker() {
         waveformTickerJob?.cancel()
-        waveformTickerJob = viewModelScope.launch(Dispatchers.Default) {
+        waveformTickerJob = launchLogged(Dispatchers.Default) {
             while (isActive) {
                 val p = player
                 if (p != null) {
@@ -219,7 +220,7 @@ class OratureConsumeViewModel(
                         if (_uiState.value.isPlaying != playing) {
                             _uiState.value = _uiState.value.copy(isPlaying = playing)
                         }
-                    }.onFailure { System.err.println("[consume] player state poll failed: $it") }
+                    }.onFailure { logFailure("polling player state on the consume screen", it) }
                 }
                 delay(33)
             }

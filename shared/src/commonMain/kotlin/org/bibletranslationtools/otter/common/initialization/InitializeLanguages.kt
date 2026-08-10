@@ -18,10 +18,9 @@
  */
 package org.bibletranslationtools.otter.common.initialization
 
-import org.bibletranslationtools.shared.resources.Res
 import io.reactivex.Completable
 import io.reactivex.ObservableEmitter
-import kotlinx.coroutines.runBlocking
+import org.bibletranslationtools.otter.common.api.io.IBundledContentSource
 import org.bibletranslationtools.otter.common.api.persistence.ILanguageDataSource
 import org.bibletranslationtools.otter.common.api.persistence.config.Installable
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IInstalledEntityRepository
@@ -29,15 +28,14 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.ILang
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.ProgressStatus
 import org.bibletranslationtools.otter.common.domain.languages.ImportLanguages
-import org.jetbrains.compose.resources.ExperimentalResourceApi
-import javax.inject.Inject
 
 const val LANGNAMES_PATH = "files/content/langnames.json"
 
-class InitializeLanguages @Inject constructor(
+class InitializeLanguages(
     val installedEntityRepo: IInstalledEntityRepository,
     val languageRepo: ILanguageRepository,
-    val languageDataSource: ILanguageDataSource
+    val languageDataSource: ILanguageDataSource,
+    private val bundledContent: IBundledContentSource
 ) : Installable {
 
     override val name = "LANGUAGES"
@@ -90,21 +88,15 @@ class InitializeLanguages @Inject constructor(
             .blockingAwait()
     }
 
-    @OptIn(ExperimentalResourceApi::class)
     private fun importLanguages(): Completable {
-        val stream = runBlocking {
-            Res.readBytes(LANGNAMES_PATH).inputStream()
-        }
+        val stream = bundledContent.readBlocking(LANGNAMES_PATH).inputStream()
         return ImportLanguages(languageRepo, languageDataSource)
             .import(stream)
 
     }
 
-    @OptIn(ExperimentalResourceApi::class)
     private fun updateRegions(): Completable {
-        val stream = runBlocking {
-            Res.readBytes(LANGNAMES_PATH).inputStream()
-        }
+        val stream = bundledContent.readBlocking(LANGNAMES_PATH).inputStream()
         return ImportLanguages(languageRepo, languageDataSource)
             .updateRegions(stream)
     }

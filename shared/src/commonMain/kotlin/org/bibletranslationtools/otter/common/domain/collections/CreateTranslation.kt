@@ -23,9 +23,8 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.ILang
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.workbook.Translation
 import java.time.LocalDateTime
-import javax.inject.Inject
 
-class CreateTranslation @Inject constructor(
+class CreateTranslation(
     private val languageRepo: ILanguageRepository
 ) {
     /**

@@ -12,10 +12,10 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
@@ -31,6 +31,7 @@ import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.domain.collections.CreateProject
 import org.bibletranslationtools.otter.common.domain.collections.DeleteProject
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
+import org.bibletranslationtools.orature.di.oratureViewModelModule
 import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
 import org.koin.dsl.module
@@ -63,6 +64,11 @@ class OratureProjectWizardViewModelTest : KoinTest {
         Dispatchers.setMain(testDispatcher)
         startKoin {
             modules(
+                // Compose the REAL app-scoped module so the graph under test is the production
+                // one. Hand-listing app singles here is what let OratureProjectDeletion go
+                // unbound: Koin's `by inject()` is lazy, so the omission surfaced only as
+                // create-path tests timing out. Stub ONLY the backend ports below.
+                oratureViewModelModule,
                 module {
                     single { createProject }
                     single { deleteProject }
@@ -141,30 +147,35 @@ class OratureProjectWizardViewModelTest : KoinTest {
         progress = Single.just(0.0)
     )
 
-    private fun newVm(onComplete: () -> Unit = {}) = OratureProjectWizardViewModel(onComplete)
+    private fun newVm(onComplete: () -> Unit = {}) =
+        OratureProjectWizardViewModel(onComplete, testDispatcher)
 
+    /**
+     * Suspends until the VM publishes a state matching [predicate].
+     *
+     * The timeout is in VIRTUAL time: everything here runs on [testDispatcher], so it advances only
+     * when no task can run, and expiring means the predicate is genuinely unreachable rather than
+     * that the machine was busy.
+     */
     private suspend fun OratureProjectWizardViewModel.awaitState(
         predicate: (WizardUiState) -> Boolean
     ): WizardUiState = withTimeout(5000) { uiState.first(predicate) }
 
     /**
-     * Runs a test that crosses Dispatchers.IO. Uses a REAL main dispatcher (not the virtual
-     * test scheduler) so the VM's withContext(IO) work and its Main republishes actually run,
-     * awaiting state transitions with real wall-clock time — mirroring the settings VM tests.
+     * Runs the body on [testDispatcher] — the same dispatcher the VM sends its DB/IO work to, now
+     * that it takes one as a constructor parameter.
+     *
+     * This replaces a `runReal` helper that called `Dispatchers.resetMain()` and awaited state
+     * transitions on a real wall clock, which is why "existing workbook emits a bookmark for the
+     * matched group" failed about one full-suite run in three with a 5000ms timeout: nothing was
+     * wrong, the machine was just loaded. Virtual time cannot lose that race.
      */
-    private fun runReal(block: suspend () -> Unit) {
-        Dispatchers.resetMain()
-        try {
-            runBlocking { withTimeout(10_000) { block() } }
-        } finally {
-            Dispatchers.setMain(testDispatcher)
-        }
-    }
+    private fun runVmTest(block: suspend TestScope.() -> Unit) = runTest(testDispatcher) { block() }
 
     // ---- step state machine -------------------------------------------------------------
 
     @Test
-    fun `selecting a type advances to source language step`() = runReal {
+    fun `selecting a type advances to source language step`() = runVmTest {
         val english = lang("eng", "English")
         every { collectionRepo.getRootSources() } returns Single.just(listOf(collection(english, "ulb")))
 
@@ -176,7 +187,7 @@ class OratureProjectWizardViewModelTest : KoinTest {
     }
 
     @Test
-    fun `back navigation clears the right selection at each step`() = runReal {
+    fun `back navigation clears the right selection at each step`() = runVmTest {
         val english = lang("eng", "English")
         val spanish = lang("spa", "Spanish")
         // Two versions -> forces the multi-step (no quick-create) path.
@@ -253,7 +264,7 @@ class OratureProjectWizardViewModelTest : KoinTest {
     // ---- quick-create paths -------------------------------------------------------------
 
     @Test
-    fun `single version narration quick-creates with source equal target`() = runReal {
+    fun `single version narration quick-creates with source equal target`() = runVmTest {
         val english = lang("eng", "English")
         every { collectionRepo.getRootSources() } returns Single.just(listOf(collection(english, "ulb")))
         // Exactly one version for the selected language.
@@ -282,7 +293,7 @@ class OratureProjectWizardViewModelTest : KoinTest {
     }
 
     @Test
-    fun `single version with source already chosen quick-creates`() = runReal {
+    fun `single version with source already chosen quick-creates`() = runVmTest {
         val english = lang("eng", "English")
         val spanish = lang("spa", "Spanish")
         every { collectionRepo.getRootSources() } returns Single.just(listOf(collection(english, "ulb")))
@@ -309,7 +320,7 @@ class OratureProjectWizardViewModelTest : KoinTest {
     }
 
     @Test
-    fun `multiple versions require version selection to create`() = runReal {
+    fun `multiple versions require version selection to create`() = runVmTest {
         val english = lang("eng", "English")
         val spanish = lang("spa", "Spanish")
         every { collectionRepo.getRootSources() } returns Single.just(listOf(collection(english, "ulb")))
@@ -340,7 +351,7 @@ class OratureProjectWizardViewModelTest : KoinTest {
     // ---- createProject wiring & existing-workbook bookmark ------------------------------
 
     @Test
-    fun `existing workbook is not recreated but still completes`() = runReal {
+    fun `existing workbook is not recreated but still completes`() = runVmTest {
         val english = lang("eng", "English")
         every { collectionRepo.getRootSources() } returns Single.just(listOf(collection(english, "ulb")))
         every { resourceMetadataRepo.getAllSources() } returns Single.just(listOf(metadata("ulb", "ULB", english)))
@@ -363,7 +374,7 @@ class OratureProjectWizardViewModelTest : KoinTest {
     // ---- projectCreated bookmark (home reselects the created/matched group) -------------
 
     @Test
-    fun `create emits a bookmark carrying the created group key`() = runReal {
+    fun `create emits a bookmark carrying the created group key`() = runVmTest {
         val english = lang("eng", "English")
         val spanish = lang("spa", "Spanish")
         every { collectionRepo.getRootSources() } returns Single.just(listOf(collection(english, "ulb")))
@@ -395,7 +406,7 @@ class OratureProjectWizardViewModelTest : KoinTest {
     }
 
     @Test
-    fun `existing workbook emits a bookmark for the matched group`() = runReal {
+    fun `existing workbook emits a bookmark for the matched group`() = runVmTest {
         val english = lang("eng", "English")
         every { collectionRepo.getRootSources() } returns Single.just(listOf(collection(english, "ulb")))
         every { resourceMetadataRepo.getAllSources() } returns Single.just(listOf(metadata("ulb", "ULB", english)))
@@ -421,7 +432,7 @@ class OratureProjectWizardViewModelTest : KoinTest {
     }
 
     @Test
-    fun `createProject sideloads source when metadata is missing`() = runReal {
+    fun `createProject sideloads source when metadata is missing`() = runVmTest {
         val english = lang("eng", "English")
         val spanish = lang("spa", "Spanish")
         // No root sources -> source metadata missing -> sideload before createAllBooks.

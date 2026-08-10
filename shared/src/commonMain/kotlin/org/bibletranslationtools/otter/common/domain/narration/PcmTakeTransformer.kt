@@ -21,12 +21,11 @@ package org.bibletranslationtools.otter.common.domain.narration
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.domain.audio.AudioConverter
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import java.lang.IllegalArgumentException
-import javax.inject.Inject
 
-class PcmTakeTransformer @Inject constructor(
-    private val directoryProvider: IDirectoryProvider,
+class PcmTakeTransformer(
+    private val directoryProvider: ITempFileProvider,
     private val audioConverter: AudioConverter
 ) {
 

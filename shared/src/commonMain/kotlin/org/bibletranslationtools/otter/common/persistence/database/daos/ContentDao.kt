@@ -24,8 +24,8 @@ import org.jooq.*
 import org.jooq.impl.DSL.max
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.persistence.database.InsertionException
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.CollectionEntity
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.ContentEntity
+import org.bibletranslationtools.otter.common.persistence.entities.CollectionEntity
+import org.bibletranslationtools.otter.common.persistence.entities.ContentEntity
 
 
 class ContentDao(

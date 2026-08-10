@@ -1,5 +1,6 @@
 package org.bibletranslationtools.bttrecorder2.di.koin
 
+import org.bibletranslationtools.bttrecorder2.services.UnitTargetLoader
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterListViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportProjectViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.PlaybackViewModel
@@ -14,11 +15,19 @@ import org.koin.dsl.module
 interface AppContext
 
 /**
- * The recorder app's own ViewModels + app-scoped singletons. Each app owns its VM
- * module (NOT shared); composed in startKoin alongside :shared's sharedCommonModules
- * and the platform (sharedDesktopModules / sharedAndroidModules) + directory provider.
+ * The recorder app's own ViewModels + app services. Each app owns its VM module (NOT
+ * shared); composed in startKoin alongside :shared's sharedCommonModules and the platform
+ * (sharedDesktopModules / sharedAndroidModules) + directory provider.
+ *
+ * The app's own non-UI code lives in `bttrecorder2.services` — [UnitTargetLoader] here, plus
+ * `InsertRecorder`, which PlaybackViewModel constructs directly rather than resolving. Those
+ * are NOT `otter.common.domain` use cases (those come from :shared and are bound there); they
+ * are this app's own layer between its screens and that domain.
  */
 val recorderViewModelModule = module {
+    // Shared by the Recorder and Playback screens: navigation args -> the flat
+    // chapter-then-chunks list both page through.
+    factoryOf(::UnitTargetLoader)
     single { ProjectManagementViewModel() }
     single { ProjectCreationViewModel() }
     single { ChapterListViewModel() }

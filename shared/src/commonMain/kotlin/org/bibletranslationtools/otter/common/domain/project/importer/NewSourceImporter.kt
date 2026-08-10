@@ -21,7 +21,7 @@ package org.bibletranslationtools.otter.common.domain.project.importer
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import org.slf4j.LoggerFactory
-import org.wycliffeassociates.otter.common.collections.OtterTree
+import org.bibletranslationtools.otter.common.collections.OtterTree
 import org.bibletranslationtools.otter.common.data.primitives.CollectionOrContent
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportException
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
@@ -34,17 +34,50 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.toCollect
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceContainerRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import java.io.File
 import java.io.IOException
-import javax.inject.Inject
 
-class NewSourceImporter @Inject constructor(
+/**
+ * Which tree a source import writes, and whether the parsed text still has to be applied on top.
+ *
+ * @param treeToImport what [IResourceContainerRepository.importResourceContainer] receives
+ * @param applyParsedTextAfter whether the imported structure still needs the source text filled in
+ */
+internal data class ImportPlan(
+    val treeToImport: OtterTree<CollectionOrContent>,
+    val applyParsedTextAfter: Boolean
+)
+
+/**
+ * Decides what a source resource container import should write.
+ *
+ * With a versification available, the structure comes from the *versification* — every chapter and
+ * verse it declares, seeded onto [containerCollection] — and the source text is applied afterwards.
+ * That is what makes a verse the source text happens to omit still recordable. Without one, the only
+ * structure available is what the text itself contains.
+ *
+ * Split out from [NewSourceImporter.importContainer] because reaching this decision through the
+ * importer requires a real resource container on disk, and the decision is the part worth pinning.
+ */
+internal fun planImport(
+    containerCollection: CollectionOrContent,
+    parsedTree: OtterTree<CollectionOrContent>,
+    versificationTrees: List<OtterTree<CollectionOrContent>>?
+): ImportPlan {
+    if (versificationTrees.isNullOrEmpty()) {
+        return ImportPlan(treeToImport = parsedTree, applyParsedTextAfter = false)
+    }
+    val preallocation = OtterTree<CollectionOrContent>(containerCollection)
+    versificationTrees.forEach { preallocation.addChild(it) }
+    return ImportPlan(treeToImport = preallocation, applyParsedTextAfter = true)
+}
+
+class NewSourceImporter(
     private val directoryProvider: IDirectoryProvider,
     private val resourceContainerRepository: IResourceContainerRepository,
     resourceMetadataRepository: IResourceMetadataRepository,
-    private val versificationRepository: IVersificationRepository,
+    private val versificationTreeBuilder: VersificationTreeBuilder,
     private val zipEntryTreeBuilder: IZipEntryTreeBuilder
 ) : RCImporter(directoryProvider, resourceMetadataRepository) {
 
@@ -94,35 +127,62 @@ class NewSourceImporter @Inject constructor(
                 return@create
             }
 
-            val preallocationTree = OtterTree<CollectionOrContent>(container.toCollection())
-//            val versificationTree = VersificationTreeBuilder(versificationRepository)
-//                .build(container)
-//                ?.apply {
-//                    for (node in this) {
-//                        preallocationTree.addChild(node)
-//                    }
-//                }
-            val versificationTree = null
             callback?.onNotifyProgress(
                 localizeKey = "importingSource", percent = 50.0
             )
 
-            if (versificationTree != null) {
-                importTree(container, preallocationTree, fileToImport)
-                    .flatMap {
+            // A versification problem must not fail the import. This whole path was disabled during
+            // the port because the versification could not be read at all — the bundled file never
+            // reached disk (see InitializeVersification, fixed in "Read bundled content through a
+            // port instead of the Compose Res object"), and the tree builder reaches that file
+            // through a blockingGet() that throws rather than returning empty when it is missing or
+            // malformed. Degrading to a text-only import is what the app did for that whole period,
+            // so it is a known-good fallback rather than a guess.
+            val versificationTrees = runCatching { versificationTreeBuilder.build(container) }
+                .getOrElse {
+                    logger.error(
+                        "Could not build the versification tree for ${file.name}; " +
+                            "importing from the source text only",
+                        it
+                    )
+                    null
+                }
+
+            // NOT yet verified end-to-end. VersificationTreeBuilderTest pins the structure and
+            // PlanImportTest pins this branch, but nothing exercises the join — a real source RC
+            // through importResourceContainer + updateContent against a real database. The original
+            // Orature covered that with an integration tier (DatabaseEnvironment/TestRcImport) this
+            // repo does not have yet.
+            //
+            // What "working" looks like, from TestRcImport.ulb() in the JavaFX app: importing one
+            // en_ulb.zip yields 31104 TEXT, 1189 META and 1255 TITLE contents across 1256
+            // collections. Those are VERSIFICATION totals, not text totals — 1189 is the chapter
+            // count of the Protestant canon, 1255 = 1189 chapter titles + 66 book titles, and
+            // 1256 = 1189 chapters + 66 books + 1 root. So one source import writes on the order of
+            // 34k content rows where a text-only import writes a fraction of that; queries tuned
+            // against the smaller shape are the thing to watch.
+            //
+            // Verses with no text are EXPECTED, not a failed backfill: the original's own
+            // assertChapters filtered on `text != null` to "remove content allocated from
+            // versification without a matching verse in ULB".
+            val plan = planImport(container.toCollection(), tree, versificationTrees)
+
+            importTree(container, plan.treeToImport, fileToImport)
+                .flatMap { result ->
+                    // Only backfill text into a structure that actually imported. The JavaFX code
+                    // chained this unconditionally, but importTree reports failure as a VALUE, so a
+                    // failed import fell straight through into updateContent — where a second
+                    // failure would replace the first and hide what actually went wrong.
+                    if (plan.applyParsedTextAfter && result == ImportResult.SUCCESS) {
                         updateContentFromTextContent(container, tree)
+                    } else {
+                        Single.just(result)
                     }
-                    .subscribe { result ->
-                        notifyCallback(result, callback, file)
-                        emitter.onSuccess(result)
-                    }
-            } else { // No versification found, just import the tree from the parsed text
-                importTree(container, tree, fileToImport)
-                    .subscribe { result ->
-                        notifyCallback(result, callback, file)
-                        emitter.onSuccess(result)
-                    }
-            }
+                }
+                .subscribe { result ->
+                    notifyCallback(result, callback, file)
+                    emitter.onSuccess(result)
+                }
         }.onErrorReturn { e ->
             logger.error("Error in importContainer, file: $file", e)
             e.castOrFindImportException()?.result ?: throw e

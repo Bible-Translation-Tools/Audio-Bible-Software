@@ -26,7 +26,26 @@ kotlin {
         }
     }
 
-    jvm("desktop")
+    jvm("desktop") {
+        // A separate compilation for the integration tier, so `desktopTest` stays a fast unit-test
+        // task. Those tests import a real resource container into a real SQLite database: 13 tests
+        // take ~64s against ~28s for the ~180 unit tests, and they would otherwise dominate the loop
+        // that gets run on every change. The JavaFX app split them out for the same reason.
+        //
+        // associateWith(main) gives this compilation main's classpath AND its internals, which it
+        // needs — IntegrationEnvironment composes the production Koin graph and reaches
+        // DesktopDirectoryProvider directly.
+        compilations {
+            val main by getting
+            val integrationTest by creating {
+                associateWith(main)
+                defaultSourceSet.dependencies {
+                    implementation(libs.kotlin.test)
+                    implementation(libs.kotlin.test.junit)
+                }
+            }
+        }
+    }
 
     // Backend library versions (moved verbatim from the recorder app during the split).
     val rxkotlinVer = "2.4.0"
@@ -37,7 +56,6 @@ kotlin {
     val retrofitJacksonVer = "2.9.0"
     val retrofitRxJava2Ver = "2.9.0"
     val jacksonVer = "2.15.1"
-    val daggerVer = "2.51.1"
     val kotlinresourcecontainerVer = "0.12.0"
     val kotlinscriptureburritoVer = "1.0.1"
     val slf4jApiVer = "2.0.13"
@@ -52,86 +70,102 @@ kotlin {
     val kotlinVttVer = "1.0.0"
     val kotlinScriptureAlignmentVer = "1.0.0"
     val koinVer = "3.5.6"
-    val kotlinInjectVer = "0.6.3"
 
     sourceSets {
         val commonMain by getting {
             dependencies {
-                // :shared holds ENGINES + infrastructure, NOT UI pages/themes (each app
-                // owns its full UI + ViewModels + branding). So only the minimal Compose
-                // surface: `runtime` for the engine's snapshot-state holders
-                // (mutable*StateOf in the playback clock / peak cache) and the
-                // PlatformBackHandler primitive, plus `resources` because the backend
-                // reads bundled files/ via Res.readBytes (Initialize{Ulb,Languages}).
-                // `api` so the apps see them transitively.
+                // ── api: reachable from the apps ────────────────────────────────────────
+                // Everything below appears in :shared's PUBLIC API — a type an app names, or a
+                // package an app imports directly. Adding to this list widens what a Compose
+                // screen is allowed to reach for, so check first whether the app can declare the
+                // dependency itself (both already declare their own Compose, lifecycle and
+                // navigation).
+                //
+                // compose: `runtime` only, and only because the engine's snapshot-state holders
+                // are public API (WaveformPeakCache.builtBuckets is a MutableIntState). `resources`
+                // because the backend reads bundled files/ via Res.readBytes
+                // (Initialize{Ulb,Languages}) and both apps call org.jetbrains.compose.resources
+                // directly. NOT `foundation`: :shared imports nothing from it.
                 api(compose.runtime)
-                api(compose.foundation)
                 api(compose.components.resources)
 
                 api(libs.kotlinx.coroutines.core)
                 api(libs.kotlinx.coroutines.rx2)
 
+                // The entity layer's public API is RxRelay-shaped (AssociatedAudio.takes/selected),
+                // so both apps see Rx whether they want to or not. Demoting these means fixing
+                // that first.
                 api("io.reactivex.rxjava2:rxkotlin:$rxkotlinVer")
                 api("com.jakewharton.rxrelay2:rxrelay:$rxrelayVer")
-                api("org.jooq:jooq:$jooqVer")
+
                 api("org.slf4j:slf4j-api:$slf4jApiVer")
-                api("de.sciss:jump3r:$jump3rVer")
-                api("org.wycliffeassociates:kotlin-tstudio2rc:$tstudio2rcVer")
-
-                api("org.bibletranslationtools:otter-db:1.0")
-                api("org.wycliffeassociates:kotlin-resource-container:$kotlinresourcecontainerVer")
-                api("org.wycliffeassociates:usfmtools:$usfmToolsVer")
-
-                api("com.google.dagger:dagger:$daggerVer")
-
-                api("org.jetbrains.kotlin:kotlin-reflect:$kotlinVer")
-                api("com.fasterxml.jackson.module:jackson-module-kotlin:$jacksonVer")
-                api("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:$jacksonVer")
-                api("com.fasterxml.jackson.dataformat:jackson-dataformat-csv:$jacksonVer")
-
-                api("com.squareup.retrofit2:retrofit:$retrofitVer")
-                api("com.squareup.retrofit2:converter-jackson:$retrofitJacksonVer")
-                api("com.squareup.retrofit2:adapter-rxjava2:$retrofitRxJava2Ver")
-
-                api("org.apache.tika:tika-core:$tikaVer")
-
-                api("org.bibletranslationtools:kotlin-scripture-burrito:$kotlinscriptureburritoVer")
-                api("org.bibletranslationtools:kotlin-vtt:$kotlinVttVer")
-                api("org.bibletranslationtools:kotlin-scripture-alignment:$kotlinScriptureAlignmentVer")
-
-                api("javazoom.jl:SeekableJlayer:$jlayerVer")
-                api("org.digitalmediaserver:cuelib-core:$cuelibVer")
-                api("com.mpatric:mp3agic:$mp3TagVer")
-                api("be.tarsos:tarsosdsp:$tarsosDspVer")
-
-                api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
-
-                api("io.insert-koin:koin-core:$koinVer")
-                api("me.tatarka.inject:kotlin-inject-runtime:$kotlinInjectVer")
                 api(libs.koin.core)
 
-                api(libs.datastore.preferences)
+                // Orature's plugin registry reads its YAML definitions with these directly.
+                api("com.fasterxml.jackson.module:jackson-module-kotlin:$jacksonVer")
+                api("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:$jacksonVer")
+
+                api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
 
                 api("io.github.vinceglb:filekit-core:0.12.0")
                 api("io.github.vinceglb:filekit-dialogs:0.12.0")
                 api("io.github.vinceglb:filekit-dialogs-compose:0.12.0")
                 api("io.github.vinceglb:filekit-coil:0.12.0")
+
+                // ── implementation: :shared's own business ──────────────────────────────
+                // None of these appears in an app source file. Keeping them off the apps'
+                // compile classpath is what stops a screen importing org.jooq: until now
+                // `api(projects.shared)` made the database library, the HTTP stack and five audio
+                // codecs visible from every @Composable in both apps.
+                implementation("org.jooq:jooq:$jooqVer")
+                implementation("org.bibletranslationtools:otter-db:1.0")
+
+                implementation("org.wycliffeassociates:kotlin-resource-container:$kotlinresourcecontainerVer")
+                implementation("org.wycliffeassociates:usfmtools:$usfmToolsVer")
+                implementation("org.wycliffeassociates:kotlin-tstudio2rc:$tstudio2rcVer")
+
+                implementation("org.bibletranslationtools:kotlin-scripture-burrito:$kotlinscriptureburritoVer")
+                implementation("org.bibletranslationtools:kotlin-vtt:$kotlinVttVer")
+                implementation("org.bibletranslationtools:kotlin-scripture-alignment:$kotlinScriptureAlignmentVer")
+
+                implementation("com.squareup.retrofit2:retrofit:$retrofitVer")
+                implementation("com.squareup.retrofit2:converter-jackson:$retrofitJacksonVer")
+                implementation("com.squareup.retrofit2:adapter-rxjava2:$retrofitRxJava2Ver")
+
+                implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-csv:$jacksonVer")
+                implementation("org.apache.tika:tika-core:$tikaVer")
+                implementation("org.jetbrains.kotlin:kotlin-reflect:$kotlinVer")
+
+                // Audio codecs, used only behind the audio/ and domain/audio/ facades.
+                implementation("de.sciss:jump3r:$jump3rVer")
+                implementation("javazoom.jl:SeekableJlayer:$jlayerVer")
+                implementation("org.digitalmediaserver:cuelib-core:$cuelibVer")
+                implementation("com.mpatric:mp3agic:$mp3TagVer")
+                implementation("be.tarsos:tarsosdsp:$tarsosDspVer")
+
+                // Behind IAppPreferences / DataStoreAppPreferences.
+                implementation(libs.datastore.preferences)
             }
         }
 
         val desktopMain by getting {
             dependencies {
-                api("org.xerial:sqlite-jdbc:3.49.0.0")
+                // Both are runtime-only: a JDBC driver and a logging binding, neither named in any
+                // app source. They stay on the runtime classpath as `implementation` deps.
+                implementation("org.xerial:sqlite-jdbc:3.49.0.0")
                 // SLF4J console binding so backend logger.error() is visible from a
                 // terminal (otherwise export/import/audio failures are silent).
-                api("org.slf4j:slf4j-simple:2.0.13")
+                implementation("org.slf4j:slf4j-simple:2.0.13")
             }
         }
 
         val androidMain by getting {
             dependencies {
-                api(libs.sqldroid)
-                api("com.readystatesoftware.sqliteasset:sqliteassethelper:2.0.1")
+                // Runtime-only sqlite plumbing for the android AppDatabase actual.
+                implementation(libs.sqldroid)
+                implementation("com.readystatesoftware.sqliteasset:sqliteassethelper:2.0.1")
+                // api: the android apps call org.koin.android.ext.koin.androidContext in their
+                // Application classes.
                 api(libs.koin.android)
                 // BackHandler for the android PlatformBackHandler actual.
                 implementation(libs.androidx.activity.compose)
@@ -150,9 +184,10 @@ kotlin {
             }
         }
 
-        // langnames data (ivy artifact) consumed by the backend language init.
+        // langnames data (ivy artifact) consumed by the backend language init. A JSON data file,
+        // not code — nothing imports it, so it has no business on the apps' compile classpath.
         dependencies {
-            api("bibleineverylanguage:langnames@json")
+            implementation("bibleineverylanguage:langnames@json")
         }
     }
 }
@@ -183,18 +218,39 @@ android {
 // JVM classpath). The content lives in :shared, so BOTH apps get the sources.
 //
 // Downloads are SYNCHRONOUS + per-file guarded on purpose: the wa-catalog manifest has gone
-// partly stale (~24 URLs 404), and undercouch's DownloadAction runs on the Worker API async,
-// so its failures escape a surrounding try/catch and fail the whole build. A plain blocking
-// HttpURLConnection per file lets us skip a dead URL (404/error) and keep the rest.
+// stale, and undercouch's DownloadAction runs on the Worker API async, so its failures escape a
+// surrounding try/catch and fail the whole build. A plain blocking HttpURLConnection per file
+// lets us skip a dead URL (404/error) and keep the rest.
+//
+// Measured 2026-08-03: 66 of the 96 catalogue entries are unavailable, and 30 are bundled. This
+// comment previously said "~24 URLs 404", which was optimistic by a factor of nearly three — so
+// two thirds of the gateway-language catalogue is dead and the project wizard offers the 30 that
+// are not (see generateEmbeddedSourcesManifest). Worth fixing at the catalogue, not here.
 val glContentDir = file("src/commonMain/composeResources/files/content")
 val embeddedManifest = file("src/commonMain/composeResources/files/embedded_gl_sources.json")
+val glSourcesManifest = file("src/commonMain/composeResources/files/gl_sources.json")
+
+// Which sources were unavailable last time, as {name: the url that failed}. Deliberately NOT under
+// composeResources/ — anything there is packed into both apps, and this is build state.
+//
+// Without it, a source with no zip is re-probed on every task run: the ~24 stale catalogue entries
+// each cost up to a 30 s connect timeout, so a run that downloads nothing still burns minutes. The
+// existence check below only caches SUCCESSES; this caches the failures.
+//
+// Keyed by url, not just name, so fixing an entry in gl_sources.json re-probes it automatically.
+// Force a full re-check with -PrecheckGlSources (or delete the file).
+val glUnavailableCache = file(".gl-sources-unavailable.json")
+val recheckGlSources = providers.gradleProperty("recheckGlSources").isPresent
 
 tasks.register("downloadGLSources") {
     // The zips land directly in src/ (survives `clean`), so guarding on existence means a
     // clean build re-checks but does not re-download the ~100MB set every time.
+    inputs.file(glSourcesManifest).withPropertyName("catalogue")
+    inputs.property("recheck", recheckGlSources)
     outputs.dir(glContentDir)
+    outputs.file(glUnavailableCache)
     doLast {
-        val jsonFile = file("src/commonMain/composeResources/files/gl_sources.json")
+        val jsonFile = glSourcesManifest
         if (!jsonFile.exists()) {
             println("GL sources file not found: ${jsonFile.absolutePath}")
             return@doLast
@@ -202,15 +258,35 @@ tasks.register("downloadGLSources") {
         glContentDir.mkdirs()
         @Suppress("UNCHECKED_CAST")
         val jsonData = groovy.json.JsonSlurper().parse(jsonFile) as List<Map<String, String>>
+
+        @Suppress("UNCHECKED_CAST")
+        val unavailable: MutableMap<String, String> = when {
+            recheckGlSources || !glUnavailableCache.isFile -> mutableMapOf()
+            else -> runCatching {
+                (groovy.json.JsonSlurper().parse(glUnavailableCache) as Map<String, String>).toMutableMap()
+            }.getOrElse {
+                println("GL sources: unreadable cache at ${glUnavailableCache.name}, re-checking everything")
+                mutableMapOf()
+            }
+        }
+        val knownBad = unavailable.size
+
         var downloaded = 0
         var skipped = 0
         var failed = 0
+        var cached = 0
         jsonData.forEach { dependency ->
             val artifactName = dependency["name"] ?: return@forEach
             val artifactUrl = dependency["url"] ?: return@forEach
             val outputPath = glContentDir.resolve("$artifactName.zip")
             if (outputPath.exists()) {
                 skipped++
+                // Present now (downloaded earlier, or placed by hand) — it is not unavailable.
+                unavailable.remove(artifactName)
+                return@forEach
+            }
+            if (unavailable[artifactName] == artifactUrl) {
+                cached++
                 return@forEach
             }
             try {
@@ -223,6 +299,7 @@ tasks.register("downloadGLSources") {
                 val code = conn.responseCode
                 if (code != HttpURLConnection.HTTP_OK) {
                     failed++
+                    unavailable[artifactName] = artifactUrl
                     println("Skipping $artifactName (HTTP $code): $artifactUrl")
                     conn.disconnect()
                     return@forEach
@@ -233,13 +310,30 @@ tasks.register("downloadGLSources") {
                 conn.disconnect()
                 tmp.renameTo(outputPath)
                 downloaded++
+                unavailable.remove(artifactName)
                 println("Downloaded $artifactName")
             } catch (e: Exception) {
                 failed++
+                unavailable[artifactName] = artifactUrl
                 println("Failed to download $artifactName from $artifactUrl: ${e.message}")
             }
         }
-        println("GL sources: $downloaded downloaded, $skipped already present, $failed unavailable.")
+
+        // Drop names no longer in the catalogue, so the cache cannot grow without bound.
+        val catalogued = jsonData.mapNotNull { it["name"] }.toSet()
+        unavailable.keys.retainAll(catalogued)
+        glUnavailableCache.writeText(groovy.json.JsonBuilder(unavailable.toSortedMap()).toPrettyString())
+
+        println(
+            "GL sources: $downloaded downloaded, $skipped already present, " +
+                "$cached skipped as known-unavailable, $failed newly unavailable."
+        )
+        if (cached > 0) {
+            println("GL sources: re-check the $cached skipped with -PrecheckGlSources.")
+        }
+        if (knownBad > 0 && recheckGlSources) {
+            println("GL sources: re-checked $knownBad previously unavailable source(s).")
+        }
     }
 }
 
@@ -274,4 +368,21 @@ tasks.matching {
         n.startsWith("generateResourceAccessors")
 }.configureEach {
     dependsOn("generateEmbeddedSourcesManifest")
+}
+
+// ── integration test task ────────────────────────────────────────────────────────────
+// Runs the `desktopIntegrationTest` compilation (see the jvm("desktop") block). Deliberately NOT
+// wired into `check`: it imports a full resource container into a real database, which is worth
+// paying for in CI and on demand, not on every `desktopTest`.
+tasks.register<Test>("integrationTest") {
+    description = "Runs the integration tier: real Koin graph, real SQLite, real resource containers."
+    group = "verification"
+
+    val compilation = kotlin.targets.getByName("desktop").compilations.getByName("integrationTest")
+    testClassesDirs = compilation.output.classesDirs
+    classpath = files(compilation.output.allOutputs, compilation.runtimeDependencyFiles)
+
+    // kotlin-test-junit, matching the unit tests.
+    useJUnit()
+    testLogging { events("passed", "failed", "skipped") }
 }

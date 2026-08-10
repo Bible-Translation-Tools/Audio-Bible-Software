@@ -20,7 +20,7 @@ enum class ThemeMode { SYSTEM, LIGHT, DARK }
  * User-configurable application settings (the Settings screen). Distinct from
  * [ActiveNavState], which tracks transient navigation position.
  *
- * Audio devices are stored by their stable [org.bibletranslationtools.otter.common.device.newaudio.AudioDevice.id]
+ * Audio devices are stored by their stable [org.bibletranslationtools.otter.common.device.AudioDevice.id]
  * so a remembered choice can be re-selected on next launch. A null id means
  * "no explicit choice — use the system default".
  *

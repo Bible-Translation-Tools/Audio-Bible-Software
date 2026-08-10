@@ -38,10 +38,13 @@ class Workbook(
         )
     }
     val artworkAccessor: ArtworkAccessor by lazy {
+        // Named, because the one provider satisfies two of the accessor's ports: artwork is
+        // looked up in the images RCs and cached under the app cache directory.
         ArtworkAccessor(
-            directoryProvider,
-            source.resourceMetadata,
-            source.slug
+            appDirectories = directoryProvider,
+            rcDirectories = directoryProvider,
+            metadata = source.resourceMetadata,
+            projectSlug = source.slug
         )
     }
 
