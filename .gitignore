@@ -300,6 +300,13 @@ cmake-build-*/
 *.tar.gz
 *.rar
 
+# ...except the Gradle wrapper jar, which is SOURCE, not a package. `gradlew` does
+# nothing without it: a fresh clone fails with
+#   Could not find or load main class org.gradle.wrapper.GradleWrapperMain
+# which is what every CI runner and every other dev machine gets. The blanket
+# *.jar above had been swallowing it since the repo was created.
+!gradle/wrapper/gradle-wrapper.jar
+
 # Integration-test resource containers. These are FIXTURES, not build output: the expected row
 # counts in the integration tests are pinned to these exact revisions, so they have to be committed
 # for the assertions to mean anything. (The GL source zips under composeResources/files/content/ stay

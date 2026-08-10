@@ -18,6 +18,14 @@ concurrency:
 permissions:
   contents: read
 
+# `./gradlew` is a shell script, and the default shell on windows runners is
+# PowerShell, which cannot execute it. Git Bash ships on all three runner images,
+# so one shell everywhere keeps the gradle invocations identical across the matrix.
+# The WiX step opts back into pwsh explicitly.
+defaults:
+  run:
+    shell: bash
+
 env:
   JAVA_VERSION: '21'
   JAVA_DISTRIBUTION: temurin
