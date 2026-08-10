@@ -23,7 +23,7 @@ import org.bibletranslationtools.otter.common.domain.narration.Narration
 import org.bibletranslationtools.otter.common.domain.narration.teleprompter.NarrationStateTransition
 import org.bibletranslationtools.shared.audio.engine.AudioTimeline
 import org.bibletranslationtools.shared.audio.engine.PcmSource
-import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayClock
+import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayPosition
 import org.bibletranslationtools.shared.audio.engine.WaveformPeakCache
 import org.bibletranslationtools.shared.audio.engine.buildPeakCache
 import kotlin.math.max
@@ -308,7 +308,7 @@ class OratureNarrationViewModel(
     // snaps the clock to 0 (audio rewinds), instead of the stale end position. Cleared by any
     // explicit position change (seek / play-verse) so mid-chapter resume isn't hijacked.
     private var playbackReachedEnd = false
-    val clock = PlaybackDisplayClock(
+    val clock = PlaybackDisplayPosition(
         positionSource = { narration?.getLocationInFrames()?.toLong() ?: 0L },
         positionReliable = { narration?.getPlayer()?.isPositionReliable() ?: false }
     )
@@ -1257,15 +1257,20 @@ class OratureNarrationViewModel(
         _audioScene.value?.clear()
         playingVerseIndex = -1
         val player = n.getPlayer()
+        // Read the position BEFORE unlocking the verse bounds: loadChapterIntoPlayer swaps the reader,
+        // and the position goes with it.
+        val resume = if (playbackReachedEnd) 0 else n.getLocationInFrames()
         player.pause()
         n.loadChapterIntoPlayer() // unlock + clear verse bounds
-        // The display clock is the trustworthy playback position — it tracks real playback at the
-        // sample rate on the wall clock and, unlike n.getLocationInFrames(), does NOT double after a
-        // resume (the player re-anchors sessionStartFrame to an already-inflated position). So resume
-        // from the clock (or 0 if the last playback ran to the end), and SEEK the player there
-        // explicitly so both the audio and the player's own sessionStart are re-anchored accurately —
-        // this is what breaks the per-cycle "jump ahead" compounding.
-        val resume = if (playbackReachedEnd) 0 else clock.displayFrame.toInt()
+        // Seek the player explicitly: the reader it is now holding is not the one it had, so its own
+        // position says nothing about where we were.
+        //
+        // This used to resume from clock.displayFrame instead, because getLocationInFrames() DOUBLED
+        // after a resume — the player re-anchored sessionStartFrame onto an already-inflated position,
+        // and it compounded every pause/resume cycle. That is fixed at source (AudioBufferPlayer now
+        // anchors from the audible play cursor and knows when the sink stopped holding its audio), so
+        // the player's own position is the honest answer again. Going through the display for it is
+        // also circular now that the display follows the player rather than simulating it.
         logDebug { "PLAY resume=$resume clockDisplay=${clock.displayFrame} reachedEnd=$playbackReachedEnd loc=${n.getLocationInFrames()} total=${n.getTotalFrames()} dur=${n.getDurationInFrames()} windowFrames=441000 (~${n.getTotalFrames() / 44100.0}s vs 10s window)" }
         playbackReachedEnd = false
         n.seek(resume)

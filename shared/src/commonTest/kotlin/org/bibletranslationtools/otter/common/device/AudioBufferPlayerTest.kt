@@ -148,7 +148,11 @@ class AudioBufferPlayerTest {
         val sink = NonResettingSink()
         val processor = IdentityAudioProcessor().apply { setPlaybackRate(2.0) }
         val player = AudioBufferPlayer(sink, processor, this)
-        val reader = MockAudioFileReader(totalFrames = 0) // empty → play loop is a no-op; we drive position manually
+        // Non-empty deliberately: the play cursor only means anything once this player has actually
+        // written to the sink (see AudioBufferPlayer.sinkHoldsOurAudio), because a sink can be running
+        // and holding somebody else's audio, or nothing at all. The counter itself is still driven by
+        // hand below — this reader exists so the write happens, not to produce a position.
+        val reader = MockAudioFileReader(totalFrames = 4_096)
 
         // Simulate a resume: the sink still holds 1000 frames from the prior session (never reset),
         // and playback resumes at frame 1000.

@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.orature.ui.translation.ChunkingStep
 import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
+import org.bibletranslationtools.otter.common.device.AudioConfig
 import org.bibletranslationtools.shared.audio.engine.AudioTimeline
 import org.bibletranslationtools.shared.audio.engine.FilePcmSource
 import org.bibletranslationtools.shared.audio.engine.PcmSource
@@ -33,7 +34,7 @@ import org.bibletranslationtools.otter.common.device.AudioRecorderConnectionFact
 import org.bibletranslationtools.otter.common.device.AudioSpec
 import org.bibletranslationtools.otter.common.device.AudioPlayerEvent
 import org.bibletranslationtools.otter.common.device.IAudioPlayer
-import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayClock
+import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayPosition
 import org.bibletranslationtools.otter.common.domain.IUndoable
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
@@ -93,6 +94,7 @@ class OraturePeerEditViewModel(
     private val workbookDataStore: OratureWorkbookDataStore by inject()
     private val playerFactory: AudioPlayerConnectionFactory by inject()
     private val recorderFactory: AudioRecorderConnectionFactory by inject()
+    private val audioConfig: AudioConfig by inject()
     private val pluginStore: org.bibletranslationtools.orature.plugins.OraturePluginStore by inject()
     private val navigationLock: org.bibletranslationtools.orature.ui.OratureNavigationLock by inject()
 
@@ -109,7 +111,7 @@ class OraturePeerEditViewModel(
     private var peakSource: PcmSource? = null
     private var peakBuildJob: Job? = null
     // Rate-locked display clock (see OratureChapterReviewViewModel) for the take-waveform scroll.
-    val clock = PlaybackDisplayClock(
+    val clock = PlaybackDisplayPosition(
         positionSource = { takePlayer?.getLocationInFrames()?.toLong() ?: 0L },
         positionReliable = { takePlayer?.isPositionReliable() ?: false }
     )
@@ -444,7 +446,7 @@ class OraturePeerEditViewModel(
                 val take = withContext(Dispatchers.IO) { newTake(chunk) }
                 pendingTake = take
                 val rec = AudioRecorderConnection(RECORDER_ID, recorderFactory, viewModelScope)
-                rec.start(AudioSpec())
+                rec.start(audioConfig.spec)
                 recorder = rec
                 val takeAudio = OratureAudioFile(take.file, 1, DEFAULT_SAMPLE_RATE, 16)
                 val w = WavFileWriter(takeAudio, rec.getAudioStream(), false, {}, viewModelScope)

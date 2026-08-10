@@ -30,7 +30,7 @@ import org.bibletranslationtools.otter.common.device.AudioPlayerConnection
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
 import org.bibletranslationtools.otter.common.device.AudioPlayerEvent
 import org.bibletranslationtools.otter.common.device.IAudioPlayer
-import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayClock
+import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayPosition
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.content.ChapterTranslationBuilder
 import org.bibletranslationtools.otter.common.domain.content.SaveAudioAsNewTake
@@ -138,7 +138,7 @@ class OratureChapterReviewViewModel(
     // Rate-locked display clock (shared with the recorder). The screen advances it every display
     // frame; the waveform draws clock.displayFrame for smooth, sub-pixel scrolling instead of the
     // 30 fps steps of the ticker below. positionSource/reliable read the take player live.
-    val clock = PlaybackDisplayClock(
+    val clock = PlaybackDisplayPosition(
         positionSource = { takePlayer?.getLocationInFrames()?.toLong() ?: 0L },
         positionReliable = { takePlayer?.isPositionReliable() ?: false }
     )

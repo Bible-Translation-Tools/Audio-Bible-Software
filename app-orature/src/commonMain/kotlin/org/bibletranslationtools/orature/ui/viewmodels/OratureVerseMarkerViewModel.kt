@@ -22,7 +22,7 @@ import org.bibletranslationtools.otter.common.device.AudioPlayerConnection
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
 import org.bibletranslationtools.otter.common.device.AudioPlayerEvent
 import org.bibletranslationtools.otter.common.device.IAudioPlayer
-import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayClock
+import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayPosition
 import org.bibletranslationtools.otter.common.domain.IUndoable
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.model.MarkerItem
@@ -86,7 +86,7 @@ class OratureVerseMarkerViewModel : ViewModel(), KoinComponent {
     private var peakSource: PcmSource? = null
     private var peakBuildJob: Job? = null
     // Rate-locked display clock (see OratureChapterReviewViewModel) for smooth waveform scroll.
-    val clock = PlaybackDisplayClock(
+    val clock = PlaybackDisplayPosition(
         positionSource = { takePlayer?.getLocationInFrames()?.toLong() ?: 0L },
         positionReliable = { takePlayer?.isPositionReliable() ?: false }
     )

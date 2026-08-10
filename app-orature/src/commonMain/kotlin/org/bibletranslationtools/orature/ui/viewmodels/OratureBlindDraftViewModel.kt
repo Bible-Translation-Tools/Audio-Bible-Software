@@ -19,6 +19,7 @@ import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
 import org.bibletranslationtools.otter.common.data.primitives.MimeType
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Take
+import org.bibletranslationtools.otter.common.device.AudioConfig
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnection
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
 import org.bibletranslationtools.otter.common.device.AudioRecorderConnection
@@ -100,6 +101,7 @@ class OratureBlindDraftViewModel(
     private val workbookDataStore: OratureWorkbookDataStore by inject()
     private val playerFactory: AudioPlayerConnectionFactory by inject()
     private val recorderFactory: AudioRecorderConnectionFactory by inject()
+    private val audioConfig: AudioConfig by inject()
 
     private val _uiState = MutableStateFlow(OratureBlindDraftUiState())
     val uiState: StateFlow<OratureBlindDraftUiState> = _uiState.asStateFlow()
@@ -444,7 +446,7 @@ class OratureBlindDraftViewModel(
                 val take = withContext(Dispatchers.IO) { newTake(chunk) }
                 pendingTake = take
                 val rec = AudioRecorderConnection(RECORDER_ID, recorderFactory, viewModelScope)
-                rec.start(AudioSpec())
+                rec.start(audioConfig.spec)
                 recorder = rec
                 // Initialize with an explicit format so a valid empty WAV header is written up front
                 // (JVM: createTake(createEmpty = true)); the plain OratureAudioFile(file) constructor

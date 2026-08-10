@@ -6,7 +6,11 @@ interface IAudioPlayer {
     val frameStart: Int
     val frameEnd: Int
 
-    // Replaces the Listener pattern with a reactive Flow of events
+    /**
+     * Transport events for THIS player only. The underlying hardware worker is shared between every
+     * player in the app, so a stream that carried all of it would report another player's Complete as
+     * though this player's audio had finished.
+     */
     val events: Flow<AudioPlayerEvent>
 
     fun load(reader: AudioFileReader)

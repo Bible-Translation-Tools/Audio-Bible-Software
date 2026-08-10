@@ -14,11 +14,11 @@ import kotlin.test.assertTrue
  * symptom was that the waveform sat at the end of the file with the elapsed time frozen for about two
  * seconds while audio played from the beginning, then jumped.
  *
- * [PlaybackDisplayClock.startAdvancing] closes that gap. The test that documents why it is needed is
+ * [PlaybackDisplayPosition.startAdvancing] closes that gap. The test that documents why it is needed is
  * [staysStuckAtTheEndWhenAdvancingIsSetDirectly] — keep it: it is the trap, and it is one keystroke
  * away at five call sites.
  */
-class PlaybackDisplayClockResumeTest {
+class PlaybackDisplayPositionResumeTest {
 
     private val SR = 44100
     private val FPS = 60
@@ -32,7 +32,7 @@ class PlaybackDisplayClockResumeTest {
      */
     private class Harness(sampleRate: Int, duration: Long, sourceStart: Double) {
         var truePos = sourceStart
-        val clock = PlaybackDisplayClock(
+        val clock = PlaybackDisplayPosition(
             positionSource = { truePos.toLong() },
             positionReliable = { true }
         ).apply {
@@ -61,7 +61,13 @@ class PlaybackDisplayClockResumeTest {
         assertEquals(duration, h.clock.displayFrame)
 
         h.clock.startAdvancing()
-        assertEquals(0L, h.clock.displayFrame, "the display should rewind with the player")
+        // Not synchronously. The old clock had to pre-position itself here, because it would otherwise
+        // free-run from the end while the source reported 0 — an error far outside its slew band, which it
+        // would sit on until a 2 s valve force-accepted it. This one has nothing to guess: startAdvancing
+        // drops the anchor, and the rewind arrives as an ordinary large backward move in the reported
+        // position on the very next frame.
+        h.clock.onFrame(0L)
+        assertEquals(0L, h.clock.displayFrame, "the display should rewind with the player, within a frame")
 
         h.runFrames(30) // half a second
 
@@ -87,7 +93,7 @@ class PlaybackDisplayClockResumeTest {
     }
 
     /**
-     * The trap this exists to prevent. Setting [PlaybackDisplayClock.advancing] directly leaves the
+     * The trap this exists to prevent. Setting [PlaybackDisplayPosition.advancing] directly leaves the
      * display parked at the end: the source reports ~0, so the error is far outside the slew band, and
      * while unsettled an out-of-band error is free-run rather than corrected. Nothing moves until the
      * 2 s convergence valve force-accepts the source.

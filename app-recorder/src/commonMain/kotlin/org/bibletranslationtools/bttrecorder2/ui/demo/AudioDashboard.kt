@@ -36,7 +36,7 @@ import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.device.AudioDeviceSelector
 import org.bibletranslationtools.otter.common.device.AudioFileReader
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
-import org.bibletranslationtools.otter.common.device.AudioSpec
+import org.bibletranslationtools.otter.common.device.AudioConfig
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.io.saveAudioToFile
 import java.io.File
@@ -46,7 +46,8 @@ import kotlin.let
 fun AudioDashboard(
     playerFactory: AudioPlayerConnectionFactory,
     selector: AudioDeviceSelector,
-    directoryProvider: ITempFileProvider
+    directoryProvider: ITempFileProvider,
+    audioConfig: AudioConfig
 ) {
     val scope = rememberCoroutineScope()
 
@@ -89,13 +90,13 @@ fun AudioDashboard(
             DeviceDropdown(
                 "Speaker",
                 activeOutput,
-                selector.getOutputDevices(AudioSpec()) // Simplified spec for discovery
+                selector.getOutputDevices(audioConfig.spec)
             ) { selector.selectOutputDevice(it) }
 
             DeviceDropdown(
                 "Mic",
                 activeInput,
-                selector.getInputDevices(AudioSpec())
+                selector.getInputDevices(audioConfig.spec)
             ) { selector.selectInputDevice(it) }
         }
 
@@ -131,7 +132,7 @@ fun AudioDashboard(
                         }
 
                         IconButton(onClick = {
-                            playerFactory.getPlayerWorker().pause()
+                            scope.launch { playerFactory.getPlayerWorker().pause() }
                         }) {
                             Icon(Icons.Default.Close, contentDescription = "Pause")
                         }
