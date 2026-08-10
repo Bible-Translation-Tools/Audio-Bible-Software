@@ -1,0 +1,166 @@
+name: build
+
+# Builds and tests both desktop apps, then packages every installer format.
+# Each format can ONLY be produced on its own OS — jpackage shells out to the
+# platform's native tooling (WiX on Windows, hdiutil on macOS, dpkg on Linux) —
+# so packaging is a matrix over runners rather than one job.
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  JAVA_VERSION: '21'
+  JAVA_DISTRIBUTION: temurin
+
+jobs:
+  # ── tests ─────────────────────────────────────────────────────────────────
+  # Desktop unit tests plus the integration tier (real SQLite, real resource
+  # containers). Both are headless-safe: the audio unit tests drive a
+  # FakeSourceDataLine, and the two real-audio integration tests self-skip when
+  # the machine has no output line, which is the case on a runner.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # The ~30 bundled GL source zips (~100 MB) are downloaded into src/ by
+      # :shared:downloadGLSources and are NOT in git. Two thirds of the catalogue
+      # is dead URLs, and each dead entry costs up to a 30 s connect timeout, so
+      # without this cache every run re-probes all 96. .gl-sources-unavailable.json
+      # is the failure cache that makes the dead ones cheap; it is not in git either.
+      - name: Cache bundled GL sources
+        uses: actions/cache@v4
+        with:
+          path: |
+            shared/src/commonMain/composeResources/files/content
+            shared/.gl-sources-unavailable.json
+          key: gl-sources-${{ hashFiles('shared/src/commonMain/composeResources/files/gl_sources.json') }}
+          restore-keys: gl-sources-
+
+      - name: Desktop unit tests
+        run: ./gradlew :shared:desktopTest :app-recorder:desktopTest :app-orature:desktopTest
+
+      # Deliberately separate from `check` in the build script because it is slow
+      # (~64 s for 13 tests). Worth paying for in CI, which is what it was split out for.
+      - name: Integration tests
+        run: ./gradlew :shared:integrationTest
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            */build/reports/tests/
+            */build/test-results/
+          if-no-files-found: warn
+          retention-days: 14
+
+  # ── installers ────────────────────────────────────────────────────────────
+  package:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: linux-x64
+            tasks: ':app-recorder:packageReleaseDeb :app-orature:packageReleaseDeb'
+            artifacts: app-*/build/compose/binaries/main-release/deb/*.deb
+          - os: windows-latest
+            name: windows-x64
+            tasks: ':app-recorder:packageReleaseMsi :app-recorder:packageReleaseExe :app-orature:packageReleaseMsi :app-orature:packageReleaseExe'
+            artifacts: |
+              app-*/build/compose/binaries/main-release/msi/*.msi
+              app-*/build/compose/binaries/main-release/exe/*.exe
+          - os: macos-latest
+            name: macos-arm64
+            tasks: ':app-recorder:packageReleaseDmg :app-orature:packageReleaseDmg'
+            artifacts: app-*/build/compose/binaries/main-release/dmg/*.dmg
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # Restores what the test job downloaded, so the ~100 MB fetch happens once
+      # per cache key rather than once per runner. Every platform then bundles an
+      # identical set of GL sources, which a per-job download would not guarantee.
+      - name: Cache bundled GL sources
+        uses: actions/cache@v4
+        with:
+          path: |
+            shared/src/commonMain/composeResources/files/content
+            shared/.gl-sources-unavailable.json
+          key: gl-sources-${{ hashFiles('shared/src/commonMain/composeResources/files/gl_sources.json') }}
+          restore-keys: gl-sources-
+
+      # jpackage builds the .deb with dpkg-deb under fakeroot, and needs objcopy
+      # from binutils while assembling the app image. Neither is on the runner.
+      - name: Install Linux packaging tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fakeroot binutils
+
+      # Both the msi AND the exe are built by WiX — the exe is that same msi wrapped
+      # in a self-extracting bootstrapper. JDK 21's jpackage requires WiX 3.x
+      # (candle.exe/light.exe) specifically; the `wix` dotnet tool is WiX 4+ and is
+      # NOT a substitute. jpackage locates it via PATH, hence the GITHUB_PATH append.
+      - name: Ensure WiX Toolset 3.x is available
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          function Find-Candle {
+            Get-ChildItem 'C:\Program Files (x86)\WiX Toolset v3*\bin\candle.exe' -ErrorAction SilentlyContinue |
+              Select-Object -First 1
+          }
+          $candle = Find-Candle
+          if (-not $candle) {
+            Write-Host 'WiX 3.x not preinstalled; installing via Chocolatey.'
+            choco install wixtoolset --no-progress -y
+            $candle = Find-Candle
+          }
+          if (-not $candle) {
+            throw 'WiX 3.x (candle.exe) not found after install; jpackage cannot build msi or exe.'
+          }
+          Write-Host "Using WiX at $($candle.Directory)"
+          Add-Content -Path $env:GITHUB_PATH -Value $candle.Directory.FullName
+
+      # Release packaging runs ProGuard. Note that a green build proves very little
+      # here: over-shrinking fails at runtime, never at build time.
+      - name: Package installers
+        run: ./gradlew ${{ matrix.tasks }}
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.name }}
+          path: ${{ matrix.artifacts }}
+          # Fail loudly rather than silently publishing an empty artifact if an
+          # output path ever moves.
+          if-no-files-found: error
+          retention-days: 30

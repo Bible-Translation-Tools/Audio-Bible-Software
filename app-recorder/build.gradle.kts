@@ -141,7 +141,10 @@ compose.desktop {
         }
 
         nativeDistributions {
-            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
+            // Exe alongside Msi: the exe is the same MSI wrapped in a self-extracting
+            // bootstrapper, so both carry the upgradeUuid below and behave identically on
+            // upgrade. Each format only builds on its own OS.
+            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Exe, TargetFormat.Deb)
             packageName = "BTT-Recorder"
             packageVersion = "1.0.0"
 
