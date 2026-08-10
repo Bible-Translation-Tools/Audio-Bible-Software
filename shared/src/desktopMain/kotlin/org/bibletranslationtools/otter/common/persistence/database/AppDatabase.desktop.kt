@@ -1,6 +1,5 @@
 package org.bibletranslationtools.otter.common.persistence.database
 
-import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.persistence.database.daos.CheckingStatusDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.CollectionDao
@@ -105,8 +104,6 @@ class AppDatabase(
     override val subtreeHasResourceDao = SubtreeHasResourceDao(dsl)
     override val takeDao = TakeDao(dsl)
     override val markerDao = MarkerDao(dsl)
-//    override val audioPluginDao = AudioPluginDao(dsl)
-//    override val preferenceDao = PreferenceDao(dsl)
     override val installedEntityDao = InstalledEntityDao(dsl)
     override val translationDao = TranslationDao(dsl)
     override val versificationDao = VersificationDao(dsl)

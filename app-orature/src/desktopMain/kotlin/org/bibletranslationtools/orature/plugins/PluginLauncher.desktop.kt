@@ -2,7 +2,12 @@ package org.bibletranslationtools.orature.plugins
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.slf4j.LoggerFactory
 import java.io.File
+
+// Named rather than derived from a class: these are top-level `actual` functions, so there is no
+// instance for shared.logging.logFailure to take a logger name from.
+private val logger = LoggerFactory.getLogger("org.bibletranslationtools.orature.plugins.PluginLauncher")
 
 actual fun canLaunchPlugins(): Boolean = true
 
@@ -31,7 +36,7 @@ actual suspend fun runPluginProcess(command: List<String>): Boolean = withContex
         while (process.inputStream.read() >= 0) { /* drain so the child never blocks on a full pipe */ }
         process.waitFor() == 0
     }.getOrElse {
-        System.err.println("Failed to launch plugin process $command: $it")
+        logger.error("Failed: launching the plugin process $command", it)
         false
     }
 }

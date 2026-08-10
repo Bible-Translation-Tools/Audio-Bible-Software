@@ -5,7 +5,8 @@ import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.readBytes
 import io.reactivex.Single
 import kotlinx.coroutines.CancellationException
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.IProjectDirectories
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
 import org.bibletranslationtools.otter.common.data.OratureFileFormat
 import org.bibletranslationtools.otter.common.data.ScriptureBurritoFileFormat
@@ -37,7 +38,8 @@ import java.io.File
  * the audio data byte-for-byte (no transcoding).
  */
 class SourceAudioImporter(
-    private val directoryProvider: IDirectoryProvider,
+    private val projectDirectories: IProjectDirectories,
+    private val tempFiles: ITempFileProvider,
     private val importProjectUseCase: ImportProjectUseCase
 ) {
     data class Result(
@@ -220,7 +222,7 @@ class SourceAudioImporter(
             val staged = File.createTempFile(
                 "src_audio_archive_",
                 ".$ext",
-                directoryProvider.tempDirectory
+                tempFiles.tempDirectory
             )
             staged.writeBytes(platformFile.readBytes())
             staged
@@ -237,7 +239,7 @@ class SourceAudioImporter(
         val sourceMeta = descriptor.sourceCollection.resourceContainer ?: return null
         val targetMeta = descriptor.targetCollection.resourceContainer
         val bookSlug = descriptor.targetCollection.slug
-        return directoryProvider.getProjectSourceAudioDirectory(sourceMeta, targetMeta, bookSlug)
+        return projectDirectories.getProjectSourceAudioDirectory(sourceMeta, targetMeta, bookSlug)
     }
 
     private fun isContainerExtension(ext: String): Boolean {

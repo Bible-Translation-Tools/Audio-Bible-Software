@@ -10,20 +10,19 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.bibletranslationtools.shared.ui.playback.AudioTimeline
-import org.bibletranslationtools.shared.ui.playback.FilePcmSource
-import org.bibletranslationtools.shared.ui.playback.PcmSource
-import org.bibletranslationtools.shared.ui.playback.WaveformPeakCache
-import org.bibletranslationtools.shared.ui.playback.buildPeakCache
+import org.bibletranslationtools.shared.audio.engine.AudioTimeline
+import org.bibletranslationtools.shared.audio.engine.FilePcmSource
+import org.bibletranslationtools.shared.audio.engine.PcmSource
+import org.bibletranslationtools.shared.audio.engine.WaveformPeakCache
+import org.bibletranslationtools.shared.audio.engine.buildPeakCache
 import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
 import org.bibletranslationtools.otter.common.data.audio.MarkerType
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnection
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerEvent
-import org.bibletranslationtools.otter.common.device.newaudio.IAudioPlayer
-import org.bibletranslationtools.shared.ui.playback.PlaybackDisplayClock
+import org.bibletranslationtools.otter.common.device.AudioPlayerConnection
+import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
+import org.bibletranslationtools.otter.common.device.AudioPlayerEvent
+import org.bibletranslationtools.otter.common.device.IAudioPlayer
+import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayPosition
 import org.bibletranslationtools.otter.common.domain.IUndoable
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.model.MarkerItem
@@ -33,6 +32,8 @@ import org.bibletranslationtools.otter.common.domain.model.UndoableActionHistory
 import org.bibletranslationtools.otter.common.domain.translation.AddMarkerAction
 import org.bibletranslationtools.otter.common.domain.translation.DeleteMarkerAction
 import org.bibletranslationtools.otter.common.domain.translation.MoveMarkerAction
+import org.bibletranslationtools.orature.services.OratureVerseMarkerEditor
+import org.bibletranslationtools.orature.services.OratureVerseText
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -85,7 +86,7 @@ class OratureVerseMarkerViewModel : ViewModel(), KoinComponent {
     private var peakSource: PcmSource? = null
     private var peakBuildJob: Job? = null
     // Rate-locked display clock (see OratureChapterReviewViewModel) for smooth waveform scroll.
-    val clock = PlaybackDisplayClock(
+    val clock = PlaybackDisplayPosition(
         positionSource = { takePlayer?.getLocationInFrames()?.toLong() ?: 0L },
         positionReliable = { takePlayer?.isPositionReliable() ?: false }
     )
@@ -125,7 +126,7 @@ class OratureVerseMarkerViewModel : ViewModel(), KoinComponent {
     }
 
     private fun load(req: OratureVerseMarkerEditor.Request) {
-        viewModelScope.launch {
+        launchLogged {
             try {
                 val prepared = withContext(Dispatchers.IO) {
                     val takeAudio = OratureAudioFile(req.takeFile)
@@ -158,7 +159,7 @@ class OratureVerseMarkerViewModel : ViewModel(), KoinComponent {
                 peakCache = prepared.cache
                 peakSource = prepared.source
                 peakBuildJob?.cancel()
-                peakBuildJob = viewModelScope.launch(Dispatchers.IO) {
+                peakBuildJob = launchLogged(Dispatchers.IO) {
                     runCatching { buildPeakCache(prepared.source, prepared.cache) }
                 }
 
@@ -177,6 +178,7 @@ class OratureVerseMarkerViewModel : ViewModel(), KoinComponent {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("loading the verse marker screen", e)
                 _uiState.value = _uiState.value.copy(isLoading = false, error = e.message ?: "Unknown error")
             }
         }
@@ -213,10 +215,10 @@ class OratureVerseMarkerViewModel : ViewModel(), KoinComponent {
     /** Drive the display clock from the take player's transport events (main thread). */
     private fun observePlayerForClock(p: IAudioPlayer) {
         clockEventsJob?.cancel()
-        clockEventsJob = viewModelScope.launch {
+        clockEventsJob = launchLogged {
             p.events.collect { e ->
                 when (e) {
-                    AudioPlayerEvent.Play -> clock.advancing = true
+                    AudioPlayerEvent.Play -> clock.startAdvancing()
                     AudioPlayerEvent.Pause -> clock.advancing = false
                     AudioPlayerEvent.Stop -> { clock.advancing = false; clock.snapTo(clock.displayFrame) }
                     AudioPlayerEvent.Complete -> { clock.advancing = false; clock.snapTo(clock.durationFrames) }
@@ -269,11 +271,11 @@ class OratureVerseMarkerViewModel : ViewModel(), KoinComponent {
 
     /** Write the placed cues back into the take, run the host reload, then clear the handoff. */
     fun saveAndClose(onClosed: () -> Unit) {
-        viewModelScope.launch {
+        launchLogged {
             stopPlayback()
             withContext(Dispatchers.IO) { writeMarkersBlocking() }
             runCatching { request?.onSaved?.invoke() }
-                .onFailure { System.err.println("[verse-marker] host reload failed: $it") }
+                .onFailure { logFailure("reloading the host screen after writing verse markers", it) }
             editor.close()
             onClosed()
         }
@@ -323,7 +325,7 @@ class OratureVerseMarkerViewModel : ViewModel(), KoinComponent {
      *  waveform is drawn by the shared renderer sampling the peak cache in the draw pass. */
     private fun startWaveformTicker() {
         waveformTickerJob?.cancel()
-        waveformTickerJob = viewModelScope.launch(Dispatchers.Default) {
+        waveformTickerJob = launchLogged(Dispatchers.Default) {
             while (isActive) {
                 val p = takePlayer
                 if (p != null) {
@@ -336,7 +338,7 @@ class OratureVerseMarkerViewModel : ViewModel(), KoinComponent {
                         if (_uiState.value.isPlaying != playing) {
                             _uiState.value = _uiState.value.copy(isPlaying = playing)
                         }
-                    }.onFailure { System.err.println("[verse-marker] take state poll failed: $it") }
+                    }.onFailure { logFailure("polling take state on the verse marker screen", it) }
                 }
                 delay(33)
             }
@@ -346,7 +348,7 @@ class OratureVerseMarkerViewModel : ViewModel(), KoinComponent {
     private fun writeMarkersBlocking() {
         val model = markerModel ?: return
         runCatching { model.writeMarkers().blockingAwait() }
-            .onFailure { System.err.println("[verse-marker] marker save failed: $it") }
+            .onFailure { logFailure("saving verse markers", it) }
     }
 
     private fun stopPlayback() {

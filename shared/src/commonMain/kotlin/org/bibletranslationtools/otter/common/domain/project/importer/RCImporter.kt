@@ -22,7 +22,7 @@ import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import java.io.File
@@ -32,7 +32,7 @@ import java.io.InputStream
  * An importer for Resource Container project format.
  */
 abstract class RCImporter(
-    private val directoryProvider: IDirectoryProvider,
+    private val directoryProvider: ITempFileProvider,
     private val resourceMetadataRepository: IResourceMetadataRepository
 ) : IProjectImporter {
     private var next: RCImporter? = null

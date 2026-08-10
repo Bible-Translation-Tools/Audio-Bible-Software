@@ -29,9 +29,8 @@ import org.bibletranslationtools.otter.common.data.workbook.TakeCheckingState
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.utils.computeFileChecksum
 import java.io.File
-import javax.inject.Inject
 
-class ChapterTranslationBuilder @Inject constructor(
+class ChapterTranslationBuilder(
     private val concatenateAudio: ConcatenateAudio,
     private val takeCreator: TakeCreator
 ) {

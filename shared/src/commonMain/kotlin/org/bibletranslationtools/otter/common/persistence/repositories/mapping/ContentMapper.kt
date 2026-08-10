@@ -16,12 +16,12 @@
  * You should have received a copy of the GNU General Public License
  * along with Orature.  If not, see <https://www.gnu.org/licenses/>.
  */
-package org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping
+package org.bibletranslationtools.otter.common.persistence.repositories.mapping
 
 import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.Take
 import org.bibletranslationtools.otter.common.persistence.database.daos.ContentTypeDao
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.ContentEntity
+import org.bibletranslationtools.otter.common.persistence.entities.ContentEntity
 
 class ContentMapper(
     private val contentTypeDao: ContentTypeDao

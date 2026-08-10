@@ -22,7 +22,7 @@ import io.reactivex.Single
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import org.slf4j.LoggerFactory
-import org.wycliffeassociates.otter.common.collections.OtterTree
+import org.bibletranslationtools.otter.common.collections.OtterTree
 import org.bibletranslationtools.otter.common.data.primitives.CollectionOrContent
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
@@ -34,16 +34,15 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportRes
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.IProjectReader
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.IZipEntryTreeBuilder
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.projectimportexport.MergeTextContent
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceContainerRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import java.io.File
 import java.io.IOException
-import javax.inject.Inject
 
-class ExistingSourceImporter @Inject constructor(
-    directoryProvider: IDirectoryProvider,
+class ExistingSourceImporter(
+    directoryProvider: ITempFileProvider,
     private val resourceMetadataRepository: IResourceMetadataRepository,
     private val resourceContainerRepository: IResourceContainerRepository,
     private val zipEntryTreeBuilder: IZipEntryTreeBuilder,

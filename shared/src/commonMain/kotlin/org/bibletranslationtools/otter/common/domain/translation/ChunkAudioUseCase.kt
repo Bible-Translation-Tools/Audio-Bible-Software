@@ -24,10 +24,10 @@ import org.bibletranslationtools.otter.common.data.audio.ChunkMarker
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstants.SOURCE_AUDIO_DIR
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesAccessor
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 
-class ChunkAudioUseCase(val directoryProvider: IDirectoryProvider, val projectFilesAccessor: ProjectFilesAccessor) {
+class ChunkAudioUseCase(val directoryProvider: ITempFileProvider, val projectFilesAccessor: ProjectFilesAccessor) {
     fun createChunkedSourceAudio(source: File, cues: List<AudioCue>) {
         val temp = File(directoryProvider.tempDirectory, source.name).apply { createNewFile() }
         val tempCue = File(temp.parent, "${temp.nameWithoutExtension}.cue").apply { createNewFile() }

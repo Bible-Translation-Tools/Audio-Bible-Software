@@ -5,9 +5,9 @@ import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.ContainerType
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.api.io.zip.IFileReader
-import org.bibletranslationtools.otter.common.api.io.zip.NioDirectoryFileReader
-import org.bibletranslationtools.otter.common.api.io.zip.NioZipFileReader
-import org.bibletranslationtools.otter.common.api.io.zip.NioZipFileWriter
+import org.bibletranslationtools.otter.common.io.zip.NioDirectoryFileReader
+import org.bibletranslationtools.otter.common.io.zip.NioZipFileReader
+import org.bibletranslationtools.otter.common.io.zip.NioZipFileWriter
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import java.io.File
@@ -235,27 +235,6 @@ class DesktopDirectoryProvider(
 
     override fun cleanTempDirectory() {
         deleteRecursively(tempDirectory)
-    }
-
-    override fun openInFileManager(path: String) {
-        if (!File(path).exists()) {
-            return
-        }
-
-        when {
-            osName.contains("WIN") -> {
-                val command = "explorer.exe /select,\"$path\""
-                Runtime.getRuntime().exec(command)
-            }
-            osName.contains("MAC") -> {
-                val command = arrayOf("open", "-R", path)
-                Runtime.getRuntime().exec(command)
-            }
-            osName.contains("LINUX") -> {
-                val command = arrayOf("xdg-open", path)
-                Runtime.getRuntime().exec(command)
-            }
-        }
     }
 
     override val databaseDirectory: File

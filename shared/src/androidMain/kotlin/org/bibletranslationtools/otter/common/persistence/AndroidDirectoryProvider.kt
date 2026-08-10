@@ -1,14 +1,14 @@
 package org.bibletranslationtools.otter.common.persistence
 
 import android.content.Context
-import org.bibletranslationtools.otter.common.api.io.zip.AndroidZipFileReader
+import org.bibletranslationtools.otter.common.io.zip.AndroidZipFileReader
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.api.io.zip.IFileReader
 import org.bibletranslationtools.otter.common.api.io.zip.IFileWriter
-import org.bibletranslationtools.otter.common.api.io.zip.NioDirectoryFileReader
-import org.bibletranslationtools.otter.common.api.io.zip.NioZipFileReader
-import org.bibletranslationtools.otter.common.api.io.zip.NioZipFileWriter
+import org.bibletranslationtools.otter.common.io.zip.NioDirectoryFileReader
+import org.bibletranslationtools.otter.common.io.zip.NioZipFileReader
+import org.bibletranslationtools.otter.common.io.zip.NioZipFileWriter
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.data.OratureFileFormat
 import org.bibletranslationtools.otter.common.data.primitives.ContainerType
@@ -17,9 +17,8 @@ import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.nio.file.FileSystems
-import javax.inject.Inject
 
-class AndroidDirectoryProvider @Inject constructor (val context: Context): IDirectoryProvider {
+class AndroidDirectoryProvider(val context: Context): IDirectoryProvider {
 
     private val pathSeparator = FileSystems.getDefault().separator
 
@@ -198,10 +197,6 @@ class AndroidDirectoryProvider @Inject constructor (val context: Context): IDire
 
     override fun cleanTempDirectory() {
         deleteRecursively(tempDirectory)
-    }
-
-    override fun openInFileManager(path: String) {
-        TODO("Not yet implemented")
     }
 
     override val databaseDirectory: File

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import org.bibletranslationtools.shared.logging.logFailure
 import java.io.File
 
 /**
@@ -50,7 +51,7 @@ class OraturePluginRegistrar {
     /** Parse a single definition file, or null if unreadable / no valid executable on this OS. */
     fun parse(yamlFile: File): OratureExternalPlugin? {
         val def = runCatching { mapper.readValue<OraturePluginDefinition>(yamlFile) }
-            .getOrElse { System.err.println("Invalid plugin definition ${yamlFile.name}: $it"); return null }
+            .getOrElse { logFailure(this, "reading the plugin definition ${yamlFile.name}", it); return null }
         if (def.name.isBlank()) return null
         val executable = selectExecutable(def) ?: return null
         return OratureExternalPlugin(

@@ -24,7 +24,7 @@ import org.jooq.impl.DSL.asterisk
 import org.jooq.impl.DSL.count
 import org.jooq.impl.DSL.max
 import org.bibletranslationtools.otter.common.persistence.database.InsertionException
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.CollectionEntity
+import org.bibletranslationtools.otter.common.persistence.entities.CollectionEntity
 
 class CollectionDao(
     private val instanceDsl: DSLContext

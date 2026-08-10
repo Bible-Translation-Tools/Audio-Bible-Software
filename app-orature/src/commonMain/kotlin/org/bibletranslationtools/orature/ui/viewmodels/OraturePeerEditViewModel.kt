@@ -13,12 +13,13 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.orature.ui.translation.ChunkingStep
-import org.bibletranslationtools.orature.ui.workbook.OratureWorkbookDataStore
-import org.bibletranslationtools.shared.ui.playback.AudioTimeline
-import org.bibletranslationtools.shared.ui.playback.FilePcmSource
-import org.bibletranslationtools.shared.ui.playback.PcmSource
-import org.bibletranslationtools.shared.ui.playback.WaveformPeakCache
-import org.bibletranslationtools.shared.ui.playback.buildPeakCache
+import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
+import org.bibletranslationtools.otter.common.device.AudioConfig
+import org.bibletranslationtools.shared.audio.engine.AudioTimeline
+import org.bibletranslationtools.shared.audio.engine.FilePcmSource
+import org.bibletranslationtools.shared.audio.engine.PcmSource
+import org.bibletranslationtools.shared.audio.engine.WaveformPeakCache
+import org.bibletranslationtools.shared.audio.engine.buildPeakCache
 import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
 import org.bibletranslationtools.otter.common.data.primitives.MimeType
@@ -26,14 +27,14 @@ import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.TakeCheckingState
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnection
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
-import org.bibletranslationtools.otter.common.device.newaudio.AudioRecorderConnection
-import org.bibletranslationtools.otter.common.device.newaudio.AudioRecorderConnectionFactory
-import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerEvent
-import org.bibletranslationtools.otter.common.device.newaudio.IAudioPlayer
-import org.bibletranslationtools.shared.ui.playback.PlaybackDisplayClock
+import org.bibletranslationtools.otter.common.device.AudioPlayerConnection
+import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
+import org.bibletranslationtools.otter.common.device.AudioRecorderConnection
+import org.bibletranslationtools.otter.common.device.AudioRecorderConnectionFactory
+import org.bibletranslationtools.otter.common.device.AudioSpec
+import org.bibletranslationtools.otter.common.device.AudioPlayerEvent
+import org.bibletranslationtools.otter.common.device.IAudioPlayer
+import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayPosition
 import org.bibletranslationtools.otter.common.domain.IUndoable
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
@@ -41,6 +42,7 @@ import org.bibletranslationtools.otter.common.domain.model.UndoableActionHistory
 import org.bibletranslationtools.otter.common.domain.translation.TranslationTakeApproveAction
 import org.bibletranslationtools.otter.common.recorder.ActiveRecordingRenderer
 import org.bibletranslationtools.otter.common.recorder.WavFileWriter
+import org.bibletranslationtools.orature.plugins.PluginCapability
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.time.LocalDate
@@ -92,6 +94,7 @@ class OraturePeerEditViewModel(
     private val workbookDataStore: OratureWorkbookDataStore by inject()
     private val playerFactory: AudioPlayerConnectionFactory by inject()
     private val recorderFactory: AudioRecorderConnectionFactory by inject()
+    private val audioConfig: AudioConfig by inject()
     private val pluginStore: org.bibletranslationtools.orature.plugins.OraturePluginStore by inject()
     private val navigationLock: org.bibletranslationtools.orature.ui.OratureNavigationLock by inject()
 
@@ -108,7 +111,7 @@ class OraturePeerEditViewModel(
     private var peakSource: PcmSource? = null
     private var peakBuildJob: Job? = null
     // Rate-locked display clock (see OratureChapterReviewViewModel) for the take-waveform scroll.
-    val clock = PlaybackDisplayClock(
+    val clock = PlaybackDisplayPosition(
         positionSource = { takePlayer?.getLocationInFrames()?.toLong() ?: 0L },
         positionReliable = { takePlayer?.isPositionReliable() ?: false }
     )
@@ -141,12 +144,12 @@ class OraturePeerEditViewModel(
 
     init {
         translationVm.setUndoRedoHandlers(::undo, ::redo)
-        viewModelScope.launch {
+        launchLogged {
             workbookDataStore.activeChunk.collect { chunk -> onChunk(chunk) }
         }
         // Mirror the shell's book/chapter title + source text/license (JVM: `SourceContent`'s own
         // properties) so the plugin-opened cover can show them without re-deriving them here.
-        viewModelScope.launch {
+        launchLogged {
             translationVm.uiState.collect { t ->
                 val title = "${t.bookTitle} ${t.activeChapterTitle}".trim()
                 if (_uiState.value.activeContentTitle != title ||
@@ -175,7 +178,7 @@ class OraturePeerEditViewModel(
             return
         }
         _uiState.value = OraturePeerEditUiState(isLoading = true, hasChunk = true)
-        viewModelScope.launch {
+        launchLogged {
             try {
                 val prepared = withContext(Dispatchers.IO) {
                     val take = chunk.audio.getSelectedTake() ?: return@withContext null
@@ -191,7 +194,7 @@ class OraturePeerEditViewModel(
                     Prepared(take, playerReader.totalFrames, sr, source, tl, cache, sourcePrep?.first, sourcePrep?.second ?: 0)
                 } ?: run {
                     _uiState.value = OraturePeerEditUiState(hasChunk = true, noTake = true)
-                    return@launch
+                    return@launchLogged
                 }
 
                 selectedTake = prepared.take
@@ -202,7 +205,7 @@ class OraturePeerEditViewModel(
                 peakCache = prepared.cache
                 peakSource = prepared.source
                 peakBuildJob?.cancel()
-                peakBuildJob = viewModelScope.launch(Dispatchers.IO) {
+                peakBuildJob = launchLogged(Dispatchers.IO) {
                     runCatching { buildPeakCache(prepared.source, prepared.cache) }
                 }
                 sourcePlayer = prepared.sourcePlayer
@@ -229,6 +232,7 @@ class OraturePeerEditViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("loading the peer-edit chunk", e)
                 _uiState.value = OraturePeerEditUiState(hasChunk = true, error = e.message ?: "Unknown error")
             }
         }
@@ -304,10 +308,10 @@ class OraturePeerEditViewModel(
     /** Drive the display clock from the take player's transport events (main thread). */
     private fun observePlayerForClock(p: IAudioPlayer) {
         clockEventsJob?.cancel()
-        clockEventsJob = viewModelScope.launch {
+        clockEventsJob = launchLogged {
             p.events.collect { e ->
                 when (e) {
-                    AudioPlayerEvent.Play -> clock.advancing = true
+                    AudioPlayerEvent.Play -> clock.startAdvancing()
                     AudioPlayerEvent.Pause -> clock.advancing = false
                     AudioPlayerEvent.Stop -> { clock.advancing = false; clock.snapTo(clock.displayFrame) }
                     AudioPlayerEvent.Complete -> { clock.advancing = false; clock.snapTo(clock.durationFrames) }
@@ -343,12 +347,8 @@ class OraturePeerEditViewModel(
     }
 
     /** Start a re-recording (JVM: onRecordNew) — same pipeline as Blind Draft. */
-    private fun selectedPlugin(recorder: Boolean): org.bibletranslationtools.orature.plugins.OratureExternalPlugin? {
-        if (!org.bibletranslationtools.orature.plugins.canLaunchPlugins()) return null
-        val reg = pluginStore.load()
-        val id = if (recorder) reg.selectedRecorderId else reg.selectedEditorId
-        return reg.plugins.firstOrNull { it.id == id && (if (recorder) it.canRecord else it.canEdit) }
-    }
+    private fun selectedPlugin(recorder: Boolean): org.bibletranslationtools.orature.plugins.OratureExternalPlugin? =
+        pluginStore.selected(if (recorder) PluginCapability.RECORD else PluginCapability.EDIT)
 
     private suspend fun newTake(chunk: Chunk): Take {
         val wb = workbookDataStore.activeWorkbook.value ?: error("No active workbook")
@@ -366,7 +366,7 @@ class OraturePeerEditViewModel(
     private fun recordWithExternalPlugin(chunk: Chunk) {
         if (_uiState.value.isPluginOpen) return
         val recorder = selectedPlugin(recorder = true) ?: return
-        viewModelScope.launch {
+        launchLogged {
             beginPluginOpen()
             val take = withContext(Dispatchers.IO) {
                 val t = newTake(chunk)
@@ -389,7 +389,7 @@ class OraturePeerEditViewModel(
         val chunk = activeChunk ?: return
         val take = chunk.audio.getSelectedTake() ?: return
         val editor = selectedPlugin(recorder = false) ?: return
-        viewModelScope.launch {
+        launchLogged {
             beginPluginOpen()
             org.bibletranslationtools.orature.plugins.launchPlugin(editor, take.file, pluginParams(chunk))
             endPluginOpen()
@@ -441,12 +441,12 @@ class OraturePeerEditViewModel(
         val chunk = activeChunk ?: return
         if (selectedPlugin(recorder = true) != null) { recordWithExternalPlugin(chunk); return }
         stopAll()
-        viewModelScope.launch {
+        launchLogged {
             try {
                 val take = withContext(Dispatchers.IO) { newTake(chunk) }
                 pendingTake = take
                 val rec = AudioRecorderConnection(RECORDER_ID, recorderFactory, viewModelScope)
-                rec.start(AudioSpec())
+                rec.start(audioConfig.spec)
                 recorder = rec
                 val takeAudio = OratureAudioFile(take.file, 1, DEFAULT_SAMPLE_RATE, 16)
                 val w = WavFileWriter(takeAudio, rec.getAudioStream(), false, {}, viewModelScope)
@@ -461,6 +461,7 @@ class OraturePeerEditViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("starting a new peer-edit recording", e)
                 _uiState.value = _uiState.value.copy(recording = false, recordingActive = false, error = e.message)
             }
         }
@@ -482,7 +483,7 @@ class OraturePeerEditViewModel(
     fun saveRecording() {
         val chunk = activeChunk ?: return
         val take = pendingTake ?: return
-        viewModelScope.launch {
+        launchLogged {
             recordingActiveFlow.value = false
             withContext(Dispatchers.IO) {
                 writer?.pause()
@@ -504,7 +505,7 @@ class OraturePeerEditViewModel(
 
     fun cancelRecording() {
         val take = pendingTake
-        viewModelScope.launch {
+        launchLogged {
             recordingActiveFlow.value = false
             withContext(Dispatchers.IO) {
                 writer?.pause()
@@ -540,7 +541,7 @@ class OraturePeerEditViewModel(
      *  is drawn by the shared renderer sampling the peak cache in the draw pass. */
     private fun startWaveformTicker() {
         waveformTickerJob?.cancel()
-        waveformTickerJob = viewModelScope.launch(Dispatchers.Default) {
+        waveformTickerJob = launchLogged(Dispatchers.Default) {
             while (isActive) {
                 val p = takePlayer
                 val current = _uiState.value
@@ -549,7 +550,7 @@ class OraturePeerEditViewModel(
                     runCatching {
                         playing = p.isPlaying()
                         if (playing) positionFrames = p.getLocationInFrames()
-                    }.onFailure { System.err.println("[peeredit] take state poll failed: $it") }
+                    }.onFailure { logFailure("polling take state on the peer edit screen", it) }
                 }
                 if (current.isPlaying != playing) {
                     _uiState.value = _uiState.value.copy(isPlaying = playing)
@@ -566,7 +567,7 @@ class OraturePeerEditViewModel(
      *  ticker stops. */
     private fun startSourceTicker() {
         sourceTickerJob?.cancel()
-        sourceTickerJob = viewModelScope.launch(Dispatchers.Default) {
+        sourceTickerJob = launchLogged(Dispatchers.Default) {
             while (isActive) {
                 val current = _uiState.value
                 val srcPlaying = runCatching { sourcePlayer?.isPlaying() }.getOrDefault(false) ?: false

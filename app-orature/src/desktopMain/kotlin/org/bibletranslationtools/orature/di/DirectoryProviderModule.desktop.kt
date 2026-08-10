@@ -4,7 +4,7 @@ import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.persistence.DesktopDirectoryProvider
 import org.koin.dsl.module
 
-// Orature's own data directory (appName "Orature") — separate from the recorder's.
+// Orature's own data directory (appName "Orature2") — separate from the recorder's.
 val oratureDirectoryProviderModule = module {
     single<IDirectoryProvider> {
         DesktopDirectoryProvider(

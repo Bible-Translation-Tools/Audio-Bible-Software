@@ -77,9 +77,8 @@ import java.io.File
 import java.io.IOException
 import java.time.LocalDate
 import java.time.LocalDateTime
-import javax.inject.Inject
 
-class OngoingProjectImporter @Inject constructor(
+class OngoingProjectImporter(
     private val directoryProvider: IDirectoryProvider,
     private val resourceMetadataRepository: IResourceMetadataRepository,
     private val workbookRepository: IWorkbookRepository,

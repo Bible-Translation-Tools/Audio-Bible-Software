@@ -19,12 +19,12 @@
 package org.bibletranslationtools.otter.common.domain.plugins
 
 import io.reactivex.Completable
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.IAppDirectories
 import java.io.File
 
 class ImportAudioPlugins(
     private val pluginRegistrar: IAudioPluginRegistrar,
-    private val directoryProvider: IDirectoryProvider
+    private val directoryProvider: IAppDirectories
 ) {
     fun importAll(): Completable {
         // Imports all the plugins from the workbookapp's plugin directory

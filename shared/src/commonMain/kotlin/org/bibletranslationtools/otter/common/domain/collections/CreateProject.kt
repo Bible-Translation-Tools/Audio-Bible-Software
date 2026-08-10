@@ -27,15 +27,12 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IReso
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
-import javax.inject.Inject
 
-class CreateProject @Inject constructor(
+class CreateProject(
     private val collectionRepo: ICollectionRepository,
-    private val resourceMetadataRepo: IResourceMetadataRepository
+    private val resourceMetadataRepo: IResourceMetadataRepository,
+    private val translationCreation: CreateTranslation
 ) {
-
-    @Inject
-    lateinit var translationCreation: CreateTranslation
 
     /**
      * Create derived collections for each source RC that has content in sourceProject's subtree, optionally

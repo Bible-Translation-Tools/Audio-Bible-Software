@@ -31,14 +31,11 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.P
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.utils.mapNotNull
 import java.io.File
-import javax.inject.Inject
 
-class AudioProjectExporter @Inject constructor(
-    private val directoryProvider: IDirectoryProvider
+class AudioProjectExporter(
+    private val directoryProvider: IDirectoryProvider,
+    private val audioExporter: AudioExporter
 ) : IDirectoryExporter {
-
-    @Inject
-    lateinit var audioExporter: AudioExporter
 
     private val logger = LoggerFactory.getLogger(this.javaClass)
 

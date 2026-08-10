@@ -8,7 +8,7 @@ import org.bibletranslationtools.orature.plugins.OratureExternalPlugin
 import org.bibletranslationtools.orature.plugins.OraturePluginRegistrar
 import org.bibletranslationtools.orature.plugins.OraturePluginStore
 import org.bibletranslationtools.orature.plugins.canLaunchPlugins
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.IAppDirectories
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.io.File
@@ -30,7 +30,7 @@ data class OraturePluginUiState(
 class OraturePluginViewModel : ViewModel(), KoinComponent {
 
     private val store: OraturePluginStore by inject()
-    private val directoryProvider: IDirectoryProvider by inject()
+    private val directoryProvider: IAppDirectories by inject()
     private val registrar = OraturePluginRegistrar()
 
     private val _uiState = MutableStateFlow(OraturePluginUiState(supported = canLaunchPlugins()))

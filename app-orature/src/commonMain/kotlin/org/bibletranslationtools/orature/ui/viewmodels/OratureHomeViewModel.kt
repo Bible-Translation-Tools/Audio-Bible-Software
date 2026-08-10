@@ -1,7 +1,6 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -16,6 +15,8 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IWork
 import org.bibletranslationtools.otter.common.data.primitives.Anthology
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
+import org.bibletranslationtools.orature.services.OratureImportEvents
+import org.bibletranslationtools.orature.services.OratureProjectDeletion
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.time.LocalDateTime
@@ -111,7 +112,7 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
     init {
         loadProjects()
         // Refresh when a project is imported via the global Add Files drawer.
-        viewModelScope.launch { importEvents.imported.collect { loadProjects() } }
+        launchLogged { importEvents.imported.collect { loadProjects() } }
     }
 
     /** Reload projects, selecting the most-recently-modified group (the default landing state). */
@@ -139,7 +140,7 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
         progressJobs.forEach { it.cancel() }
         progressJobs.clear()
 
-        viewModelScope.launch {
+        launchLogged {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {
                 // Skip source audio here: resolving it opens each source resource container (a zip),
@@ -147,7 +148,7 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
                 // (getAllSuspend already runs its DB work on the Rx IO scheduler.)
                 val t0 = System.currentTimeMillis()
                 val descriptors = workbookDescriptorRepository.getAllSuspend(computeSourceAudio = false)
-                System.err.println("[home-perf] getAllSuspend (${descriptors.size}, no source-audio) took ${System.currentTimeMillis() - t0}ms")
+                logDebug { "getAllSuspend (${descriptors.size}, no source-audio) took ${System.currentTimeMillis() - t0}ms" }
                 // Phase A: build + publish the list IMMEDIATELY with progress (0.0) and source audio
                 // (false) unresolved. The per-book progress scans and the source-RC zip opens are the
                 // expensive parts; keeping them off the critical path is what makes the home page
@@ -170,6 +171,7 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("reloading the project list", e)
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     error = e.message ?: "Unknown error"
@@ -190,15 +192,16 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
         val (inView, rest) = descriptors.partition { it.groupKey() == selectedKey }
         val tStart = System.currentTimeMillis()
         listOf(inView to "in-view", rest to "rest").filter { it.first.isNotEmpty() }.forEach { (batch, label) ->
-            val job = viewModelScope.launch {
+            val job = launchLogged {
                 val byId = try {
                     workbookDescriptorRepository.getSourceAudioSuspend(batch) // resolves on Rx IO
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
+                    logFailure("resolving source audio availability", e)
                     emptyMap()
                 }
-                System.err.println("[home-perf] source-audio $label (${batch.size}) resolved at +${System.currentTimeMillis() - tStart}ms")
+                logDebug { "source-audio $label (${batch.size}) resolved at +${System.currentTimeMillis() - tStart}ms" }
                 applyBookSourceAudio(byId)
             }
             progressJobs.add(job)
@@ -212,12 +215,13 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
      */
     private fun computeProgressInBackground(descriptors: List<WorkbookDescriptor>) {
         descriptors.forEach { descriptor ->
-            val job = viewModelScope.launch {
+            val job = launchLogged {
                 val resolved = try {
                     descriptor.progress.await() // Single subscribes on the Rx IO scheduler
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
+                    logFailure("computing project progress", e)
                     0.0
                 }
                 applyBookProgress(descriptor.id, resolved)
@@ -275,10 +279,10 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
         pendingDeleteKeys.add(key)
         projectDeletion.beginPending()
         publishVisibleGroups()
-        deleteJobs[key] = viewModelScope.launch {
+        deleteJobs[key] = launchLogged {
             try {
                 delay(GROUP_DELETE_UNDO_MS)
-                if (key !in pendingDeleteKeys) return@launch // undone during the window
+                if (key !in pendingDeleteKeys) return@launchLogged // undone during the window
                 withContext(Dispatchers.IO) { projectDeletion.deleteGroup(descriptors) }
                 pendingDeleteKeys.remove(key)
                 loadProjects()
@@ -299,7 +303,7 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
     /** Reset a single book to its initial state (JVM: deleteBook — deletes takes, re-derives). */
     fun deleteBook(workbookDescriptorId: Int) {
         val descriptor = loadedDescriptors.firstOrNull { it.id == workbookDescriptorId } ?: return
-        viewModelScope.launch {
+        launchLogged {
             withContext(Dispatchers.IO) { projectDeletion.deleteBook(descriptor) }
             loadProjects()
         }

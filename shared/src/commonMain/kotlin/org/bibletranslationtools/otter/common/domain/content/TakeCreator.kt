@@ -23,9 +23,8 @@ import org.bibletranslationtools.otter.common.data.primitives.MimeType
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import java.io.File
 import java.time.LocalDate
-import javax.inject.Inject
 
-class TakeCreator @Inject constructor(
+class TakeCreator(
     private val waveFileCreator: IWaveFileCreator
 )  {
 

@@ -31,19 +31,20 @@ import org.bibletranslationtools.otter.common.domain.project.exporter.ExportOpti
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportResult
 import org.bibletranslationtools.otter.common.domain.project.exporter.ProjectExporterCallback
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstants
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.IFileIOFactory
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import java.io.File
 import java.io.FileWriter
 import java.lang.Exception
 import java.util.regex.Pattern
 import java.util.zip.ZipFile
-import javax.inject.Inject
 
-class BackupProjectExporter @Inject constructor(
-    directoryProvider: IDirectoryProvider,
+class BackupProjectExporter(
+    fileIO: IFileIOFactory,
+    tempFiles: ITempFileProvider,
     private val workbookRepository: IWorkbookRepository
-) : RCProjectExporter(directoryProvider) {
+) : RCProjectExporter(fileIO, tempFiles) {
 
     private val logger = LoggerFactory.getLogger(this.javaClass)
 
@@ -74,7 +75,7 @@ class BackupProjectExporter @Inject constructor(
                 setContributorInfo(contributors, zipFile)
                 callback?.onNotifyProgress(20.0, messageKey = "exportingTakes")
 
-                directoryProvider.newFileWriter(zipFile).use { fileWriter: IFileWriter ->
+                fileIO.newFileWriter(zipFile).use { fileWriter: IFileWriter ->
                     projectAccessor.copyTakeFiles(
                         fileWriter,
                         workbook,
@@ -93,7 +94,7 @@ class BackupProjectExporter @Inject constructor(
                         .firstOrNull { it.identifier == resourceMetadata.identifier }
 
                     projectAccessor.copySourceFilesWithRelatedMedia(
-                        fileWriter, directoryProvider.tempDirectory, linkedResource
+                        fileWriter, tempFiles.tempDirectory, linkedResource
                     )
                     callback?.onNotifyProgress(99.0)
 

@@ -22,24 +22,22 @@ import io.reactivex.Completable
 import io.reactivex.ObservableEmitter
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
-import kotlinx.coroutines.runBlocking
-import org.bibletranslationtools.shared.resources.Res
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.io.IBundledContentSource
+import org.bibletranslationtools.otter.common.api.persistence.IAppDirectories
 import org.bibletranslationtools.otter.common.api.persistence.config.Initializable
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
-import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.ProgressStatus
 import java.io.File
-import javax.inject.Inject
 
 private const val ULB_VERSIFICATION_FILE = "ulb.json"
 private const val UFW_VERSIFICATION_FILE = "ufw.json"
 private const val ULB_VERSIFICATION_RESOURCE_PATH = "files/versification/ulb_versification.json"
 
-class InitializeVersification @Inject constructor(
-    val directoryProvider: IDirectoryProvider,
-    val versificationRepository: IVersificationRepository
+class InitializeVersification(
+    val directoryProvider: IAppDirectories,
+    val versificationRepository: IVersificationRepository,
+    private val bundledContent: IBundledContentSource
 ) : Initializable {
 
     private val logger = LoggerFactory.getLogger(this::class.java)
@@ -60,15 +58,14 @@ class InitializeVersification @Inject constructor(
             .ignoreElement()
     }
 
-    @OptIn(ExperimentalResourceApi::class)
     private fun copyUlbVersification() {
         directoryProvider.versificationDirectory.mkdirs()
         logger.info("Copying ulb versification")
-        // The versification json ships as a Compose Multiplatform resource, so it must be read
-        // via Res.readBytes — NOT ClassLoader.getSystemResourceAsStream, which does a JVM
-        // classpath lookup that returns null for Compose resources (the old code's ?.use{}
-        // then silently did nothing, leaving versification uninitialized).
-        val bytes = runCatching { runBlocking { Res.readBytes(ULB_VERSIFICATION_RESOURCE_PATH) } }
+        // Read through the bundled-content port, NOT ClassLoader.getSystemResourceAsStream:
+        // this file is packaged as a Compose Multiplatform resource, so a JVM classpath lookup
+        // returns null for it (the old code's ?.use{} then silently did nothing, leaving
+        // versification uninitialized).
+        val bytes = runCatching { bundledContent.readBlocking(ULB_VERSIFICATION_RESOURCE_PATH) }
             .getOrElse {
                 logger.error("Failed to read bundled versification resource $ULB_VERSIFICATION_RESOURCE_PATH", it)
                 return

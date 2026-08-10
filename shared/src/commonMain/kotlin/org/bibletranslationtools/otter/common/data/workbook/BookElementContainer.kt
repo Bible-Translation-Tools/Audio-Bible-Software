@@ -26,5 +26,4 @@ interface BookElementContainer {
     val children: Observable<BookElement>
     val childrenFlow: Flow<BookElement>
     val subtreeResources: List<ResourceMetadata>
-    // val progress: Observable<Int>
 }

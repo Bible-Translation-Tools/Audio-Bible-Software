@@ -30,9 +30,8 @@ import org.bibletranslationtools.otter.common.data.ProgressStatus
 import org.bibletranslationtools.otter.common.data.workbook.Translation
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import java.time.LocalDateTime
-import javax.inject.Inject
 
-class InitializeTranslations @Inject constructor(
+class InitializeTranslations(
     private val installedEntityRepo: IInstalledEntityRepository,
     private val workbookRepository: IWorkbookRepository,
     private val languageRepository: ILanguageRepository

@@ -2,6 +2,7 @@ package org.bibletranslationtools.bttrecorder2.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import org.bibletranslationtools.otter.common.device.AudioConfig
 import org.jetbrains.compose.resources.getString
 import org.bibletranslationtools.shared.resources.Res
 import org.bibletranslationtools.shared.resources.err_record_device_start
@@ -19,7 +20,6 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
 import org.bibletranslationtools.otter.common.data.primitives.MimeType
 import org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio
@@ -27,25 +27,29 @@ import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.shared.ui.playback.SourceAudioPlayerController
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
-import org.bibletranslationtools.otter.common.device.newaudio.AudioRecorderConnectionFactory
-import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
+import org.bibletranslationtools.shared.audio.engine.SourceAudioPlayerController
+import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
+import org.bibletranslationtools.otter.common.device.AudioRecorderConnectionFactory
+import org.bibletranslationtools.otter.common.device.AudioSpec
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.content.Recordable
 import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
 import org.bibletranslationtools.otter.common.recorder.ActiveRecordingRenderer
 import org.bibletranslationtools.otter.common.recorder.RecordingTimer
 import org.bibletranslationtools.otter.common.recorder.WavFileWriter
+import org.bibletranslationtools.bttrecorder2.services.UnitTarget
+import org.bibletranslationtools.bttrecorder2.services.UnitTargetLoader
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.time.LocalDate
 
 class RecorderViewModel(
-    private val workbookRepository: IWorkbookRepository,
+    private val unitTargetLoader: UnitTargetLoader,
     private val audioRecorderFactory: AudioRecorderConnectionFactory,
-    audioPlayerFactory: AudioPlayerConnectionFactory
+    audioPlayerFactory: AudioPlayerConnectionFactory,
+    /** The format to capture at. See [AudioConfig.spec] — this is the one place it is decided. */
+    private val audioConfig: AudioConfig = AudioConfig()
 ) : ViewModel() {
 
     private val sourceAudioController = SourceAudioPlayerController(
@@ -74,19 +78,27 @@ class RecorderViewModel(
         val canGoNextUnit: Boolean = false
     )
 
-    private data class RecordingTarget(
-        val chapter: Chapter,
-        val chunk: Chunk?
-    ) {
-        val recordable: Recordable
-            get() = chunk ?: chapter
-    }
-
     private var workbook: Workbook? = null
-    private var targets: List<RecordingTarget> = emptyList()
+    private var targets: List<UnitTarget> = emptyList()
     private var currentTargetIndex = -1
 
     private var associatedAudio: AssociatedAudio? = null
+
+    /**
+     * The format to capture in, and to write the WAV header with.
+     *
+     * Normally [AudioConfig.spec]. But a re-record replaces an existing take, and the replacement has to
+     * be in that take's format: the two are read back through the same reader, and a take recorded at a
+     * different rate plays at the wrong speed while its waveform and marker frames land in the wrong
+     * places. So an existing take wins over the configured default.
+     *
+     * The mic and the WAV header must agree, which is the other half of this. They previously could not:
+     * the mic opened at the configured spec while the header was hardcoded to 1/44100/16, so any change
+     * to the default would have written files whose header said one thing and whose samples were another
+     * — silent corruption, since nothing downstream can tell.
+     */
+    @Volatile
+    private var captureSpec: AudioSpec = audioConfig.spec
     private var targetDirectory: File? = null
     private var currentNamer: org.bibletranslationtools.otter.common.domain.content.FileNamer? = null
 
@@ -131,49 +143,23 @@ class RecorderViewModel(
         chapterNumber: Int,
         unitNumber: Int?
     ) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val projects = workbookRepository.getProjectsSuspend()
-            val foundWorkbook = projects.find {
-                it.source.collectionId == sourceId && it.target.collectionId == targetId 
-            } ?: return@launch
-
-            val chapterList = foundWorkbook.target.chapters.toList().await()
-                .sortedBy { it.sort }
-
-            if (chapterList.isEmpty()) return@launch
-
-            val expandedTargets = mutableListOf<RecordingTarget>()
-            chapterList.forEach { chapter ->
-                expandedTargets.add(RecordingTarget(chapter = chapter, chunk = null))
-                val chunks = chapter.chunksSuspend().sortedBy { it.sort }
-                chunks.forEach { chunk ->
-                    expandedTargets.add(RecordingTarget(chapter = chapter, chunk = chunk))
-                }
-            }
-
-            val initialIndex = expandedTargets.indexOfFirst { target ->
-                val chapterMatch = target.chapter.sort == chapterNumber
-                if (!chapterMatch) return@indexOfFirst false
-                if (unitNumber == null) {
-                    target.chunk == null
-                } else {
-                    target.chunk?.sort == unitNumber
-                }
-            }
+        launchLogged(Dispatchers.IO) {
+            val loaded = unitTargetLoader.load(sourceId, targetId, chapterNumber, unitNumber)
+                ?: return@launchLogged
 
             // When the requested target isn't found (e.g. entering from the
             // project-list mic or the home Record button with no specific verse),
             // fall back to the first *verse* rather than the chapter-meta target,
             // matching the original recorder which opened on the first recordable
             // unit. Chapter-level entry (unitNumber == null + matching chapter)
-            // still resolves explicitly above, so this only affects no-match.
+            // still resolves explicitly in the loader, so this only affects no-match.
             val safeInitialIndex = when {
-                initialIndex >= 0 -> initialIndex
-                else -> expandedTargets.indexOfFirst { it.chunk != null }.takeIf { it >= 0 } ?: 0
+                loaded.requestedIndex >= 0 -> loaded.requestedIndex
+                else -> loaded.targets.indexOfFirst { it.chunk != null }.takeIf { it >= 0 } ?: 0
             }
 
-            workbook = foundWorkbook
-            targets = expandedTargets
+            workbook = loaded.workbook
+            targets = loaded.targets
             switchToTarget(safeInitialIndex, force = true)
         }
     }
@@ -262,7 +248,7 @@ class RecorderViewModel(
         }
     }
 
-    private fun currentTarget(): RecordingTarget? = targets.getOrNull(currentTargetIndex)
+    private fun currentTarget(): UnitTarget? = targets.getOrNull(currentTargetIndex)
 
     private fun canNavigateTo(index: Int): Boolean {
         return index in targets.indices && _recordingState.value == RecordingUiState.Idle
@@ -312,8 +298,12 @@ class RecorderViewModel(
             canGoNextUnit = target.chunk != null && chunkSortsInChapter.any { it > target.chunk.sort } && _recordingState.value == RecordingUiState.Idle
         )
 
+        // Before anything opens the mic or the writer: a re-record must match what it replaces.
+        captureSpec = audioConfig.spec
+        launchLogged(Dispatchers.IO) { captureSpec = specOfExistingTake() ?: audioConfig.spec }
+
         takeStreamJob?.cancel()
-        takeStreamJob = viewModelScope.launch {
+        takeStreamJob = launchLogged {
             associatedAudio?.takesFlow?.collect {
                 // No-op: the flow keeps this target's take stream hot and up to date for future numbering.
             }
@@ -321,11 +311,34 @@ class RecorderViewModel(
 
         // Load source audio for the new target. Done off the IO dispatcher because
         // the accessor reads from disk (and possibly extracts from a Resource Container).
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(Dispatchers.IO) {
             sourceAudioController.load(wb, target.chapter, target.chunk)
         }
 
         resetSessionForTarget()
+    }
+
+    /**
+     * The format of the take this target already has, or null if it has none (or the file cannot be read,
+     * in which case the configured default is the safer answer than a guess).
+     *
+     * Prefers the selected take, falling back to the most recent, because that is the one a re-record is
+     * standing in for. Touches the disk, so callers keep it off the main thread.
+     */
+    private fun specOfExistingTake(): AudioSpec? {
+        val audio = associatedAudio ?: return null
+        // `takes` is an untyped RxRelay replay buffer, hence the filter.
+        val take = audio.selected.value?.value
+            ?: audio.takes.values.filterIsInstance<Take>().maxByOrNull { it.number }
+        val file = take?.file ?: return null
+        return runCatching {
+            val audioFile = OratureAudioFile(file)
+            AudioSpec(
+                sampleRate = audioFile.sampleRate,
+                bitDepth = audioFile.bitsPerSample,
+                channels = audioFile.channels
+            )
+        }.getOrNull()
     }
 
     fun toggleSourcePlayback() {
@@ -352,14 +365,15 @@ class RecorderViewModel(
         startVolumeMonitor()
 
         if (!recorderInitialized) {
-            recorderJob = viewModelScope.launch(Dispatchers.IO) {
+            recorderJob = launchLogged(Dispatchers.IO) {
                 try {
                     // Keep the recorder running while the screen is visible so the
                     // volume meter shows live mic input even before recording starts.
-                    recorder.start(AudioSpec())
+                    recorder.start(captureSpec)
                     recorderInitialized = true
                     _audioError.value = null
                 } catch (e: Exception) {
+                    logFailure("initializing audio", e)
                     _audioError.value = e.message ?: getString(Res.string.err_record_device_start)
                 }
             }
@@ -378,8 +392,11 @@ class RecorderViewModel(
             val tempFile = File.createTempFile("rec_", ".wav")
             currentTempAudioFile = tempFile
 
-            // Initialize with explicit format so a valid WAV header is created on first write.
-            val oratureFile = OratureAudioFile(tempFile, 1, 44100, 16)
+            // Explicit format so a valid WAV header is created on first write — and the SAME format the
+            // mic was opened with, or the header describes audio the file does not contain.
+            val oratureFile = OratureAudioFile(
+                tempFile, captureSpec.channels, captureSpec.sampleRate, captureSpec.bitDepth
+            )
 
             wavFileWriter = WavFileWriter(
                 oratureAudioFile = oratureFile,
@@ -405,13 +422,14 @@ class RecorderViewModel(
         startTimerTicker()
         updateNavigationAvailability()
         wavFileWriter?.start()
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(Dispatchers.IO) {
             try {
-                audioRecorderFactory.getRecorderWorker().start(AudioSpec())
+                audioRecorderFactory.getRecorderWorker().start(captureSpec)
                 withContext(Dispatchers.Main) {
                     _audioError.value = null
                 }
             } catch (e: Exception) {
+                logFailure("starting the recording", e)
                 wavFileWriter?.pause()
                 withContext(Dispatchers.Main) {
                     _isRecording.value = false
@@ -439,9 +457,9 @@ class RecorderViewModel(
     fun resumeRecording() {
         if (_recordingState.value != RecordingUiState.Paused) return
         wavFileWriter?.start()
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(Dispatchers.IO) {
             try {
-                audioRecorderFactory.getRecorderWorker().start(AudioSpec())
+                audioRecorderFactory.getRecorderWorker().start(captureSpec)
                 withContext(Dispatchers.Main) {
                     _isRecording.value = true
                     _recordingState.value = RecordingUiState.Recording
@@ -451,6 +469,7 @@ class RecorderViewModel(
                     _audioError.value = null
                 }
             } catch (e: Exception) {
+                logFailure("resuming the recording", e)
                 wavFileWriter?.pause()
                 withContext(Dispatchers.Main) {
                     _audioError.value = e.message ?: getString(Res.string.err_record_device_resume)
@@ -482,7 +501,7 @@ class RecorderViewModel(
         val audio = associatedAudio ?: return
         val namer = currentNamer ?: return
 
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(Dispatchers.IO) {
             try {
                 // Finalize WAV header before copying. Without this, saved takes can report 0 duration.
                 wavFileWriter?.pause()
@@ -538,7 +557,9 @@ class RecorderViewModel(
         // Guarantee a parseable WAV so downstream loading never fails on invalid header.
         runCatching {
             if (sessionFile.length() < 44L) {
-                val fresh = OratureAudioFile(sessionFile, 1, 44100, 16)
+                val fresh = OratureAudioFile(
+                    sessionFile, captureSpec.channels, captureSpec.sampleRate, captureSpec.bitDepth
+                )
                 fresh.writer(append = true, buffered = true).use { writer ->
                     writer.write(ByteArray(2))
                     writer.flush()
@@ -599,7 +620,7 @@ class RecorderViewModel(
 
     private fun startTimerTicker() {
         if (timerTickerJob?.isActive == true) return
-        timerTickerJob = viewModelScope.launch {
+        timerTickerJob = launchLogged {
             while (_recordingState.value == RecordingUiState.Recording) {
                 _timerText.value = formatElapsed(timer.timeElapsed)
                 delay(100)
@@ -618,7 +639,7 @@ class RecorderViewModel(
         val recorder = audioRecorderFactory.getRecorderWorker()
         // Read raw audio bytes from the SharedFlow and compute peak amplitude per packet.
         // SharedFlow allows multiple collectors, so this runs alongside the renderer and writer.
-        volumeTickerJob = viewModelScope.launch(Dispatchers.IO) {
+        volumeTickerJob = launchLogged(Dispatchers.IO) {
             try {
                 recorder.audioStream.collect { bytes ->
                     var peak = 0
@@ -678,11 +699,11 @@ class RecorderViewModel(
         volumeTickerJob?.cancel()
         recorderJob?.cancel()
         sourceAudioController.release()
-        viewModelScope.launch {
+        launchLogged {
             try {
                 audioRecorderFactory.getRecorderWorker().stop()
             } catch (e: Exception) {
-                // Ignore
+                logFailure("stopping the recorder worker during cleanup", e)
             }
         }
         currentTempAudioFile?.delete()
