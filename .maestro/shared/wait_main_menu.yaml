@@ -3,8 +3,11 @@ tags:
   - helper
 ---
 # Splash can take a long time on first launch (en_ulb unpack).
+# optional wait so we can screenshot the UI if Files never appears, then fail on assert.
 - extendedWaitUntil:
     visible: "Files"
-    timeout: 240000
+    timeout: 60000
+    optional: true
+- takeScreenshot: before_assert_main_menu_files
 - assertVisible: "Files"
 - assertVisible: "Record"
