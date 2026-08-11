@@ -4,7 +4,8 @@ tags:
 ---
 # Files → New Project → English → Afar → Genesis → Project Management.
 # Mirrors CreateProjectWizardFlowTest / seed used by SeededRecordPlaybackFlowTest.
-- runFlow: shared/open_files.yaml
+# Paths are relative to this file (shared/), not the workspace root.
+- runFlow: open_files.yaml
 - tapOn: "New Project"
 - extendedWaitUntil:
     visible: "New Project|Select Source"
@@ -27,7 +28,7 @@ tags:
       notVisible: "Choose Target Language"
     commands:
       - runFlow:
-          file: shared/search_and_tap.yaml
+          file: search_and_tap.yaml
           env:
             QUERY: "en"
             RESULT: ".*English.*"
@@ -36,7 +37,7 @@ tags:
     visible: "Choose Target Language"
     timeout: 120000
 - runFlow:
-    file: shared/search_and_tap.yaml
+    file: search_and_tap.yaml
     env:
       QUERY: "aa"
       RESULT: ".*Afar.*"
@@ -45,7 +46,7 @@ tags:
     visible: "Choose a Book"
     timeout: 120000
 - runFlow:
-    file: shared/search_and_tap.yaml
+    file: search_and_tap.yaml
     env:
       QUERY: "gen"
       RESULT: ".*Genesis.*"
