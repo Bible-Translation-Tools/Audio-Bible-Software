@@ -26,16 +26,9 @@ adb shell pm grant "${APP_ID}" android.permission.RECORD_AUDIO || true
 mkdir -p maestro-results
 set +e
 # Prefer --test-output-dir over --format junit (junit report path has required Cloud API key in some CLI versions).
+# Screenshots land in maestro-results/ and are uploaded as the recorder-maestro-results artifact on failure.
 maestro test .maestro/ --test-output-dir maestro-results --debug-output maestro-results
 STATUS=$?
 set -e
-
-shopt -s nullglob globstar
-for f in maestro-results/**/*.png; do
-  echo "Uploading $f to tmpfiles.org"
-  RESP=$(curl -fsS -F "file=@${f}" -F "expire=86400" https://tmpfiles.org/api/v1/upload || true)
-  echo "tmpfiles response: ${RESP}"
-  echo "$RESP" | sed -n 's/.*"url":"\([^"]*\)".*/VIEW=\1/p' || true
-done
 
 exit "$STATUS"
