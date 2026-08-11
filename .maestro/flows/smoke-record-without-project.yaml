@@ -14,4 +14,4 @@ appId: org.bibletranslationtools.recorder2
 - pressKey: back
 - extendedWaitUntil:
     visible: "Files"
-    timeout: 30000
+    timeout: 3000

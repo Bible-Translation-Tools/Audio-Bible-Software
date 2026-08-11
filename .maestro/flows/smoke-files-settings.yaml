@@ -8,21 +8,21 @@ appId: org.bibletranslationtools.recorder2
 - tapOn: "More options"
 - extendedWaitUntil:
     visible: "Settings"
-    timeout: 15000
+    timeout: 3000
 - tapOn: "Settings"
 - extendedWaitUntil:
     visible: "Audio"
-    timeout: 30000
+    timeout: 3000
 - assertVisible: "Audio"
 
 - tapOn: "Back"
 - extendedWaitUntil:
     visible: "Project Management"
-    timeout: 60000
+    timeout: 3000
 - assertVisible: "Project Management"
 
 # Project Management has no toolbar back; system back returns to main menu.
 - pressKey: back
 - extendedWaitUntil:
     visible: "Files"
-    timeout: 30000
+    timeout: 3000

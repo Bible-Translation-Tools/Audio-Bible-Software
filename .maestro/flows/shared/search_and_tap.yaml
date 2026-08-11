@@ -10,5 +10,5 @@ appId: org.bibletranslationtools.recorder2
 - inputText: ${QUERY}
 - extendedWaitUntil:
     visible: ${RESULT}
-    timeout: 120000
+    timeout: 3000
 - tapOn: ${RESULT}

@@ -11,11 +11,11 @@ appId: org.bibletranslationtools.recorder2
 
 - extendedWaitUntil:
     visible: "Record transport"
-    timeout: 120000
+    timeout: 3000
 # loadTarget is async; wait for header labels before engaging mic.
 - extendedWaitUntil:
     visible: ".*Genesis.*|.*ULB.*"
-    timeout: 60000
+    timeout: 3000
 
 - tapOn: "Record transport"
 
@@ -27,7 +27,7 @@ appId: org.bibletranslationtools.recorder2
       - tapOn: "Stop"
       - extendedWaitUntil:
           visible: "Play/Pause"
-          timeout: 120000
+          timeout: 3000
       - assertVisible: "Play/Pause"
 - runFlow:
     when:
@@ -48,4 +48,4 @@ appId: org.bibletranslationtools.recorder2
       - pressKey: back
 - extendedWaitUntil:
     visible: "Files|Project Management|.*Genesis.*"
-    timeout: 30000
+    timeout: 3000
