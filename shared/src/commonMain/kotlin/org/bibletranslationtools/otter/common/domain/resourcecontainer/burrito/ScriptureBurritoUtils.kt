@@ -36,7 +36,7 @@ import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.audio.metadata.BurritoAlignmentMetadata
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstants
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito.auth.AuthProvider
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import java.io.File
 import java.io.IOException
@@ -46,14 +46,13 @@ import java.security.NoSuchAlgorithmException
 import java.text.SimpleDateFormat
 import java.time.Instant
 import java.util.*
-import javax.inject.Inject
 
 typealias ChapterNumber = Int
 
-class ScriptureBurritoUtils @Inject constructor(
+class ScriptureBurritoUtils(
     private val idAuthorityProvider: AuthProvider,
     private val appInfo: IAppInfo,
-    directoryProvider: IDirectoryProvider
+    directoryProvider: ITempFileProvider
 ) {
 
     private val tempDir = directoryProvider.tempDirectory

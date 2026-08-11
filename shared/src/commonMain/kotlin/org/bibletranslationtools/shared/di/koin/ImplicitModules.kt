@@ -6,6 +6,7 @@ import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.domain.audio.AudioBouncer
 import org.bibletranslationtools.otter.common.domain.audio.AudioConverter
 import org.bibletranslationtools.otter.common.domain.audio.AudioExporter
+import org.bibletranslationtools.otter.common.domain.audio.WriteTakeMarkers
 import org.bibletranslationtools.otter.common.domain.collections.CreateProject
 import org.bibletranslationtools.otter.common.domain.collections.CreateTranslation
 import org.bibletranslationtools.otter.common.domain.collections.DeleteProject
@@ -16,12 +17,16 @@ import org.bibletranslationtools.otter.common.domain.content.ChapterTranslationB
 import org.bibletranslationtools.otter.common.domain.content.ConcatenateAudio
 import org.bibletranslationtools.otter.common.domain.content.CreateChunks
 import org.bibletranslationtools.otter.common.domain.content.ResetChunks
+import org.bibletranslationtools.otter.common.domain.content.SaveAudioAsNewTake
 import org.bibletranslationtools.otter.common.domain.content.TakeCreator
 import org.bibletranslationtools.otter.common.domain.narration.AudioFileUtils
+import org.bibletranslationtools.otter.common.domain.narration.LoadChapterSourceText
 import org.bibletranslationtools.otter.common.domain.narration.PcmTakeTransformer
 import org.bibletranslationtools.otter.common.domain.narration.SplitAudioOnCues
 import org.bibletranslationtools.otter.common.domain.languages.ImportLanguages
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
+import org.bibletranslationtools.otter.common.domain.project.InitializeProjectFiles
+import org.bibletranslationtools.otter.common.domain.project.OpenWorkbook
 import org.bibletranslationtools.otter.common.domain.project.ProjectCompletionStatus
 import org.bibletranslationtools.otter.common.domain.project.exporter.AudioProjectExporter
 import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.BackupProjectExporter
@@ -51,12 +56,12 @@ import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.bind
 import org.koin.dsl.module
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.AudioPluginDataMapper
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.CollectionMapper
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.LanguageMapper
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.MarkerMapper
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.ResourceMetadataMapper
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.TranslationMapper
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.AudioPluginDataMapper
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.CollectionMapper
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.LanguageMapper
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.MarkerMapper
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.ResourceMetadataMapper
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.TranslationMapper
 
 val implicitCommonModule = module {
     single<IWaveFileCreator> { WaveFileCreator() }
@@ -64,31 +69,31 @@ val implicitCommonModule = module {
     // Collections
     factoryOf(::DeleteTranslation)
     factoryOf(::CreateTranslation)
-    // CreateProject injects collectionRepo + resourceMetadataRepo via its
-    // constructor, but `translationCreation` is a Dagger field-injected
-    // `@Inject lateinit var` that Koin's constructor DSL won't populate. Set it
-    // explicitly, otherwise importing a project throws
-    // UninitializedPropertyAccessException in createAllBooks().
-    factory { CreateProject(get(), get()).apply { translationCreation = get() } }
+    factoryOf(::CreateProject)
     factoryOf(::UpdateTranslation)
     factoryOf(::UpdateProject)
     factoryOf(::DeleteProject)
 
     // Audio
-    // AudioExporter has @Inject lateinit var audioConverter — factoryOf won't set it.
-    factory { AudioExporter().apply { audioConverter = get() } }
+    factoryOf(::AudioExporter)
     factoryOf(::AudioBouncer)
     factoryOf(::AudioConverter)
+    factoryOf(::WriteTakeMarkers)
 
     // Project
     factoryOf(::ImportProjectUseCase)
+    // Bound explicitly, NOT with factoryOf: these take an `ioDispatcher` with a default, and
+    // Koin's constructor DSL resolves every parameter from the graph rather than honouring
+    // Kotlin defaults — factoryOf would fail looking for a CoroutineDispatcher binding.
+    // Production wants the default (Dispatchers.IO); only tests pass their own.
+    factory { OpenWorkbook(get(), get()) }
+    factory { InitializeProjectFiles() }
     factoryOf(::ImportLanguages)
-//    factoryOf(::ProjectFormatIdentifier)
 
-    // Exporters — each has @Inject lateinit var fields that factoryOf won't populate.
-    factory { AudioProjectExporter(get()).apply { audioExporter = get() } }
-    factory { BackupProjectExporter(get(), get()).apply { concatenateAudio = get() } }
-    factory { SourceProjectExporter(get(), get()).apply { concatenateAudio = get(); audioExporter = get() } }
+    // Exporters
+    factoryOf(::AudioProjectExporter)
+    factoryOf(::BackupProjectExporter)
+    factoryOf(::SourceProjectExporter)
 
     // Importers
     factoryOf(::NewSourceImporter)
@@ -104,8 +109,8 @@ val implicitCommonModule = module {
     // Content
     factoryOf(::ChapterTranslationBuilder)
     factoryOf(::TakeCreator)
+    factoryOf(::SaveAudioAsNewTake)
     factoryOf(::ConcatenateAudio)
-//    factoryOf(::PluginActions)
     factoryOf(::ResetChunks)
     factoryOf(::CreateChunks)
 
@@ -114,9 +119,6 @@ val implicitCommonModule = module {
     factoryOf(::VersificationTreeBuilder)
     factoryOf(::BurritoToResourceContainerConverter)
     factoryOf(::ScriptureBurritoUtils)
-
-    // Plugins
-//    factoryOf(::LaunchPlugin)
 
     // Mappers
     factoryOf(::AudioPluginDataMapper)
@@ -133,6 +135,8 @@ val implicitCommonModule = module {
     factoryOf(::PcmTakeTransformer)
     factoryOf(::AudioFileUtils)
     factoryOf(::SplitAudioOnCues)
+    // Explicit for the same reason as OpenWorkbook above: it takes a defaulted ioDispatcher.
+    factory { LoadChapterSourceText() }
 
     factoryOf(::InitializeVersification)
     factoryOf(::InitializeSources)

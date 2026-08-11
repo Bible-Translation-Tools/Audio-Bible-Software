@@ -19,17 +19,16 @@
 package org.bibletranslationtools.otter.common.domain.resourcecontainer.project
 
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.OtterZipFile.Companion.otterFileZ
-import org.wycliffeassociates.otter.common.collections.OtterTree
-import org.wycliffeassociates.otter.common.collections.OtterTreeNode
+import org.bibletranslationtools.otter.common.collections.OtterTree
+import org.bibletranslationtools.otter.common.collections.OtterTreeNode
 import java.io.IOException
 import java.nio.file.*
 import java.nio.file.attribute.BasicFileAttributes
 import java.util.*
 import java.util.zip.ZipFile
-import javax.inject.Inject
 import kotlin.io.path.absolutePathString
 
-class ZipEntryTreeBuilder @Inject constructor() : IZipEntryTreeBuilder {
+class ZipEntryTreeBuilder() : IZipEntryTreeBuilder {
 
     private fun createZipFileSystem(zipFilename: String): FileSystem {
         val path = Paths.get(zipFilename)

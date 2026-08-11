@@ -1,43 +1,24 @@
-/**
- * Copyright (C) 2020-2024 Wycliffe Associates
- *
- * This file is part of Orature.
- *
- * Orature is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * Orature is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with Orature.  If not, see <https://www.gnu.org/licenses/>.
- */
 package org.bibletranslationtools.otter.common.device
 
-import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
-import java.io.File
+import kotlinx.coroutines.flow.Flow
 
 interface IAudioPlayer {
     val frameStart: Int
     val frameEnd: Int
-    fun addEventListener(listener: IAudioPlayerListener)
-    fun addEventListener(onEvent: (event: AudioPlayerEvent) -> Unit) {
-        addEventListener(WeakAudioListener(object : IAudioPlayerListener {
-            override fun onEvent(event: AudioPlayerEvent) {
-                onEvent(event)
-            }
-        }))
-    }
+
+    /**
+     * Transport events for THIS player only. The underlying hardware worker is shared between every
+     * player in the app, so a stream that carried all of it would report another player's Complete as
+     * though this player's audio had finished.
+     */
+    val events: Flow<AudioPlayerEvent>
+
     fun load(reader: AudioFileReader)
-    fun load(readerProvider: AudioFileReaderProvider)
-    fun load(file: File)
+    // Note: On Android, 'File' behaves differently.
+    // We typically prefer passing the Reader directly in KMP.
+
     fun loadSection(reader: AudioFileReader, frameStart: Int, frameEnd: Int)
-    fun loadSection(readerProvider: AudioFileReaderProvider, frameStart: Int, frameEnd: Int)
-    fun loadSection(file: File, frameStart: Int, frameEnd: Int)
+
     fun getAudioReader(): AudioFileReader?
     fun changeRate(rate: Double)
     fun play()
@@ -52,4 +33,12 @@ interface IAudioPlayer {
     fun getDurationMs(): Int
     fun getLocationInFrames(): Int
     fun getLocationMs(): Int
+
+    /**
+     * True when [getLocationInFrames] reflects the audible position. During playback
+     * start / seek transients the underlying sink may not be running yet, in which
+     * case the reported position is the WRITE cursor (ahead of what's heard) and
+     * consumers smoothing the position (the display clock) should skip corrections.
+     */
+    fun isPositionReliable(): Boolean = true
 }

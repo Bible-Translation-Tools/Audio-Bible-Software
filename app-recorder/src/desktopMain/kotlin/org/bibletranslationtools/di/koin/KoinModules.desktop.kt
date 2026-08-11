@@ -5,7 +5,7 @@ import org.bibletranslationtools.otter.common.persistence.DesktopDirectoryProvid
 import org.koin.dsl.module
 
 // App-specific: the appName determines the desktop data directory, so each app supplies
-// its own. (Orature supplies its own with appName "Orature".) The DB + audio modules are
+// its own. (Orature supplies its own with appName "Orature2".) The DB + audio modules are
 // shared — see :shared sharedDesktopModules.
 val directoryProviderModule = module {
     single<IDirectoryProvider> {

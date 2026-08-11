@@ -1,7 +1,6 @@
 package org.bibletranslationtools.bttrecorder2.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -64,7 +63,7 @@ class ProjectCreationViewModel : ViewModel(), KoinComponent {
     }
 
     private fun loadSources() {
-        viewModelScope.launch {
+        launchLogged {
             _uiState.update { it.copy(isLoading = true) }
             try {
                 // Imported sources (already in the DB) + bundled gateway sources that can be
@@ -82,18 +81,19 @@ class ProjectCreationViewModel : ViewModel(), KoinComponent {
                     it.copy(sources = sources, availableSources = available, isLoading = false)
                 }
             } catch (e: Exception) {
+                logFailure("loading sources", e)
                 _uiState.update { it.copy(isLoading = false, error = e.message) }
             }
         }
     }
 
     private fun loadTargetLanguages() {
-        viewModelScope.launch {
+        launchLogged {
             try {
                 val languages = languageRepository.getAll().blockingGet() // Assuming getAll() derived from IRepository implies basic fetch
                 _uiState.update { it.copy(targetLanguages = languages) }
             } catch (e: Exception) {
-                // Log error or handle gracefully
+                logFailure("loading target languages", e)
             }
         }
     }
@@ -108,7 +108,7 @@ class ProjectCreationViewModel : ViewModel(), KoinComponent {
      * where sources are imported on demand rather than all at app initialization.
      */
     fun selectAvailableSource(language: Language) {
-        viewModelScope.launch {
+        launchLogged {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
                 val metadata = withContext(Dispatchers.IO) {
@@ -131,6 +131,7 @@ class ProjectCreationViewModel : ViewModel(), KoinComponent {
                     _uiState.update { it.copy(isLoading = false, error = msg) }
                 }
             } catch (e: Exception) {
+                logFailure("selecting an available source", e)
                 _uiState.update { it.copy(isLoading = false, error = e.message) }
             }
         }
@@ -143,7 +144,7 @@ class ProjectCreationViewModel : ViewModel(), KoinComponent {
 
     private fun loadAvailableBooks() {
         val source = _uiState.value.selectedSource ?: return
-        viewModelScope.launch {
+        launchLogged {
             _uiState.update { it.copy(isLoading = true) }
             try {
                 // We need to find the project collection for this metadata to get its children
@@ -168,6 +169,7 @@ class ProjectCreationViewModel : ViewModel(), KoinComponent {
                 }
 
             } catch (e: Exception) {
+                logFailure("loading available books", e)
                 _uiState.update { it.copy(isLoading = false, error = e.message) }
             }
         }
@@ -183,7 +185,7 @@ class ProjectCreationViewModel : ViewModel(), KoinComponent {
         val source = state.selectedBook ?: return // This is the book collection in source language
         val targetLang = state.selectedTarget ?: return
 
-        viewModelScope.launch {
+        launchLogged {
             _uiState.update { it.copy(isLoading = true) }
             try {
                 withContext(Dispatchers.IO) {
@@ -196,6 +198,7 @@ class ProjectCreationViewModel : ViewModel(), KoinComponent {
                 }
                 _uiState.update { it.copy(isLoading = false, isCreated = true) }
             } catch (e: Exception) {
+                logFailure("creating the workbook", e)
                  _uiState.update { it.copy(isLoading = false, error = e.message) }
             }
         }

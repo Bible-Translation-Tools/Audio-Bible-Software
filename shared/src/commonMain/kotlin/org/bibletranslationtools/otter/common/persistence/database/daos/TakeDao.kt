@@ -23,8 +23,8 @@ import org.jooq.DSLContext
 import org.jooq.impl.DSL.max
 import org.jooq.impl.DSL.select
 import org.bibletranslationtools.otter.common.persistence.database.InsertionException
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.CollectionEntity
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.TakeEntity
+import org.bibletranslationtools.otter.common.persistence.entities.CollectionEntity
+import org.bibletranslationtools.otter.common.persistence.entities.TakeEntity
 
 class TakeDao(
     private val instanceDsl: DSLContext

@@ -21,7 +21,7 @@ package org.bibletranslationtools.otter.common.domain.collections
 import io.reactivex.Completable
 import io.reactivex.Observable
 import io.reactivex.schedulers.Schedulers
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.IProjectDirectories
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
@@ -30,11 +30,10 @@ import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import java.util.concurrent.TimeUnit
-import javax.inject.Inject
 
-class DeleteProject @Inject constructor(
+class DeleteProject(
     private val collectionRepository: ICollectionRepository,
-    private val directoryProvider: IDirectoryProvider,
+    private val directoryProvider: IProjectDirectories,
     private val workbookRepository: IWorkbookRepository,
     private val workbookDescriptorRepo: IWorkbookDescriptorRepository
 ) {

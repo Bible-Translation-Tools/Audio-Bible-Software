@@ -20,7 +20,7 @@ package org.bibletranslationtools.otter.common.initialization
 
 import io.reactivex.Completable
 import io.reactivex.ObservableEmitter
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.IResourceContainerDirectories
 import org.bibletranslationtools.otter.common.api.persistence.config.Installable
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IInstalledEntityRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
@@ -30,10 +30,9 @@ import org.bibletranslationtools.otter.common.domain.project.importer.ProjectImp
 import org.bibletranslationtools.otter.common.domain.project.importer.RCImporterFactory
 import org.bibletranslationtools.otter.common.data.ProgressStatus
 import java.io.File
-import javax.inject.Inject
 
-class InitializeSources @Inject constructor(
-    private val directoryProvider: IDirectoryProvider,
+class InitializeSources(
+    private val directoryProvider: IResourceContainerDirectories,
     private val resourceMetadataRepo: IResourceMetadataRepository,
     private val installedEntityRepo: IInstalledEntityRepository,
     private val rcImporterFactory: RCImporterFactory

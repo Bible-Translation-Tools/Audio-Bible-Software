@@ -34,10 +34,11 @@ import org.bibletranslationtools.orature.ui.navigation.OratureNarrationRoute
 import org.bibletranslationtools.orature.ui.navigation.OratureNavigation
 import org.bibletranslationtools.orature.ui.navigation.OratureTranslationRoute
 import org.bibletranslationtools.orature.ui.screens.OratureCrashScreen
-import org.bibletranslationtools.orature.ui.viewmodels.OratureImportEvents
+import org.bibletranslationtools.orature.services.OratureImportEvents
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
-import org.bibletranslationtools.otter.common.device.newaudio.AudioDeviceSelector
-import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
+import org.bibletranslationtools.otter.common.device.AudioConfig
+import org.bibletranslationtools.otter.common.device.AudioDeviceSelector
+import org.bibletranslationtools.otter.common.device.AudioSpec
 import org.bibletranslationtools.shared.preferences.AppSettings
 import org.bibletranslationtools.shared.preferences.IAppPreferences
 import org.bibletranslationtools.shared.preferences.ThemeMode
@@ -210,7 +211,7 @@ fun OratureApp(startWithSplash: Boolean = true) {
         }
         runCatching {
             val selector = getKoin().get<AudioDeviceSelector>()
-            val spec = AudioSpec()
+            val spec = getKoin().get<AudioConfig>().spec
             s.outputDeviceId?.let { id ->
                 selector.getOutputDevices(spec).firstOrNull { it.id == id }
                     ?.let(selector::selectOutputDevice)

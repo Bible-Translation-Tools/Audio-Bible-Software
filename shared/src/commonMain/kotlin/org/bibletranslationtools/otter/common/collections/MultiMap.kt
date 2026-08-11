@@ -16,7 +16,7 @@
  * You should have received a copy of the GNU General Public License
  * along with Orature.  If not, see <https://www.gnu.org/licenses/>.
  */
-package org.wycliffeassociates.otter.common.collections
+package org.bibletranslationtools.otter.common.collections
 
 class MultiMap<K, V> : HashMap<K, MutableSet<V>>() {
     operator fun set(k: K, v: V) = put(k, v)

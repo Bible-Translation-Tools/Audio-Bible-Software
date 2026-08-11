@@ -1,27 +1,24 @@
-/**
- * Copyright (C) 2020-2024 Wycliffe Associates
- *
- * This file is part of Orature.
- *
- * Orature is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * Orature is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with Orature.  If not, see <https://www.gnu.org/licenses/>.
- */
 package org.bibletranslationtools.otter.common.device
 
-enum class AudioPlayerEvent {
-    LOAD,
-    PLAY,
-    PAUSE,
-    STOP,
-    COMPLETE
+/**
+ * Events emitted by the player to observers.
+ */
+sealed class AudioPlayerEvent {
+    /**
+     * An event together with the connection whose playback it describes.
+     *
+     * The worker is shared by every connection — playback, source audio, narration, take previews —
+     * and emits onto one stream. Without an owner, a `Complete` raised for one connection reaches
+     * every other connection's host, which cannot tell it apart from its own: the host then parks its
+     * display at the end of a take that is still mid-playback. The owner is stamped at emission time,
+     * because by the time a collector runs, the hardware may already belong to someone else.
+     */
+    internal data class Owned(val owner: Int?, val event: AudioPlayerEvent)
+
+    object Load : AudioPlayerEvent()
+    object Play : AudioPlayerEvent()
+    object Pause : AudioPlayerEvent()
+    object Stop : AudioPlayerEvent()
+    object Complete : AudioPlayerEvent()
+    data class Error(val message: String, val cause: Throwable? = null) : AudioPlayerEvent()
 }

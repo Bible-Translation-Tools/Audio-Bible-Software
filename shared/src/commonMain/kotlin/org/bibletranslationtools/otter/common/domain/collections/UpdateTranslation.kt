@@ -21,9 +21,8 @@ package org.bibletranslationtools.otter.common.domain.collections
 import io.reactivex.Completable
 import org.bibletranslationtools.otter.common.data.workbook.Translation
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ILanguageRepository
-import javax.inject.Inject
 
-class UpdateTranslation @Inject constructor(
+class UpdateTranslation(
     private val languageRepo: ILanguageRepository
 ) {
     fun update(translation: Translation): Completable {

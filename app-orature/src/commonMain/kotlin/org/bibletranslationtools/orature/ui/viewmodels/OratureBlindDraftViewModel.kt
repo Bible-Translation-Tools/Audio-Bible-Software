@@ -13,18 +13,19 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow as MutableStateFlowOf
-import org.bibletranslationtools.orature.ui.workbook.OratureWorkbookDataStore
+import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
 import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
 import org.bibletranslationtools.otter.common.data.primitives.MimeType
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Take
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnection
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
-import org.bibletranslationtools.otter.common.device.newaudio.AudioRecorderConnection
-import org.bibletranslationtools.otter.common.device.newaudio.AudioRecorderConnectionFactory
-import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
-import org.bibletranslationtools.otter.common.device.newaudio.IAudioPlayer
+import org.bibletranslationtools.otter.common.device.AudioConfig
+import org.bibletranslationtools.otter.common.device.AudioPlayerConnection
+import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
+import org.bibletranslationtools.otter.common.device.AudioRecorderConnection
+import org.bibletranslationtools.otter.common.device.AudioRecorderConnectionFactory
+import org.bibletranslationtools.otter.common.device.AudioSpec
+import org.bibletranslationtools.otter.common.device.IAudioPlayer
 import org.bibletranslationtools.otter.common.domain.IUndoable
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
@@ -34,6 +35,7 @@ import org.bibletranslationtools.otter.common.domain.translation.TranslationTake
 import org.bibletranslationtools.otter.common.domain.translation.TranslationTakeSelectAction
 import org.bibletranslationtools.otter.common.recorder.ActiveRecordingRenderer
 import org.bibletranslationtools.otter.common.recorder.WavFileWriter
+import org.bibletranslationtools.orature.plugins.PluginCapability
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.time.LocalDate
@@ -90,7 +92,7 @@ data class OratureBlindDraftUiState(
  * Drives the Blind Draft step for the active chunk (JVM: `BlindDraftViewModel`): plays the chunk's
  * source audio, lists its target takes ("best take" + "available takes"), and lets the translator
  * record a new draft (7b) and pick the best take (7c). Follows the shared [OratureWorkbookDataStore]
- * active-chunk selection; playback uses the shared newaudio player.
+ * active-chunk selection; playback uses the shared audio player.
  */
 class OratureBlindDraftViewModel(
     private val translationVm: OratureTranslationViewModel
@@ -99,6 +101,7 @@ class OratureBlindDraftViewModel(
     private val workbookDataStore: OratureWorkbookDataStore by inject()
     private val playerFactory: AudioPlayerConnectionFactory by inject()
     private val recorderFactory: AudioRecorderConnectionFactory by inject()
+    private val audioConfig: AudioConfig by inject()
 
     private val _uiState = MutableStateFlow(OratureBlindDraftUiState())
     val uiState: StateFlow<OratureBlindDraftUiState> = _uiState.asStateFlow()
@@ -118,11 +121,8 @@ class OratureBlindDraftViewModel(
     private val navigationLock: org.bibletranslationtools.orature.ui.OratureNavigationLock by inject()
 
     /** The configured default editor plugin, if external editing is available (desktop + one selected). */
-    private fun selectedEditor(): org.bibletranslationtools.orature.plugins.OratureExternalPlugin? {
-        if (!org.bibletranslationtools.orature.plugins.canLaunchPlugins()) return null
-        val reg = pluginStore.load()
-        return reg.plugins.firstOrNull { it.id == reg.selectedEditorId && it.canEdit }
-    }
+    private fun selectedEditor(): org.bibletranslationtools.orature.plugins.OratureExternalPlugin? =
+        pluginStore.selected(PluginCapability.EDIT)
 
     /** Open a take in the configured external editor, then reload it (edited in place). Locks
      *  in-app navigation for the duration (JVM: the window-close guard, adapted — see
@@ -134,7 +134,7 @@ class OratureBlindDraftViewModel(
         val take = takesById[id] ?: return
         val editor = selectedEditor() ?: return
         val chunk = activeChunk ?: return
-        viewModelScope.launch {
+        launchLogged {
             beginPluginOpen()
             org.bibletranslationtools.orature.plugins.launchPlugin(editor, take.file, pluginParams(chunk))
             endPluginOpen()
@@ -194,13 +194,13 @@ class OratureBlindDraftViewModel(
         // The page header undo/redo route here while this step is active.
         translationVm.setUndoRedoHandlers(::undo, ::redo)
         // Follow the shared active-chunk selection (set by the translation VM's steps-drawer nav).
-        viewModelScope.launch {
+        launchLogged {
             workbookDataStore.activeChunk.collect { chunk -> onChunk(chunk) }
         }
         startPositionTicker()
         // Mirror the shell's book/chapter title + source text/license (JVM: `SourceContent`'s own
         // properties) so the plugin-opened cover can show them without re-deriving them here.
-        viewModelScope.launch {
+        launchLogged {
             translationVm.uiState.collect { t ->
                 val title = "${t.bookTitle} ${t.activeChapterTitle}".trim()
                 if (_uiState.value.activeContentTitle != title ||
@@ -232,7 +232,7 @@ class OratureBlindDraftViewModel(
      */
     private fun startPositionTicker() {
         positionTickerJob?.cancel()
-        positionTickerJob = viewModelScope.launch(Dispatchers.Default) {
+        positionTickerJob = launchLogged(Dispatchers.Default) {
             while (isActive) {
                 val current = _uiState.value
                 val srcPlaying = runCatching { sourcePlayer?.isPlaying() }.getOrDefault(false) ?: false
@@ -270,7 +270,7 @@ class OratureBlindDraftViewModel(
             return
         }
         _uiState.value = OratureBlindDraftUiState(isLoading = true, hasChunk = true)
-        viewModelScope.launch {
+        launchLogged {
             try {
                 val loaded = withContext(Dispatchers.IO) {
                     val takes = chunk.audio.getAllTakes()
@@ -300,6 +300,7 @@ class OratureBlindDraftViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("loading the blind-draft chunk", e)
                 _uiState.value = OratureBlindDraftUiState(hasChunk = true, error = e.message ?: "Unknown error")
             }
         }
@@ -372,7 +373,7 @@ class OratureBlindDraftViewModel(
      *  save-as prompt; this port keeps the source format and just copies into the chosen folder). */
     fun exportTake(id: Int, targetDir: java.io.File) {
         val take = takesById[id] ?: return
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(Dispatchers.IO) {
             runCatching { take.file.copyTo(targetDir.resolve(take.file.name), overwrite = true) }
         }
     }
@@ -418,11 +419,8 @@ class OratureBlindDraftViewModel(
     }
 
     /** The configured default recorder plugin, if external recording is available. */
-    private fun selectedRecorder(): org.bibletranslationtools.orature.plugins.OratureExternalPlugin? {
-        if (!org.bibletranslationtools.orature.plugins.canLaunchPlugins()) return null
-        val reg = pluginStore.load()
-        return reg.plugins.firstOrNull { it.id == reg.selectedRecorderId && it.canRecord }
-    }
+    private fun selectedRecorder(): org.bibletranslationtools.orature.plugins.OratureExternalPlugin? =
+        pluginStore.selected(PluginCapability.RECORD)
 
     /** Build a new, un-persisted take for the active chunk (JVM: recorderViewModel.createTake). */
     private suspend fun newTake(chunk: Chunk): Take {
@@ -443,12 +441,12 @@ class OratureBlindDraftViewModel(
         val chunk = activeChunk ?: return
         if (selectedRecorder() != null) { recordWithExternalPlugin(chunk); return }
         stopAll()
-        viewModelScope.launch {
+        launchLogged {
             try {
                 val take = withContext(Dispatchers.IO) { newTake(chunk) }
                 pendingTake = take
                 val rec = AudioRecorderConnection(RECORDER_ID, recorderFactory, viewModelScope)
-                rec.start(AudioSpec())
+                rec.start(audioConfig.spec)
                 recorder = rec
                 // Initialize with an explicit format so a valid empty WAV header is written up front
                 // (JVM: createTake(createEmpty = true)); the plain OratureAudioFile(file) constructor
@@ -466,6 +464,7 @@ class OratureBlindDraftViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("starting a new blind-draft recording", e)
                 _uiState.value = _uiState.value.copy(recording = false, recordingActive = false, error = e.message)
             }
         }
@@ -477,7 +476,7 @@ class OratureBlindDraftViewModel(
     private fun recordWithExternalPlugin(chunk: Chunk) {
         if (_uiState.value.isPluginOpen) return
         val recorder = selectedRecorder() ?: return
-        viewModelScope.launch {
+        launchLogged {
             beginPluginOpen()
             val take = withContext(Dispatchers.IO) {
                 val t = newTake(chunk)
@@ -516,7 +515,7 @@ class OratureBlindDraftViewModel(
     fun saveRecording() {
         val chunk = activeChunk ?: return
         val take = pendingTake ?: return
-        viewModelScope.launch {
+        launchLogged {
             recordingActiveFlow.value = false
             withContext(Dispatchers.IO) {
                 writer?.pause()
@@ -543,7 +542,7 @@ class OratureBlindDraftViewModel(
     /** Discard the active recording. */
     fun cancelRecording() {
         val take = pendingTake
-        viewModelScope.launch {
+        launchLogged {
             recordingActiveFlow.value = false
             withContext(Dispatchers.IO) {
                 writer?.pause()

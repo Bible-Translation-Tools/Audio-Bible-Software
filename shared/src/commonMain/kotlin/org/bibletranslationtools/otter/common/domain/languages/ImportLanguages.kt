@@ -30,10 +30,9 @@ import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ILanguageRepository
 import java.io.InputStream
-import javax.inject.Inject
 
 // Imports from langnames.json
-class ImportLanguages @Inject constructor(
+class ImportLanguages(
     private val languageRepo: ILanguageRepository,
     private val languageDataSource: ILanguageDataSource
     ) {

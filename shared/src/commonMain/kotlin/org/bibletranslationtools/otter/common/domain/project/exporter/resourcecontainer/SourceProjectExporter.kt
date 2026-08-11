@@ -38,7 +38,8 @@ import org.bibletranslationtools.otter.common.domain.project.exporter.ProjectExp
 import org.bibletranslationtools.otter.common.domain.audio.WAV_TO_MP3_COMPRESSED_RATE
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstants
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito.ScriptureBurritoUtils
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.IFileIOFactory
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.utils.mapNotNull
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import org.wycliffeassociates.resourcecontainer.entity.Media
@@ -48,18 +49,17 @@ import java.io.File
 import java.nio.file.Files
 import java.util.*
 import java.util.regex.Pattern
-import javax.inject.Inject
 import kotlin.io.path.deleteIfExists
 import kotlin.io.path.inputStream
 import kotlin.io.path.outputStream
 import kotlin.io.path.readText
 
-class SourceProjectExporter @Inject constructor(
-    directoryProvider: IDirectoryProvider,
-    val burritoUtils: ScriptureBurritoUtils
-) : RCProjectExporter(directoryProvider) {
-    @Inject
-    lateinit var audioExporter: AudioExporter
+class SourceProjectExporter(
+    fileIO: IFileIOFactory,
+    tempFiles: ITempFileProvider,
+    val burritoUtils: ScriptureBurritoUtils,
+    private val audioExporter: AudioExporter
+) : RCProjectExporter(fileIO, tempFiles) {
 
     private val logger = LoggerFactory.getLogger(this.javaClass)
     private val exportMediaTypes = listOf(
@@ -118,7 +118,7 @@ class SourceProjectExporter @Inject constructor(
         callback: ProjectExporterCallback?,
         options: ExportOptions?
     ): Single<ExportResult> {
-        val fileWriter = directoryProvider.newFileWriter(exportFile)
+        val fileWriter = fileIO.newFileWriter(exportFile)
 
         return exportSelectedTakes(
             workbook,
@@ -155,7 +155,7 @@ class SourceProjectExporter @Inject constructor(
         contributors: List<Contributor>,
         chapterFilter: List<Int>? = null
     ): Single<Map<Int, List<File>>> {
-        val tempExportDir = directoryProvider.tempDirectory
+        val tempExportDir = tempFiles.tempDirectory
             .resolve("export${Date().time}")
             .apply { mkdirs() }
         val license = License.get(workbook.target.resourceMetadata.license)
@@ -249,7 +249,7 @@ class SourceProjectExporter @Inject constructor(
                 rc.write()
 
                 val tempFile = Files.createTempFile(
-                    directoryProvider.tempDirectory.toPath(),
+                    tempFiles.tempDirectory.toPath(),
                     "out_burrito",
                     "json"
                 )

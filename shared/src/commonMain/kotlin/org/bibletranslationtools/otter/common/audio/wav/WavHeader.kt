@@ -39,10 +39,26 @@ private const val FMT = "fmt "
 private const val DATA = "data"
 private const val PCM: Short = 1
 private const val DEFAULT_HEADER_SIZE = 44
+
+/** Size of a PCM `fmt ` chunk's body: 16 bytes, independent of rate, channels or bit depth. */
+private const val PCM_FMT_CHUNK_SIZE = 16
 private const val BITS_IN_BYTE = 8
 
 
-class WavHeader {
+/**
+ * @param channels the format to initialize a NEW header with. Ignored when [parse] is used instead,
+ *   which overwrites all of these from the file.
+ *
+ * These are constructor parameters rather than assignable properties on purpose: the setters stay
+ * private so that a parsed header can only ever describe the file it was parsed from. Before they
+ * existed, a header could only be created at the defaults, and [WavFile]'s format arguments were
+ * silently discarded.
+ */
+class WavHeader(
+    channels: Int = DEFAULT_CHANNELS,
+    sampleRate: Int = DEFAULT_SAMPLE_RATE,
+    bitsPerSample: Int = DEFAULT_BITS_PER_SAMPLE
+) {
 
     private var readHeadPosition = 0
     private var dataChunkStart = DEFAULT_HEADER_SIZE
@@ -53,11 +69,11 @@ class WavHeader {
     internal var totalDataLength = 0
     internal var totalAudioLength = 0
 
-    var channels = DEFAULT_CHANNELS
+    var channels = channels
         private set
-    var bitsPerSample = DEFAULT_BITS_PER_SAMPLE
+    var bitsPerSample = bitsPerSample
         private set
-    var sampleRate = DEFAULT_SAMPLE_RATE
+    var sampleRate = sampleRate
         private set
     var byteRate = sampleRate * channels * (bitsPerSample / BITS_IN_BYTE)
         private set
@@ -239,7 +255,13 @@ class WavHeader {
         header.putInt(totalDataLength)
         header.put(WAVE.toByteArray(Charsets.US_ASCII))
         header.put(FMT.toByteArray(Charsets.US_ASCII))
-        header.putInt(bitsPerSample)
+        // The SIZE of the fmt chunk, which for PCM is always 16 — not the bit depth. It was
+        // `bitsPerSample`, which is the same number for 16-bit audio and only for 16-bit audio, so it was
+        // correct for every file this app had ever written. At 24-bit it declared a 24-byte fmt chunk,
+        // the parser skipped 8 bytes too many, landed past the "data" label and rejected the file as
+        // having no data chunk. Anything reading these files with a stricter parser would have been
+        // reading a malformed WAV all along.
+        header.putInt(PCM_FMT_CHUNK_SIZE)
         header.putShort(PCM) // format = 1 for pcm
         header.putShort(channels.toShort()) // number of channels
         header.putInt(longSampleRate)

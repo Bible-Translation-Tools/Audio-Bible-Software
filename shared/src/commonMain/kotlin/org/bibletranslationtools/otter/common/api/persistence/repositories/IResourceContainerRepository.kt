@@ -19,7 +19,7 @@
 package org.bibletranslationtools.otter.common.api.persistence.repositories
 
 import io.reactivex.Single
-import org.wycliffeassociates.otter.common.collections.OtterTree
+import org.bibletranslationtools.otter.common.collections.OtterTree
 import org.bibletranslationtools.otter.common.data.primitives.CollectionOrContent
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.DeleteResult
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult

@@ -1,7 +1,6 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,10 +12,13 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.rx2.asFlow
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
-import org.bibletranslationtools.orature.ui.workbook.OratureWorkbookDataStore
+import org.bibletranslationtools.orature.resources.Res
+import org.bibletranslationtools.orature.resources.errOpenProject
+import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
 import org.bibletranslationtools.orature.ui.translation.ChunkingStep
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
+import org.jetbrains.compose.resources.getString
+import org.bibletranslationtools.otter.common.domain.project.InitializeProjectFiles
+import org.bibletranslationtools.otter.common.domain.project.OpenWorkbook
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
@@ -126,8 +128,7 @@ class OratureTranslationViewModel(
     private val workbookDescriptorId: Int
 ) : ViewModel(), KoinComponent {
 
-    private val workbookDescriptorRepo: IWorkbookDescriptorRepository by inject()
-    private val workbookRepository: IWorkbookRepository by inject()
+    private val openWorkbook: OpenWorkbook by inject()
     private val workbookDataStore: OratureWorkbookDataStore by inject()
 
     private val _uiState = MutableStateFlow(OratureTranslationUiState())
@@ -158,7 +159,7 @@ class OratureTranslationViewModel(
         load()
         // Keep the right-hand source-text drawer in sync with the active chunk (JVM: sourceTextBinding
         // → getChunkSourceText). Shown on Peer-Edit-and-later steps and when source audio is missing.
-        viewModelScope.launch {
+        launchLogged {
             workbookDataStore.activeChunk.collect { chunk -> updateSourceText(chunk) }
         }
     }
@@ -168,7 +169,7 @@ class OratureTranslationViewModel(
         val wb = workbookDataStore.activeWorkbook.value ?: return
         val chapterSort = _uiState.value.activeChapterSort
             ?: workbookDataStore.activeChapter.value?.sort ?: return
-        viewModelScope.launch {
+        launchLogged {
             val text = withContext(Dispatchers.IO) {
                 runCatching {
                     val accessor = wb.projectFilesAccessor
@@ -186,29 +187,42 @@ class OratureTranslationViewModel(
     }
 
     private fun load() {
-        viewModelScope.launch {
+        launchLogged {
             _uiState.value = OratureTranslationUiState(isLoading = true)
             try {
+                // Descriptor lookup, workbook resolution, chapter ordering and completion come
+                // from OpenWorkbook, which dispatches to IO itself. What stays here is the
+                // app-side work that is still file I/O: scaffolding the project files and
+                // probing the source RC for chapter audio.
+                val opened = openWorkbook.openWithChapters(workbookDescriptorId)
+                val scaffolded = workbookDataStore.open(opened.workbook, opened.mode)
+                if (scaffolded is InitializeProjectFiles.Result.Failed) {
+                    logFailure("scaffolding project files (${scaffolded.step})", scaffolded.cause)
+                    // Chunking loads the project RC to copy source audio, so a missing manifest.yaml
+                    // would surface there instead of here, looking like an unrelated failure.
+                    if (!scaffolded.projectUsable) {
+                        _uiState.value = OratureTranslationUiState(
+                            isLoading = false,
+                            error = getString(Res.string.errOpenProject)
+                        )
+                        return@launchLogged
+                    }
+                }
                 val loaded = withContext(Dispatchers.IO) {
-                    val descriptor = workbookDescriptorRepo.getByIdSuspend(workbookDescriptorId)
-                        ?: error("No workbook descriptor with id=$workbookDescriptorId")
-                    val workbook = workbookRepository.get(
-                        descriptor.sourceCollection,
-                        descriptor.targetCollection
-                    )
-                    workbookDataStore.open(workbook, descriptor.mode)
-                    val chapterList = workbook.target.chapters.toList().await().sortedBy { it.sort }
-                    val completed = chapterList.associate { it.sort to it.hasSelectedAudio() }
-                    val title = workbook.target.title.ifEmpty { workbook.target.slug.uppercase() }
+                    val workbook = opened.workbook
                     val restoredSort = workbookDataStore.lastChapterSort(workbookDescriptorId)
-                    val activeSort = (chapterList.firstOrNull { it.sort == restoredSort }
-                        ?: chapterList.firstOrNull())?.sort
+                    val activeSort = (opened.chapters.firstOrNull { it.sort == restoredSort }
+                        ?: opened.chapters.firstOrNull())?.sort
                     val noSource = runCatching {
                         activeSort != null &&
                             workbook.sourceAudioAccessor.getChapter(activeSort, workbook.target) == null
                     }.getOrDefault(true)
                     LoadResult(
-                        title, descriptor.mode, chapterList, completed, noSource,
+                        workbook.target.title.ifEmpty { workbook.target.slug.uppercase() },
+                        opened.mode,
+                        opened.chapters,
+                        opened.completedByChapterSort,
+                        noSource,
                         sourceTitle = workbook.source.resourceMetadata.title,
                         sourceLicense = workbook.source.resourceMetadata.license
                     )
@@ -236,6 +250,7 @@ class OratureTranslationViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("loading the translation screen", e)
                 _uiState.value = OratureTranslationUiState(isLoading = false, error = e.message ?: "Unknown error")
             }
         }
@@ -249,14 +264,14 @@ class OratureTranslationViewModel(
      * earlier step mid-work just because chunk progress changed underneath them.
      */
     private fun resumeStepForChapter(chapter: Chapter, sort: Int) {
-        viewModelScope.launch {
+        launchLogged {
             val reachable = withContext(Dispatchers.IO) {
                 val chunkList = runCatching {
                     chapter.chunks.blockingGet().filter { it.contentType == ContentType.TEXT }
                 }.getOrDefault(emptyList())
                 computeReachableStep(chunkList)
             }
-            if (_uiState.value.activeChapterSort != sort) return@launch // chapter changed again meanwhile
+            if (_uiState.value.activeChapterSort != sort) return@launchLogged // chapter changed again meanwhile
             val resumedStep = if (reachable == ChunkingStep.CHUNKING) {
                 ChunkingStep.CONSUME_AND_VERBALIZE
             } else {
@@ -352,7 +367,7 @@ class OratureTranslationViewModel(
         val mayNeedConfirm = chunkNavAction(s.selectedStep, step, s.canUndo, existingChunkCount = 1) ==
             ChunkNavAction.CONFIRM_DATA_LOSS
         if (mayNeedConfirm) {
-            viewModelScope.launch {
+            launchLogged {
                 val action = chunkNavAction(s.selectedStep, step, s.canUndo, activeChapterChunkCount())
                 if (action == ChunkNavAction.CONFIRM_DATA_LOSS) {
                     _uiState.value = _uiState.value.copy(pendingChunkNavStep = step)
@@ -378,7 +393,7 @@ class OratureTranslationViewModel(
         if (saveFirst) {
             // Persist and WAIT before switching, so the next step reads committed chunk content
             // (JVM saves synchronously in undock before navigating).
-            viewModelScope.launch {
+            launchLogged {
                 runCatching { chunkSaveHandler?.invoke() }
                 _uiState.value = _uiState.value.copy(
                     selectedStep = step,
@@ -429,7 +444,7 @@ class OratureTranslationViewModel(
         val chapterSort = _uiState.value.activeChapterSort ?: return
         val chapter = chapters.firstOrNull { it.sort == chapterSort } ?: return
         chunkJob?.cancel()
-        chunkJob = viewModelScope.launch {
+        chunkJob = launchLogged {
             chapter.observableChunks.asFlow()
                 .map { list -> list.filter { it.contentType == ContentType.TEXT } }
                 .collect { chunkList -> applyChunkState(chunkList) }
@@ -444,7 +459,7 @@ class OratureTranslationViewModel(
     fun onChunkTakesChanged() {
         val chapterSort = _uiState.value.activeChapterSort ?: return
         val chapter = chapters.firstOrNull { it.sort == chapterSort } ?: return
-        viewModelScope.launch {
+        launchLogged {
             val chunkList = withContext(Dispatchers.IO) {
                 runCatching { chapter.chunks.blockingGet().filter { it.contentType == ContentType.TEXT } }
                     .getOrDefault(emptyList())
@@ -493,7 +508,7 @@ class OratureTranslationViewModel(
         val chapterSort = _uiState.value.activeChapterSort ?: return
         val chapter = chapters.firstOrNull { it.sort == chapterSort } ?: return
         reachableJob?.cancel()
-        reachableJob = viewModelScope.launch {
+        reachableJob = launchLogged {
             chapter.observableChunks.asFlow()
                 .map { list -> list.filter { it.contentType == ContentType.TEXT } }
                 .collect { chunkList ->
@@ -517,10 +532,10 @@ class OratureTranslationViewModel(
         if (_uiState.value.pluginOpen) return
         val chapterSort = _uiState.value.activeChapterSort ?: return
         val chapter = chapters.firstOrNull { it.sort == chapterSort } ?: return
-        viewModelScope.launch {
+        launchLogged {
             val chunk = withContext(Dispatchers.IO) {
                 runCatching { chapter.chunks.blockingGet().firstOrNull { it.sort == sort } }.getOrNull()
-            } ?: return@launch
+            } ?: return@launchLogged
             workbookDataStore.setActiveChunk(chunk)
             _uiState.value = _uiState.value.copy(
                 chunks = _uiState.value.chunks.map { it.copy(selected = it.number == sort) },
@@ -547,7 +562,7 @@ class OratureTranslationViewModel(
             selectedStep = ChunkingStep.CONSUME_AND_VERBALIZE
         )
         updateReachableStep()
-        viewModelScope.launch {
+        launchLogged {
             val noSource = withContext(Dispatchers.IO) { hasNoSourceAudio(sort) }
             if (_uiState.value.activeChapterSort == sort) {
                 _uiState.value = _uiState.value.copy(noSourceAudio = noSource)

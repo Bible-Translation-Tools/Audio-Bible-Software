@@ -26,7 +26,7 @@ import org.jooq.impl.SQLDataType
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.primitives.ContentLabel
 import org.bibletranslationtools.otter.common.data.primitives.PSALMS_SLUG
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.utils.SELECTED_TAKES_FROM_DB
 import java.io.File
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus as CheckingStatusEnum
@@ -35,7 +35,7 @@ const val SCHEMA_VERSION = 14
 const val DATABASE_INSTALLABLE_NAME = "DATABASE"
 
 class DatabaseMigrator(
-    private val directoryProvider: IDirectoryProvider
+    private val directoryProvider: ITempFileProvider
 ) {
     val logger = LoggerFactory.getLogger(DatabaseMigrator::class.java)
 

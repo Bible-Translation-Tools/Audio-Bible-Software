@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.reactivex.disposables.Disposable
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -15,24 +16,26 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
-import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerEvent
+import org.bibletranslationtools.otter.common.device.AudioFileReader
+import org.bibletranslationtools.otter.common.device.AudioPlayerEvent
 import org.bibletranslationtools.otter.common.domain.narration.AudioScene
 import org.bibletranslationtools.otter.common.domain.narration.Narration
 import org.bibletranslationtools.otter.common.domain.narration.teleprompter.NarrationStateTransition
-import org.bibletranslationtools.shared.ui.playback.AudioTimeline
-import org.bibletranslationtools.shared.ui.playback.PcmSource
-import org.bibletranslationtools.shared.ui.playback.PlaybackDisplayClock
-import org.bibletranslationtools.shared.ui.playback.WaveformPeakCache
-import org.bibletranslationtools.shared.ui.playback.buildPeakCache
+import org.bibletranslationtools.shared.audio.engine.AudioTimeline
+import org.bibletranslationtools.shared.audio.engine.PcmSource
+import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayPosition
+import org.bibletranslationtools.shared.audio.engine.WaveformPeakCache
+import org.bibletranslationtools.shared.audio.engine.buildPeakCache
 import kotlin.math.max
 import org.bibletranslationtools.orature.ui.narration.OratureNarrationFactory
-import org.bibletranslationtools.orature.ui.workbook.OratureWorkbookDataStore
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
+import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
+import org.bibletranslationtools.otter.common.domain.narration.LoadChapterSourceText
+import org.bibletranslationtools.otter.common.domain.project.InitializeProjectFiles
+import org.bibletranslationtools.otter.common.domain.project.OpenWorkbook
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
 import org.bibletranslationtools.otter.common.data.audio.MarkerType
 import org.bibletranslationtools.orature.resources.Res
+import org.bibletranslationtools.orature.resources.errOpenProject
 import org.bibletranslationtools.orature.resources.editVerseMarkers
 import org.jetbrains.compose.resources.getString
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
@@ -41,6 +44,9 @@ import org.bibletranslationtools.otter.common.domain.narration.teleprompter.Narr
 import org.bibletranslationtools.otter.common.domain.narration.teleprompter.NarrationStateType
 import org.bibletranslationtools.otter.common.domain.narration.teleprompter.TeleprompterItemState
 import org.bibletranslationtools.otter.common.domain.narration.teleprompter.TeleprompterStateMachine
+import org.bibletranslationtools.orature.plugins.PluginCapability
+import org.bibletranslationtools.orature.services.OratureVerseMarkerEditor
+import org.bibletranslationtools.orature.services.OratureVerseText
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -185,12 +191,18 @@ internal fun buildVerseItems(
  * replaces it with the real `ProjectCompletionStatus.getChapterNarrationProgress == 1.0`
  * (the JVM signal) once narration state is wired.
  */
+/**
+ * @param ioDispatcher where DB/file work runs. Injected rather than hard-coded so a test can supply
+ *   its own scheduler; with `Dispatchers.IO` baked in that work escaped the test dispatcher and had
+ *   to be awaited on a wall clock, which made these tests flaky.
+ */
 class OratureNarrationViewModel(
-    private val workbookDescriptorId: Int
+    private val workbookDescriptorId: Int,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel(), KoinComponent {
 
-    private val workbookDescriptorRepo: IWorkbookDescriptorRepository by inject()
-    private val workbookRepository: IWorkbookRepository by inject()
+    private val openWorkbook: OpenWorkbook by inject()
+    private val loadChapterSourceText: LoadChapterSourceText by inject()
     private val workbookDataStore: OratureWorkbookDataStore by inject()
     private val narrationFactory: OratureNarrationFactory by inject()
     private val pluginStore: org.bibletranslationtools.orature.plugins.OraturePluginStore by inject()
@@ -296,7 +308,7 @@ class OratureNarrationViewModel(
     // snaps the clock to 0 (audio rewinds), instead of the stale end position. Cleared by any
     // explicit position change (seek / play-verse) so mid-chapter resume isn't hijacked.
     private var playbackReachedEnd = false
-    val clock = PlaybackDisplayClock(
+    val clock = PlaybackDisplayPosition(
         positionSource = { narration?.getLocationInFrames()?.toLong() ?: 0L },
         positionReliable = { narration?.getPlayer()?.isPositionReliable() ?: false }
     )
@@ -331,9 +343,9 @@ class OratureNarrationViewModel(
         peakCache = cache
         peakSource = source
         clock.durationFrames = total.toLong()
-        peakBuildJob = viewModelScope.launch(Dispatchers.IO) {
+        peakBuildJob = launchLogged(ioDispatcher) {
             runCatching { buildPeakCache(source, cache) }
-                .onFailure { System.err.println("[narration] peak cache build failed: $it") }
+                .onFailure { logFailure("building the narration peak cache", it) }
         }
     }
 
@@ -342,25 +354,30 @@ class OratureNarrationViewModel(
     }
 
     private fun load() {
-        viewModelScope.launch {
+        launchLogged {
             _uiState.value = OratureNarrationUiState(isLoading = true)
             try {
-                val loaded = withContext(Dispatchers.IO) {
-                    val descriptor = workbookDescriptorRepo.getByIdSuspend(workbookDescriptorId)
-                        ?: error("No workbook descriptor with id=$workbookDescriptorId")
-                    val workbook = workbookRepository.get(
-                        descriptor.sourceCollection,
-                        descriptor.targetCollection
-                    )
-                    val chapterList = workbook.target.chapters.toList().await().sortedBy { it.sort }
-                    // Snapshot the lightweight completion proxy off the main thread.
-                    val completed = chapterList.associate { it.sort to it.hasSelectedAudio() }
-                    LoadResult(workbook, descriptor.mode, chapterList, completed)
-                }
+                // Descriptor lookup, workbook resolution, chapter ordering and the completion
+                // snapshot all live in OpenWorkbook, which does its own IO dispatch.
+                val loaded = openWorkbook.openWithChapters(workbookDescriptorId)
 
                 // open() scaffolds the on-disk project files (RC manifest, source copy, takes/chunks
-                // files) — file I/O, so keep it off the main thread.
-                withContext(Dispatchers.IO) { workbookDataStore.open(loaded.workbook, loaded.mode) }
+                // files); InitializeProjectFiles does its own IO dispatch.
+                when (val scaffolded = workbookDataStore.open(loaded.workbook, loaded.mode)) {
+                    is InitializeProjectFiles.Result.Success -> Unit
+                    is InitializeProjectFiles.Result.Failed -> {
+                        logFailure("scaffolding project files (${scaffolded.step})", scaffolded.cause)
+                        // A missing manifest.yaml used to surface much later, inside chunking's
+                        // source-audio copy, as an unrelated-looking ResourceContainer.load failure.
+                        if (!scaffolded.projectUsable) {
+                            _uiState.value = OratureNarrationUiState(
+                                isLoading = false,
+                                error = getString(Res.string.errOpenProject)
+                            )
+                            return@launchLogged
+                        }
+                    }
+                }
                 chapters = loaded.chapters
 
                 // Restore the last-viewed chapter for this workbook, else the first (JVM behavior).
@@ -377,7 +394,7 @@ class OratureNarrationViewModel(
                     bookTitle = loaded.workbook.target.title.ifEmpty { loaded.workbook.target.slug.uppercase() },
                     activeChapterTitle = active?.title.orEmpty(),
                     activeChapterSort = active?.sort,
-                    chapters = buildGrid(active?.sort, loaded.completed),
+                    chapters = buildGrid(active?.sort, loaded.completedByChapterSort),
                     hasPreviousChapter = hasNeighbor(active?.sort, step = -1),
                     hasNextChapter = hasNeighbor(active?.sort, step = +1)
                 )
@@ -386,6 +403,7 @@ class OratureNarrationViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("loading the narration screen", e)
                 _uiState.value = OratureNarrationUiState(isLoading = false, error = e.message ?: "Unknown error")
             }
         }
@@ -407,7 +425,7 @@ class OratureNarrationViewModel(
             verses = emptyList(),
             narrationState = null
         )
-        viewModelScope.launch { initializeNarration(chapter) }
+        launchLogged { initializeNarration(chapter) }
     }
 
     fun selectPreviousChapter() = stepChapter(step = -1)
@@ -485,27 +503,27 @@ class OratureNarrationViewModel(
 
         try {
             val workbook = workbookDataStore.workbook
-            val prepared = withContext(Dispatchers.IO) {
+            val prepared = withContext(ioDispatcher) {
                 val n = narrationFactory.create(workbook, chapter, viewModelScope)
                 n.initialize().await()
                 // Teleprompter text comes from the SOURCE scripture (the target project has no
-                // text yet) — JVM: loadChunks reads workbook.source.chapters matched by sort.
-                val sourceChunks = runCatching {
-                    workbook.source.chapters.toList().await()
-                        .firstOrNull { it.sort == chapter.sort }
-                        ?.chunksSuspend()
-                        .orEmpty()
-                }.getOrDefault(emptyList())
-                val byLabel = sourceChunks.associate { it.title to it.textItem.text }
-                val byIndex = sourceChunks.map { it.textItem.text }
-                Prepared(n, byLabel, byIndex)
+                // text yet) — LoadChapterSourceText matches the source book's chapter by sort.
+                // Missing source text is not fatal: the teleprompter renders empty. It used to be
+                // swallowed silently; now it is logged, matching how the rest of this VM reports
+                // failures.
+                val sourceText = runCatching { loadChapterSourceText.execute(workbook, chapter.sort) }
+                    .getOrElse { e ->
+                        logFailure("loading the chapter source text", e)
+                        LoadChapterSourceText.ChapterSourceText.EMPTY
+                    }
+                Prepared(n, sourceText)
             }
             narration = prepared.narration
             chapterTake = chapter.getSelectedTake()
-            verseTextByLabel = prepared.textByLabel
-            sourceTextByIndex = prepared.textByIndex
+            verseTextByLabel = prepared.sourceText.byVerseLabel
+            sourceTextByIndex = prepared.sourceText.inOrder
             _uiState.value = _uiState.value.copy(
-                sourceText = prepared.textByIndex.joinToString("\n"),
+                sourceText = prepared.sourceText.inOrder.joinToString("\n"),
                 sourceLicense = runCatching { workbook.source.resourceMetadata.license }.getOrDefault("")
             )
 
@@ -516,7 +534,7 @@ class OratureNarrationViewModel(
             // Mic runs for the whole narration session; the writer only captures while a verse
             // is recording. Guard so a missing input device doesn't crash the page.
             runCatching { prepared.narration.startMicrophone() }
-                .onFailure { System.err.println("[narration] startMicrophone failed: $it") }
+                .onFailure { logFailure("starting the microphone for narration", it) }
             micStarted = true
 
             // Waveform: composite the recorded chapter audio (its own reader connection) with the
@@ -537,15 +555,15 @@ class OratureNarrationViewModel(
 
             // Live mic level for the volume bar (JVM: VolumeBar over the recorder stream) — the
             // max sample of each incoming chunk, so it rises AND falls with the voice.
-            volumeJob = viewModelScope.launch(Dispatchers.Default) {
+            volumeJob = launchLogged(Dispatchers.Default) {
                 prepared.narration.getRecorderAudioStream().collect { bytes -> volumeLevel = micLevel(bytes) }
             }
 
             // Auto-pause when the player reaches the end (JVM: COMPLETE listener).
-            playerEventsJob = viewModelScope.launch {
+            playerEventsJob = launchLogged {
                 prepared.narration.getPlayer().events.collect { event ->
                     if (event is AudioPlayerEvent.Complete) {
-                        System.err.println("[narr-diag] COMPLETE loc=${prepared.narration.getLocationInFrames()} dur=${prepared.narration.getDurationInFrames()} clock=${clock.displayFrame} playingVerse=$playingVerseIndex")
+                        logDebug { "COMPLETE loc=${prepared.narration.getLocationInFrames()} dur=${prepared.narration.getDurationInFrames()} clock=${clock.displayFrame} playingVerse=$playingVerseIndex" }
                         prepared.narration.onPlaybackFinished()
                         playbackReachedEnd = true
                         clock.advancing = false
@@ -572,7 +590,7 @@ class OratureNarrationViewModel(
             // (the record transitions already advanced the state machine).
             activeVersesDisposable = prepared.narration.onActiveVersesUpdated
                 .subscribe({
-                    viewModelScope.launch {
+                    launchLogged {
                         refreshVerses(); updateMarkers(); syncChapterTake()
                         // The chapter audio changed (new/re-recorded/edited verse) — rebuild the
                         // frame-stable playback cache so the next play reflects it.
@@ -586,6 +604,7 @@ class OratureNarrationViewModel(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            logFailure("initializing narration", e)
             _uiState.value = _uiState.value.copy(verses = emptyList(), narrationState = null, actionsEnabled = false)
         }
     }
@@ -598,7 +617,7 @@ class OratureNarrationViewModel(
         val items = try {
             sm.transition(transition, index)
         } catch (e: Exception) {
-            System.err.println("[narration] transition $transition@$index failed: ${e.message}")
+            logFailure("narration transition $transition@$index", e)
             sm.getVerseItemStates()
         }
         publishVerses(items)
@@ -692,10 +711,10 @@ class OratureNarrationViewModel(
         val allRecorded = n.activeVerses.isNotEmpty() && n.activeVerses.size == n.totalVerses.size
         val existing = chapterTake
         if (allRecorded && (existing == null || existing.isDeleted())) {
-            viewModelScope.launch(Dispatchers.IO) {
+            launchLogged(ioDispatcher) {
                 runCatching { n.createChapterTake().await() }
                     .onSuccess { chapterTake = it }
-                    .onFailure { System.err.println("[narration] createChapterTake failed: $it") }
+                    .onFailure { logFailure("creating the chapter take", it) }
             }
         } else if (existing != null && !allRecorded) {
             n.deleteChapterTake()
@@ -708,7 +727,7 @@ class OratureNarrationViewModel(
     /** Recompute the composited waveform (into scene.frameBuffer) and the current viewport. */
     private fun startWaveformTicker() {
         waveformTickerJob?.cancel()
-        waveformTickerJob = viewModelScope.launch(Dispatchers.Default) {
+        waveformTickerJob = launchLogged(Dispatchers.Default) {
             while (isActive) {
                 val scene = _audioScene.value
                 val n = narration
@@ -734,7 +753,7 @@ class OratureNarrationViewModel(
                         // render; the Canvas must never read it mid-update).
                         waveformFront = buffer.copyOf()
                         lastViewports = viewports
-                    }.onFailure { System.err.println("[narration] waveform render failed: $it") }
+                    }.onFailure { logFailure("rendering the narration waveform", it) }
                 }
                 delay(33) // ~30 fps; the workspace redraws the published snapshot every display frame
             }
@@ -922,12 +941,8 @@ class OratureNarrationViewModel(
     }
 
     /** The configured recorder/editor plugin, if external plugins are available (desktop + selected). */
-    private fun pluginFor(record: Boolean): org.bibletranslationtools.orature.plugins.OratureExternalPlugin? {
-        if (!org.bibletranslationtools.orature.plugins.canLaunchPlugins()) return null
-        val reg = pluginStore.load()
-        val id = if (record) reg.selectedRecorderId else reg.selectedEditorId
-        return reg.plugins.firstOrNull { it.id == id && (if (record) it.canRecord else it.canEdit) }
-    }
+    private fun pluginFor(record: Boolean): org.bibletranslationtools.orature.plugins.OratureExternalPlugin? =
+        pluginStore.selected(if (record) PluginCapability.RECORD else PluginCapability.EDIT)
 
     /** True when a verse can be opened in a configured external editor (drives the teleprompter Edit button). */
     fun editorConfigured(): Boolean = pluginFor(record = false) != null
@@ -943,24 +958,21 @@ class OratureNarrationViewModel(
      *  or take a navigation lock (unlike the plugin path), so this doesn't either. */
     fun importVerseAudio(index: Int, file: java.io.File) {
         val n = narration ?: return
-        viewModelScope.launch {
+        launchLogged {
             try {
-                withContext(Dispatchers.IO) { n.onEditVerse(index, file).blockingAwait() }
+                withContext(ioDispatcher) { n.onEditVerse(index, file).blockingAwait() }
                 refreshVerses()
                 resetNarratableList()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                System.err.println("Import verse audio failed: $e")
+                logFailure("importing verse audio", e)
             }
         }
     }
 
-    private fun markerPlugin(): org.bibletranslationtools.orature.plugins.OratureExternalPlugin? {
-        if (!org.bibletranslationtools.orature.plugins.canLaunchPlugins()) return null
-        val reg = pluginStore.load()
-        return reg.plugins.firstOrNull { it.id == reg.selectedMarkerId && it.canMark }
-    }
+    private fun markerPlugin(): org.bibletranslationtools.orature.plugins.OratureExternalPlugin? =
+        pluginStore.selected(PluginCapability.MARK)
 
     /** True when an editor / marker plugin is configured — drives kebab item visibility. Always
      *  enabled once shown: the chapter take is compiled on demand (JVM: Open Chapter In has no
@@ -988,14 +1000,14 @@ class OratureNarrationViewModel(
         val n = narration ?: return
         stopPlayer()
         _audioScene.value?.clear()
-        viewModelScope.launch {
+        launchLogged {
             try {
                 // Reuse the compiled chapter take, or compile one from what's recorded (JVM:
                 // chapterTakeProperty ?: createChapterTakeWithAudio) — same as launchChapterPlugin.
-                val take = chapterTake ?: withContext(Dispatchers.IO) {
+                val take = chapterTake ?: withContext(ioDispatcher) {
                     runCatching { n.createChapterTakeWithAudio().await() }.getOrNull()
                 }
-                if (take == null) return@launch // nothing recorded yet to mark
+                if (take == null) return@launchLogged // nothing recorded yet to mark
                 chapterTake = take
 
                 val wb = workbookDataStore.activeWorkbook.value
@@ -1022,7 +1034,7 @@ class OratureNarrationViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                System.err.println("Open built-in verse marker editor failed: $e")
+                logFailure("opening the built-in verse marker editor", e)
             }
         }
     }
@@ -1031,7 +1043,7 @@ class OratureNarrationViewModel(
      *  (JVM: onChapterReturnFromPlugin → loadFromSelectedChapterFile). */
     private suspend fun reloadAfterMarkerEdit() {
         val n = narration ?: return
-        withContext(Dispatchers.IO) { runCatching { n.loadFromSelectedChapterFile().blockingAwait() } }
+        withContext(ioDispatcher) { runCatching { n.loadFromSelectedChapterFile().blockingAwait() } }
         refreshVerses()
         resetNarratableList()
     }
@@ -1042,26 +1054,27 @@ class OratureNarrationViewModel(
         val n = narration ?: return
         stopPlayer()
         _audioScene.value?.clear()
-        viewModelScope.launch {
+        launchLogged {
             try {
                 // Reuse the compiled chapter take, or compile one on the fly from what's recorded
                 // (JVM: chapterTakeProperty ?: narration.createChapterTakeWithAudio()).
-                val take = chapterTake ?: withContext(Dispatchers.IO) {
+                val take = chapterTake ?: withContext(ioDispatcher) {
                     runCatching { n.createChapterTakeWithAudio().await() }.getOrNull()
                 }
-                if (take == null) return@launch // nothing recorded yet to compile
+                if (take == null) return@launchLogged // nothing recorded yet to compile
                 chapterTake = take
                 beginPluginOpen()
                 org.bibletranslationtools.orature.plugins.launchPlugin(plugin, take.file, narrationPluginParams(0))
                 endPluginOpen()
-                withContext(Dispatchers.IO) { runCatching { n.loadFromSelectedChapterFile().blockingAwait() } }
+                withContext(ioDispatcher) { runCatching { n.loadFromSelectedChapterFile().blockingAwait() } }
                 refreshVerses()
                 resetNarratableList()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("launching the chapter plugin", e)
                 endPluginOpen()
-                System.err.println("Chapter external plugin failed: $e")
+                logFailure("running the chapter through an external plugin", e)
             }
         }
     }
@@ -1081,15 +1094,15 @@ class OratureNarrationViewModel(
     /** Import an existing audio file as the chapter narration (JVM: onImportChapterAudio). */
     fun onImportChapterAudio(path: String) {
         val n = narration ?: return
-        viewModelScope.launch {
+        launchLogged {
             try {
-                withContext(Dispatchers.IO) { n.importChapterAudioFile(java.io.File(path)).blockingAwait() }
+                withContext(ioDispatcher) { n.importChapterAudioFile(java.io.File(path)).blockingAwait() }
                 refreshVerses()
                 resetNarratableList()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                System.err.println("Import chapter audio failed: $e")
+                logFailure("importing chapter audio", e)
             }
         }
     }
@@ -1103,20 +1116,21 @@ class OratureNarrationViewModel(
         val n = narration ?: return
         stopPlayer()
         _audioScene.value?.clear()
-        viewModelScope.launch {
+        launchLogged {
             try {
-                val file = withContext(Dispatchers.IO) { n.getSectionAsFile(index) }
+                val file = withContext(ioDispatcher) { n.getSectionAsFile(index) }
                 beginPluginOpen()
                 org.bibletranslationtools.orature.plugins.launchPlugin(plugin, file, narrationPluginParams(index))
                 endPluginOpen()
-                withContext(Dispatchers.IO) { n.onEditVerse(index, file).blockingAwait() }
+                withContext(ioDispatcher) { n.onEditVerse(index, file).blockingAwait() }
                 refreshVerses()
                 resetNarratableList()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("editing a verse with an external plugin", e)
                 endPluginOpen()
-                System.err.println("Narration external edit failed: $e")
+                logFailure("editing a narration verse in an external plugin", e)
             }
         }
     }
@@ -1199,23 +1213,23 @@ class OratureNarrationViewModel(
             // AudioPlayerConnection.play() sees the paused worker position >= the verse length and
             // auto-rewinds to 0 ("jumps back to the beginning" when paused near the verse end).
             val relStart = (start - verseStartFrame(index)).coerceAtLeast(0)
-            System.err.println("[narr-diag] PLAY VERSE index=$index RESUME start=$start rel=$relStart label=${n.totalVerses.getOrNull(index)?.label}")
+            logDebug { "PLAY VERSE index=$index RESUME start=$start rel=$relStart label=${n.totalVerses.getOrNull(index)?.label}" }
             n.seek(relStart)
             player.play()
         } else {
             player.pause()
             n.loadSectionIntoPlayer(n.totalVerses[index])
             start = verseStartFrame(index)
-            System.err.println("[narr-diag] PLAY VERSE index=$index FRESH start=$start label=${n.totalVerses.getOrNull(index)?.label}")
+            logDebug { "PLAY VERSE index=$index FRESH start=$start label=${n.totalVerses.getOrNull(index)?.label}" }
             player.play()
             clock.snapTo(start.toLong())
         }
         clock.advancing = true
         performTransition(NarrationStateTransition.PLAY_AUDIO, index)
         startPositionTicker()
-        viewModelScope.launch {
+        launchLogged {
             kotlinx.coroutines.delay(150)
-            System.err.println("[narr-diag] PLAY VERSE +150ms index=$index resuming=$resuming loc=${n.getLocationInFrames()} clock=${clock.displayFrame}")
+            logDebug { "PLAY VERSE +150ms index=$index resuming=$resuming loc=${n.getLocationInFrames()} clock=${clock.displayFrame}" }
         }
     }
 
@@ -1243,16 +1257,21 @@ class OratureNarrationViewModel(
         _audioScene.value?.clear()
         playingVerseIndex = -1
         val player = n.getPlayer()
+        // Read the position BEFORE unlocking the verse bounds: loadChapterIntoPlayer swaps the reader,
+        // and the position goes with it.
+        val resume = if (playbackReachedEnd) 0 else n.getLocationInFrames()
         player.pause()
         n.loadChapterIntoPlayer() // unlock + clear verse bounds
-        // The display clock is the trustworthy playback position — it tracks real playback at the
-        // sample rate on the wall clock and, unlike n.getLocationInFrames(), does NOT double after a
-        // resume (the player re-anchors sessionStartFrame to an already-inflated position). So resume
-        // from the clock (or 0 if the last playback ran to the end), and SEEK the player there
-        // explicitly so both the audio and the player's own sessionStart are re-anchored accurately —
-        // this is what breaks the per-cycle "jump ahead" compounding.
-        val resume = if (playbackReachedEnd) 0 else clock.displayFrame.toInt()
-        System.err.println("[narr-diag] PLAY resume=$resume clockDisplay=${clock.displayFrame} reachedEnd=$playbackReachedEnd loc=${n.getLocationInFrames()} total=${n.getTotalFrames()} dur=${n.getDurationInFrames()} windowFrames=441000 (~${n.getTotalFrames() / 44100.0}s vs 10s window)")
+        // Seek the player explicitly: the reader it is now holding is not the one it had, so its own
+        // position says nothing about where we were.
+        //
+        // This used to resume from clock.displayFrame instead, because getLocationInFrames() DOUBLED
+        // after a resume — the player re-anchored sessionStartFrame onto an already-inflated position,
+        // and it compounded every pause/resume cycle. That is fixed at source (AudioBufferPlayer now
+        // anchors from the audible play cursor and knows when the sink stopped holding its audio), so
+        // the player's own position is the honest answer again. Going through the display for it is
+        // also circular now that the display follows the player rather than simulating it.
+        logDebug { "PLAY resume=$resume clockDisplay=${clock.displayFrame} reachedEnd=$playbackReachedEnd loc=${n.getLocationInFrames()} total=${n.getTotalFrames()} dur=${n.getDurationInFrames()} windowFrames=441000 (~${n.getTotalFrames() / 44100.0}s vs 10s window)" }
         playbackReachedEnd = false
         n.seek(resume)
         player.play()
@@ -1276,7 +1295,7 @@ class OratureNarrationViewModel(
 
     fun onPausePlayback() {
         val n = narration ?: return
-        System.err.println("[narr-diag] PAUSE clock=${clock.displayFrame} loc=${n.getLocationInFrames()}")
+        logDebug { "PAUSE clock=${clock.displayFrame} loc=${n.getLocationInFrames()}" }
         performTransition(NarrationStateTransition.PAUSE_AUDIO_PLAYBACK, playingVerseIndex.takeIf { it >= 0 })
         n.getPlayer().pause()
         clock.advancing = false
@@ -1338,7 +1357,7 @@ class OratureNarrationViewModel(
     private fun startPositionTicker() {
         stopPositionTicker()
         _uiState.value = _uiState.value.copy(isPlaying = true)
-        positionTickerJob = viewModelScope.launch {
+        positionTickerJob = launchLogged {
             var prevClock = clock.displayFrame
             var tick = 0
             while (isActive) {
@@ -1350,10 +1369,10 @@ class OratureNarrationViewModel(
                 // periodic heartbeat.
                 val now = clock.displayFrame
                 if (now < prevClock - 22050) {
-                    System.err.println("[narr-diag] CLOCK JUMP BACK ${prevClock} -> ${now} (loc=${n.getLocationInFrames()})")
+                    logDebug { "CLOCK JUMP BACK ${prevClock} -> ${now} (loc=${n.getLocationInFrames()})" }
                 }
                 if (tick++ % 20 == 0) {
-                    System.err.println("[narr-diag] TICK clock=$now loc=${n.getLocationInFrames()}")
+                    logDebug { "TICK clock=$now loc=${n.getLocationInFrames()}" }
                 }
                 prevClock = now
                 delay(50)
@@ -1391,17 +1410,9 @@ class OratureNarrationViewModel(
         super.onCleared()
     }
 
-    private class LoadResult(
-        val workbook: org.bibletranslationtools.otter.common.data.workbook.Workbook,
-        val mode: org.bibletranslationtools.otter.common.data.primitives.ProjectMode,
-        val chapters: List<Chapter>,
-        val completed: Map<Int, Boolean>
-    )
-
     private class Prepared(
         val narration: Narration,
-        val textByLabel: Map<String, String>,
-        val textByIndex: List<String>
+        val sourceText: LoadChapterSourceText.ChapterSourceText
     )
 }
 

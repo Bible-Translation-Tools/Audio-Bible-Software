@@ -31,10 +31,10 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.LaunchedEffect
 import androidx.core.content.ContextCompat
 import org.bibletranslationtools.bttrecorder2.ui.demo.AudioDashboard
-import org.bibletranslationtools.otter.common.device.newaudio.AudioDeviceSelector
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
-import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
-import org.bibletranslationtools.otter.common.device.newaudio.AudioSystemConfig
+import org.bibletranslationtools.otter.common.device.AudioDeviceSelector
+import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
+import org.bibletranslationtools.otter.common.device.AudioSpec
+import org.bibletranslationtools.otter.common.device.AudioSystemConfig
 import org.koin.android.ext.android.inject
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin

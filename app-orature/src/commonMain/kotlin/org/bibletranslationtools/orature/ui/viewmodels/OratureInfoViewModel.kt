@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import org.bibletranslationtools.orature.platform.appVersion
 import org.bibletranslationtools.orature.platform.canOpenInFileManager
 import org.bibletranslationtools.orature.platform.openInFileManager
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.IAppDirectories
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -14,7 +14,7 @@ import org.koin.core.component.inject
  */
 class OratureInfoViewModel : ViewModel(), KoinComponent {
 
-    private val directoryProvider: IDirectoryProvider by inject()
+    private val directoryProvider: IAppDirectories by inject()
 
     /** The current app version (JVM: AppInfo.getVersion). */
     val version: String = appVersion()

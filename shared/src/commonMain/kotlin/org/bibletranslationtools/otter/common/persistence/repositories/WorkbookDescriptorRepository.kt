@@ -16,7 +16,7 @@
  * You should have received a copy of the GNU General Public License
  * along with Orature.  If not, see <https://www.gnu.org/licenses/>.
  */
-package org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories
+package org.bibletranslationtools.otter.common.persistence.repositories
 
 import io.reactivex.Completable
 import io.reactivex.Maybe
@@ -34,23 +34,20 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IColl
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IContentRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
-import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.WorkbookDescriptorEntity
-import javax.inject.Inject
+import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.entities.WorkbookDescriptorEntity
 
-class WorkbookDescriptorRepository @Inject constructor(
+class WorkbookDescriptorRepository(
     database: IAppDatabase,
     private val collectionRepository: ICollectionRepository,
     private val contentRepository: IContentRepository,
-    private val workbookRepository: IWorkbookRepository
+    private val workbookRepository: IWorkbookRepository,
+    private val projectCompletionStatus: ProjectCompletionStatus
 ) : IWorkbookDescriptorRepository {
 
     private val logger = LoggerFactory.getLogger(javaClass)
     private val workbookDescriptorDao = database.workbookDescriptorDao
     private val workbookTypeDao = database.workbookTypeDao
-
-    @Inject
-    lateinit var projectCompletionStatus: ProjectCompletionStatus
 
     override fun getById(id: Int): Maybe<WorkbookDescriptor> {
         return Maybe

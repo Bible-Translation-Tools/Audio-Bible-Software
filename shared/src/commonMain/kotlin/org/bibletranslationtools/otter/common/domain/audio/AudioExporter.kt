@@ -25,14 +25,12 @@ import org.bibletranslationtools.otter.common.audio.AudioCue
 import org.bibletranslationtools.otter.common.data.primitives.Contributor
 import org.bibletranslationtools.otter.common.data.primitives.License
 import java.io.File
-import javax.inject.Inject
 
 const val WAV_TO_MP3_COMPRESSED_RATE = 10 // converting from wav to mp3 yields ~10x smaller file size
 
-class AudioExporter @Inject constructor() {
-    @Inject
-    lateinit var audioConverter: AudioConverter
-
+class AudioExporter(
+    private val audioConverter: AudioConverter
+) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
     /**

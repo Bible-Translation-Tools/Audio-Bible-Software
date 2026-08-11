@@ -16,7 +16,7 @@
  * You should have received a copy of the GNU General Public License
  * along with Orature.  If not, see <https://www.gnu.org/licenses/>.
  */
-package org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories
+package org.bibletranslationtools.otter.common.persistence.repositories
 
 import com.jakewharton.rxrelay2.BehaviorRelay
 import io.reactivex.Completable
@@ -31,16 +31,15 @@ import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IContentRepository
-import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.ContentEntity
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.ContentMapper
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.MarkerMapper
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.TakeMapper
+import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.entities.ContentEntity
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.ContentMapper
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.MarkerMapper
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.TakeMapper
 import java.lang.IllegalStateException
-import javax.inject.Inject
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories.mapping.CollectionMapper
+import org.bibletranslationtools.otter.common.persistence.repositories.mapping.CollectionMapper
 
-class ContentRepository @Inject constructor(
+class ContentRepository(
     database: IAppDatabase
 ) : IContentRepository {
     private val logger = LoggerFactory.getLogger(ContentRepository::class.java)
@@ -204,15 +203,24 @@ class ContentRepository @Inject constructor(
             .subscribeOn(Schedulers.io())
     }
 
+    /**
+     * Bulk update. The entities are mapped without a `collectionFk`, which leaves
+     * `ContentMapper.mapToEntity`'s default of 0 in the entity — harmless here, because
+     * [ContentDao.updateAll] deliberately does not write `collection_fk` (unlike [ContentDao.update],
+     * which does, and which is why [update] re-reads the existing row before mapping).
+     */
     override fun updateAll(content: List<Content>): Completable {
         return Completable
             .fromAction {
                 val entities = content.map { obj ->
-                    val entity = contentMapper.mapToEntity(obj)
-                    entity
+                    contentMapper.mapToEntity(obj)
                 }
                 contentDao.updateAll(entities)
-            }.subscribeOn(Schedulers.io())
+            }
+            .doOnError { e ->
+                logger.error("Error in updateAll for ${content.size} content row(s)", e)
+            }
+            .subscribeOn(Schedulers.io())
     }
 
     override fun linkDerivedToSource(

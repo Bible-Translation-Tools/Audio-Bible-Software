@@ -1,22 +1,22 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.rx2.await
+import org.bibletranslationtools.otter.common.device.AudioConfig
 import org.bibletranslationtools.shared.preferences.AppSettings
 import org.bibletranslationtools.shared.preferences.AppSettings.Companion.DEFAULT_LANG_NAMES_URL
 import org.bibletranslationtools.shared.preferences.IAppPreferences
 import org.bibletranslationtools.shared.preferences.ThemeMode
-import org.bibletranslationtools.otter.common.device.newaudio.AudioDevice
-import org.bibletranslationtools.otter.common.device.newaudio.AudioDeviceSelector
-import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
+import org.bibletranslationtools.otter.common.device.AudioDevice
+import org.bibletranslationtools.otter.common.device.AudioDeviceSelector
+import org.bibletranslationtools.otter.common.device.AudioSpec
 import org.bibletranslationtools.otter.common.domain.languages.ImportLanguages
 import org.koin.core.component.KoinComponent
 import java.util.Locale
@@ -56,17 +56,30 @@ data class OratureSettingsUiState(
  * deliberately, since both apps target the same shared backend — but it lives in
  * Orature's package.
  */
+/**
+ * @param ioDispatcher where DB/file work runs. Injected rather than hard-coded so a test can supply
+ *   its own scheduler; with `Dispatchers.IO` baked in that work escaped the test dispatcher and had
+ *   to be awaited on a wall clock, which made these tests flaky.
+ */
 class OratureSettingsViewModel(
     private val appPreferences: IAppPreferences,
     private val deviceSelector: AudioDeviceSelector,
-    private val importLanguages: ImportLanguages
+    private val importLanguages: ImportLanguages,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    /**
+     * Defaulted rather than resolved here: the injected constructor is used by tests, which run without
+     * a Koin context. Production comes through the no-arg constructor below, which does resolve it — so
+     * the app really does share the one instance, and a test really does get an inert copy.
+     */
+    private val audioConfig: AudioConfig = AudioConfig()
 ) : ViewModel(), KoinComponent {
 
     // Koin no-arg constructor for production; the injected constructor is used by tests.
     constructor() : this(
         appPreferences = koinGet(),
         deviceSelector = koinGet(),
-        importLanguages = koinGet()
+        importLanguages = koinGet(),
+        audioConfig = koinGet()
     )
 
     private val _uiState = MutableStateFlow(
@@ -78,7 +91,7 @@ class OratureSettingsViewModel(
 
     init {
         loadDevices()
-        viewModelScope.launch {
+        launchLogged {
             appPreferences.appSettings.collect { settings: AppSettings ->
                 _uiState.update {
                     it.copy(
@@ -95,8 +108,8 @@ class OratureSettingsViewModel(
 
     /** (Re)reads the currently-available hardware devices. Safe to call on drawer open. */
     fun loadDevices() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val spec = AudioSpec()
+        launchLogged(ioDispatcher) {
+            val spec = audioConfig.spec
             val out = runCatching { deviceSelector.getOutputDevices(spec) }.getOrDefault(emptyList())
             val input = runCatching { deviceSelector.getInputDevices(spec) }.getOrDefault(emptyList())
             withContext(Dispatchers.Main) {
@@ -106,17 +119,17 @@ class OratureSettingsViewModel(
     }
 
     fun setThemeMode(mode: ThemeMode) {
-        viewModelScope.launch { appPreferences.setThemeMode(mode) }
+        launchLogged { appPreferences.setThemeMode(mode) }
     }
 
     fun selectOutputDevice(device: AudioDevice) {
         deviceSelector.selectOutputDevice(device)
-        viewModelScope.launch { appPreferences.setOutputDeviceId(device.id) }
+        launchLogged { appPreferences.setOutputDeviceId(device.id) }
     }
 
     fun selectInputDevice(device: AudioDevice) {
         deviceSelector.selectInputDevice(device)
-        viewModelScope.launch { appPreferences.setInputDeviceId(device.id) }
+        launchLogged { appPreferences.setInputDeviceId(device.id) }
     }
 
     fun setAppLanguage(tag: String?) {
@@ -124,7 +137,7 @@ class OratureSettingsViewModel(
         // and the UI re-keys on the new language (OratureTheme). Otherwise the recomposition can read
         // the old Locale.current and Compose resources would resolve to the previous language.
         applyLocale(tag)
-        viewModelScope.launch { appPreferences.setAppLanguageTag(tag) }
+        launchLogged { appPreferences.setAppLanguageTag(tag) }
     }
 
     private fun applyLocale(tag: String?) {
@@ -135,7 +148,7 @@ class OratureSettingsViewModel(
     }
 
     fun setLangNamesUrl(url: String) {
-        viewModelScope.launch { appPreferences.setLangNamesUrl(url) }
+        launchLogged { appPreferences.setLangNamesUrl(url) }
     }
 
     /** Restores the langnames URL to the shared default. */
@@ -147,7 +160,7 @@ class OratureSettingsViewModel(
     fun updateLanguageNames() {
         if (_uiState.value.langNamesUpdateState is OratureLangNamesUpdateState.InProgress) return
         val url = _uiState.value.langNamesUrl.ifBlank { DEFAULT_LANG_NAMES_URL }
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(ioDispatcher) {
             withContext(Dispatchers.Main) {
                 _uiState.update { it.copy(langNamesUpdateState = OratureLangNamesUpdateState.InProgress) }
             }

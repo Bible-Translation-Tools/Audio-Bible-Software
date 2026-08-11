@@ -28,7 +28,7 @@ data class OratureTranslationRoute(val workbookDescriptorId: Int)
 /**
  * The built-in Verse Marker editor (JVM: the standalone marker *plugin*, built in here). Its inputs
  * (compiled take + marker set + source text) are handed off out-of-band via
- * [org.bibletranslationtools.orature.ui.viewmodels.OratureVerseMarkerEditor], so the route itself
+ * [org.bibletranslationtools.orature.services.OratureVerseMarkerEditor], so the route itself
  * carries no arguments — the host populates the handoff before navigating.
  */
 @Serializable

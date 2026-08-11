@@ -18,7 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.recorder
 
-import org.wycliffeassociates.otter.common.collections.FloatRingBuffer
+import org.bibletranslationtools.otter.common.collections.FloatRingBuffer
 import java.util.*
 
 class PCMCompressor(private val ringBuffer: FloatRingBuffer, framesToCompress: Int) {

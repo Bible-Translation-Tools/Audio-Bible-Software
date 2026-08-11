@@ -16,7 +16,7 @@ import org.bibletranslationtools.otter.common.data.audio.AudioMarker
 import org.bibletranslationtools.otter.common.data.audio.BookMarker
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.audio.metadata.BurritoAlignmentMetadata
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.wycliffeassociates.resourcecontainer.IResourceContainerAccessor
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import org.wycliffeassociates.resourcecontainer.entity.Checking
@@ -35,7 +35,6 @@ import java.time.format.DateTimeFormatter
 import java.util.*
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
-import javax.inject.Inject
 import kotlin.collections.HashMap
 
 internal typealias IngredientsByBook = Map<String, List<Pair<String, IngredientSchema>>>
@@ -67,8 +66,8 @@ private val usfmFilenamePattern = "./{booknum}-{book}.usfm"
 private val filenamePattern = "{language}_{title}_{book}_c{chapter}.{extension}"
 private val DEFAULT_TITLE_CODE = "reg"
 
-class BurritoToResourceContainerConverter @Inject constructor(
-    val directoryProvider: IDirectoryProvider
+class BurritoToResourceContainerConverter(
+    val directoryProvider: ITempFileProvider
 ) {
     fun convert(
         burrito: File,

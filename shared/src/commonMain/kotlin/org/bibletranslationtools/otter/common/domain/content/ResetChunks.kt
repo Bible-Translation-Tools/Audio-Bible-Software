@@ -27,12 +27,11 @@ import io.reactivex.schedulers.Schedulers
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.bibletranslationtools.otter.common.data.Chunkification
 import java.io.File
-import javax.inject.Inject
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.DateHolder
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesAccessor
 
-class ResetChunks @Inject constructor() {
+class ResetChunks() {
     fun resetChapter(accessor: ProjectFilesAccessor, chapter: Chapter): Completable {
         return Completable
             .fromAction {

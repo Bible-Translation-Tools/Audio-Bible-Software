@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.data.primitives.Collection as OratureCollection
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
@@ -67,7 +67,7 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
 
     private val backupExporter: BackupProjectExporter by inject()
     private val sourceExporter: SourceProjectExporter by inject()
-    private val directoryProvider: IDirectoryProvider by inject()
+    private val directoryProvider: ITempFileProvider by inject()
     private val workbookRepository: IWorkbookRepository by inject()
     private val completionStatus: ProjectCompletionStatus by inject()
 
@@ -93,7 +93,7 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
 
     init {
         // Sweep orphaned temp dirs from prior killed exports.
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(Dispatchers.IO) {
             runCatching {
                 val now = System.currentTimeMillis()
                 val staleAfterMs = 60L * 60L * 1000L
@@ -120,7 +120,7 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
         loadOptionsJob?.cancel()
         _options.value = ExportOptionsState.Loading(descriptor)
 
-        loadOptionsJob = viewModelScope.launch(Dispatchers.IO) {
+        loadOptionsJob = launchLogged(Dispatchers.IO) {
             try {
                 val workbook = workbookRepository.get(
                     descriptor.sourceCollection,
@@ -130,7 +130,7 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
                         descriptor,
                         getString(Res.string.export_error_project_not_found)
                     )
-                    return@launch
+                    return@launchLogged
                 }
 
                 val chapters = workbook.target.chapters.toList().blockingGet()
@@ -161,6 +161,7 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("loading export options", e)
                 _options.value = ExportOptionsState.Error(
                     descriptor,
                     e.message ?: getString(Res.string.export_error_load_chapters_failed)
@@ -251,7 +252,7 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
         _exportingWorkbookId.value = descriptor.id
         _exportingRoute.value = descriptor.sourceCollection.id to descriptor.targetCollection.id
 
-        exportJob = viewModelScope.launch(Dispatchers.IO) {
+        exportJob = launchLogged(Dispatchers.IO) {
             var tempDir: File? = null
             var producedFile: File? = null
             try {
@@ -260,7 +261,7 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
                     descriptor.targetCollection
                 ) ?: run {
                     _state.value = ExportState.Error(getString(Res.string.export_error_project_not_found))
-                    return@launch
+                    return@launchLogged
                 }
 
                 // Projects created through the in-app wizard never have their
@@ -312,14 +313,14 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
                     // a terminal will also now print the real stack trace via the
                     // slf4j-simple binding.
                     _state.value = ExportState.Error(diagnoseFailure(workbook))
-                    return@launch
+                    return@launchLogged
                 }
 
                 val produced = producedFile ?: tempDir.listFiles()
                     ?.firstOrNull { it.extension.equals("orature", ignoreCase = true) }
                 if (produced == null || !produced.exists()) {
                     _state.value = ExportState.Error(getString(Res.string.export_error_no_file))
-                    return@launch
+                    return@launchLogged
                 }
 
                 withContext(Dispatchers.IO) {
@@ -333,6 +334,7 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                logFailure("exporting the project", e)
                 _state.value = ExportState.Error(e.message ?: getString(Res.string.export_error_generic))
             } finally {
                 _exportingWorkbookId.value = null

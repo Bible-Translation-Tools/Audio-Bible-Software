@@ -19,19 +19,18 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
 import androidx.compose.runtime.IntState
 import androidx.compose.runtime.mutableIntStateOf
-import org.bibletranslationtools.shared.ui.playback.AudioTimeline
-import org.bibletranslationtools.shared.ui.playback.FilePcmSource
-import org.bibletranslationtools.shared.ui.playback.PcmSource
-import org.bibletranslationtools.shared.ui.playback.TimelineAudioFileReader
-import org.bibletranslationtools.shared.ui.playback.PlaybackDisplayClock
-import org.bibletranslationtools.shared.ui.playback.PlaybackPerfStats
-import org.bibletranslationtools.shared.ui.playback.SourceAudioPlayerController
-import org.bibletranslationtools.shared.ui.playback.WaveEditSession
-import org.bibletranslationtools.shared.ui.playback.WaveformPeakCache
-import org.bibletranslationtools.shared.ui.playback.buildPeakCache
-import org.bibletranslationtools.shared.ui.playback.formatPlaybackTime
+import org.bibletranslationtools.shared.audio.engine.AudioTimeline
+import org.bibletranslationtools.shared.audio.engine.FilePcmSource
+import org.bibletranslationtools.shared.audio.engine.PcmSource
+import org.bibletranslationtools.shared.audio.engine.TimelineAudioFileReader
+import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayPosition
+import org.bibletranslationtools.shared.audio.engine.PlaybackPerfStats
+import org.bibletranslationtools.shared.audio.engine.SourceAudioPlayerController
+import org.bibletranslationtools.shared.audio.engine.WaveEditSession
+import org.bibletranslationtools.shared.audio.engine.WaveformPeakCache
+import org.bibletranslationtools.shared.audio.engine.buildPeakCache
+import org.bibletranslationtools.shared.audio.engine.formatPlaybackTime
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
-import org.bibletranslationtools.otter.common.audio.AudioFileFormat
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
 import org.bibletranslationtools.otter.common.data.audio.BookMarker
 import org.bibletranslationtools.otter.common.data.audio.ChapterMarker
@@ -43,18 +42,18 @@ import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.device.newaudio.AudioFileReader
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnection
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerConnectionFactory
-import org.bibletranslationtools.otter.common.device.newaudio.AudioRecorderConnectionFactory
-import org.bibletranslationtools.otter.common.device.newaudio.AudioSpec
-import org.bibletranslationtools.otter.common.device.newaudio.AudioPlayerEvent
-import org.bibletranslationtools.otter.common.device.newaudio.IAudioPlayer
+import org.bibletranslationtools.otter.common.device.AudioFileReader
+import org.bibletranslationtools.otter.common.device.AudioPlayerConnection
+import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
+import org.bibletranslationtools.otter.common.device.AudioRecorderConnectionFactory
+import org.bibletranslationtools.otter.common.device.AudioSpec
+import org.bibletranslationtools.otter.common.device.AudioPlayerEvent
+import org.bibletranslationtools.otter.common.device.IAudioPlayer
 import org.bibletranslationtools.otter.common.domain.audio.AudioBouncer
+import org.bibletranslationtools.otter.common.domain.audio.WriteTakeMarkers
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.content.Recordable
-import org.bibletranslationtools.otter.common.domain.content.TakeCreator
-import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
+import org.bibletranslationtools.otter.common.domain.content.SaveAudioAsNewTake
 import org.bibletranslationtools.otter.common.domain.narration.AudioScene
 import org.bibletranslationtools.otter.common.recorder.ActiveRecordingRenderer
 import org.jetbrains.compose.resources.getString
@@ -64,6 +63,9 @@ import org.bibletranslationtools.shared.resources.err_save_edited_take
 import org.bibletranslationtools.shared.resources.err_save_verse_markers
 import org.bibletranslationtools.shared.resources.err_load_take
 import org.bibletranslationtools.shared.resources.err_record_device_start
+import org.bibletranslationtools.bttrecorder2.services.InsertRecorder
+import org.bibletranslationtools.bttrecorder2.services.UnitTarget
+import org.bibletranslationtools.bttrecorder2.services.UnitTargetLoader
 import java.io.File
 import kotlin.math.abs
 import kotlin.math.max
@@ -73,10 +75,14 @@ import kotlin.random.Random
 /** Kind of a waveform marker, so the UI can render each type distinctly. */
 enum class MarkerKind { BOOK, CHAPTER, VERSE }
 
+/** Verse labels the take file accepts: `N` or `N-M`. See `EditMarker.toPersistableMarker`. */
+private val VERSE_LABEL = Regex("""(\d+)(?:-(\d+))?""")
+
 class PlaybackViewModel(
-    private val workbookRepository: IWorkbookRepository,
+    private val unitTargetLoader: UnitTargetLoader,
     private val audioPlayerFactory: AudioPlayerConnectionFactory,
-    private val takeCreator: TakeCreator,
+    private val saveAudioAsNewTake: SaveAudioAsNewTake,
+    private val writeTakeMarkers: WriteTakeMarkers,
     private val audioBouncer: AudioBouncer,
     private val audioRecorderFactory: AudioRecorderConnectionFactory
 ) : ViewModel() {
@@ -97,7 +103,7 @@ class PlaybackViewModel(
         val currentTakeNumber: Int? = null,
         val isPlaying: Boolean = false,
         // Per-frame position (currentFrame/progress/elapsed) intentionally does NOT
-        // live here: it flows through PlaybackDisplayClock and is read only in draw
+        // live here: it flows through PlaybackDisplayPosition and is read only in draw
         // scopes / leaf composables, so playback does not recompose the screen.
         val durationFrames: Int = 0,
         val sampleRate: Int = 44100,
@@ -145,14 +151,6 @@ class PlaybackViewModel(
         object ConfirmExit : NavEvent()
     }
 
-    private data class PlaybackTarget(
-        val chapter: Chapter,
-        val chunk: Chunk?
-    ) {
-        val recordable: Recordable
-            get() = chunk ?: chapter
-    }
-
     private val _uiState = MutableStateFlow(PlaybackUiState())
     val uiState: StateFlow<PlaybackUiState> = _uiState.asStateFlow()
 
@@ -186,7 +184,7 @@ class PlaybackViewModel(
     val sourceAudioState: StateFlow<SourceAudioPlayerController.UiState> = sourceAudioController.uiState
 
     private var workbook: Workbook? = null
-    private var targets: List<PlaybackTarget> = emptyList()
+    private var targets: List<UnitTarget> = emptyList()
     private var currentTargetIndex = -1
     private var associatedAudio: AssociatedAudio? = null
     private var requestedTakeNumber: Int? = null
@@ -225,7 +223,7 @@ class PlaybackViewModel(
         refreshRenderTimeline()
         // Main.immediate runs synchronously when already on main, posts otherwise —
         // snapshot-state writes stay on the main thread either way.
-        viewModelScope.launch(Dispatchers.Main.immediate) { timelineGeneration.intValue++ }
+        launchLogged(Dispatchers.Main.immediate) { timelineGeneration.intValue++ }
     }
 
     private var waveformWidth: Int = 0
@@ -266,7 +264,7 @@ class PlaybackViewModel(
     // The display-side playback clock. The UI drives onFrame per display frame
     // (withFrameNanos in PlaybackScreen); the VM owns all control transitions
     // (seek/scrub/pause/freeze). All writes main-thread.
-    val clock = PlaybackDisplayClock(
+    val clock = PlaybackDisplayPosition(
         positionSource = { audioPlayer.getLocationInFrames().toLong() },
         positionReliable = { audioPlayer.isPositionReliable() }
     )
@@ -280,12 +278,12 @@ class PlaybackViewModel(
         // PlaybackScreen), so there is nothing to render ahead of time.
         // PlaybackPerfStats renders/s reading 0 during playback is the point.
 
-        viewModelScope.launch {
+        launchLogged {
             audioPlayer.events.collect { event ->
                 when (event) {
                     AudioPlayerEvent.Play -> {
                         updateState { it.copy(isPlaying = true, error = null) }
-                        clock.advancing = true
+                        clock.startAdvancing()
                     }
 
                     AudioPlayerEvent.Pause -> {
@@ -332,33 +330,20 @@ class PlaybackViewModel(
         takeNumber: Int?
     ) {
         requestedTakeNumber = takeNumber
-        viewModelScope.launch(Dispatchers.IO) {
-            val projects = workbookRepository.getProjectsSuspend()
-            val foundWorkbook = projects.find {
-                it.source.collectionId == sourceId && it.target.collectionId == targetId
-            } ?: return@launch
+        launchLogged(Dispatchers.IO) {
+            // -1 is this screen's navigation encoding for "no specific unit" — the chapter-level
+            // target. UnitTargetLoader takes a nullable unit instead.
+            val loaded = unitTargetLoader.load(
+                sourceId = sourceId,
+                targetId = targetId,
+                chapterNumber = chapterNumber,
+                unitNumber = if (unitNumber == -1) null else unitNumber
+            ) ?: return@launchLogged
 
-            val chapterList = foundWorkbook.target.chapters.toList().await()
-                .sortedBy { it.sort }
-            if (chapterList.isEmpty()) return@launch
-
-            val expandedTargets = mutableListOf<PlaybackTarget>()
-            chapterList.forEach { chapter ->
-                expandedTargets.add(PlaybackTarget(chapter = chapter, chunk = null))
-                chapter.chunksSuspend().sortedBy { it.sort }.forEach { chunk ->
-                    expandedTargets.add(PlaybackTarget(chapter = chapter, chunk = chunk))
-                }
-            }
-
-            val desiredUnit = if (unitNumber == -1) null else unitNumber
-            val initialIndex = expandedTargets.indexOfFirst { target ->
-                if (target.chapter.sort != chapterNumber) return@indexOfFirst false
-                if (desiredUnit == null) target.chunk == null else target.chunk?.sort == desiredUnit
-            }
-
-            workbook = foundWorkbook
-            targets = expandedTargets
-            switchToTarget(if (initialIndex >= 0) initialIndex else 0, force = true)
+            workbook = loaded.workbook
+            targets = loaded.targets
+            // No match falls back to the first target; the recorder deliberately differs here.
+            switchToTarget(loaded.requestedIndex.takeIf { it >= 0 } ?: 0, force = true)
         }
     }
 
@@ -388,7 +373,9 @@ class PlaybackViewModel(
         } else {
             updateState { it.copy(isPlaying = true, error = null) }
             audioPlayer.play()
-            clock.advancing = true
+            // startAdvancing, not `advancing = true`: replaying after the take finished rewinds
+            // the player to 0, and the display has to be told or it stalls at the end.
+            clock.startAdvancing()
         }
     }
 
@@ -572,6 +559,26 @@ class PlaybackViewModel(
         baseMarkers = (nonContent + rebuilt).sortedBy { it.location }
     }
 
+    /**
+     * The form these markers take when written to the take file.
+     *
+     * Differs from [toAudioMarker] on exactly one point, and deliberately: a verse label that is
+     * not `N` or `N-M` is dropped rather than coerced. The write path used to go through
+     * `OratureAudioFile.addVerseMarker`, which matched the label against that pattern and
+     * silently ignored it on a miss, while [toAudioMarker] — which feeds the in-memory
+     * [baseMarkers] list — falls back to verse 1. The two have always disagreed; extracting the
+     * write into [WriteTakeMarkers] keeps the disagreement rather than quietly picking a side.
+     */
+    private fun EditMarker.toPersistableMarker(): AudioMarker? = when (kind) {
+        MarkerKind.BOOK -> BookMarker(label, frame)
+        MarkerKind.CHAPTER -> ChapterMarker(label.toIntOrNull() ?: 0, frame)
+        MarkerKind.VERSE -> VERSE_LABEL.matchEntire(label.trim())?.let { match ->
+            val start = match.groupValues[1].toInt()
+            val end = match.groupValues[2].takeIf { it.isNotEmpty() }?.toInt() ?: start
+            VerseMarker(start, end, frame)
+        }
+    }
+
     private fun EditMarker.toAudioMarker(): AudioMarker = when (kind) {
         MarkerKind.BOOK -> BookMarker(label, frame)
         MarkerKind.CHAPTER -> ChapterMarker(label.toIntOrNull() ?: 0, frame)
@@ -625,13 +632,13 @@ class PlaybackViewModel(
         if (!session.hasEdits()) {
             // getString is suspend; resolve in a coroutine (this guard sits in a
             // synchronous function body before the IO launch below).
-            viewModelScope.launch {
+            launchLogged {
                 updateState { it.copy(error = getString(Res.string.err_no_edits_to_save)) }
             }
             return
         }
 
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(Dispatchers.IO) {
             runCatching {
                 val tempEditedWav = File.createTempFile("edited_", ".wav")
                 val reader = buildReaderForTake(take)
@@ -717,7 +724,7 @@ class PlaybackViewModel(
             exitVerseMarkerMode()
             return
         }
-        val toWrite = editedMarkers.sortedBy { it.frame }
+        val toWrite = editedMarkers.sortedBy { it.frame }.mapNotNull { it.toPersistableMarker() }
 
         // Markers are metadata, not audio — write them as WAV cue chunks into the
         // EXISTING take file (Orature does exactly this; the PCM is unchanged). No
@@ -725,22 +732,18 @@ class PlaybackViewModel(
         audioPlayer.pause()
         clock.advancing = false
 
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(Dispatchers.IO) {
             runCatching {
-                val oaf = OratureAudioFile(take.file)
-                oaf.clearMarkers()
-                toWrite.forEach { m ->
-                    when (m.kind) {
-                        MarkerKind.BOOK -> oaf.addMarker<BookMarker>(BookMarker(m.label, m.frame))
-                        MarkerKind.CHAPTER -> oaf.addMarker<ChapterMarker>(
-                            ChapterMarker(m.label.toIntOrNull() ?: 0, m.frame)
-                        )
-                        MarkerKind.VERSE -> oaf.addVerseMarker(m.frame, m.label)
-                    }
-                }
-                oaf.update()
-                // Re-read so the normal view shows the just-written markers.
-                baseMarkers = OratureAudioFile(take.file).getMarkers().sortedBy { it.location }
+                // ALL_CUE_TYPES matches what the local clearMarkers() call did — it replaces the
+                // file's marker metadata wholesale, including any CHUNK/LICENSE cues. Narration
+                // deliberately preserves those; see WriteTakeMarkers.
+                // execute() returns the markers re-read from the file, so the normal view shows
+                // what actually landed rather than what we intended to write.
+                baseMarkers = writeTakeMarkers.execute(
+                    take.file,
+                    toWrite,
+                    WriteTakeMarkers.ALL_CUE_TYPES
+                )
             }.onFailure { e ->
                 updateState { it.copy(
                     error = e.message ?: getString(Res.string.err_save_verse_markers)
@@ -821,7 +824,7 @@ class PlaybackViewModel(
             secondsOnScreen = 10,
             recordingSampleRate = reader.spec.sampleRate
         )
-        insertWaveformJob = viewModelScope.launch(Dispatchers.Default) {
+        insertWaveformJob = launchLogged(Dispatchers.Default) {
             while (isActive) {
                 val scene = insertScene
                 if (scene != null) {
@@ -881,13 +884,14 @@ class PlaybackViewModel(
         val total = editSession?.editedTotalFrames ?: audioPlayer.getDurationInFrames()
         insertAtFrame = clock.displayFrame.toInt().coerceIn(0, total)
 
-        viewModelScope.launch {
+        launchLogged {
             try {
                 val clip = File.createTempFile("insert_", ".wav")
                 insertRecorder.begin(clip, takeSpec(take), waveformWidth.coerceAtLeast(1))
                 startInsertScene(take, waveformWidth.coerceAtLeast(1))
                 updateState { it.copy(isInsertActive = true, isInsertRecording = false, error = null) }
             } catch (e: Exception) {
+                logFailure("beginning an insert at the playhead", e)
                 insertRecorder.discard()
                 updateState {
                     it.copy(
@@ -915,17 +919,17 @@ class PlaybackViewModel(
     /** Closes the clip and splices it in at the captured playhead, leaving the playhead at its end. */
     fun commitInsert() {
         if (!_uiState.value.isInsertActive) return
-        viewModelScope.launch {
+        launchLogged {
             val clip = insertRecorder.finish()
             stopInsertScene()
             updateState { it.copy(isInsertActive = false, isInsertRecording = false) }
-            if (clip == null) return@launch // nothing captured
+            if (clip == null) return@launchLogged // nothing captured
 
             val session = editSession
             val clipSource = FilePcmSource(clip.file)
             if (session == null || !session.insertRelative(insertAtFrame, clipSource)) {
                 runCatching { clip.file.delete() }
-                return@launch
+                return@launchLogged
             }
             pendingInsertClips.add(clip.file)
             ensureClipPeakCache(clipSource)
@@ -936,7 +940,7 @@ class PlaybackViewModel(
     /** Abandons the session: releases the mic, deletes the partial clip, leaves the take untouched. */
     fun cancelInsert() {
         if (!_uiState.value.isInsertActive) return
-        viewModelScope.launch {
+        launchLogged {
             insertRecorder.discard()
             stopInsertScene()
             updateState { it.copy(isInsertActive = false, isInsertRecording = false) }
@@ -948,7 +952,7 @@ class PlaybackViewModel(
         if (peakCaches.containsKey(source.id)) return
         val cache = WaveformPeakCache(source.totalFrames)
         peakCaches[source.id] = cache
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(Dispatchers.IO) {
             runCatching { buildPeakCache(source, cache) }
             bumpTimelineGeneration()
         }
@@ -997,37 +1001,21 @@ class PlaybackViewModel(
     private suspend fun persistEditedFileAsNewTake(editedAudioFile: File) {
         val wb = workbook ?: return
         val target = currentTarget() ?: return
-        val audio = associatedAudio ?: return
 
-        if (!editedAudioFile.exists()) {
-            throw IllegalStateException("Edited audio file does not exist")
-        }
-
-        val newTakeNumber = audio.getNewTakeNumberSuspend()
-        val namer = WorkbookFileNamerBuilder.createFileNamer(
+        // Naming, chapter directory, take creation, the copy and the insert all live in
+        // SaveAudioAsNewTake — Orature's chapter-review screen performs the same sequence. The new
+        // take becomes the selected one via WorkbookRepository, once its insert has an id.
+        val newTake = saveAudioAsNewTake.execute(
             workbook = wb,
             chapter = target.chapter,
             chunk = target.chunk,
             recordable = target.recordable,
-            rcSlug = wb.sourceMetadataSlug
+            audioFile = editedAudioFile
         )
-
-        val filename = namer.generateName(newTakeNumber, AudioFileFormat.WAV)
-        val takeDir = wb.projectFilesAccessor.getChapterAudioDir(wb, target.chapter)
-        val newTake = takeCreator.createNewTake(
-            newTakeNumber = newTakeNumber,
-            filename = filename,
-            audioDir = takeDir,
-            createEmpty = false
-        )
-
-        editedAudioFile.copyTo(newTake.file, overwrite = true)
-        audio.insertTake(newTake)
-        audio.selectTake(newTake)
         _editedTakeSavedEvents.tryEmit(newTake.number)
     }
 
-    private fun currentTarget(): PlaybackTarget? = targets.getOrNull(currentTargetIndex)
+    private fun currentTarget(): UnitTarget? = targets.getOrNull(currentTargetIndex)
 
     private fun switchToTarget(index: Int, force: Boolean = false) {
         if (index !in targets.indices) return
@@ -1072,7 +1060,7 @@ class PlaybackViewModel(
 
         // Resolve and load source audio for this target. Disk-bound work goes off
         // the main thread; the controller's state flow drives the UI.
-        viewModelScope.launch(Dispatchers.IO) {
+        launchLogged(Dispatchers.IO) {
             val available = sourceAudioController.load(wb, target.chapter, target.chunk)
             updateState { it.copy(sourceAudioAvailable = available) }
         }
@@ -1086,7 +1074,7 @@ class PlaybackViewModel(
         sourceAudioController.seekToProgress(progress)
     }
 
-    private fun updateTargetUi(target: PlaybackTarget, wb: Workbook) {
+    private fun updateTargetUi(target: UnitTarget, wb: Workbook) {
         updateState { it.copy(
             targetUi = TargetUiState(
                 languageLabel = wb.target.language.name,
@@ -1105,7 +1093,7 @@ class PlaybackViewModel(
         val audio = associatedAudio ?: return
         val takeMap = linkedMapOf<Int, Take>()
 
-        takesJob = viewModelScope.launch {
+        takesJob = launchLogged {
             audio.takesFlow.collect { take ->
                 takeMap[take.number] = take
                 val takes = takeMap.values
@@ -1125,7 +1113,7 @@ class PlaybackViewModel(
             }
         }
 
-        selectedJob = viewModelScope.launch {
+        selectedJob = launchLogged {
             audio.selectedFlow.collect { selectedHolder ->
                 val selectedTake = selectedHolder.value
                 updateState { it.copy(selectedTake = selectedTake) }
@@ -1151,7 +1139,7 @@ class PlaybackViewModel(
         }.onFailure { e ->
             // loadTakeForPlayback is synchronous; getString is suspend, so resolve
             // the fallback in a coroutine.
-            viewModelScope.launch {
+            launchLogged {
                 updateState { it.copy(error = e.message ?: getString(Res.string.err_load_take)) }
             }
         }
@@ -1246,7 +1234,7 @@ class PlaybackViewModel(
         peakCaches.keys.retainAll(stillReferenced)
         val cache = WaveformPeakCache(source.totalFrames)
         peakCaches[source.id] = cache
-        peakCacheJob = viewModelScope.launch(Dispatchers.IO) {
+        peakCacheJob = launchLogged(Dispatchers.IO) {
             runCatching { buildPeakCache(source, cache) }
             bumpTimelineGeneration()
         }
@@ -1280,8 +1268,8 @@ class PlaybackViewModel(
     }
 
     // The 60 Hz ticker + interpolation that used to live here is replaced by
-    // PlaybackDisplayClock, driven per display frame from PlaybackScreen. Per-frame
-    // position lives ONLY in the clock; uiState carries just the slow-changing
+    // the display position (PlaybackDisplayPosition), driven per display frame from
+    // PlaybackScreen. Per-frame position lives ONLY in the clock; uiState carries just the slow-changing
     // duration fields. The time readout is a leaf composable reading the clock.
 
     // Sets the display clock (position) and the slow transport fields (durations)
@@ -1339,7 +1327,7 @@ class PlaybackViewModel(
         cleanup()
         // An insert session left open (or spliced-but-unsaved clips) must not leak the mic or files.
         if (insertRecorder.isActive) {
-            viewModelScope.launch { insertRecorder.discard() }
+            launchLogged { insertRecorder.discard() }
         }
         discardPendingInsertClips()
     }

@@ -22,7 +22,7 @@ import org.bibletranslationtools.otter_db.jooq.Tables.MARKER_ENTITY
 import org.jooq.DSLContext
 import org.jooq.impl.DSL.max
 import org.bibletranslationtools.otter.common.persistence.database.InsertionException
-import org.wycliffeassociates.otter.jvm.workbookapp.persistence.entities.MarkerEntity
+import org.bibletranslationtools.otter.common.persistence.entities.MarkerEntity
 
 class MarkerDao(
     private val instanceDsl: DSLContext

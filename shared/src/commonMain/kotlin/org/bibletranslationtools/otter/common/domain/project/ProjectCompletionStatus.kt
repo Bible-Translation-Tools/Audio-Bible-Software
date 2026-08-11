@@ -3,9 +3,8 @@ package org.bibletranslationtools.otter.common.domain.project
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.domain.narration.ChapterRepresentation
-import javax.inject.Inject
 
-class ProjectCompletionStatus @Inject constructor() {
+class ProjectCompletionStatus() {
 
     fun getChapterNarrationProgress(workbook: Workbook, chapter: Chapter): Double {
         val chapterRepresentation = ChapterRepresentation(workbook, chapter)

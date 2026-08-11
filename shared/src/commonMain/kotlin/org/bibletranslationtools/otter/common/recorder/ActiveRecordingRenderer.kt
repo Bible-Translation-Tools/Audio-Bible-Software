@@ -25,7 +25,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
 import org.slf4j.LoggerFactory
-import org.wycliffeassociates.otter.common.collections.FloatRingBuffer
+import org.bibletranslationtools.otter.common.collections.FloatRingBuffer
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.*

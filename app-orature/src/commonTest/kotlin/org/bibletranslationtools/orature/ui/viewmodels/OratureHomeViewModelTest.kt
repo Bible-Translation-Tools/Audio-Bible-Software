@@ -17,6 +17,7 @@ import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
+import org.bibletranslationtools.orature.di.oratureViewModelModule
 import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
 import org.koin.dsl.module
@@ -45,10 +46,13 @@ class OratureHomeViewModelTest : KoinTest {
         coEvery { workbookDescriptorRepository.getSourceAudioSuspend(any()) } returns emptyMap()
         startKoin {
             modules(
+                // Compose the REAL app-scoped module so the graph under test is the production
+                // one. Hand-listing app singles here is what let OratureProjectDeletion go
+                // unbound: Koin's `by inject()` is lazy, so the omission surfaced only as
+                // create-path tests timing out. Stub ONLY the backend ports below.
+                oratureViewModelModule,
                 module {
                     single { workbookDescriptorRepository }
-                    single { OratureImportEvents() }
-                    single { mockk<OratureProjectDeletion>(relaxed = true) }
                 }
             )
         }

@@ -16,7 +16,7 @@
  * You should have received a copy of the GNU General Public License
  * along with Orature.  If not, see <https://www.gnu.org/licenses/>.
  */
-package org.wycliffeassociates.otter.jvm.workbookapp.persistence.repositories
+package org.bibletranslationtools.otter.common.persistence.repositories
 
 import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.core.JsonFactory
@@ -31,16 +31,15 @@ import kotlinx.coroutines.rx2.awaitSingleOrNull
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.domain.versification.ParatextVersification
 import org.bibletranslationtools.otter.common.domain.versification.Versification
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.IAppDirectories
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
-import org.bibletranslationtools.otter.common.api.persistence.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
 import org.bibletranslationtools.otter.common.persistence.repositories.LanguageRepository
 import java.io.File
-import javax.inject.Inject
 
-class VersificationRepository @Inject constructor(
+class VersificationRepository(
     database: IAppDatabase,
-    private val directoryProvider: IDirectoryProvider
+    private val directoryProvider: IAppDirectories
 ) : IVersificationRepository {
 
     private val logger = LoggerFactory.getLogger(LanguageRepository::class.java)

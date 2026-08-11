@@ -152,7 +152,10 @@ compose.desktop {
         }
 
         nativeDistributions {
-            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
+            // Exe alongside Msi: the exe is the same MSI wrapped in a self-extracting
+            // bootstrapper, so both carry the upgradeUuid below and behave identically on
+            // upgrade. Each format only builds on its own OS.
+            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Exe, TargetFormat.Deb)
             packageName = "BTT-Recorder"
             packageVersion = "1.0.0"
 
@@ -161,7 +164,10 @@ compose.desktop {
             //  - suggestRuntimeModules (static bytecode scan): java.compiler, java.instrument,
             //    java.sql, jdk.security.auth, jdk.unsupported
             //  - modules reached reflectively / via ServiceLoader, which that scan cannot see:
-            //    java.naming (jackson-dataformat-yaml) and java.xml (XML parsing).
+            //    java.naming (jackson-dataformat-yaml), java.xml (XML parsing), and jdk.zipfs,
+            //    whose ZipFileSystemProvider is found only through FileSystems.newFileSystem —
+            //    without it every NioZipFileReader fails with ProviderNotFoundException("jar"),
+            //    which kills the bundled-ULB import on FIRST RUN and nothing else.
             // Keep both sets — dropping the reflective ones only fails at runtime, never at build.
             modules(
                 "java.compiler",
@@ -170,7 +176,8 @@ compose.desktop {
                 "java.sql",
                 "java.xml",
                 "jdk.security.auth",
-                "jdk.unsupported"
+                "jdk.unsupported",
+                "jdk.zipfs"
             )
 
             macOS {
@@ -178,6 +185,19 @@ compose.desktop {
             }
             windows {
                 iconFile.set(project.file("src/desktopMain/resources/icons/ic_launcher.ico"))
+                // --win-shortcut: the MSI drops a desktop shortcut. Also a prerequisite for
+                // jpackage's --win-shortcut-prompt (the "create shortcuts?" checkbox), which
+                // the Compose DSL does not expose — see WindowsPlatformSettings.
+                shortcut = true
+                // --win-menu / --win-menu-group: Start menu entry under a WA folder, so the two
+                // apps group together rather than sitting loose in the app list.
+                menu = true
+                menuGroup = "Wycliffe Associates"
+                // --win-upgrade-uuid: the MSI UpgradeCode. It identifies "this product" across
+                // versions, so installing 1.0.1 over 1.0.0 REPLACES it instead of leaving two
+                // entries in Programs and Features and two desktop shortcuts. It must therefore
+                // stay fixed forever, and must differ from Orature's — never regenerate it.
+                upgradeUuid = "46D06A56-B75B-4B11-A1E6-9D3999A1BC5E"
             }
             linux {
                 iconFile.set(project.file("src/desktopMain/resources/icons/ic_launcher.png"))
