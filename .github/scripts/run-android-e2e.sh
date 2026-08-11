@@ -23,6 +23,10 @@ adb install -r -t "${APK_PATH}"
 echo "Granting RECORD_AUDIO to ${APP_ID}"
 adb shell pm grant "${APP_ID}" android.permission.RECORD_AUDIO || true
 
+# Emulator Pixel Launcher often ANRs under CI load; the dialog steals focus and
+# Maestro never sees the app (e.g. "Files" on main menu). Android's own switch:
+adb shell settings put global hide_error_dialogs 1 || true
+
 mkdir -p maestro-results
 set +e
 # Prefer --test-output-dir over --format junit (junit report path has required Cloud API key in some CLI versions).
