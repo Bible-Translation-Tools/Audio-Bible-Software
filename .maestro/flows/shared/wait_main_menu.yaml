@@ -1,8 +1,8 @@
 appId: org.bibletranslationtools.recorder2
 ---
-# Splash can take a long time on first launch (en_ulb unpack).
+# Used when already past splash; keep in sync with smoke-launch wait.
 - extendedWaitUntil:
     visible: "Files"
-    timeout: 120000
+    timeout: 60000
 - assertVisible: "Files"
 - assertVisible: "Record"

@@ -26,6 +26,13 @@ adb install -r -t "${APK_PATH}"
 echo "Granting RECORD_AUDIO to ${APP_ID}"
 adb shell pm grant "${APP_ID}" android.permission.RECORD_AUDIO || true
 
+# Re-wake after install; headed CI emulators can still lose focus before Maestro starts.
+adb shell input keyevent KEYCODE_WAKEUP || true
+adb shell wm dismiss-keyguard 2>/dev/null || true
+adb shell settings put global hide_error_dialogs 1 || true
+adb shell settings put global anr_show_background 0 || true
+bash .github/scripts/dismiss-anr.sh || true
+
 mkdir -p maestro-results
 set +e
 # Single orchestrator (like BTT-Writer); --flatten-debug-output keeps artifacts shallow.

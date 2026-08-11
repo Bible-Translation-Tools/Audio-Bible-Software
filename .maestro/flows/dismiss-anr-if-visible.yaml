@@ -1,7 +1,13 @@
 appId: org.bibletranslationtools.recorder2
 ---
-# CI emulator often shows "Pixel Launcher isn't responding".
-- tapOn:
-    text: "Wait"
-    optional: true
-    waitToSettleTimeoutMs: 200
+# Dismiss "… isn't responding" by tapping Wait (system ANR dialog).
+- runFlow:
+    when:
+      visible: ".*isn't responding.*"
+    commands:
+      - tapOn:
+          id: "android:id/aerr_wait"
+          optional: true
+      - tapOn:
+          text: "Wait"
+          optional: true

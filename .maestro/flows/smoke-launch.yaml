@@ -1,9 +1,19 @@
 appId: org.bibletranslationtools.recorder2
 ---
 # Launch → splash → main menu (Files / Record).
+# Files/Record are contentDescriptions (icons), matching instrumented By.desc("Files").
 - launchApp:
     clearState: true
     permissions:
       microphone: allow
+# Cold en_ulb unpack on CI can exceed 2m; keep dismissing ANR while waiting.
+- retry:
+    maxRetries: 24
+    commands:
+      - runFlow: dismiss-anr-if-visible.yaml
+      - extendedWaitUntil:
+          visible: "Files"
+          timeout: 10000
 - runFlow: dismiss-anr-if-visible.yaml
-- runFlow: shared/wait_main_menu.yaml
+- assertVisible: "Files"
+- assertVisible: "Record"
