@@ -544,7 +544,10 @@ private fun BookRow(
                        else Color.Gray
             )
         }
-        IconButton(onClick = onRecordClick, enabled = !isExporting) {
+        IconButton(
+            onClick = onRecordClick,
+            enabled = !isExporting
+        ) {
             Icon(
                 imageVector = Icons.Default.Mic,
                 contentDescription = stringResource(Res.string.cd_record),

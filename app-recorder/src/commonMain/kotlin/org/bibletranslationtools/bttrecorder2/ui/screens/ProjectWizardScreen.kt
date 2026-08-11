@@ -46,8 +46,10 @@ fun ProjectWizardScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    if (uiState.isCreated) {
-        onProjectCreated()
+    LaunchedEffect(uiState.isCreated) {
+        if (uiState.isCreated) {
+            onProjectCreated()
+        }
     }
 
     // Search state lives at the wizard level. Each step renders its own list so

@@ -412,24 +412,31 @@ class RecorderViewModel(
     }
 
     fun startRecording() {
-        if (associatedAudio == null || _recordingState.value == RecordingUiState.Review || _audioError.value != null) return
+        if (associatedAudio == null || _recordingState.value == RecordingUiState.Review) return
+        // Flip UI to Recording immediately so Stop is available even while the
+        // recorder worker starts on a background dispatcher.
+        _isRecording.value = true
+        _recordingState.value = RecordingUiState.Recording
+        hasRecordedAudio = true
+        timer.start()
+        startTimerTicker()
+        updateNavigationAvailability()
         wavFileWriter?.start()
         launchLogged(Dispatchers.IO) {
             try {
                 audioRecorderFactory.getRecorderWorker().start(captureSpec)
                 withContext(Dispatchers.Main) {
-                    _isRecording.value = true
-                    _recordingState.value = RecordingUiState.Recording
-                    hasRecordedAudio = true
-                    timer.start()
-                    startTimerTicker()
-                    updateNavigationAvailability()
                     _audioError.value = null
                 }
             } catch (e: Exception) {
                 logFailure("starting the recording", e)
                 wavFileWriter?.pause()
                 withContext(Dispatchers.Main) {
+                    _isRecording.value = false
+                    _recordingState.value = RecordingUiState.Idle
+                    timer.pause()
+                    stopTimerTicker()
+                    updateNavigationAvailability()
                     _audioError.value = e.message ?: getString(Res.string.err_record_device_start)
                 }
             }

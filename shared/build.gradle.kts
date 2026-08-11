@@ -326,7 +326,7 @@ tasks.register("downloadGLSources") {
 
         println(
             "GL sources: $downloaded downloaded, $skipped already present, " +
-                "$cached skipped as known-unavailable, $failed newly unavailable."
+                    "$cached skipped as known-unavailable, $failed newly unavailable."
         )
         if (cached > 0) {
             println("GL sources: re-check the $cached skipped with -PrecheckGlSources.")
@@ -362,10 +362,10 @@ tasks.register("generateEmbeddedSourcesManifest") {
 tasks.matching {
     val n = it.name
     n.contains("ComposeResources") ||
-        n.startsWith("prepareComposeResourcesTask") ||
-        n.startsWith("copyNonXmlValueResources") ||
-        n.startsWith("convertXmlValueResources") ||
-        n.startsWith("generateResourceAccessors")
+            n.startsWith("prepareComposeResourcesTask") ||
+            n.startsWith("copyNonXmlValueResources") ||
+            n.startsWith("convertXmlValueResources") ||
+            n.startsWith("generateResourceAccessors")
 }.configureEach {
     dependsOn("generateEmbeddedSourcesManifest")
 }

@@ -207,10 +207,14 @@ fun RecorderScreen(
                         Spacer(Modifier.width(120.dp))
                     }
                     RecorderViewModel.RecordingUiState.Recording -> {
-                        OutlinedButton(onClick = viewModel::stopRecording) { Text(stringResource(Res.string.recorder_stop), color = Color.White) }
+                        OutlinedButton(
+                            onClick = viewModel::stopRecording
+                        ) { Text(stringResource(Res.string.recorder_stop), color = Color.White) }
                     }
                     RecorderViewModel.RecordingUiState.Paused -> {
-                        OutlinedButton(onClick = viewModel::stopRecording) { Text(stringResource(Res.string.recorder_stop), color = Color.White) }
+                        OutlinedButton(
+                            onClick = viewModel::stopRecording
+                        ) { Text(stringResource(Res.string.recorder_stop), color = Color.White) }
                     }
                     RecorderViewModel.RecordingUiState.Review -> {
                         // Transient committing state: Stop persisted the take and we
