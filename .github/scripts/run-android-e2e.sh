@@ -44,4 +44,18 @@ maestro test \
 STATUS=$?
 set -e
 
+if [[ "${STATUS}" -ne 0 ]]; then
+  echo "Maestro failed — dumping app logcat (InitializeApp / splash)"
+  adb logcat -d -t 400 \
+    '*:S' \
+    'InitializeApp:V' \
+    'InitializeUlb:V' \
+    'InitializeLanguages:V' \
+    'InitializeSources:V' \
+    'AndroidRuntime:E' \
+    'System.err:W' \
+    > maestro-results/logcat-splash.txt 2>&1 || true
+  adb logcat -d -t 800 > maestro-results/logcat-full.txt 2>&1 || true
+fi
+
 exit "$STATUS"
