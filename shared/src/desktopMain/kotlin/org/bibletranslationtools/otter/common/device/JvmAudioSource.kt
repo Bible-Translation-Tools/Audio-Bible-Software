@@ -20,6 +20,20 @@ class JvmAudioSource(
             spec.isBigEndian
         )
 
+        // Release the line this source already holds BEFORE asking the device for another one.
+        //
+        // A capture line is exclusive on Windows: with the previous one still open, the `line.open`
+        // below fails with "no line ... available"/"line unavailable", and the line we were holding
+        // is orphaned — `currentLine` has been overwritten, so nothing can ever close it again. One
+        // missed [close] therefore used to disable the microphone for the rest of the process.
+        //
+        // That is exactly what the record screen hit: its teardown could lose the race with the
+        // ViewModel being cleared, so the mic worker never reached `close()`, and re-entering the
+        // screen failed to allocate a line. The teardown is fixed at the source (see
+        // `AudioRecorder.releaseAsync`); this makes a re-open self-healing rather than fatal, which
+        // is what `open()` replacing the line has to mean anyway.
+        releaseCurrentLine()
+
         val line = try {
             lineProvider()
         } catch (e: Exception) {
@@ -77,7 +91,21 @@ class JvmAudioSource(
     }
 
     override fun close() {
-        currentLine?.close()
+        releaseCurrentLine()
+    }
+
+    /**
+     * Gives back the held line, if any, and forgets it.
+     *
+     * `stop()` before `close()` because a leaked line can still be running, and every step is
+     * wrapped: a stale line that throws on the way out must not stop us releasing the reference or
+     * acquiring the next one — the reference is the only thing keeping the device claimed.
+     */
+    private fun releaseCurrentLine() {
+        val line = currentLine ?: return
         currentLine = null
+        runCatching { line.stop() }
+        runCatching { line.flush() }
+        runCatching { line.close() }
     }
 }

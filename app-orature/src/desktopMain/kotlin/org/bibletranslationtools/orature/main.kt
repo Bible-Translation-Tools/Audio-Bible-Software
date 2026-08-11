@@ -30,6 +30,7 @@ import org.bibletranslationtools.otter.common.persistence.DesktopDirectoryProvid
 import org.bibletranslationtools.otter.common.device.AudioDeviceSelector
 import org.bibletranslationtools.otter.common.device.AudioSpec
 import org.bibletranslationtools.otter.common.device.AudioSystemConfig
+import org.bibletranslationtools.otter.common.device.JvmAudioLines
 import org.bibletranslationtools.shared.di.koin.sharedCommonModules
 import org.bibletranslationtools.shared.di.koin.sharedDesktopModules
 import org.koin.core.context.startKoin
@@ -58,6 +59,10 @@ fun main() {
             System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", it)
         }
     }
+
+    // Safety net for a line nothing released: see JvmAudioLines for what this does and does not cover
+    // (it is insurance for the way out, not a substitute for releasing the mic when a screen closes).
+    JvmAudioLines.installShutdownHook()
 
     // Compose the shared backend/engine Koin graph + Orature's own directory provider
     // and ViewModels.

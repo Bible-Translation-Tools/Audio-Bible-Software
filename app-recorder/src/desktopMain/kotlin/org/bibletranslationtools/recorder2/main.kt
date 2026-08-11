@@ -14,11 +14,16 @@ import org.bibletranslationtools.shared.di.koin.sharedDesktopModules
 import org.bibletranslationtools.otter.common.device.AudioDeviceSelector
 import org.bibletranslationtools.otter.common.device.AudioSpec
 import org.bibletranslationtools.otter.common.device.AudioSystemConfig
+import org.bibletranslationtools.otter.common.device.JvmAudioLines
 import org.koin.core.context.startKoin
 
 fun main() {
     // Must be set before AWT initialises — controls the macOS menu-bar app name and Dock tooltip.
     System.setProperty("apple.awt.application.name", "BTT-Recorder")
+
+    // Safety net for a line nothing released: see JvmAudioLines for what this does and does not cover
+    // (it is insurance for the way out, not a substitute for releasing the mic when a screen closes).
+    JvmAudioLines.installShutdownHook()
 
     // Set the macOS Dock icon before the application loop starts.
     // Window(icon=...) only affects the window decoration; Taskbar controls the Dock.

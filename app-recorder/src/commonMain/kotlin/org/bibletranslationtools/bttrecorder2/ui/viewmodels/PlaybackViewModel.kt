@@ -818,7 +818,8 @@ class PlaybackViewModel(
         insertSceneReader = reader
         insertScene = AudioScene(
             reader,
-            audioRecorderFactory.getRecorderWorker().audioStream,
+            // The insert session's own connection, not the shared worker: one path to the mic.
+            insertRecorder.audioStream,
             insertRecorder.isRecording,
             waveformWidth,
             secondsOnScreen = 10,
@@ -1326,8 +1327,11 @@ class PlaybackViewModel(
         super.onCleared()
         cleanup()
         // An insert session left open (or spliced-but-unsaved clips) must not leak the mic or files.
+        // Synchronously, not `launchLogged { discard() }`: androidx cancels viewModelScope *before*
+        // calling onCleared, so that launch never ran and the mic stayed open — see
+        // [InsertRecorder.discardOnTeardown].
         if (insertRecorder.isActive) {
-            launchLogged { insertRecorder.discard() }
+            insertRecorder.discardOnTeardown()
         }
         discardPendingInsertClips()
     }
