@@ -1,6 +1,4 @@
 appId: org.bibletranslationtools.recorder2
-tags:
-  - helper
 ---
 # Env: QUERY (search string), RESULT (regex for row text / contentDescription).
 - repeat:

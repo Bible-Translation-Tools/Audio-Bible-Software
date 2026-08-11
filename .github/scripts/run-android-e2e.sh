@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install Maestro, install the debug APK, grant mic, run smoke flows.
+# Install Maestro, install the debug APK, grant mic, run the smoke orchestrator.
 set -eu
 
 APP_ID="${APP_ID:-org.bibletranslationtools.recorder2}"
@@ -12,6 +12,9 @@ if [[ -z "${APK_PATH}" || ! -f "${APK_PATH}" ]]; then
   exit 1
 fi
 
+echo "Waiting for emulator"
+bash .github/scripts/wait-for-emulator-ready.sh
+
 echo "Installing Maestro CLI"
 curl -Ls "https://get.maestro.mobile.dev" | bash
 export PATH="${HOME}/.maestro/bin:${PATH}"
@@ -23,15 +26,14 @@ adb install -r -t "${APK_PATH}"
 echo "Granting RECORD_AUDIO to ${APP_ID}"
 adb shell pm grant "${APP_ID}" android.permission.RECORD_AUDIO || true
 
-# Emulator Pixel Launcher often ANRs under CI load; the dialog steals focus and
-# Maestro never sees the app (e.g. "Files" on main menu). Android's own switch:
-adb shell settings put global hide_error_dialogs 1 || true
-
 mkdir -p maestro-results
 set +e
-# Prefer --test-output-dir over --format junit (junit report path has required Cloud API key in some CLI versions).
-# Screenshots land in maestro-results/ and are uploaded as the recorder-maestro-results artifact on failure.
-maestro test .maestro/ --test-output-dir maestro-results --debug-output maestro-results
+# Single orchestrator (like BTT-Writer); --flatten-debug-output keeps artifacts shallow.
+maestro test \
+  --test-output-dir maestro-results \
+  --debug-output maestro-results \
+  --flatten-debug-output \
+  .maestro/flows/smoke.yaml
 STATUS=$?
 set -e
 

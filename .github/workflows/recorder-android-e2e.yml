@@ -22,15 +22,7 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-
-      # Headed emulator needs a display (Xvfb) and libpulse (qemu links it even with -noaudio).
-      - name: Start Xvfb and install emulator deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libpulse0
-          Xvfb :99 -screen 0 1280x800x24 -ac +extension GLX +render -noreset &
-          echo "DISPLAY=:99" >> "$GITHUB_ENV"
-          sleep 1
+          ls -l /dev/kvm
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -54,40 +46,20 @@ jobs:
       - name: Assemble debug APK
         run: gradle :app-recorder:assembleDebug -PminimalGlSources=true --stacktrace
 
-      - name: AVD cache
-        uses: actions/cache@v4
-        id: avd-cache
-        with:
-          path: |
-            ~/.android/avd/*
-            ~/.android/adb*
-          key: avd-34-google_apis-pixel6-x86_64-headed
-
-      - name: Create AVD and generate snapshot
-        if: steps.avd-cache.outputs.cache-hit != 'true'
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          target: google_apis
-          arch: x86_64
-          profile: pixel_6
-          force-avd-creation: false
-          emulator-options: -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          disable-animations: false
-          enable-hw-keyboard: true
-          script: echo "Generated AVD snapshot for caching."
-
       - name: Run Maestro smoke
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
-          target: google_apis
           arch: x86_64
+          target: google_apis
           profile: pixel_6
-          force-avd-creation: false
-          emulator-options: -no-snapshot-save -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          enable-hw-keyboard: true
+          disk-size: 6000M
+          ram-size: 3072M
+          heap-size: 512M
+          emulator-boot-timeout: 900
+          pre-emulator-launch-script: bash .github/scripts/setup-android-emulator.sh
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -memory 3072
           script: bash .github/scripts/run-android-e2e.sh
 
       - name: Upload APK

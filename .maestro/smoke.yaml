@@ -1,8 +1,0 @@
-appId: org.bibletranslationtools.recorder2
-tags:
-  - smoke
-  - main-menu
----
-# MainMenuNavigationFlowTest.mainMenuVisibleAfterSplash
-- runFlow: shared/launch_clear.yaml
-- runFlow: shared/wait_main_menu.yaml

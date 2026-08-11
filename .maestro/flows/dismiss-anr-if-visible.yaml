@@ -1,0 +1,7 @@
+appId: org.bibletranslationtools.recorder2
+---
+# CI emulator often shows "Pixel Launcher isn't responding".
+- tapOn:
+    text: "Wait"
+    optional: true
+    waitToSettleTimeoutMs: 200

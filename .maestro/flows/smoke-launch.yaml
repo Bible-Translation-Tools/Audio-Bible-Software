@@ -1,0 +1,9 @@
+appId: org.bibletranslationtools.recorder2
+---
+# Launch → splash → main menu (Files / Record).
+- launchApp:
+    clearState: true
+    permissions:
+      microphone: allow
+- runFlow: dismiss-anr-if-visible.yaml
+- runFlow: shared/wait_main_menu.yaml

@@ -1,0 +1,8 @@
+appId: org.bibletranslationtools.recorder2
+---
+# Single entrypoint for CI: maestro test .maestro/flows/smoke.yaml
+- runFlow: smoke-launch.yaml
+- runFlow: smoke-files-settings.yaml
+- runFlow: smoke-record-without-project.yaml
+- runFlow: smoke-create-project.yaml
+- runFlow: smoke-record-playback.yaml

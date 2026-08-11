@@ -1,5 +1,0 @@
-# Only run top-level flows; shared/ helpers are pulled via runFlow.
-flows:
-  - "*.yaml"
-excludeTags:
-  - helper

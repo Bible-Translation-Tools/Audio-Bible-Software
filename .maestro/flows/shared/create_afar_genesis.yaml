@@ -1,9 +1,6 @@
 appId: org.bibletranslationtools.recorder2
-tags:
-  - helper
 ---
 # Files → New Project → English → Afar → Genesis → Project Management.
-# Mirrors CreateProjectWizardFlowTest / seed used by SeededRecordPlaybackFlowTest.
 # Paths are relative to this file (shared/), not the workspace root.
 - runFlow: open_files.yaml
 - tapOn: "New Project"
