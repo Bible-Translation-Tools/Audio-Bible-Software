@@ -25,11 +25,17 @@ import java.net.URI
  * instrumented test dispatcher / idling that coroutine often never runs and home stays stuck.
  */
 
-internal fun waitForMainMenuAfterSplash(timeoutMillis: Long = 120_000) {
+internal fun waitForMainMenuAfterSplash(timeoutMillis: Long = 240_000) {
     E2eLog.step("WAIT splash→main menu (timeout=${timeoutMillis}ms)")
     val device = uiDevice()
     val deadline = SystemClock.uptimeMillis() + timeoutMillis
+    var lastAnrDismissAt = 0L
     while (SystemClock.uptimeMillis() < deadline) {
+        // Pixel Launcher ANR can appear mid-splash on CI; tap Wait periodically.
+        val now = SystemClock.uptimeMillis()
+        if (now - lastAnrDismissAt >= 2_000) {
+            if (dismissAnrIfVisible(device)) lastAnrDismissAt = now
+        }
         if (device.hasObject(By.desc("Files")) && device.hasObject(By.desc("Record"))) {
             E2eLog.step("FOUND Files+Record (main menu)")
             return
@@ -38,6 +44,23 @@ internal fun waitForMainMenuAfterSplash(timeoutMillis: Long = 120_000) {
     }
     captureAndUploadTimeoutScreenshot("main-menu-timeout")
     assertTrue("Timed out waiting for main menu after splash (Files + Record)", false)
+}
+
+/** Tap "Wait" on system ANR dialogs (e.g. Pixel Launcher) so splash wait can see the app. */
+private fun dismissAnrIfVisible(device: UiDevice): Boolean {
+    val hasAnr = device.hasObject(By.res("android:id/aerr_wait")) ||
+        device.hasObject(By.res("android:id/aerr_close")) ||
+        device.hasObject(By.textContains("isn't responding"))
+    if (!hasAnr) return false
+    val waitNode = device.findObject(By.res("android:id/aerr_wait"))
+        ?: device.findObject(By.text("Wait"))
+        ?: return false
+    E2eLog.step("DISMISS ANR (tap Wait)")
+    return runCatching {
+        val bounds = waitNode.visibleBounds
+        device.click(bounds.centerX(), bounds.centerY())
+        true
+    }.getOrDefault(false)
 }
 
 internal fun waitForText(text: String, timeoutMillis: Long = 60_000) {

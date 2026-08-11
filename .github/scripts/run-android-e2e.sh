@@ -9,6 +9,14 @@ bash .github/scripts/wait-for-emulator-ready.sh
 adb uninstall org.bibletranslationtools.recorder2 2>/dev/null || true
 adb uninstall org.bibletranslationtools.recorder2.test 2>/dev/null || true
 
+# Emulator Pixel Launcher often ANRs under CI load; the dialog steals focus so
+# splash/main-menu waits never see Files/Record. Suppress + dismiss before tests.
+adb shell input keyevent KEYCODE_WAKEUP || true
+adb shell wm dismiss-keyguard 2>/dev/null || true
+adb shell settings put global hide_error_dialogs 1 || true
+adb shell settings put global anr_show_background 0 || true
+bash .github/scripts/dismiss-anr.sh || true
+
 gradle :app-recorder:connectedDebugAndroidTest -PminimalGlSources=true --stacktrace
 STATUS=$?
 
