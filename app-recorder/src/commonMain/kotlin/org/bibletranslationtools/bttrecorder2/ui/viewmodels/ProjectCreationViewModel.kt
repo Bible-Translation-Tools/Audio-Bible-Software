@@ -193,7 +193,17 @@ class ProjectCreationViewModel : ViewModel(), KoinComponent {
                         sourceProject = source,
                         targetLanguage = targetLang,
                         mode = ProjectMode.NARRATION,
-                        deriveProjectFromVerses = false
+                        // MUST stay true, and the two arguments are independent: `mode` does not
+                        // imply verses. Only `createAllBooks` couples them, so NARRATION with this
+                        // false derives a target book with chapters and NO verse rows — the project
+                        // opens, the chapter list populates, and every chapter is empty with nothing
+                        // to record into. It was false between b1ccf32 and here (flipped in the same
+                        // hunk that moved this call onto Dispatchers.IO, then kept by the merge in
+                        // 25537bd over main's true), which is what made a freshly created project
+                        // have no verses. `ProjectCreateTest` pins both paths and its default mirrors
+                        // this call — but it passes its own argument, so it cannot catch this line
+                        // changing.
+                        deriveProjectFromVerses = true
                     ).blockingGet()
                 }
                 _uiState.update { it.copy(isLoading = false, isCreated = true) }

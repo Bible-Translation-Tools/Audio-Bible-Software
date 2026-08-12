@@ -26,7 +26,7 @@ import org.bibletranslationtools.orature.ui.OratureTheme
 import org.bibletranslationtools.orature.ui.screens.OratureSplashScreen
 import org.bibletranslationtools.orature.ui.viewmodels.OratureSplashViewModel
 import org.bibletranslationtools.otter.common.device.AudioConfig
-import org.bibletranslationtools.otter.common.persistence.DesktopDirectoryProvider
+import org.bibletranslationtools.shared.logging.DesktopFileLogging
 import org.bibletranslationtools.otter.common.device.AudioDeviceSelector
 import org.bibletranslationtools.otter.common.device.AudioSpec
 import org.bibletranslationtools.otter.common.device.AudioSystemConfig
@@ -39,26 +39,15 @@ fun main() {
     System.setProperty("apple.awt.application.name", "Orature")
 
     // Route logging to a file in the app's logs dir BEFORE anything logs (slf4j-simple reads its
-    // config on first use), so Info → View Logs opens a folder with real logs. Uses the real
-    // DirectoryProvider path logic rather than duplicating it.
-    runCatching {
-        val logsDir = DesktopDirectoryProvider(
-            appName = "Orature2",
-            pathSeparator = System.getProperty("file.separator"),
-            userHome = System.getProperty("user.home"),
-            windowsAppData = System.getenv("APPDATA"),
-            osName = System.getProperty("os.name").uppercase()
-        ).logsDirectory.apply { mkdirs() }
-        System.setProperty("org.slf4j.simpleLogger.logFile", java.io.File(logsDir, "orature.log").absolutePath)
-        System.setProperty("org.slf4j.simpleLogger.showDateTime", "true")
-        System.setProperty("org.slf4j.simpleLogger.dateTimeFormat", "yyyy-MM-dd HH:mm:ss.SSS")
-        // ORATURE_LOG_LEVEL=debug turns on the shared.logging.logDebug diagnostics — narration
-        // clock/position traces and the home-screen load timings. Off by default: the narration
-        // position ticker traces roughly once a second for the whole of playback.
-        System.getenv("ORATURE_LOG_LEVEL")?.let {
-            System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", it)
-        }
-    }
+    // config on first use), so Info → View Logs opens a folder with real logs. Same path, same file
+    // name, same env var as when this was inline here — it moved to :shared because the recorder app
+    // had no equivalent, and an installed recorder build therefore produced no diagnostics at all.
+    // ORATURE_LOG_LEVEL=debug turns on the shared.logging.logDebug diagnostics.
+    DesktopFileLogging.install(
+        appName = "Orature2",
+        logFileName = "orature.log",
+        logLevelEnvVar = "ORATURE_LOG_LEVEL"
+    )
 
     // Safety net for a line nothing released: see JvmAudioLines for what this does and does not cover
     // (it is insurance for the way out, not a substitute for releasing the mic when a screen closes).

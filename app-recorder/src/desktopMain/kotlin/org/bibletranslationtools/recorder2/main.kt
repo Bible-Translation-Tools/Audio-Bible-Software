@@ -15,9 +15,20 @@ import org.bibletranslationtools.otter.common.device.AudioDeviceSelector
 import org.bibletranslationtools.otter.common.device.AudioSpec
 import org.bibletranslationtools.otter.common.device.AudioSystemConfig
 import org.bibletranslationtools.otter.common.device.JvmAudioLines
+import org.bibletranslationtools.shared.logging.DesktopFileLogging
 import org.koin.core.context.startKoin
 
 fun main() {
+    // FIRST: before anything obtains a logger. slf4j-simple defaults to stderr, which a packaged
+    // Windows launcher discards — so an installed build produced no diagnostics at all. Must match the
+    // appName the directory provider is built with (see directoryProviderModule) so the log sits beside
+    // this app's data.
+    DesktopFileLogging.install(
+        appName = "BTT Recorder",
+        logFileName = "btt-recorder.log",
+        logLevelEnvVar = "BTT_LOG_LEVEL"
+    )
+
     // Must be set before AWT initialises — controls the macOS menu-bar app name and Dock tooltip.
     System.setProperty("apple.awt.application.name", "BTT-Recorder")
 

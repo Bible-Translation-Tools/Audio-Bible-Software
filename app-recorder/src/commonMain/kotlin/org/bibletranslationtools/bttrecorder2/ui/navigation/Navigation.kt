@@ -100,34 +100,46 @@ fun Navigation(
                     navController.navigate(ProjectWizardRoute)
                 },
                 onProjectClick = { workbookDesc ->
-                    // Persist active workbook in the background; navigate immediately
-                    // so the UI is not blocked on prefs I/O.
+                    // Persist the active workbook BEFORE navigating, like onChapterClick below.
+                    // ChapterListViewModel.loadChapters() opens by reading `navState.first()`, so
+                    // navigating while the write is still in flight is a race it loses — and it
+                    // reports the loss as "No active project", with the chapter list empty.
+                    //
+                    // The window is widest on a first-ever run, where the write has to create the
+                    // preferences file (and on Windows, be scanned on creation) rather than update
+                    // one. That is exactly where it was reproducing: fresh install, first project
+                    // opened, error; back out and in again and the value is already persisted, so it
+                    // works from then on.
+                    //
+                    // Awaiting does not block the UI — this is a coroutine, not a blocking call.
                     scope.launch {
                         appPreferences.setActiveWorkbook(
                             workbookDesc.sourceCollection.id,
                             workbookDesc.targetCollection.id
                         )
+                        navController.navigate(ChapterListRoute)
                     }
-                    navController.navigate(ChapterListRoute)
                 },
                 onRecordClick = { workbookDesc ->
                     // Project-list mic: jump straight into the recorder at the
                     // project's first verse (matching the original's per-project
                     // record button), instead of drilling through chapter/unit lists.
+                    // Awaited for the same reason as onProjectClick: the recorder route carries its
+                    // ids explicitly, but backing out of it lands on a screen that reads navState.
                     scope.launch {
                         appPreferences.setActiveWorkbook(
                             workbookDesc.sourceCollection.id,
                             workbookDesc.targetCollection.id
                         )
-                    }
-                    navController.navigate(
-                        RecorderRoute(
-                            workbookDesc.sourceCollection.id,
-                            workbookDesc.targetCollection.id,
-                            -1,
-                            -1
+                        navController.navigate(
+                            RecorderRoute(
+                                workbookDesc.sourceCollection.id,
+                                workbookDesc.targetCollection.id,
+                                -1,
+                                -1
+                            )
                         )
-                    )
+                    }
                 },
                 onSettingsClick = { navController.navigate(SettingsRoute) }
             )
