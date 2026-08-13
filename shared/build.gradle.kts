@@ -165,7 +165,16 @@ kotlin {
         val androidMain by getting {
             dependencies {
                 // Runtime-only sqlite plumbing for the android AppDatabase actual.
+                // Two SQLite drivers on purpose — AppDatabase.android.kt picks between them by
+                // asking the device what SQLite it has. SQLDroid wraps the platform engine and
+                // stays the default; sqlite-jdbc carries its own (see jniLibs/) for devices whose
+                // SQLite predates upsert, i.e. Android 7. Version must match those .so files.
                 implementation(libs.sqldroid)
+                implementation("org.xerial:sqlite-jdbc:3.53.2.0")
+                // Without a binding, every backend logger.error() on Android goes to slf4j's NOP
+                // logger — an import failing during first-run init reports nothing at all. simple
+                // writes to System.err, which logcat captures, matching the desktop setup.
+                implementation("org.slf4j:slf4j-simple:2.0.13")
                 implementation("com.readystatesoftware.sqliteasset:sqliteassethelper:2.0.1")
                 // api: the android apps call org.koin.android.ext.koin.androidContext in their
                 // Application classes.

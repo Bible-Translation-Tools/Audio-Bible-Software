@@ -316,7 +316,11 @@ class NewSourceImporter(
         directoryProvider
             .newFileReader(source)
             .use { fileReader ->
-                fileReader.copyDirectory("/", targetDir)
+                // .blockingSubscribe() was dropped when this file came over from the
+                // pre-KMP branch; it is present at 5003f68. Redundant now that
+                // AndroidZipFileReader copies eagerly, but kept so the call does not
+                // depend on that for correctness.
+                fileReader.copyDirectory("/", targetDir).blockingSubscribe()
             }
 
         targetDir.walk().forEach {
