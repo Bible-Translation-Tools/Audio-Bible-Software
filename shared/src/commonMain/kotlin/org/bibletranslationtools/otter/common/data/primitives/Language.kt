@@ -18,22 +18,23 @@
  */
 package org.bibletranslationtools.otter.common.data.primitives
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.fasterxml.jackson.annotation.JsonProperty
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
-@JsonIgnoreProperties(ignoreUnknown=true)
+
+@Serializable
 data class Language(
-    @JsonProperty("lc")
+    @SerialName("lc")
     var slug: String,
-    @JsonProperty("ln")
+    @SerialName("ln")
     var name: String,
-    @JsonProperty("ang")
+    @SerialName("ang")
     var anglicizedName: String,
-    @JsonProperty("ld")
+    @SerialName("ld")
     var direction: String,
-    @JsonProperty("gw")
+    @SerialName("gw")
     var isGateway: Boolean,
-    @JsonProperty("lr")
+    @SerialName("lr")
     var region: String,
     var id: Int = 0
 )

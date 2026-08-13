@@ -1,39 +1,23 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyDescription
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "softwareName", "softwareVersion", "userId", "userName"
-)
+
+@Serializable
 class SoftwareAndUserInfoSchema {
 
-    @get:JsonProperty("softwareName")
-    @set:JsonProperty("softwareName")
-    @JsonProperty("softwareName")
-    @JsonPropertyDescription("The name of the program used.")
+    @SerialName("softwareName")
     var softwareName: String? = null
 
-    @get:JsonProperty("softwareVersion")
-    @set:JsonProperty("softwareVersion")
-    @JsonProperty("softwareVersion")
-    @JsonPropertyDescription("The version of the program used.")
+    @SerialName("softwareVersion")
     var softwareVersion: String? = null
 
-    @get:JsonProperty("userId")
-    @set:JsonProperty("userId")
-    @JsonProperty("userId")
-    @JsonPropertyDescription("Opaque system-specific identifier, prefixed with the name of the system as declared in idAuthorities.")
+    @SerialName("userId")
     var userId: String? = null
     
-    @get:JsonProperty("userName")
-    @set:JsonProperty("userName")
-    @JsonProperty("userName")
-    @JsonPropertyDescription("The user's full name, if known.")
+    @SerialName("userName")
     var userName: String? = null
 
     override fun equals(other: Any?): Boolean {

@@ -18,15 +18,8 @@
  */
 package org.bibletranslationtools.otter.common.domain.content
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.core.JsonFactory
-import com.fasterxml.jackson.core.JsonGenerator
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.exc.MismatchedInputException
-import com.fasterxml.jackson.module.kotlin.readValue
 import io.reactivex.Completable
 import io.reactivex.Single
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.reactivex.schedulers.Schedulers
 import java.io.File
 import org.slf4j.LoggerFactory
@@ -42,6 +35,9 @@ import org.bibletranslationtools.otter.common.data.audio.VerseMarker
 import org.bibletranslationtools.otter.common.domain.versification.Versification
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
+import kotlinx.serialization.SerializationException
+import org.bibletranslationtools.otter.common.OTTER_JSON
+import org.bibletranslationtools.otter.common.data.CHUNKIFICATION
 
 
 /**
@@ -292,12 +288,6 @@ class CreateChunks(
         chapterNumber: Int,
         chunksToAdd: List<Content>
     ) {
-        val factory = JsonFactory()
-        factory.disable(JsonGenerator.Feature.AUTO_CLOSE_TARGET)
-        val mapper = ObjectMapper(factory).registerKotlinModule()
-
-        mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL)
-
         val chunks = mutableMapOf<Int, List<Content>>()
 
         val file: File = workbook.projectFilesAccessor.getChunkFile().apply {
@@ -307,19 +297,17 @@ class CreateChunks(
         }
         try {
             if (file.exists() && file.length() > 0) {
-                val map: Chunkification = mapper.readValue(file)
+                val map: Chunkification = OTTER_JSON.decodeFromString(CHUNKIFICATION, file.readText())
                 chunks.putAll(map)
             }
-        } catch (e: MismatchedInputException) {
+        } catch (e: SerializationException) {
             // clear file if it can't be read
             file.writer().use { }
         }
 
         chunks[chapterNumber] = chunksToAdd
 
-        file.writer().use {
-            mapper.writeValue(it, chunks)
-        }
+        file.writeText(OTTER_JSON.encodeToString(CHUNKIFICATION, Chunkification(chunks)))
     }
 
     private data class VerseRange(val sort: Int, val startLoc: Int, val endLoc: Int)

@@ -55,7 +55,6 @@ kotlin {
     val retrofitVer = "2.9.0"
     val retrofitJacksonVer = "2.9.0"
     val retrofitRxJava2Ver = "2.9.0"
-    val jacksonVer = "2.15.1"
     val kotlinresourcecontainerVer = "0.12.0"
     val kotlinscriptureburritoVer = "1.0.1"
     val slf4jApiVer = "2.0.13"
@@ -100,11 +99,10 @@ kotlin {
                 api("org.slf4j:slf4j-api:$slf4jApiVer")
                 api(libs.koin.core)
 
-                // Orature's plugin registry reads its YAML definitions with these directly.
-                api("com.fasterxml.jackson.module:jackson-module-kotlin:$jacksonVer")
-                api("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:$jacksonVer")
 
-                api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
+                api(libs.kotlinx.serialization.json)
+                // config.yaml inside a resource container, matching :libs:resource-container.
+                api(libs.kaml)
 
                 api("io.github.vinceglb:filekit-core:0.12.0")
                 api("io.github.vinceglb:filekit-dialogs:0.12.0")
@@ -128,10 +126,12 @@ kotlin {
                 implementation("org.bibletranslationtools:kotlin-scripture-alignment:$kotlinScriptureAlignmentVer")
 
                 implementation("com.squareup.retrofit2:retrofit:$retrofitVer")
-                implementation("com.squareup.retrofit2:converter-jackson:$retrofitJacksonVer")
+                implementation("com.jakewharton.retrofit:retrofit2-kotlinx-serialization-converter:1.0.0")
+                // The converter factory takes an okhttp MediaType; Retrofit pulls okhttp in
+                // transitively but does not put it on our compile classpath.
+                implementation("com.squareup.okhttp3:okhttp:3.14.9")
                 implementation("com.squareup.retrofit2:adapter-rxjava2:$retrofitRxJava2Ver")
 
-                implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-csv:$jacksonVer")
                 // commons-io, declared directly. It used to arrive transitively through
                 // tika-core, which is gone now that :libs:resource-container and
                 // :libs:scripture-burrito sniff the zip magic number instead. Used for

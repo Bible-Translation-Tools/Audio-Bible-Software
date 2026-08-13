@@ -1,22 +1,15 @@
 package org.bibletranslationtools.scriptureburrito.flavor.parascriptural
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "start", "end"
-)
+
+@Serializable
 class Reference {
-    @get:JsonProperty("start")
-    @set:JsonProperty("start")
-    @JsonProperty("start")
+    @SerialName("start")
     var start: Double? = null
 
-    @get:JsonProperty("end")
-    @set:JsonProperty("end")
-    @JsonProperty("end")
+    @SerialName("end")
     var end: Double? = null
 
     override fun equals(other: Any?): Boolean {

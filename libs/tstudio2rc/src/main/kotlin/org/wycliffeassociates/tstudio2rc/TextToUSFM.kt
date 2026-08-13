@@ -1,11 +1,11 @@
 package org.wycliffeassociates.tstudio2rc
 
-import com.fasterxml.jackson.core.JsonFactory
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.readValue
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.wycliffeassociates.tstudio2rc.entity.BookVersification
-import com.fasterxml.jackson.module.kotlin.convertValue
 import java.io.BufferedWriter
 import java.io.File
 
@@ -374,15 +374,12 @@ internal class TextToUSFM {
         var bookId = ""
         try {
             val manifest = loadJson(path)
-            bookId = manifest.get("project").get("id").asText()
+            bookId = manifest["project"]?.jsonObject?.get("id")?.jsonPrimitive?.content
                 ?: throw Exception("Error parsing manifest")
 
-            val mapper = ObjectMapper(JsonFactory()).registerKotlinModule()
-            val translatorsNode = manifest.get("translators")
-            val translators: List<String> = mapper.convertValue(translatorsNode)
-            translators.forEach {
-                contributors.add(it)
-            }
+            manifest["translators"]?.jsonArray
+                ?.map { it.jsonPrimitive.content }
+                ?.forEach { contributors.add(it) }
         } catch (e: Exception) {
             throw e // TODO: Handle parsing error
         }
@@ -653,12 +650,12 @@ internal class TextToUSFM {
     companion object {
 
         fun getVersification(): Map<String, BookVersification> {
-            val mapper = ObjectMapper(JsonFactory())
-                .registerKotlinModule()
-
             val stream = TextToUSFM::class.java.classLoader.getResourceAsStream("verse_counts.json")
             stream.use {
-                return mapper.readValue(it)
+                return JSON.decodeFromString(
+                    MapSerializer(String.serializer(), BookVersification.serializer()),
+                    it.readBytes().decodeToString()
+                )
             }
         }
     }

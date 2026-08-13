@@ -1,38 +1,25 @@
 package org.bibletranslationtools.scriptureburrito.flavor.scripture.braille
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "charsPerLine", "linesPerPage", "defaultMarginWidth", "versoLastLineBlank", "carryLines"
-)
+
+@Serializable
 class Page {
 
-    @get:JsonProperty("charsPerLine")
-    @set:JsonProperty("charsPerLine")
-    @JsonProperty("charsPerLine")
+    @SerialName("charsPerLine")
     var charsPerLine: Double? = null
 
-    @get:JsonProperty("linesPerPage")
-    @set:JsonProperty("linesPerPage")
-    @JsonProperty("linesPerPage")
+    @SerialName("linesPerPage")
     var linesPerPage: Double? = null
 
-    @get:JsonProperty("defaultMarginWidth")
-    @set:JsonProperty("defaultMarginWidth")
-    @JsonProperty("defaultMarginWidth")
+    @SerialName("defaultMarginWidth")
     var defaultMarginWidth: Double? = null
 
-    @get:JsonProperty("versoLastLineBlank")
-    @set:JsonProperty("versoLastLineBlank")
-    @JsonProperty("versoLastLineBlank")
+    @SerialName("versoLastLineBlank")
     var versoLastLineBlank: Boolean? = null
 
-    @get:JsonProperty("carryLines")
-    @set:JsonProperty("carryLines")
-    @JsonProperty("carryLines")
+    @SerialName("carryLines")
     var carryLines: Double? = null
 
     override fun equals(other: Any?): Boolean {

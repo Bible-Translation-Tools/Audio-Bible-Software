@@ -18,6 +18,9 @@
  */
 package org.bibletranslationtools.otter.common.data.primitives
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class Marker(
     var number: Int,
     var position: Int,

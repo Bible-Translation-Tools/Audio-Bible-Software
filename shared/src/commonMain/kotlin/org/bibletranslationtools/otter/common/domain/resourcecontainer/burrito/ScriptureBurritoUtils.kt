@@ -1,8 +1,5 @@
 package org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.SerializationFeature
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.bibletranslationtools.scriptureburrito.Checksum
 import org.bibletranslationtools.scriptureburrito.CopyrightSchema
 import org.bibletranslationtools.scriptureburrito.Flavor
@@ -47,6 +44,7 @@ import java.time.Instant
 import java.util.*
 import org.bibletranslationtools.kotlinscripturealignment.model.BurritoAudioAlignment
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.scriptureburrito.BURRITO_JSON
 
 typealias ChapterNumber = Int
 
@@ -57,15 +55,8 @@ class ScriptureBurritoUtils(
 ) {
 
     private val tempDir = directoryProvider.tempDirectory
-    private val mapper = ObjectMapper()
     private val appName = appInfo.appName
     private val appVersion = appInfo.appVersion
-
-    init {
-        mapper.registerKotlinModule()
-        mapper.configure(SerializationFeature.WRITE_EMPTY_JSON_ARRAYS, false)
-        mapper.setDateFormat(SimpleDateFormat("yyyy-MM-dd"))
-    }
 
     fun writeBurritoManifest(
         workbook: Workbook,
@@ -80,7 +71,7 @@ class ScriptureBurritoUtils(
         )
 
         outputStream.use {
-            mapper.writeValue(it, manifest)
+            it.write(BURRITO_JSON.encodeToString(MetadataSchema.serializer(), manifest).toByteArray())
         }
     }
 

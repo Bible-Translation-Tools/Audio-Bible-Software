@@ -1,24 +1,18 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
+
 import java.util.HashMap
+@Serializable(with = IdAuthoritiesSchemaSerializer::class)
 class IdAuthoritiesSchema: HashMap<String, IdAuthority>()
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "id", "name"
-)
+@Serializable
 class IdAuthority {
-    @get:JsonProperty("id")
-    @set:JsonProperty("id")
-    @JsonProperty("id")
+    @SerialName("id")
     var id: String? = null
 
-    @get:JsonProperty("name")
-    @set:JsonProperty("name")
-    @JsonProperty("name")
+    @SerialName("name")
     var name: HashMap<String, String> = hashMapOf()
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

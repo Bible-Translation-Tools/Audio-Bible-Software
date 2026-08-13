@@ -1,12 +1,13 @@
 package org.wycliffeassociates.resourcecontainer.entity
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.fasterxml.jackson.annotation.JsonProperty
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
-@JsonIgnoreProperties(ignoreUnknown = true)
+
+@Serializable
 data class DublinCore(
     var type: String = "",
-    @JsonProperty("conformsto")
+    @SerialName("conformsto")
     var conformsTo: String = "",
     var format: String = "",
     var identifier: String = "",

@@ -1,29 +1,20 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
-import com.fasterxml.jackson.databind.JsonNode
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.SerialName
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "idAuthority", "operation", "data"
-)
+
+@Serializable
 class RecipeSchema(
-    @get:JsonProperty("idAuthority")
-    @set:JsonProperty("idAuthority")
-    @JsonProperty("idAuthority")
+    @SerialName("idAuthority")
     var idAuthority: String,
 
-    @get:JsonProperty("operation")
-    @set:JsonProperty("operation")
-    @JsonProperty("operation")
+    @SerialName("operation")
     var operation: String,
 
-    @get:JsonProperty("data")
-    @set:JsonProperty("data")
-    @JsonProperty("data")
-    var data: JsonNode
+    @SerialName("data")
+    var data: JsonElement
 ) {
 
     override fun equals(other: Any?): Boolean {

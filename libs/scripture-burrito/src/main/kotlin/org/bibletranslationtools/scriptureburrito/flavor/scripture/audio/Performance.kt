@@ -1,22 +1,30 @@
 package org.bibletranslationtools.scriptureburrito.flavor.scripture.audio
 
-import com.fasterxml.jackson.annotation.JsonCreator
-import com.fasterxml.jackson.annotation.JsonValue
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
+
+@Serializable
 enum class Performance(private val value: String) {
+    @SerialName("singleVoice")
     SINGLE_VOICE("singleVoice"),
+    @SerialName("multipleVoice")
     MULTIPLE_VOICE("multipleVoice"),
+    @SerialName("reading")
     READING("reading"),
+    @SerialName("drama")
     DRAMA("drama"),
+    @SerialName("withMusic")
     WITH_MUSIC("withMusic"),
+    @SerialName("withEffects")
     WITH_EFFECTS("withEffects"),
+    @SerialName("withHeadings")
     WITH_HEADINGS("withHeadings");
 
     override fun toString(): String {
         return this.value
     }
 
-    @JsonValue
     fun value(): String {
         return this.value
     }
@@ -30,7 +38,6 @@ enum class Performance(private val value: String) {
             }
         }
 
-        @JsonCreator
         fun fromValue(value: String): Performance {
             val constant = CONSTANTS[value]
             requireNotNull(constant) { value }

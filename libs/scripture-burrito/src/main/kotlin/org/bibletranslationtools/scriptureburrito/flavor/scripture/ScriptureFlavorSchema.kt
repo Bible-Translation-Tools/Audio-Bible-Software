@@ -1,37 +1,22 @@
 package org.bibletranslationtools.scriptureburrito.flavor.scripture
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
+
 import org.bibletranslationtools.scriptureburrito.flavor.FlavorSchema
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "name",
-    "usfmVersion",
-    "translationType",
-    "audience",
-    "projectType"
-)
+@Serializable
 class ScriptureFlavorSchema: FlavorSchema() {
-    @get:JsonProperty("usfmVersion")
-    @set:JsonProperty("usfmVersion")
-    @JsonProperty("usfmVersion")
+    @SerialName("usfmVersion")
     var usfmVersion: String? = null
 
-    @get:JsonProperty("translationType")
-    @set:JsonProperty("translationType")
-    @JsonProperty("translationType")
+    @SerialName("translationType")
     var translationType: String? = null
 
-    @get:JsonProperty("audience")
-    @set:JsonProperty("audience")
-    @JsonProperty("audience")
+    @SerialName("audience")
     var audience: String? = null
 
-    @get:JsonProperty("projectType")
-    @set:JsonProperty("projectType")
-    @JsonProperty("projectType")
+    @SerialName("projectType")
     var projectType: String? = null
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

@@ -1,26 +1,16 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyDescription
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "url", "ingredient"
-)
+
+@Serializable
 class License {
     
-    @get:JsonProperty("url")
-    @set:JsonProperty("url")
-    @JsonProperty("url")
-    @JsonPropertyDescription("A valid **Uniform Resource Locator**.")
+    @SerialName("url")
     var url: String? = null
 
-    @get:JsonProperty("ingredient")
-    @set:JsonProperty("ingredient")
-    @JsonProperty("ingredient")
-    @JsonPropertyDescription("A file path, delimited by forward slashes.")
+    @SerialName("ingredient")
     var ingredient: String? = null
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

@@ -1,9 +1,10 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.JsonCreator
-import com.fasterxml.jackson.annotation.JsonValue
+import kotlinx.serialization.Serializable
 
 
+
+@Serializable
 enum class Unm49Schema(private val value: String) {
     _001("001"),
     _002("002"),
@@ -47,7 +48,6 @@ enum class Unm49Schema(private val value: String) {
         return this.value
     }
 
-    @JsonValue
     fun value(): String {
         return this.value
     }
@@ -61,7 +61,6 @@ enum class Unm49Schema(private val value: String) {
             }
         }
 
-        @JsonCreator
         fun fromValue(value: String): Unm49Schema {
             val constant = CONSTANTS[value]
             requireNotNull(constant) { value }

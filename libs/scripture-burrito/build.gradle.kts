@@ -6,6 +6,7 @@
 // Package stays org.bibletranslationtools.scriptureburrito — :shared imports it directly.
 plugins {
     alias(libs.plugins.jetbrainsKotlinJvm)
+    alias(libs.plugins.kotlinSerialization)
 }
 
 kotlin {
@@ -24,8 +25,10 @@ kotlin {
 dependencies {
     // `api`, not `implementation`, matching the original build — Jackson types appear in this
     // library's public surface, so consumers need them on the compile classpath.
-    api(libs.jackson.module.kotlin)
-    api(libs.jackson.dataformat.yaml)
+    // api, not implementation: MetadataSchema and friends are this library's public surface, so
+    // consumers building a burrito need the serialization annotations and Json type on their
+    // compile classpath the way they needed Jackson's before.
+    api(libs.kotlinx.serialization.json)
     // No tika-core. Its only use here was a private detectFileType() comparing against
     // MediaType.APPLICATION_ZIP; BurritoContainer.isZipFile() now reads the four-byte local file
     // header instead, matching :libs:resource-container. With both libraries off it, nothing in

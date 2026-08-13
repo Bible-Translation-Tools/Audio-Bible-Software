@@ -1,7 +1,7 @@
 package org.bibletranslationtools.kotlinscripturealignment.model
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
+import kotlinx.serialization.Serializable
+import org.bibletranslationtools.kotlinscripturealignment.serializers.RecordSerializer
  import org.bibletranslationtools.vtt.Cue
  import org.bibletranslationtools.vtt.WebVttCue
  import org.bibletranslationtools.vtt.WebVttDocument
@@ -10,17 +10,10 @@ import org.bibletranslationtools.vtt.WebvttParserUtil.parseTimestampUs
 import java.util.regex.Matcher
 import java.util.regex.Pattern
 
+@Serializable(with = RecordSerializer::class)
 class Record(
-    @JsonProperty("timecode")
-    @JsonInclude(JsonInclude.Include.NON_NULL)
     val timecode: List<String>? = null,
-
-    @JsonProperty("text-reference")
-    @JsonInclude(JsonInclude.Include.NON_NULL)
     val textReference: List<String>? = null,
-
-    @JsonProperty("references")
-    @JsonInclude(JsonInclude.Include.NON_EMPTY)
     val references: List<List<String>> = listOf()
 ) {
     fun toWebVttCueContent(roles: List<String>?): WebVttDocument.WebVttCueContent? {

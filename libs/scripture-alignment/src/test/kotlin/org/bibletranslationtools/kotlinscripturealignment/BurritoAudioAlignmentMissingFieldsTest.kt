@@ -1,9 +1,5 @@
 package org.bibletranslationtools.kotlinscripturealignment
 
-import com.fasterxml.jackson.databind.exc.MismatchedInputException
-import com.fasterxml.jackson.core.JsonParseException
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
@@ -33,7 +29,7 @@ class BurritoAudioAlignmentMissingFieldsTest {
         tempFile.writeText(jsonWithoutType)
 
         // Expect MismatchedInputException because 'type' is a non-nullable property without a default value
-        assertThrows(MismatchedInputException::class.java) { BurritoAudioAlignment.load(tempFile) }
+        assertThrows(IllegalArgumentException::class.java) { BurritoAudioAlignment.load(tempFile) }
 
         tempFile.delete()
     }

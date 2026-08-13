@@ -1,11 +1,7 @@
 package org.wycliffeassociates.resourcecontainer
 
-import com.fasterxml.jackson.annotation.JsonInclude.Include
-import com.fasterxml.jackson.core.JsonGenerator
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.module.kotlin.KotlinModule
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import com.charleskorn.kaml.Yaml
+import com.charleskorn.kaml.YamlConfiguration
 import org.wycliffeassociates.resourcecontainer.entity.Content
 import org.wycliffeassociates.resourcecontainer.entity.Manifest
 import org.wycliffeassociates.resourcecontainer.entity.MediaManifest
@@ -22,6 +18,26 @@ import java.io.Reader
 const val MEDIA_FILENAME = "media.yaml"
 const val MANIFEST_FILENAME = "manifest.yaml"
 const val CONFIG_FILENAME = "config.yaml"
+
+/**
+ * The YAML codec for manifest.yaml and media.yaml, replacing
+ * `ObjectMapper(YAMLFactory()).registerKotlinModule()`.
+ *
+ * - `strictMode = false` is the old class-level `@JsonIgnoreProperties(ignoreUnknown = true)`:
+ *   manifests carry keys this library does not model, and an unknown key must not fail a read.
+ * - `encodeDefaults = true` is the old `setSerializationInclusion(Include.NON_NULL)` — everything
+ *   non-null gets written. Where a field should be omitted instead, the property carries
+ *   `@EncodeDefault(NEVER)` (see Project, which was `@JsonInclude(NON_EMPTY)`), because kaml has
+ *   no per-instance null/empty inclusion setting.
+ *
+ * KNOWN DIFFERENCE: kaml has no `coerceInputValues`, so a manifest key present with an explicit
+ * `null` now fails the read where Jackson coerced it to the property default. That coercion was
+ * Project's `@JsonCreator` workaround for jackson-module-kotlin#87. WA-generated manifests do not
+ * emit explicit nulls, but a hand-edited one could.
+ */
+private val YAML = Yaml(
+    configuration = YamlConfiguration(strictMode = false, encodeDefaults = true)
+)
 
 interface Config {
     fun read(reader: Reader): Config
@@ -73,10 +89,8 @@ class ResourceContainer private constructor(val file: File, var config: Config? 
 
     private fun read(): Manifest {
         if (accessor.fileExists(MANIFEST_FILENAME)) {
-            val mapper = ObjectMapper(YAMLFactory())
-            mapper.registerKotlinModule()
             manifest = accessor.getReader(MANIFEST_FILENAME).use {
-                mapper.readValue(it, Manifest::class.java)
+                YAML.decodeFromString(Manifest.serializer(), it.readText())
             }
             config?.let {
                 if (accessor.fileExists(CONFIG_FILENAME)) {
@@ -85,7 +99,7 @@ class ResourceContainer private constructor(val file: File, var config: Config? 
             }
             if (accessor.fileExists(MEDIA_FILENAME)) {
                 this.media = accessor.getReader(MEDIA_FILENAME).use {
-                    mapper.readValue(it, MediaManifest::class.java)
+                    YAML.decodeFromString(MediaManifest.serializer(), it.readText())
                 }
             }
             return manifest
@@ -112,12 +126,10 @@ class ResourceContainer private constructor(val file: File, var config: Config? 
     }
 
     private fun writeManifest(writer: OutputStream) {
-        val factory = YAMLFactory()
-        factory.disable(JsonGenerator.Feature.AUTO_CLOSE_TARGET)
-        val mapper = ObjectMapper(factory)
-        mapper.registerKotlinModule()
-        mapper.setSerializationInclusion(Include.NON_NULL)
-        mapper.writeValue(writer, manifest)
+        // The stream is deliberately NOT closed here — the accessor owns it. This is what
+        // JsonGenerator.Feature.AUTO_CLOSE_TARGET being disabled used to buy; kaml never closes
+        // the caller's stream, so writing the bytes and flushing is the whole equivalent.
+        writer.write(YAML.encodeToString(Manifest.serializer(), manifest).toByteArray())
         writer.flush()
     }
 
@@ -127,13 +139,10 @@ class ResourceContainer private constructor(val file: File, var config: Config? 
     }
 
     private fun writeMedia(writer: OutputStream) {
-        val factory = YAMLFactory()
-        factory.disable(JsonGenerator.Feature.AUTO_CLOSE_TARGET)
-        val mapper = ObjectMapper(factory)
-        mapper.registerKotlinModule()
-        mapper.setSerializationInclusion(Include.NON_NULL)
-        mapper.writeValue(writer, media)
-        writer.flush()
+        media?.let {
+            writer.write(YAML.encodeToString(MediaManifest.serializer(), it).toByteArray())
+            writer.flush()
+        }
     }
 
     fun writeConfig() {
@@ -232,6 +241,23 @@ class ResourceContainer private constructor(val file: File, var config: Config? 
     fun type(): String = this.manifest.dublinCore.type
 
     companion object {
+
+        /**
+         * Serialize a manifest to [out] without needing a container on disk. Exists so
+         * ManifestInclusionTest can assert which keys reach the file; the instance methods above
+         * delegate the same encoding through the accessor.
+         */
+        internal fun writeManifestTo(out: OutputStream, manifest: Manifest) {
+            out.write(YAML.encodeToString(Manifest.serializer(), manifest).toByteArray())
+            out.flush()
+        }
+
+        /** Media counterpart of [writeManifestTo]. */
+        internal fun writeMediaTo(out: OutputStream, media: MediaManifest) {
+            out.write(YAML.encodeToString(MediaManifest.serializer(), media).toByteArray())
+            out.flush()
+        }
+
 
         const val conformsTo = "0.2"
 

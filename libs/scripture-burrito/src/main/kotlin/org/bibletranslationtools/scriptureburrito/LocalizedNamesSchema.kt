@@ -1,7 +1,10 @@
 package org.bibletranslationtools.scriptureburrito
 
+import kotlinx.serialization.Serializable
+
 import java.util.*
 
+@Serializable(with = LocalizedNamesSchemaSerializer::class)
 class LocalizedNamesSchema: HashMap<String, LocalizedText>()
 
 fun LocalizedNamesSchema.getBooks(): Map<String, LocalizedText> {

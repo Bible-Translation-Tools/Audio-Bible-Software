@@ -1,5 +1,7 @@
 package org.bibletranslationtools.orature.plugins
 
+import kotlinx.serialization.Serializable
+
 /**
  * A registered external audio editor (JVM: AudioPluginData for a non-native plugin). Orature's native
  * (embedded-JavaFX) plugins can't be ported to Compose Multiplatform, so only external editors are
@@ -8,6 +10,7 @@ package org.bibletranslationtools.orature.plugins
  * [args] is the command-line template; the token [WAV_TOKEN] is replaced with the audio file path at
  * launch (e.g. ["--edit", "${'$'}{wav}"]). If no token is present the file path is appended.
  */
+@Serializable
 data class OratureExternalPlugin(
     val id: Int,
     val name: String,

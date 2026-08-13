@@ -1,20 +1,25 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.JsonCreator
-import com.fasterxml.jackson.annotation.JsonValue
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
+
 import java.util.HashMap
 
+@Serializable
 enum class NormalizationSchema(private val value: String) {
+    @SerialName("NFC")
     NFC("NFC"),
+    @SerialName("NFD")
     NFD("NFD"),
+    @SerialName("NFKC")
     NFKC("NFKC"),
+    @SerialName("NFKD")
     NFKD("NFKD");
 
     override fun toString(): String {
         return this.value
     }
 
-    @JsonValue
     fun value(): String {
         return this.value
     }
@@ -28,7 +33,6 @@ enum class NormalizationSchema(private val value: String) {
             }
         }
 
-        @JsonCreator
         fun fromValue(value: String): NormalizationSchema {
             val constant = CONSTANTS[value]
             requireNotNull(constant) { value }

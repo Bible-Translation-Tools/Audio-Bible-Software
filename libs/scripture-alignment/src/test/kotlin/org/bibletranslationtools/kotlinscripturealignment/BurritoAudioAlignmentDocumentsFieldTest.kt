@@ -1,6 +1,5 @@
 package org.bibletranslationtools.kotlinscripturealignment
 
-import com.fasterxml.jackson.databind.exc.MismatchedInputException
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
@@ -78,7 +77,7 @@ class BurritoAudioAlignmentDocumentsFieldTest {
         tempFile.writeText(json)
 
         // Expect MismatchedInputException because 'scheme' is a non-nullable property
-        assertThrows(MismatchedInputException::class.java) { BurritoAudioAlignment.load(tempFile) }
+        assertThrows(IllegalArgumentException::class.java) { BurritoAudioAlignment.load(tempFile) }
 
         tempFile.delete()
     }

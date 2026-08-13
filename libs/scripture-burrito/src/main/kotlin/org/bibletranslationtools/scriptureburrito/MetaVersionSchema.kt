@@ -1,8 +1,9 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.JsonCreator
-import com.fasterxml.jackson.annotation.JsonValue
+import kotlinx.serialization.Serializable
 
+
+@Serializable
 enum class MetaVersionSchema(private val value: String) {
     _1_0_0("1.0.0");
 
@@ -10,7 +11,6 @@ enum class MetaVersionSchema(private val value: String) {
         return this.value
     }
 
-    @JsonValue
     fun value(): String {
         return this.value
     }
@@ -24,7 +24,6 @@ enum class MetaVersionSchema(private val value: String) {
             }
         }
 
-        @JsonCreator
         fun fromValue(value: String): MetaVersionSchema {
             val constant = CONSTANTS[value]
             requireNotNull(constant) { value }

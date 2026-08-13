@@ -18,10 +18,6 @@
  */
 package org.bibletranslationtools.otter.common.persistence.repositories
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.core.JsonFactory
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.reactivex.Completable
 import io.reactivex.Maybe
 import io.reactivex.Single
@@ -36,6 +32,7 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IVers
 import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
 import org.bibletranslationtools.otter.common.persistence.repositories.LanguageRepository
 import java.io.File
+import org.bibletranslationtools.otter.common.OTTER_JSON
 
 class VersificationRepository(
     database: IAppDatabase,
@@ -52,10 +49,7 @@ class VersificationRepository(
                 directoryProvider.versificationDirectory.mkdirs()
                 val vrsFileName = versificationDao.fetchVersificationFile(slug)
                 val vrsFile = File(directoryProvider.versificationDirectory, vrsFileName)
-                val mapper = ObjectMapper(JsonFactory())
-                mapper.registerKotlinModule()
-                mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL)
-                val versification = mapper.readValue(vrsFile, ParatextVersification::class.java)
+                val versification = OTTER_JSON.decodeFromString(ParatextVersification.serializer(), vrsFile.readText())
                 if (versification is Versification) Maybe.just(versification as Versification) else Maybe.empty()
             }
             .flatMap { it }

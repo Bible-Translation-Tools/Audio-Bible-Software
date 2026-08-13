@@ -1,15 +1,18 @@
 package org.bibletranslationtools.kotlinscripturealignment
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import java.io.File
 import org.bibletranslationtools.kotlinscripturealignment.model.BurritoAudioAlignment
+import kotlinx.serialization.json.Json
+
+/** Mirrors the codec the library writes with, so round-trip comparisons stay meaningful. */
+private val TEST_JSON = Json { ignoreUnknownKeys = true; explicitNulls = false }
 
 class BurritoAudioAlignmentRoundTripTest {
 
-    private val mapper = ObjectMapper().registerKotlinModule()
+    
 
     @Test
     fun testAudioExample1RoundTrip() {
@@ -22,11 +25,11 @@ class BurritoAudioAlignmentRoundTripTest {
 
         val deserializedAlignment = BurritoAudioAlignment.load(tempOutputFile)
         
-        val originalJson = mapper.writeValueAsString(originalAlignment)
-        val deserializedJson = mapper.writeValueAsString(deserializedAlignment)
+        val originalJson = TEST_JSON.encodeToString(BurritoAudioAlignment.serializer(), originalAlignment)
+        val deserializedJson = TEST_JSON.encodeToString(BurritoAudioAlignment.serializer(), deserializedAlignment)
 
-        val originalJsonNode = mapper.readTree(originalJson)
-        val deserializedJsonNode = mapper.readTree(deserializedJson)
+        val originalJsonNode = TEST_JSON.parseToJsonElement(originalJson)
+        val deserializedJsonNode = TEST_JSON.parseToJsonElement(deserializedJson)
 
         assertEquals(originalJsonNode, deserializedJsonNode)
 
@@ -44,11 +47,11 @@ class BurritoAudioAlignmentRoundTripTest {
 
         val deserializedAlignment = BurritoAudioAlignment.load(tempOutputFile)
         
-        val originalJson = mapper.writeValueAsString(originalAlignment)
-        val deserializedJson = mapper.writeValueAsString(deserializedAlignment)
+        val originalJson = TEST_JSON.encodeToString(BurritoAudioAlignment.serializer(), originalAlignment)
+        val deserializedJson = TEST_JSON.encodeToString(BurritoAudioAlignment.serializer(), deserializedAlignment)
 
-        val originalJsonNode = mapper.readTree(originalJson)
-        val deserializedJsonNode = mapper.readTree(deserializedJson)
+        val originalJsonNode = TEST_JSON.parseToJsonElement(originalJson)
+        val deserializedJsonNode = TEST_JSON.parseToJsonElement(deserializedJson)
 
         assertEquals(originalJsonNode, deserializedJsonNode)
 
@@ -66,11 +69,11 @@ class BurritoAudioAlignmentRoundTripTest {
 
         val deserializedAlignment = BurritoAudioAlignment.load(tempOutputFile)
         
-        val originalJson = mapper.writeValueAsString(originalAlignment)
-        val deserializedJson = mapper.writeValueAsString(deserializedAlignment)
+        val originalJson = TEST_JSON.encodeToString(BurritoAudioAlignment.serializer(), originalAlignment)
+        val deserializedJson = TEST_JSON.encodeToString(BurritoAudioAlignment.serializer(), deserializedAlignment)
 
-        val originalJsonNode = mapper.readTree(originalJson)
-        val deserializedJsonNode = mapper.readTree(deserializedJson)
+        val originalJsonNode = TEST_JSON.parseToJsonElement(originalJson)
+        val deserializedJsonNode = TEST_JSON.parseToJsonElement(deserializedJson)
 
         assertEquals(originalJsonNode, deserializedJsonNode)
 

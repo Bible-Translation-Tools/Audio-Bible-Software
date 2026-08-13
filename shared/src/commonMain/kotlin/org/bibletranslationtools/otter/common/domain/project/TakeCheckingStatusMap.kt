@@ -18,9 +18,15 @@
  */
 package org.bibletranslationtools.otter.common.domain.project
 
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
+
 import org.bibletranslationtools.otter.common.data.workbook.TakeCheckingState
 
 /**
  * Serializable map of take file paths (internal project directory) and its corresponding checking status.
  */
 typealias TakeCheckingStatusMap = Map<String, TakeCheckingState>
+
+/** checking_status.json: take name -> its checking state. */
+val TAKE_CHECKING = MapSerializer(String.serializer(), TakeCheckingState.serializer())

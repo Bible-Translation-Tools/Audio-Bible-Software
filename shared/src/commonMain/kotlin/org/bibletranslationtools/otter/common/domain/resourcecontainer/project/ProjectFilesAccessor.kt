@@ -18,12 +18,6 @@
  */
 package org.bibletranslationtools.otter.common.domain.resourcecontainer.project
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.core.JsonFactory
-import com.fasterxml.jackson.core.type.TypeReference
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.readValue
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.reactivex.Completable
 import io.reactivex.Observable
 import io.reactivex.rxkotlin.cast
@@ -63,6 +57,9 @@ import org.wycliffeassociates.usfmtools.USFMParser
 import org.wycliffeassociates.usfmtools.models.markers.CMarker
 import org.wycliffeassociates.usfmtools.models.markers.VMarker
 import java.util.concurrent.TimeUnit
+import org.bibletranslationtools.otter.common.OTTER_JSON
+import org.bibletranslationtools.otter.common.domain.project.TAKE_CHECKING
+import org.bibletranslationtools.otter.common.data.CHUNKIFICATION
 
 class ProjectFilesAccessor(
     directoryProvider: IDirectoryProvider,
@@ -361,15 +358,14 @@ class ProjectFilesAccessor(
         val inFile = projectDir.resolve(RcConstants.CHUNKS_FILE)
 
         if (inFile.exists() && inFile.length() > 0) {
-            val mapper = ObjectMapper(JsonFactory()).registerKotlinModule()
-            val chunks: Chunkification = mapper.readValue(inFile)
+            val chunks: Chunkification = OTTER_JSON.decodeFromString(CHUNKIFICATION, inFile.readText())
             val filteredChunks = if (chapterFilter != null) {
                 chunks.filterKeys { chapter -> chapter in chapterFilter }
             } else {
                 chunks
             }
             fileWriter.bufferedWriter(RcConstants.CHUNKS_FILE).use { _fileWriter ->
-                mapper.writeValue(_fileWriter, filteredChunks)
+                _fileWriter.write(OTTER_JSON.encodeToString(CHUNKIFICATION, Chunkification(filteredChunks)))
             }
         } else if (inFile.exists()) {
             fileWriter.bufferedWriter(RcConstants.CHUNKS_FILE).use { _fileWriter ->
@@ -625,11 +621,7 @@ class ProjectFilesAccessor(
         takeCheckingMap: TakeCheckingStatusMap
     ) {
         fileWriter.bufferedWriter(RcConstants.CHECKING_STATUS_FILE).use { writer ->
-            val mapper = ObjectMapper(JsonFactory())
-                .registerKotlinModule()
-                .setSerializationInclusion(JsonInclude.Include.NON_NULL)
-
-            mapper.writeValue(writer, takeCheckingMap)
+            writer.write(OTTER_JSON.encodeToString(TAKE_CHECKING, takeCheckingMap))
         }
     }
 
@@ -839,9 +831,8 @@ class ProjectFilesAccessor(
     fun getProjectMode(): ProjectMode? {
         val file = projectDir.resolve(RcConstants.PROJECT_MODE_FILE)
         return if (file.exists() && file.length() > 0) {
-            val mapper = ObjectMapper(JsonFactory()).registerKotlinModule()
             val serialized: SerializableProjectMode =
-                mapper.readValue(file, object : TypeReference<SerializableProjectMode>() {})
+                OTTER_JSON.decodeFromString(SerializableProjectMode.serializer(), file.readText())
             serialized.mode
         } else {
             null
@@ -850,8 +841,7 @@ class ProjectFilesAccessor(
 
     fun setProjectMode(mode: ProjectMode) {
         val file = projectDir.resolve(RcConstants.PROJECT_MODE_FILE)
-        val mapper = ObjectMapper(JsonFactory()).registerKotlinModule()
-        mapper.writeValue(file, SerializableProjectMode(mode))
+        file.writeText(OTTER_JSON.encodeToString(SerializableProjectMode.serializer(), SerializableProjectMode(mode)))
     }
 
     fun copyProjectModeFile(fileWriter: IFileWriter) {

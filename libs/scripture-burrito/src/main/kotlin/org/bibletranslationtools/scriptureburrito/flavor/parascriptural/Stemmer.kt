@@ -1,27 +1,18 @@
 package org.bibletranslationtools.scriptureburrito.flavor.parascriptural
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "name", "version", "affixes"
-)
+
+@Serializable
 class Stemmer {
-    @get:JsonProperty("name")
-    @set:JsonProperty("name")
-    @JsonProperty("name")
+    @SerialName("name")
     var name: String? = null
 
-    @get:JsonProperty("version")
-    @set:JsonProperty("version")
-    @JsonProperty("version")
+    @SerialName("version")
     var version: String? = null
 
-    @get:JsonProperty("affixes")
-    @set:JsonProperty("affixes")
-    @JsonProperty("affixes")
+    @SerialName("affixes")
     var affixes: Boolean? = null
 
     override fun equals(other: Any?): Boolean {

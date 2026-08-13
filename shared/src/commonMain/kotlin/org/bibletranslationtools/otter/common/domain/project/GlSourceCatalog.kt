@@ -18,11 +18,10 @@
  */
 package org.bibletranslationtools.otter.common.domain.project
 
-import com.fasterxml.jackson.core.JsonFactory
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.readValue
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.bibletranslationtools.otter.common.api.io.IBundledContentSource
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+import org.bibletranslationtools.otter.common.OTTER_JSON
 
 /**
  * The catalog of gateway-language sources that ship with the app.
@@ -49,7 +48,7 @@ class GlSourceCatalog(
     val sources: List<ResourceInfoSerializable> by lazy {
         val bytes = runCatching { bundledContent.readBlocking(SOURCES_JSON_FILE) }
             .getOrNull() ?: return@lazy emptyList()
-        runCatching { mapper().readValue<List<ResourceInfoSerializable>>(bytes) }
+        runCatching { OTTER_JSON.decodeFromString(ListSerializer(ResourceInfoSerializable.serializer()), bytes.decodeToString()) }
             .getOrDefault(emptyList())
     }
 
@@ -65,9 +64,8 @@ class GlSourceCatalog(
     val embeddedSourceNames: Set<String> by lazy {
         val bytes = runCatching { bundledContent.readBlocking(EMBEDDED_SOURCES_FILE) }
             .getOrNull() ?: return@lazy emptySet()
-        runCatching { mapper().readValue<List<String>>(bytes).toSet() }
+        runCatching { OTTER_JSON.decodeFromString(ListSerializer(String.serializer()), bytes.decodeToString()).toSet() }
             .getOrDefault(emptySet())
     }
 
-    private fun mapper() = ObjectMapper(JsonFactory()).registerKotlinModule()
 }

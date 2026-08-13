@@ -1,94 +1,54 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.*
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
+
 import org.bibletranslationtools.scriptureburrito.Format
 import javax.xml.transform.Source
 
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "format",
-    "meta",
-    "idAuthorities",
-    "identification",
-    "confidential",
-    "type",
-    "relationships",
-    "languages",
-    "targetAreas",
-    "agencies",
-    "copyright",
-    "ingredients",
-    "localizedNames",
-    "progress"
-)
+@Serializable
 class SourceMetadataSchema(
-    @JsonProperty("format")
-    format: Format,
+    @SerialName("format")
+    override var format: Format,
 
-    @JsonProperty("meta")
-    meta: SourceMetaSchema,
+    @SerialName("meta")
+    override var meta: Meta,
 
-    @JsonProperty("idAuthorities")
-    @JsonPropertyDescription("Declares one or more identity authorities which may later be referred to using identifier prefixes.")
-    idAuthorities: IdAuthoritiesSchema? = null,
+    @SerialName("idAuthorities")
+    override var idAuthorities: IdAuthoritiesSchema? = null,
 
-    @JsonProperty("identification")
-    @JsonPropertyDescription("Identification section.")
-    identification: IdentificationSchema? = null,
+    @SerialName("identification")
+    override var identification: IdentificationSchema? = null,
 
-    @JsonProperty("confidential")
-    @JsonPropertyDescription("a true value indicates that the project should not be publicly known and that the identity of project members needs to be kept confidential.")
-    confidential: Boolean? = null,
+    @SerialName("confidential")
+    override var confidential: Boolean? = null,
 
-    @JsonProperty("type")
-    @JsonPropertyDescription("Contains properties describing the burrito flavor type.")
-    type: TypeSchema,
+    @SerialName("type")
+    override var type: TypeSchema?,
 
-    @JsonProperty("copyright")
-    copyright: CopyrightSchema,
+    @SerialName("copyright")
+    override var copyright: CopyrightSchema,
 
-    @JsonProperty("relationships")
-    @JsonPropertyDescription("Describes a relationship to another burrito that may be obtained from an indicated server.")
-    relationships: MutableList<RelationshipSchema> = ArrayList(),
+    @SerialName("relationships")
+    override var relationships: MutableList<RelationshipSchema> = ArrayList(),
 
-    @JsonProperty("languages")
-    @JsonPropertyDescription("A list of all the languages of the contents of this burrito.")
-    languages: Languages = Languages(),
+    @SerialName("languages")
+    override var languages: Languages = Languages(),
 
-    @JsonProperty("targetAreas")
-    @JsonPropertyDescription("A list of areas of the primary target audience of this burrito.")
-    targetAreas: MutableList<TargetAreaSchema> = ArrayList(),
+    @SerialName("targetAreas")
+    override var targetAreas: MutableList<TargetAreaSchema> = ArrayList(),
 
-    @JsonProperty("agencies")
-    @JsonPropertyDescription("A list of agencies involved with the contents of the burrito or the work it is derived from.")
-    agencies: MutableList<AgencySchema> = ArrayList(),
+    @SerialName("agencies")
+    override var agencies: MutableList<AgencySchema> = ArrayList(),
 
-    @JsonProperty("ingredients")
-    @JsonPropertyDescription("Describes the various files contained by the burrito, keyed by the canonical forward-slashed pathname of the file.")
-    ingredients: IngredientsSchema = IngredientsSchema(),
+    @SerialName("ingredients")
+    override var ingredients: IngredientsSchema = IngredientsSchema(),
 
-    @JsonProperty("localizedNames")
-    @JsonPropertyDescription("Contains localized names for books, etc.")
-    localizedNames: LocalizedNamesSchema = LocalizedNamesSchema()
-) : MetadataSchema(
-    format,
-    meta,
-    copyright,
-    idAuthorities,
-    identification,
-    confidential,
-    type,
-    relationships,
-    languages,
-    targetAreas,
-    agencies,
-    ingredients,
-    localizedNames
-) {
-    @get:JsonProperty("progress")
-    @set:JsonProperty("progress")
-    @JsonProperty("progress")
+    @SerialName("localizedNames")
+    override var localizedNames: LocalizedNamesSchema = LocalizedNamesSchema()
+) : MetadataSchema() {
+    @SerialName("progress")
     var progress: ProgressSchema? = null
 
     override fun equals(other: Any?): Boolean {

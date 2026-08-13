@@ -1,7 +1,7 @@
 package org.wycliffeassociates.resourcecontainer
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import com.fasterxml.jackson.module.kotlin.readValue
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -12,6 +12,7 @@ import java.io.File
 import java.io.FileNotFoundException
 
 class ContentAccessTest {
+    @Serializable
     private data class GetContentTestCase(
         val path: String,
         val extension: String,
@@ -25,7 +26,7 @@ class ContentAccessTest {
     fun setUp() {
         val testCaseResource = javaClass.classLoader.getResourceAsStream("GetRCContentTestCases.json")
         testCaseResource.use {
-            testCases = jacksonObjectMapper().readValue(it)
+            testCases = Json.decodeFromString(it.readBytes().decodeToString())
         }
     }
 

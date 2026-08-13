@@ -1,17 +1,18 @@
 package org.wycliffeassociates.tstudio2rc.entity
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.fasterxml.jackson.annotation.JsonProperty
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
-@JsonIgnoreProperties(ignoreUnknown = true)
+
+@Serializable
 data class SourceTranslation(
-    @JsonProperty("language_id")
+    @SerialName("language_id")
     val languageId: String,
-    @JsonProperty("resource_id")
+    @SerialName("resource_id")
     val resourceId: String,
-    @JsonProperty("checking_level")
+    @SerialName("checking_level")
     val checkingLevel: String,
-    @JsonProperty("date_modified")
+    @SerialName("date_modified")
     val dateModified: String,
     val version: String
 )

@@ -1,13 +1,15 @@
 package org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.bibletranslationtools.scriptureburrito.container.accessors.IContainerAccessor
 import org.slf4j.LoggerFactory
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.Reader
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
+import org.bibletranslationtools.otter.common.OTTER_JSON
 
 /**
  * Accessor for Burrito Wrapper containers.
@@ -51,10 +53,13 @@ class BurritoWrapperAccessor(
                 val metadataPath = metadataCandidates.firstOrNull { delegateAccessor.fileExists(it) }
                 if (metadataPath != null) {
                     val metadataReader = delegateAccessor.getReader(metadataPath)
-                    val objectMapper = ObjectMapper().registerKotlinModule()
-                    val metadataNode = objectMapper.readTree(metadataReader)
-                    if (metadataNode != null && metadataNode.get("format")?.asText() == "scripture burrito wrapper") {
-                        wrapperMetadata = objectMapper.treeToValue(metadataNode, ScriptureBurritoWrapper::class.java)
+                    val metadataNode = OTTER_JSON.parseToJsonElement(metadataReader.readText())
+                    val format = (metadataNode as? JsonObject)
+                        ?.get("format")?.jsonPrimitive?.contentOrNull
+                    if (format == "scripture burrito wrapper") {
+                        wrapperMetadata = OTTER_JSON.decodeFromJsonElement(
+                            ScriptureBurritoWrapper.serializer(), metadataNode
+                        )
                     }
                 }
             } catch (e: Exception) {

@@ -18,24 +18,29 @@
  */
 package org.bibletranslationtools.otter.common.domain.resourcecontainer
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import com.charleskorn.kaml.Yaml
+import com.charleskorn.kaml.YamlConfiguration
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import org.wycliffeassociates.resourcecontainer.Config
 import java.io.OutputStream
 import java.io.Reader
+
+/**
+ * config.yaml inside a resource container. Mirrors the codec in :libs:resource-container —
+ * strictMode = false for unknown keys, encodeDefaults = true for the old Include.NON_NULL.
+ */
+private val CONFIG_YAML = Yaml(
+    configuration = YamlConfiguration(strictMode = false, encodeDefaults = true)
+)
 
 class OtterResourceContainerConfig : Config {
     var config: OtterConfig? = null
     var extendedDublinCore: ExtendedDublinCore? = null
 
     override fun read(reader: Reader): Config {
-        val mapper = ObjectMapper(YAMLFactory())
-        mapper.registerKotlinModule()
         config = reader.use {
-            mapper.readValue(it, OtterConfig::class.java)
+            CONFIG_YAML.decodeFromString(OtterConfig.serializer(), it.readText())
         }
         config?.let {
             extendedDublinCore = it.extendedDublinCore
@@ -44,22 +49,25 @@ class OtterResourceContainerConfig : Config {
     }
 
     override fun write(writer: OutputStream) {
-        val mapper = ObjectMapper(YAMLFactory())
-        mapper.registerKotlinModule()
-        mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL)
-        mapper.writeValue(writer, config)
+        config?.let {
+            writer.write(CONFIG_YAML.encodeToString(OtterConfig.serializer(), it).toByteArray())
+            writer.flush()
+        }
     }
 }
 
+@Serializable
 class OtterConfig(
-    @JsonProperty("extended_dublin_core")
+    @SerialName("extended_dublin_core")
     var extendedDublinCore: ExtendedDublinCore
 )
 
+@Serializable
 class ExtendedDublinCore(
     var categories: List<Category>
 )
 
+@Serializable
 data class Category(
     val identifier: String,
     val title: String,

@@ -1,33 +1,24 @@
 package org.bibletranslationtools.scriptureburrito.flavor.scripture.braille
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "name", "version", "table"
-)
+
+@Serializable
 class Processor {
 
-    @get:JsonProperty("name")
-    @set:JsonProperty("name")
-    @JsonProperty("name")
+    @SerialName("name")
     var name: String? = null
 
-    @get:JsonProperty("version")
-    @set:JsonProperty("version")
-    @JsonProperty("version")
+    @SerialName("version")
     var version: String? = null
 
-    @JsonProperty("table")
+    @SerialName("table")
     private var table: Table? = null
-    @JsonProperty("table")
     fun getTable(): Table? {
         return table
     }
 
-    @JsonProperty("table")
     fun setTable(table: Table?) {
         this.table = table
     }

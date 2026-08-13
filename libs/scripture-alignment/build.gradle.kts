@@ -4,6 +4,7 @@
 // Package stays org.bibletranslationtools.kotlinscripturealignment — :shared imports it directly.
 plugins {
     alias(libs.plugins.jetbrainsKotlinJvm)
+    alias(libs.plugins.kotlinSerialization)
 }
 
 kotlin {
@@ -26,11 +27,11 @@ dependencies {
     // it working whichever order the two are vendored in.
     implementation("org.bibletranslationtools:kotlin-vtt:1.0.0")
 
-    implementation(libs.jackson.module.kotlin)
-    implementation(libs.jackson.dataformat.yaml)
+    implementation(libs.kotlinx.serialization.json)
 
     // Dropped from the original build: org.slf4j:slf4j-api:2.0.13 is declared but unreferenced.
     testImplementation(libs.junit.jupiter)
+    testImplementation(libs.kotlinx.serialization.json)
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 

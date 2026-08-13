@@ -1,45 +1,36 @@
 package org.bibletranslationtools.scriptureburrito
 
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
+
 import org.bibletranslationtools.scriptureburrito.MetaVersionSchema
 import org.bibletranslationtools.scriptureburrito.NormalizationSchema
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyDescription
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
 import org.bibletranslationtools.scriptureburrito.Category
 import java.util.*
 
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "category", "dateCreated", "version", "generator", "defaultLocale", "normalization", "comments"
-)
+@Serializable
+@SerialName("source")
 class SourceMetaSchema(
-    @JsonProperty("dateCreated")
-    dateCreated: Date,
+    @Serializable(with = DateSerializer::class)
+    @SerialName("dateCreated")
+    override var dateCreated: Date,
 
-    @JsonProperty("version")
-    version: MetaVersionSchema,
+    @SerialName("version")
+    override var version: MetaVersionSchema,
 
-    @JsonProperty("generator")
-    generator: SoftwareAndUserInfoSchema,
+    @SerialName("generator")
+    override var generator: SoftwareAndUserInfoSchema?,
 
-    @JsonProperty("defaultLocale")
-    defaultLocale: String,
+    @SerialName("defaultLocale")
+    override var defaultLocale: String,
 
-    @JsonProperty("normalization")
-    normalization: NormalizationSchema? = null,
+    @SerialName("normalization")
+    override var normalization: NormalizationSchema? = null,
 
-    @JsonProperty("comments")
-    comments: MutableList<String> = ArrayList()
-) : Meta(
-    dateCreated,
-    version,
-    generator,
-    defaultLocale,
-    normalization,
-    comments
-) {
+    @SerialName("comments")
+    override var comments: MutableList<String> = ArrayList()
+) : Meta() {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is SourceMetaSchema) return false

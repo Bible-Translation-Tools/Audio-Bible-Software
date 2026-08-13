@@ -1,16 +1,22 @@
 package org.bibletranslationtools.kotlinscripturealignment.model
 
-import com.fasterxml.jackson.annotation.JsonCreator
-import com.fasterxml.jackson.annotation.JsonValue
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
+/**
+ * @SerialName replaces the @JsonValue/@JsonCreator pair: kotlinx encodes an enum entry by its
+ * serial name and decodes the same way, which is what value()/fromValue() were doing by hand.
+ * Those two stay public because callers use them directly.
+ */
+@Serializable
 enum class FormatType(private val value: String) {
+    @SerialName("alignment")
     ALIGNMENT("alignment");
 
     override fun toString(): String {
         return this.value
     }
 
-    @JsonValue
     fun value(): String {
         return this.value
     }
@@ -20,13 +26,12 @@ enum class FormatType(private val value: String) {
 
         init {
             for (c in values()) {
-                FormatType.CONSTANTS[c.value] = c
+                CONSTANTS[c.value] = c
             }
         }
 
-        @JsonCreator
         fun fromValue(value: String): FormatType {
-            val constant = FormatType.CONSTANTS[value]
+            val constant = CONSTANTS[value]
             requireNotNull(constant) { value }
             return constant
         }

@@ -1,118 +1,92 @@
 package org.bibletranslationtools.scriptureburrito.flavor.scripture.braille
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
-import com.fasterxml.jackson.databind.JsonNode
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.SerialName
+
 import org.bibletranslationtools.scriptureburrito.flavor.FlavorSchema
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "name",
-    "isContracted",
-    "processor",
-    "hyphenationDictionary",
-    "numberSign",
-    "continuousPoetry",
-    "content",
-    "page",
-    "conventions"
-)
+@Serializable
+@SerialName("embossedBrailleScripture")
 class EmbossedBrailleScriptureSchema: FlavorSchema() {
 
-    @get:JsonProperty("isContracted")
-    @set:JsonProperty("isContracted")
-    @JsonProperty("isContracted")
+    @SerialName("isContracted")
     var isContracted: Boolean? = null
 
-    @JsonProperty("processor")
+    @SerialName("processor")
     private var processor: Processor? = null
 
-    @JsonProperty("hyphenationDictionary")
+    @SerialName("hyphenationDictionary")
     private var hyphenationDictionary: HyphenationDictionary? = null
 
-    @JsonProperty("numberSign")
+    @SerialName("numberSign")
     private var numberSign: NumberSign? = null
 
-    @JsonProperty("continuousPoetry")
+    @SerialName("continuousPoetry")
     private var continuousPoetry: ContinuousPoetry? = null
 
-    @JsonProperty("content")
+    @SerialName("content")
     private var content: Content? = null
 
-    @JsonProperty("page")
+    @SerialName("page")
     private var page: Page? = null
 
-    @JsonProperty("conventions")
-    private var conventions: JsonNode? = null
+    @SerialName("conventions")
+    private var conventions: JsonElement? = null
 
-    @JsonProperty("processor")
     fun getProcessor(): Processor? {
         return processor
     }
 
-    @JsonProperty("processor")
     fun setProcessor(processor: Processor?) {
         this.processor = processor
     }
 
-    @JsonProperty("hyphenationDictionary")
     fun getHyphenationDictionary(): HyphenationDictionary? {
         return hyphenationDictionary
     }
 
-    @JsonProperty("hyphenationDictionary")
     fun setHyphenationDictionary(hyphenationDictionary: HyphenationDictionary?) {
         this.hyphenationDictionary = hyphenationDictionary
     }
 
-    @JsonProperty("numberSign")
     fun getNumberSign(): NumberSign? {
         return numberSign
     }
 
-    @JsonProperty("numberSign")
     fun setNumberSign(numberSign: NumberSign?) {
         this.numberSign = numberSign
     }
 
-    @JsonProperty("continuousPoetry")
     fun getContinuousPoetry(): ContinuousPoetry? {
         return continuousPoetry
     }
 
-    @JsonProperty("continuousPoetry")
     fun setContinuousPoetry(continuousPoetry: ContinuousPoetry?) {
         this.continuousPoetry = continuousPoetry
     }
 
-    @JsonProperty("content")
     fun getContent(): Content? {
         return content
     }
 
-    @JsonProperty("content")
     fun setContent(content: Content?) {
         this.content = content
     }
 
-    @JsonProperty("page")
     fun getPage(): Page? {
         return page
     }
 
-    @JsonProperty("page")
     fun setPage(page: Page?) {
         this.page = page
     }
 
-    @JsonProperty("conventions")
-    fun getConventions(): JsonNode? {
+    fun getConventions(): JsonElement? {
         return conventions
     }
 
-    @JsonProperty("conventions")
-    fun setConventions(conventions: JsonNode) {
+    fun setConventions(conventions: JsonElement) {
         this.conventions = conventions
     }
 

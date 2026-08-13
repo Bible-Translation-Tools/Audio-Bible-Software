@@ -1,18 +1,22 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.JsonCreator
-import com.fasterxml.jackson.annotation.JsonValue
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
+
+@Serializable
 enum class Category(private val value: String) {
+    @SerialName("source")
     SOURCE("source"),
+    @SerialName("derived")
     DERIVED("derived"),
+    @SerialName("template")
     TEMPLATE("template");
 
     override fun toString(): String {
         return this.value
     }
 
-    @JsonValue
     fun value(): String {
         return this.value
     }
@@ -26,7 +30,6 @@ enum class Category(private val value: String) {
             }
         }
 
-        @JsonCreator
         fun fromValue(value: String): Category {
             val constant = CONSTANTS[value]
             requireNotNull(constant) { value }

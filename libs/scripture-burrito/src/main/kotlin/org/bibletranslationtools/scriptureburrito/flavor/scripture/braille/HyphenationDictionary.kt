@@ -1,23 +1,16 @@
 package org.bibletranslationtools.scriptureburrito.flavor.scripture.braille
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "src", "name"
-)
+
+@Serializable
 class HyphenationDictionary {
 
-    @get:JsonProperty("src")
-    @set:JsonProperty("src")
-    @JsonProperty("src")
+    @SerialName("src")
     var src: String? = null
 
-    @get:JsonProperty("name")
-    @set:JsonProperty("name")
-    @JsonProperty("name")
+    @SerialName("name")
     var name: String? = null
 
     override fun equals(other: Any?): Boolean {

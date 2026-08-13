@@ -1,49 +1,30 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.JsonIgnore
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyDescription
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
-import com.fasterxml.jackson.databind.JsonNode
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Transient
 
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "name", "description", "abbreviation", "primary", "upstream"
-)
+
+@Serializable
 class IdentificationSchema {
 
-    @get:JsonProperty("name")
-    @set:JsonProperty("name")
-    @JsonProperty("name")
-    @JsonPropertyDescription("A textual string specified in one or multiple languages, indexed by IETF language tag.")
+    @SerialName("name")
     var name: HashMap<String, String> = hashMapOf()
 
-    @get:JsonProperty("description")
-    @set:JsonProperty("description")
-    @JsonProperty("description")
-    @JsonPropertyDescription("A textual string specified in one or multiple languages, indexed by IETF language tag.")
+    @SerialName("description")
     var description: HashMap<String, String> = hashMapOf()
 
-    @get:JsonProperty("abbreviation")
-    @set:JsonProperty("abbreviation")
-    @JsonProperty("abbreviation")
-    @JsonPropertyDescription("A textual string specified in one or multiple languages, indexed by IETF language tag.")
+    @SerialName("abbreviation")
     var abbreviation: HashMap<String, String> = hashMapOf()
 
-    @get:JsonProperty("primary")
-    @set:JsonProperty("primary")
-    @JsonProperty("primary")
-    @JsonPropertyDescription("Contains the primary authority and identification information.")
-    @JsonIgnore
+    @SerialName("primary")
+    @Transient
     var primary: PrimaryIdentification = PrimaryIdentification()
 
-    @get:JsonProperty("upstream")
-    @set:JsonProperty("upstream")
-    @JsonProperty("upstream")
-    @JsonPropertyDescription("Contains the upstream authority and identification information.")
-    var upstream: JsonNode? = null
+    @SerialName("upstream")
+    var upstream: JsonElement? = null
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false

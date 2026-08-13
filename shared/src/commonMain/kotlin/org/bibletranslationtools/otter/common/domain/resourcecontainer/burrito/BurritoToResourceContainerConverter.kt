@@ -1,10 +1,5 @@
 package org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.module.SimpleModule
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.bibletranslationtools.scriptureburrito.IngredientSchema
 import org.bibletranslationtools.scriptureburrito.MetadataSchema
 import org.bibletranslationtools.scriptureburrito.container.BurritoContainer
@@ -22,7 +17,8 @@ import org.bibletranslationtools.otter.common.data.audio.BookMarker
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.audio.metadata.BurritoAlignmentMetadata
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
-import org.bibletranslationtools.scriptureburrito.MetadataDeserializer
+import kotlinx.serialization.json.jsonObject
+import org.bibletranslationtools.scriptureburrito.BURRITO_JSON
 import org.bibletranslationtools.scriptureburrito.Role
 import org.bibletranslationtools.scriptureburrito.flavor.scripture.ScriptureFlavorSchema
 import org.bibletranslationtools.scriptureburrito.flavor.scripture.text.TextTranslationSchema
@@ -58,6 +54,12 @@ import org.bibletranslationtools.otter.common.domain.versification.ParatextVersi
 import org.bibletranslationtools.otter.common.data.audio.VerseMarker
 import org.bibletranslationtools.otter.common.domain.versification.Versification
 import org.bibletranslationtools.otter.common.audio.wav.WavFile
+import org.bibletranslationtools.otter.common.OTTER_JSON
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.Serializable
 
 internal typealias IngredientsByBook = Map<String, List<Pair<String, IngredientSchema>>>
 internal typealias FilesByBook = Map<String, FilesByChapter>
@@ -188,12 +190,11 @@ open class BurritoToResourceContainerConverter(
                 try {
                     // Load metadata to determine flavor
                     val metadataReader = burritoAccessor.getReader("metadata.json")
-                    val objectMapper = ObjectMapper()
-                        .registerKotlinModule()
-                        .registerModule(
-                            SimpleModule().addDeserializer(MetadataSchema::class.java, MetadataDeserializer())
-                        )
-                    val metadata = objectMapper.readValue(metadataReader, MetadataSchema::class.java)
+                    // MetadataSchema now carries its own content-based serializer, so the
+                    // hand-registered MetadataDeserializer is gone.
+                    val metadata = BURRITO_JSON.decodeFromString(
+                        MetadataSchema.serializer(), metadataReader.readText()
+                    )
                     val flavor = metadata.type?.flavorType?.flavor
                     val flavorText = flavor.toString().lowercase(Locale.US)
                     val role = b.role.lowercase(Locale.US)
@@ -866,8 +867,9 @@ open class BurritoToResourceContainerConverter(
         return if (versificationIngredient != null) {
             try {
                 inputAccessor.getInputStream(versificationIngredient.key).use { stream ->
-                    val mapper = ObjectMapper().registerKotlinModule()
-                    mapper.readValue(stream, ParatextVersification::class.java)
+                    OTTER_JSON.decodeFromString(
+                        ParatextVersification.serializer(), stream.readBytes().decodeToString()
+                    )
                 }
             } catch (e: Exception) {
                 logger.error("Failed to parse versification file from burrito", e)
@@ -879,15 +881,14 @@ open class BurritoToResourceContainerConverter(
     }
 }
 
-internal fun peekMetadata(file: File): JsonNode? {
-    val objectMapper = ObjectMapper().registerKotlinModule()
+internal fun peekMetadata(file: File): JsonElement? {
     return try {
         when {
             file.isDirectory -> {
                 val metadata = File(file, "metadata.json")
                 if (metadata.exists()) {
-                    val tree = objectMapper.readTree(metadata)
-                    System.err.println("DEBUG PEEK: Directory metadata found. Format: ${tree.get("format")?.asText()}")
+                    val tree = OTTER_JSON.parseToJsonElement(metadata.readText())
+                    System.err.println("DEBUG PEEK: Directory metadata found. Format: ${(tree as? JsonObject)?.get("format")?.jsonPrimitive?.contentOrNull}")
                     tree
                 } else {
                     System.err.println("DEBUG PEEK: Directory metadata NOT found at ${metadata.absolutePath}")
@@ -898,8 +899,8 @@ internal fun peekMetadata(file: File): JsonNode? {
                 ZipFile(file).use { zip ->
                     zip.getEntry("metadata.json")?.let { entry ->
                         zip.getInputStream(entry).use { inputStream ->
-                            val tree = objectMapper.readTree(inputStream)
-                            System.err.println("DEBUG PEEK: ZIP metadata found. Format: ${tree.get("format")?.asText()}")
+                            val tree = OTTER_JSON.parseToJsonElement(inputStream.readBytes().decodeToString())
+                            System.err.println("DEBUG PEEK: ZIP metadata found. Format: ${(tree as? JsonObject)?.get("format")?.jsonPrimitive?.contentOrNull}")
                             tree
                         }
                     } ?: run {
@@ -909,8 +910,8 @@ internal fun peekMetadata(file: File): JsonNode? {
                 }
             }
             file.isFile -> {
-                val tree = objectMapper.readTree(file)
-                System.err.println("DEBUG PEEK: Single file metadata. Format: ${tree.get("format")?.asText()}")
+                val tree = OTTER_JSON.parseToJsonElement(file.readText())
+                System.err.println("DEBUG PEEK: Single file metadata. Format: ${(tree as? JsonObject)?.get("format")?.jsonPrimitive?.contentOrNull}")
                 tree
             }
             else -> {
@@ -969,7 +970,7 @@ internal fun getCreatorFromBurrito(burrito: MetadataSchema): String {
 internal fun getVersionFromBurrito(burrito: MetadataSchema): String {
     try {
         val version =
-            burrito.identification?.primary?.entries?.first()?.value?.get("revision")?.toString()
+            burrito.identification?.primary?.entries?.first()?.value?.jsonObject?.get("revision")?.toString()
 
         return if (!version.isNullOrEmpty()) {
             version
@@ -1193,7 +1194,7 @@ internal fun getIngredientsByBook(burrito: MetadataSchema): IngredientsByBook {
     return ingredientsByBook
 }
 
-@JsonIgnoreProperties(ignoreUnknown = true)
+@Serializable
 data class ScriptureBurritoWrapper(
     val meta: WrapperMeta,
     val format: String,
@@ -1219,7 +1220,7 @@ data class ScriptureBurritoWrapper(
 }
 
 
-@JsonIgnoreProperties(ignoreUnknown = true)
+@Serializable
 data class WrapperMeta(
     val name: Map<String, String>,
     val version: String,
@@ -1230,12 +1231,12 @@ data class WrapperMeta(
     val abbreviation: Map<String, String> = emptyMap()
 )
 
-@JsonIgnoreProperties(ignoreUnknown = true)
+@Serializable
 data class WrapperContents(
     val burritos: List<WrapperBurrito>
 )
 
-@JsonIgnoreProperties(ignoreUnknown = true)
+@Serializable
 data class WrapperBurrito(
     val id: String,
     val path: String,

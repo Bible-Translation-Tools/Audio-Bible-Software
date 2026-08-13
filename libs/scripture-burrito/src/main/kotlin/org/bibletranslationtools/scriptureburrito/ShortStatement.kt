@@ -1,30 +1,18 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyDescription
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "statement", "lang", "mimetype"
-)
+
+@Serializable
 class ShortStatement(
-    @get:JsonProperty("statement")
-    @set:JsonProperty("statement")
-    @JsonProperty("statement")
+    @SerialName("statement")
     var statement: String,
 
-    @get:JsonProperty("lang")
-    @set:JsonProperty("lang")
-    @JsonProperty("lang")
-    @JsonPropertyDescription("A valid IETF language tag as specified by BCP 47.")
+    @SerialName("lang")
     var lang: String? = null,
 
-    @get:JsonProperty("mimetype")
-    @set:JsonProperty("mimetype")
-    @JsonProperty("mimetype")
-    @JsonPropertyDescription("An IANA media type (also known as MIME type)")
+    @SerialName("mimetype")
     var mimetype: String? = null
 ) {
     override fun toString(): String {

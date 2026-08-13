@@ -1,9 +1,8 @@
 package org.wycliffeassociates.tstudio2rc
 
-import com.fasterxml.jackson.core.JsonFactory
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 import java.io.File
 import java.nio.file.Files
 import java.util.zip.ZipEntry
@@ -12,12 +11,15 @@ import java.util.zip.ZipOutputStream
 
 internal const val MANIFEST_YAML = "manifest.yaml"
 
-internal fun loadJson(path: String): JsonNode {
-    val mapper = ObjectMapper(JsonFactory())
-        .registerKotlinModule()
+/**
+ * Shared JSON codec. `ignoreUnknownKeys` is the old per-class
+ * `@JsonIgnoreProperties(ignoreUnknown = true)`: tStudio manifests carry keys this library does
+ * not model, and an unknown key must not fail the read.
+ */
+internal val JSON = Json { ignoreUnknownKeys = true }
 
-    return mapper.readTree(File(path))
-}
+internal fun loadJson(path: String): JsonObject =
+    JSON.parseToJsonElement(File(path).readText()).jsonObject
 
 // Returns true if the specified path looks like a collection of chapter folders
 internal fun isBookFolder(path: String): Boolean {

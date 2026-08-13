@@ -4,6 +4,7 @@
 // Package stays org.wycliffeassociates.tstudio2rc — :shared imports it directly.
 plugins {
     alias(libs.plugins.jetbrainsKotlinJvm)
+    alias(libs.plugins.kotlinSerialization)
 }
 
 kotlin {
@@ -26,10 +27,11 @@ dependencies {
     // order the two are vendored in.
     implementation("org.wycliffeassociates:kotlin-resource-container:0.12.0")
 
-    implementation(libs.jackson.module.kotlin)
-    implementation(libs.jackson.dataformat.yaml)
-    // The only consumer of jackson-dataformat-csv anywhere in the build.
-    implementation(libs.jackson.dataformat.csv)
+    // kaml (YAML, for the manifest it writes) + kotlinx-serialization-json (tStudio manifests
+    // and verse_counts.json). jackson-dataformat-csv went with them: it was declared here but no
+    // source file in this module or any consumer ever referenced it.
+    implementation(libs.kaml)
+    implementation(libs.kotlinx.serialization.json)
 
     // The original build declared useJUnitPlatform() with kotlin-test, so the JUnit 5 flavour.
     testImplementation(libs.kotlin.test.junit5)

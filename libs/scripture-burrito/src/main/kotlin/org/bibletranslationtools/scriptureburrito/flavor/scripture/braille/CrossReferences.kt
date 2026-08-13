@@ -1,27 +1,18 @@
 package org.bibletranslationtools.scriptureburrito.flavor.scripture.braille
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "emphasizedWord", "emphasizedPassageStart", "emphasizedPassageEnd"
-)
+
+@Serializable
 class CrossReferences {
-    @get:JsonProperty("emphasizedWord")
-    @set:JsonProperty("emphasizedWord")
-    @JsonProperty("emphasizedWord")
+    @SerialName("emphasizedWord")
     var emphasizedWord: String? = null
 
-    @get:JsonProperty("emphasizedPassageStart")
-    @set:JsonProperty("emphasizedPassageStart")
-    @JsonProperty("emphasizedPassageStart")
+    @SerialName("emphasizedPassageStart")
     var emphasizedPassageStart: String? = null
 
-    @get:JsonProperty("emphasizedPassageEnd")
-    @set:JsonProperty("emphasizedPassageEnd")
-    @JsonProperty("emphasizedPassageEnd")
+    @SerialName("emphasizedPassageEnd")
     var emphasizedPassageEnd: String? = null
 
     override fun equals(other: Any?): Boolean {

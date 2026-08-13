@@ -18,11 +18,6 @@
  */
 package org.bibletranslationtools.otter.common.domain.narration
 
-import com.fasterxml.jackson.core.type.TypeReference
-import com.fasterxml.jackson.databind.JsonMappingException
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.jsontype.NamedType
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.reactivex.rxkotlin.toObservable
 import io.reactivex.subjects.PublishSubject
 import org.slf4j.LoggerFactory
@@ -43,6 +38,9 @@ import java.io.RandomAccessFile
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.max
 import kotlin.math.min
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
 
 private const val ACTIVE_VERSES_FILE_NAME = "active_verses.json"
 private const val CHAPTER_NARRATION_FILE_NAME = "chapter_narration.pcm"
@@ -89,15 +87,10 @@ internal class ChapterRepresentation(
     internal val totalVerses: MutableList<VerseNode>
 
     private lateinit var serializedVersesFile: File
-    private val activeVersesMapper = ObjectMapper()
-        .registerKotlinModule()
-        .apply {
-            this.registerSubtypes(
-                NamedType(VerseMarker::class.java, "VerseMarker"),
-                NamedType(ChapterMarker::class.java, "ChapterMarker"),
-                NamedType(BookMarker::class.java, "BookMarker")
-            )
-        }
+    // Subtype registration moved into AudioMarkerSerializer, which also reads the shapes the
+    // Jackson configuration used to write. ignoreUnknownKeys lets older files keep their `sort`
+    // key, which is derived and no longer written.
+    private val activeVersesJson = Json { ignoreUnknownKeys = true }
 
     val onActiveVersesUpdated = PublishSubject.create<List<AudioMarker>>()
 
@@ -133,10 +126,10 @@ internal class ChapterRepresentation(
         if (json.isEmpty()) {
             return
         }
-        val reference = object : TypeReference<List<VerseNode>>() {}
-
         try {
-            val activeNodes = activeVersesMapper.readValue(json, reference)
+            val activeNodes = activeVersesJson.decodeFromString(
+                ListSerializer(VerseNode.serializer()), json
+            )
             logger.info("Loading ${activeNodes.size} audio markers from serialized data")
             totalVerses.forEach {
                 it.clear() // reset the node's sectors
@@ -150,7 +143,9 @@ internal class ChapterRepresentation(
                     totalVerses[index] = node
                 }
             }
-        } catch (e: JsonMappingException) {
+        } catch (e: SerializationException) {
+            // Was JsonMappingException. A malformed or unreadable active_verses.json must not
+            // take down narration — the chapter just reloads with no placed verses.
             logger.error("Error in loadFromSerializedVerses: ${e.message}")
         }
     }
@@ -187,7 +182,7 @@ internal class ChapterRepresentation(
     }
 
     private fun serializeVerses() {
-        val jsonStr = activeVersesMapper.writeValueAsString(activeVerses)
+        val jsonStr = activeVersesJson.encodeToString(ListSerializer(VerseNode.serializer()), activeVerses)
         serializedVersesFile.writeText(jsonStr)
     }
 

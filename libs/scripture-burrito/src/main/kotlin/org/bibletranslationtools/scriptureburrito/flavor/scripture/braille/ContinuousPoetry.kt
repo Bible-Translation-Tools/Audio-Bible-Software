@@ -1,31 +1,22 @@
 package org.bibletranslationtools.scriptureburrito.flavor.scripture.braille
 
-import com.fasterxml.jackson.annotation.*
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "lineIndicatorSpaced", "startIndicator", "lineIndicator", "endIndicator"
-)
+
+@Serializable
 class ContinuousPoetry {
 
-    @get:JsonProperty("lineIndicatorSpaced")
-    @set:JsonProperty("lineIndicatorSpaced")
-    @JsonProperty("lineIndicatorSpaced")
+    @SerialName("lineIndicatorSpaced")
     var lineIndicatorSpaced: LineIndicatorSpaced? = null
 
-    @get:JsonProperty("startIndicator")
-    @set:JsonProperty("startIndicator")
-    @JsonProperty("startIndicator")
+    @SerialName("startIndicator")
     var startIndicator: String? = null
 
-    @get:JsonProperty("lineIndicator")
-    @set:JsonProperty("lineIndicator")
-    @JsonProperty("lineIndicator")
+    @SerialName("lineIndicator")
     var lineIndicator: String? = null
 
-    @get:JsonProperty("endIndicator")
-    @set:JsonProperty("endIndicator")
-    @JsonProperty("endIndicator")
+    @SerialName("endIndicator")
     var endIndicator: String? = null
 
     override fun equals(other: Any?): Boolean {
@@ -61,7 +52,6 @@ class ContinuousPoetry {
             return this.value
         }
 
-        @JsonValue
         fun value(): String {
             return this.value
         }
@@ -75,7 +65,6 @@ class ContinuousPoetry {
                 }
             }
 
-            @JsonCreator
             fun fromValue(value: String): LineIndicatorSpaced {
                 val constant = CONSTANTS[value]
                 requireNotNull(constant) { value }

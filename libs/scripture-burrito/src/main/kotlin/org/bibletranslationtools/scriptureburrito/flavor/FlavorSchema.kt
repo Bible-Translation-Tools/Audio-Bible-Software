@@ -1,11 +1,8 @@
 package org.bibletranslationtools.scriptureburrito.flavor
 
-import com.fasterxml.jackson.annotation.*
-import com.fasterxml.jackson.core.JsonParser
-import com.fasterxml.jackson.core.JsonProcessingException
-import com.fasterxml.jackson.databind.*
-import com.fasterxml.jackson.module.kotlin.KotlinModule
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonClassDiscriminator
+
 import org.bibletranslationtools.scriptureburrito.flavor.scripture.ScriptureFlavorSchema
 import org.bibletranslationtools.scriptureburrito.flavor.scripture.audio.AudioFlavorSchema
 import org.bibletranslationtools.scriptureburrito.flavor.scripture.braille.EmbossedBrailleScriptureSchema
@@ -14,16 +11,12 @@ import org.bibletranslationtools.scriptureburrito.flavor.scripture.text.TextTran
 import org.bibletranslationtools.scriptureburrito.flavor.scripture.video.SignLanguageVideoTranslationSchema
 import java.io.IOException
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "name"
-)
-@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "name")
-@JsonSubTypes(
-    JsonSubTypes.Type(value = TextTranslationSchema::class, name = "textTranslation"),
-    JsonSubTypes.Type(value = AudioFlavorSchema::class, name = "audioTranslation"),
-    JsonSubTypes.Type(value = SignLanguageVideoTranslationSchema::class, name = "signLanguageVideoTranslation"),
-    JsonSubTypes.Type(value = EmbossedBrailleScriptureSchema::class, name = "embossedBrailleScripture"),
-    JsonSubTypes.Type(value = TypesetScriptureSchema::class, name = "typesetScripture")
-)
+/**
+ * NOT sealed: the subtypes live in sibling packages (flavor.scripture.audio, .text, .video, ...)
+ * and Kotlin requires a sealed hierarchy to share one package. They are registered explicitly in
+ * BurritoSerializers.burritoSerializersModule instead, which is the open-polymorphism equivalent
+ * of the @JsonSubTypes list this replaces.
+ */
+@Serializable
+@JsonClassDiscriminator("name")
 abstract class FlavorSchema

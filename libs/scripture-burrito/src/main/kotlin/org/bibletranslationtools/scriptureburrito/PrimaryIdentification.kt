@@ -1,11 +1,12 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.databind.JsonNode
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
+
 /**
- * Due to Primary being json objects of arbitrary schema, use a JsonNode
+ * Due to Primary being json objects of arbitrary schema, use a JsonElement
  */
-class PrimaryIdentification: HashMap<String, JsonNode>()
+@Serializable(with = PrimaryIdentificationSerializer::class)
+class PrimaryIdentification: HashMap<String, JsonElement>()

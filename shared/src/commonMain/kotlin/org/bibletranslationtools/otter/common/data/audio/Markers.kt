@@ -18,9 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.data.audio
 
-import com.fasterxml.jackson.annotation.JsonIgnore
-import com.fasterxml.jackson.annotation.JsonSubTypes
-import com.fasterxml.jackson.annotation.JsonTypeInfo
+import kotlinx.serialization.Serializable
 import org.bibletranslationtools.otter.common.audio.AudioCue
 
 enum class MarkerType {
@@ -39,18 +37,12 @@ private const val CHUNK_SORT_START = 100_000
 private const val UNKNOWN_SORT_START = 100_000_000
 
 
-@JsonTypeInfo(
-    use = JsonTypeInfo.Id.NAME,
-    include = JsonTypeInfo.As.PROPERTY,
-    property = "type",
-    defaultImpl = VerseMarker::class
-)
-@JsonSubTypes(
-    JsonSubTypes.Type(value = VerseMarker::class, name = "verse_marker"),
-    JsonSubTypes.Type(value = ChapterMarker::class, name = "chapter_marker"),
-    JsonSubTypes.Type(value = BookMarker::class, name = "book_marker"),
-    JsonSubTypes.Type(value = UnknownMarker::class, name = "unknown_marker")
-)
+/**
+ * Serialized by [AudioMarkerSerializer], which owns the on-disk shape and its backward
+ * compatibility. The implementations are deliberately NOT individually @Serializable: their
+ * `type` and `sort` are derived body properties, and the codec writes/derives them explicitly.
+ */
+@Serializable(with = AudioMarkerSerializer::class)
 interface AudioMarker {
     val type: MarkerType
 
@@ -106,11 +98,9 @@ data class BookMarker(val bookSlug: String, override val location: Int) : AudioM
     override val type = MarkerType.TITLE
 
     override val label: String
-        @JsonIgnore
         get() = bookSlug
 
     override val formattedLabel
-        @JsonIgnore
         get() = "orature-book-${label}"
 
     override fun toString(): String {
@@ -132,11 +122,9 @@ data class ChapterMarker(val chapterNumber: Int, override val location: Int) : A
     override val type = MarkerType.TITLE
 
     override val label: String
-        @JsonIgnore
         get() = "$chapterNumber"
 
     override val formattedLabel
-        @JsonIgnore
         get() = "orature-chapter-${label}"
 
     override fun toString(): String {
@@ -158,11 +146,9 @@ data class VerseMarker(val start: Int, val end: Int, override val location: Int)
     override val type = MarkerType.CONTENT
 
     override val label: String
-        @JsonIgnore
         get() = if (end != start) "$start-$end" else "$start"
 
     override val formattedLabel
-        @JsonIgnore
         get() = "orature-vm-${label}"
 
     override fun toString(): String {

@@ -1,30 +1,59 @@
 package org.bibletranslationtools.kotlinscripturealignment.serializers
 
-import com.fasterxml.jackson.core.JsonGenerator
-import com.fasterxml.jackson.databind.SerializerProvider
-import com.fasterxml.jackson.databind.ser.std.StdSerializer
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.descriptors.buildClassSerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonEncoder
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
 import org.bibletranslationtools.kotlinscripturealignment.model.Record
 
-class RecordSerializer @JvmOverloads constructor(t: Class<Record>? = null) : StdSerializer<Record>(t) {
-    override fun serialize(value: Record?, gen: JsonGenerator, provider: SerializerProvider) {
-        if (value == null) {
-            gen.writeNull()
-            return
-        }
+/**
+ * Mirrors the Jackson RecordSerializer: a key is written only when its list is present AND
+ * non-empty. That is stricter than the shared Json instance's explicitNulls/encodeDefaults, which
+ * would still write an explicitly-empty `timecode: []`, so the rule stays hand-written.
+ */
+object RecordSerializer : KSerializer<Record> {
 
-        gen.writeStartObject()
-        if (value.timecode != null && value.timecode.isNotEmpty()) {
-            gen.writeFieldName("timecode")
-            gen.writeObject(value.timecode)
-        }
-        if (value.textReference != null && value.textReference.isNotEmpty()) {
-            gen.writeFieldName("text-reference")
-            gen.writeObject(value.textReference)
-        }
-        if (value.references.isNotEmpty()) {
-            gen.writeFieldName("references")
-            gen.writeObject(value.references)
-        }
-        gen.writeEndObject()
+    private val strings = ListSerializer(String.serializer())
+    private val stringLists = ListSerializer(ListSerializer(String.serializer()))
+
+    override val descriptor: SerialDescriptor =
+        buildClassSerialDescriptor("org.bibletranslationtools.kotlinscripturealignment.model.Record")
+
+    override fun serialize(encoder: Encoder, value: Record) {
+        val out = encoder as? JsonEncoder
+            ?: throw IllegalStateException("Record can only be written to JSON")
+        out.encodeJsonElement(
+            buildJsonObject {
+                value.timecode?.takeIf { it.isNotEmpty() }?.let {
+                    put("timecode", out.json.encodeToJsonElement(strings, it))
+                }
+                value.textReference?.takeIf { it.isNotEmpty() }?.let {
+                    put("text-reference", out.json.encodeToJsonElement(strings, it))
+                }
+                value.references.takeIf { it.isNotEmpty() }?.let {
+                    put("references", out.json.encodeToJsonElement(stringLists, it))
+                }
+            }
+        )
+    }
+
+    override fun deserialize(decoder: Decoder): Record {
+        val input = decoder as? JsonDecoder
+            ?: throw IllegalStateException("Record can only be read from JSON")
+        val obj = input.decodeJsonElement() as? JsonObject
+            ?: throw IllegalArgumentException("a record must be an object")
+        return Record(
+            timecode = obj["timecode"]?.let { input.json.decodeFromJsonElement(strings, it) },
+            textReference = obj["text-reference"]?.let { input.json.decodeFromJsonElement(strings, it) },
+            references = obj["references"]?.let { input.json.decodeFromJsonElement(stringLists, it) } ?: listOf()
+        )
     }
 }

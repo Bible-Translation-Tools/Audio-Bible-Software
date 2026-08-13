@@ -64,6 +64,9 @@ kotlin {
                 // koinInject() for reading app-scoped Koin singles (e.g. OratureNavigationLock)
                 // directly in a plain @Composable that isn't itself a ViewModel/KoinComponent.
                 implementation(libs.koin.compose)
+                // Plugin definitions are YAML — see OraturePluginRegistrar. Declared explicitly
+                // rather than leaning on :shared's api(kaml), since this module uses it directly.
+                implementation(libs.kaml)
             }
         }
 

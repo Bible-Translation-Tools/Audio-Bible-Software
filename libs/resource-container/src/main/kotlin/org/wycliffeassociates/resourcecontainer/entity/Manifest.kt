@@ -1,11 +1,12 @@
 package org.wycliffeassociates.resourcecontainer.entity
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.fasterxml.jackson.annotation.JsonProperty
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
-@JsonIgnoreProperties(ignoreUnknown = true)
+
+@Serializable
 class Manifest(
-    @JsonProperty("dublin_core")
+    @SerialName("dublin_core")
     var dublinCore: DublinCore,
     var projects: List<Project>,
     var checking: Checking

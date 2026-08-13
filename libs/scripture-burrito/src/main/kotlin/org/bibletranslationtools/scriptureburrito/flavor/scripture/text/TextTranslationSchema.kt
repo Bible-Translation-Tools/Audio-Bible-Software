@@ -1,45 +1,35 @@
 package org.bibletranslationtools.scriptureburrito.flavor.scripture.text
 
-import com.fasterxml.jackson.annotation.*
-import com.fasterxml.jackson.databind.JsonNode
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.SerialName
+
 import org.bibletranslationtools.scriptureburrito.flavor.FlavorSchema
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "name", "projectType", "translationType", "audience", "usfmVersion", "conventions"
-)
+@Serializable
+@SerialName("textTranslation")
 class TextTranslationSchema: FlavorSchema() {
 
-    @get:JsonProperty("projectType")
-    @set:JsonProperty("projectType")
-    @JsonProperty("projectType")
+    @SerialName("projectType")
     var projectType: ProjectType? = null
 
-    @get:JsonProperty("translationType")
-    @set:JsonProperty("translationType")
-    @JsonProperty("translationType")
+    @SerialName("translationType")
     var translationType: TranslationType? = null
 
-    @get:JsonProperty("audience")
-    @set:JsonProperty("audience")
-    @JsonProperty("audience")
+    @SerialName("audience")
     var audience: Audience? = null
 
-    @get:JsonProperty("usfmVersion")
-    @set:JsonProperty("usfmVersion")
-    @JsonProperty("usfmVersion")
+    @SerialName("usfmVersion")
     var usfmVersion: String? = null
 
-    @JsonProperty("conventions")
-    private var conventions: JsonNode? = null
+    @SerialName("conventions")
+    private var conventions: JsonElement? = null
 
-    @JsonProperty("conventions")
-    fun getConventions(): JsonNode? {
+    fun getConventions(): JsonElement? {
         return conventions
     }
 
-    @JsonProperty("conventions")
-    fun setConventions(conventions: JsonNode?) {
+    fun setConventions(conventions: JsonElement?) {
         this.conventions = conventions
     }
 
@@ -82,7 +72,6 @@ class TextTranslationSchema: FlavorSchema() {
             return this.value
         }
 
-        @JsonValue
         fun value(): String {
             return this.value
         }
@@ -96,7 +85,6 @@ class TextTranslationSchema: FlavorSchema() {
                 }
             }
 
-            @JsonCreator
             fun fromValue(value: String): Audience {
                 val constant = CONSTANTS[value]
                 requireNotNull(constant) { value }
@@ -119,7 +107,6 @@ class TextTranslationSchema: FlavorSchema() {
             return this.value
         }
 
-        @JsonValue
         fun value(): String {
             return this.value
         }
@@ -133,7 +120,6 @@ class TextTranslationSchema: FlavorSchema() {
                 }
             }
 
-            @JsonCreator
             fun fromValue(value: String): ProjectType {
                 val constant = CONSTANTS[value]
                 requireNotNull(constant) { value }
@@ -152,7 +138,6 @@ class TextTranslationSchema: FlavorSchema() {
             return this.value
         }
 
-        @JsonValue
         fun value(): String {
             return this.value
         }
@@ -166,7 +151,6 @@ class TextTranslationSchema: FlavorSchema() {
                 }
             }
 
-            @JsonCreator
             fun fromValue(value: String): TranslationType {
                 val constant = CONSTANTS[value]
                 requireNotNull(constant) { value }

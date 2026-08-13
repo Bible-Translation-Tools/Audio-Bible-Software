@@ -1,28 +1,20 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyDescription
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
-import com.fasterxml.jackson.databind.JsonNode
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.SerialName
 
 
+
+@Serializable(with = TargetAreasSerializer::class)
 class TargetAreas: ArrayList<TargetAreaSchema>()
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "code", "name"
-)
+@Serializable
 class TargetAreaSchema {
-    @get:JsonProperty("code")
-    @set:JsonProperty("code")
-    @JsonProperty("code")
-    var code: JsonNode? = null
+    @SerialName("code")
+    var code: JsonElement? = null
 
-    @get:JsonProperty("name")
-    @set:JsonProperty("name")
-    @JsonProperty("name")
-    @JsonPropertyDescription("A textual string specified in one or multiple languages, indexed by IETF language tag.")
+    @SerialName("name")
     var name: LocalizedText? = null
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

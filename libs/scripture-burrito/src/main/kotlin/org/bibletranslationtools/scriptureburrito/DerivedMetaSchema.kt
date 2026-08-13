@@ -1,42 +1,36 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.*
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
+
 import org.bibletranslationtools.scriptureburrito.Category
 import org.bibletranslationtools.scriptureburrito.MetaVersionSchema
 import org.bibletranslationtools.scriptureburrito.NormalizationSchema
 import java.util.*
 
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "category", "dateCreated", "version", "generator", "defaultLocale", "normalization", "comments"
-)
+@Serializable
+@SerialName("derived")
 class DerivedMetaSchema(
-    @JsonProperty("dateCreated")
-    dateCreated: Date,
+    @Serializable(with = DateSerializer::class)
+    @SerialName("dateCreated")
+    override var dateCreated: Date,
 
-    @JsonProperty("version")
-    version: MetaVersionSchema,
+    @SerialName("version")
+    override var version: MetaVersionSchema,
 
-    @JsonProperty("generator")
-    generator: SoftwareAndUserInfoSchema? = null,
+    @SerialName("generator")
+    override var generator: SoftwareAndUserInfoSchema? = null,
 
-    @JsonProperty("defaultLocale")
-    defaultLocale: String,
+    @SerialName("defaultLocale")
+    override var defaultLocale: String,
 
-    @JsonProperty("normalization")
-    normalization: NormalizationSchema? = null,
+    @SerialName("normalization")
+    override var normalization: NormalizationSchema? = null,
 
-    @JsonProperty("comments")
-    comments: MutableList<String> = ArrayList()
-) : Meta(
-    dateCreated,
-    version,
-    generator,
-    defaultLocale,
-    normalization,
-    comments
-) {
+    @SerialName("comments")
+    override var comments: MutableList<String> = ArrayList()
+) : Meta() {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is DerivedMetaSchema) return false

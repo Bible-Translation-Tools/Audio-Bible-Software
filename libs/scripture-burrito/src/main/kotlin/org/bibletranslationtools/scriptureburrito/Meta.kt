@@ -1,57 +1,41 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.*
-import com.fasterxml.jackson.annotation.JsonSubTypes.Type
+import kotlinx.serialization.Serializable
+import org.bibletranslationtools.scriptureburrito.DateSerializer
+import kotlinx.serialization.json.JsonClassDiscriminator
+import kotlinx.serialization.SerialName
+
 import org.bibletranslationtools.scriptureburrito.Category
 import org.bibletranslationtools.scriptureburrito.MetaVersionSchema
 import org.bibletranslationtools.scriptureburrito.NormalizationSchema
 import java.util.*
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "category"
-)
-@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "category")
-@JsonSubTypes(
-    Type(value = DerivedMetaSchema::class, name = "derived"),
-    Type(value = SourceMetaSchema::class, name = "source"),
-    Type(value = TemplateMetaSchema::class, name = "template")
-)
-abstract class Meta(
-    @get:JsonProperty("dateCreated")
-    @set:JsonProperty("dateCreated")
-    @JsonProperty("dateCreated")
-    var dateCreated: Date,
+@Serializable
+@JsonClassDiscriminator("category")
+// Properties are abstract rather than constructor parameters: kotlinx requires every
+// primary-constructor parameter of a @Serializable class to be a property, and the
+// subtypes forward their arguments here rather than declaring their own. Making the base
+// abstract and the subtypes `override` keeps every public signature identical.
+sealed class Meta {
+    @Serializable(with = DateSerializer::class)
+    @SerialName("dateCreated")
+    abstract var dateCreated: Date
 
-    @get:JsonProperty("version")
-    @set:JsonProperty("version")
-    @JsonProperty("version")
-    @JsonPropertyDescription("Version of the Scripture Burrito specification this file follows.")
-    var version: MetaVersionSchema,
+    @SerialName("version")
+    abstract var version: MetaVersionSchema
 
-    @get:JsonProperty("generator")
-    @set:JsonProperty("generator")
-    @JsonProperty("generator")
-    var generator: SoftwareAndUserInfoSchema? = null,
+    @SerialName("generator")
+    abstract var generator: SoftwareAndUserInfoSchema?
 
-    @get:JsonProperty("defaultLocale")
-    @set:JsonProperty("defaultLocale")
-    @JsonProperty("defaultLocale")
-    @JsonPropertyDescription("A valid IETF language tag as specified by BCP 47.")
-    var defaultLocale: String,
+    @SerialName("defaultLocale")
+    abstract var defaultLocale: String
 
-    @get:JsonProperty("normalization")
-    @set:JsonProperty("normalization")
-    @JsonProperty("normalization")
-    @JsonPropertyDescription("Unicode normalization options. This applies to both ingredients and metadata.")
-    var normalization: NormalizationSchema? = null,
+    @SerialName("normalization")
+    abstract var normalization: NormalizationSchema?
 
-    @get:JsonProperty("comments")
-    @set:JsonProperty("comments")
-    @JsonProperty("comments")
-    @JsonPropertyDescription("Arbitrary text strings attached by users with no effect on the interpretation of the Scripture Burrito.")
-    var comments: MutableList<String> = ArrayList()
-) {
+    @SerialName("comments")
+    abstract var comments: MutableList<String>
+
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

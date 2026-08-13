@@ -18,19 +18,17 @@
  */
 package org.bibletranslationtools.otter.common.domain.languages
 
-import com.fasterxml.jackson.core.JsonFactory
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import com.fasterxml.jackson.module.kotlin.readValue
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.reactivex.Observable
 import org.bibletranslationtools.otter.common.api.persistence.ILanguageDataSource
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.api.persistence.LanguagesApi
 import retrofit2.Retrofit
 import retrofit2.adapter.rxjava2.RxJava2CallAdapterFactory
-import retrofit2.converter.jackson.JacksonConverterFactory
+import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
+import okhttp3.MediaType
 import java.io.File
+import org.bibletranslationtools.otter.common.OTTER_JSON
+import kotlinx.serialization.builtins.ListSerializer
 
 class LanguageDataSource() : ILanguageDataSource {
     override fun fetchLanguageNames(url: String): Observable<List<Language>> {
@@ -44,9 +42,9 @@ class LanguageDataSource() : ILanguageDataSource {
     private fun fetchLocalFile(path: String): Observable<List<Language>> {
         return Observable
             .fromCallable {
-                ObjectMapper(JsonFactory())
-                    .registerKotlinModule()
-                    .readValue<List<Language>>(File(path))
+                OTTER_JSON.decodeFromString(
+                    ListSerializer(Language.serializer()), File(path).readText()
+                )
             }
     }
 
@@ -58,7 +56,9 @@ class LanguageDataSource() : ILanguageDataSource {
 
         val request = Retrofit.Builder()
             .baseUrl("http://localhost")
-            .addConverterFactory(JacksonConverterFactory.create(jacksonObjectMapper()))
+            .addConverterFactory(// MediaType.get, not the "…".toMediaType() extension: that is okhttp 4, and
+            // Retrofit 2.9.0 brings okhttp 3.14.9.
+            OTTER_JSON.asConverterFactory(MediaType.get("application/json")))
             .addCallAdapterFactory(RxJava2CallAdapterFactory.create())
             .build()
             .create(LanguagesApi::class.java)

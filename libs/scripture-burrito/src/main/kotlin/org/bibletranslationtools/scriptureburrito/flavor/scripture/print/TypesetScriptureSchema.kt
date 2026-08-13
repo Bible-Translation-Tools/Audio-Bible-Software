@@ -1,94 +1,61 @@
 package org.bibletranslationtools.scriptureburrito.flavor.scripture.print
 
-import com.fasterxml.jackson.annotation.*
-import com.fasterxml.jackson.databind.JsonNode
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.SerialName
+
 import org.bibletranslationtools.scriptureburrito.flavor.FlavorSchema
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "name",
-    "contentType",
-    "pod",
-    "pageCount",
-    "width",
-    "height",
-    "scale",
-    "orientation",
-    "colorSpace",
-    "edgeSpace",
-    "fonts",
-    "conventions"
-)
+@Serializable
+@SerialName("typesetScripture")
 class TypesetScriptureSchema: FlavorSchema() {
 
-    @get:JsonProperty("contentType")
-    @set:JsonProperty("contentType")
-    @JsonProperty("contentType")
+    @SerialName("contentType")
     var contentType: String? = null
 
-    @get:JsonProperty("pod")
-    @set:JsonProperty("pod")
-    @JsonProperty("pod")
+    @SerialName("pod")
     var pod: Boolean? = null
 
-    @get:JsonProperty("pageCount")
-    @set:JsonProperty("pageCount")
-    @JsonProperty("pageCount")
+    @SerialName("pageCount")
     var pageCount: Int? = null
 
-    @get:JsonProperty("width")
-    @set:JsonProperty("width")
-    @JsonProperty("width")
+    @SerialName("width")
     var width: String? = null
 
-    @get:JsonProperty("height")
-    @set:JsonProperty("height")
-    @JsonProperty("height")
+    @SerialName("height")
     var height: String? = null
 
-    @get:JsonProperty("scale")
-    @set:JsonProperty("scale")
-    @JsonProperty("scale")
+    @SerialName("scale")
     var scale: String? = null
 
-    @get:JsonProperty("orientation")
-    @set:JsonProperty("orientation")
-    @JsonProperty("orientation")
+    @SerialName("orientation")
     var orientation: Orientation? = null
 
-    @get:JsonProperty("colorSpace")
-    @set:JsonProperty("colorSpace")
-    @JsonProperty("colorSpace")
+    @SerialName("colorSpace")
     var colorSpace: ColorSpace? = null
 
-    @JsonProperty("edgeSpace")
+    @SerialName("edgeSpace")
     private var edgeSpace: EdgeSpace? = null
 
-    @get:JsonProperty("fonts")
-    @set:JsonProperty("fonts")
-    @JsonProperty("fonts")
+    @SerialName("fonts")
     var fonts: MutableList<String>? = ArrayList()
 
-    @JsonProperty("conventions")
-    private var conventions: JsonNode? = null
+    @SerialName("conventions")
+    private var conventions: JsonElement? = null
 
-    @JsonProperty("edgeSpace")
     fun getEdgeSpace(): EdgeSpace? {
         return edgeSpace
     }
 
-    @JsonProperty("edgeSpace")
     fun setEdgeSpace(edgeSpace: EdgeSpace?) {
         this.edgeSpace = edgeSpace
     }
 
-    @JsonProperty("conventions")
-    fun getConventions(): JsonNode? {
+    fun getConventions(): JsonElement? {
         return conventions
     }
 
-    @JsonProperty("conventions")
-    fun setConventions(conventions: JsonNode?) {
+    fun setConventions(conventions: JsonElement?) {
         this.conventions = conventions
     }
 
@@ -140,7 +107,6 @@ class TypesetScriptureSchema: FlavorSchema() {
             return this.value
         }
 
-        @JsonValue
         fun value(): String {
             return this.value
         }
@@ -154,7 +120,6 @@ class TypesetScriptureSchema: FlavorSchema() {
                 }
             }
 
-            @JsonCreator
             fun fromValue(value: String): ColorSpace {
                 val constant = CONSTANTS[value]
                 requireNotNull(constant) { value }
@@ -171,7 +136,6 @@ class TypesetScriptureSchema: FlavorSchema() {
             return this.value
         }
 
-        @JsonValue
         fun value(): String {
             return this.value
         }
@@ -185,7 +149,6 @@ class TypesetScriptureSchema: FlavorSchema() {
                 }
             }
 
-            @JsonCreator
             fun fromValue(value: String): Orientation {
                 val constant = CONSTANTS[value]
                 requireNotNull(constant) { value }

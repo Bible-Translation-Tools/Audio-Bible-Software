@@ -18,10 +18,8 @@
  */
 package org.bibletranslationtools.otter.common.domain.project
 
-import com.fasterxml.jackson.core.JsonFactory
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.readValue
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import kotlinx.serialization.Serializable
+
 import io.reactivex.Completable
 import io.reactivex.Maybe
 import io.reactivex.Single
@@ -44,6 +42,8 @@ import org.bibletranslationtools.otter.common.api.persistence.IFileIOFactory
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import java.io.File
 import java.lang.IllegalArgumentException
+import kotlinx.serialization.builtins.ListSerializer
+import org.bibletranslationtools.otter.common.OTTER_JSON
 
 // Packaged resource paths, resolved through IBundledContentSource. They are relative to the
 // resources root with no leading prefix; how that root is packaged (today: Compose
@@ -175,12 +175,14 @@ class ImportProjectUseCase(
         val glSources: List<ResourceInfoSerializable> by lazy {
             javaClass.classLoader.getResource(org.bibletranslationtools.otter.common.domain.project.SOURCES_JSON_FILE)!!
                 .openStream().use { stream ->
-                    val mapper = ObjectMapper(JsonFactory()).registerKotlinModule()
-                    val sources: List<ResourceInfoSerializable> = mapper.readValue(stream)
+                    val sources: List<ResourceInfoSerializable> = OTTER_JSON.decodeFromString(
+                        ListSerializer(ResourceInfoSerializable.serializer()), stream.readBytes().decodeToString()
+                    )
                     sources
                 }
         }
     }
 }
 
+@Serializable
 data class ResourceInfoSerializable(val name: String, val languageCode: String, val url: String)

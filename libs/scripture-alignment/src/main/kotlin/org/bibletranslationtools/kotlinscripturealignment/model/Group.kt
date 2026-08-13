@@ -1,11 +1,10 @@
 package org.bibletranslationtools.kotlinscripturealignment.model
 
-import com.fasterxml.jackson.annotation.JsonProperty
-import org.bibletranslationtools.kotlinscripturealignment.model.Documents
+import kotlinx.serialization.Serializable
+import org.bibletranslationtools.kotlinscripturealignment.serializers.GroupSerializer
 
+@Serializable(with = GroupSerializer::class)
 data class Group(
-    @JsonProperty("documents")
     val documents: Documents? = null,
-    @JsonProperty("records")
     val records: List<Record> = listOf()
 )

@@ -1,12 +1,6 @@
 package org.bibletranslationtools.scriptureburrito.container
 
-import com.fasterxml.jackson.annotation.JsonInclude.Include
-import com.fasterxml.jackson.core.JsonGenerator
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.module.SimpleModule
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
-import org.bibletranslationtools.scriptureburrito.MetadataDeserializer
+import org.bibletranslationtools.scriptureburrito.BURRITO_JSON
 import org.bibletranslationtools.scriptureburrito.container.accessors.DirectoryAccessor
 import org.bibletranslationtools.scriptureburrito.container.accessors.IContainerAccessor
 import org.bibletranslationtools.scriptureburrito.container.accessors.ZipAccessor
@@ -59,13 +53,8 @@ class BurritoContainer private constructor(
 
     private fun read(): MetadataSchema {
         if (accessor.fileExists(MANIFEST_FILENAME)) {
-            val mapper = ObjectMapper(YAMLFactory())
-            mapper.registerModules(
-                SimpleModule().addDeserializer(MetadataSchema::class.java, MetadataDeserializer())
-            )
-            mapper.registerKotlinModule()
             manifest = accessor.getReader(MANIFEST_FILENAME).use {
-                mapper.readValue(it, MetadataSchema::class.java)
+                BURRITO_JSON.decodeFromString(MetadataSchema.serializer(), it.readText())
             }
             return manifest
         } else {
@@ -83,12 +72,9 @@ class BurritoContainer private constructor(
     }
 
     private fun writeManifest(writer: OutputStream) {
-        val factory = YAMLFactory()
-        factory.disable(JsonGenerator.Feature.AUTO_CLOSE_TARGET)
-        val mapper = ObjectMapper(factory)
-        mapper.registerKotlinModule()
-        mapper.setSerializationInclusion(Include.NON_NULL)
-        mapper.writeValue(writer, manifest)
+        // The accessor owns the stream, so it is written and flushed but never closed — the old
+        // code got that by disabling JsonGenerator.Feature.AUTO_CLOSE_TARGET.
+        writer.write(BURRITO_JSON.encodeToString(MetadataSchema.serializer(), manifest).toByteArray())
         writer.flush()
     }
 

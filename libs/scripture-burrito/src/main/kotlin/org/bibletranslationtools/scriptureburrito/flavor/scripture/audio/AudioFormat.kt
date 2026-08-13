@@ -1,52 +1,28 @@
 package org.bibletranslationtools.scriptureburrito.flavor.scripture.audio
 
-import com.fasterxml.jackson.annotation.*
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "compression",
-    "trackConfiguration",
-    "bitRate",
-    "bitDepth",
-    "samplingRate",
-    "timingDir"
-)
+
+@Serializable
 class AudioFormat(
-    @get:JsonProperty("compression")
-    @set:JsonProperty("compression")
-    @JsonProperty("compression")
-    @JsonPropertyDescription("A textual string specified in one or multiple languages, indexed by IETF language tag.")
+    @SerialName("compression")
     var compression: Compression
 ) {
 
-    @get:JsonProperty("trackConfiguration")
-    @set:JsonProperty("trackConfiguration")
-    @JsonProperty("trackConfiguration")
-    @JsonPropertyDescription("A textual string specified in one or multiple languages, indexed by IETF language tag.")
+    @SerialName("trackConfiguration")
     var trackConfiguration: TrackConfiguration? = null
 
-    @get:JsonProperty("bitRate")
-    @set:JsonProperty("bitRate")
-    @JsonProperty("bitRate")
-    @JsonPropertyDescription("A textual string specified in one or multiple languages, indexed by IETF language tag.")
+    @SerialName("bitRate")
     var bitRate: Int? = null
 
-    @get:JsonProperty("bitDepth")
-    @set:JsonProperty("bitDepth")
-    @JsonProperty("bitDepth")
-    @JsonPropertyDescription("A textual string specified in one or multiple languages, indexed by IETF language tag.")
+    @SerialName("bitDepth")
     var bitDepth: Int? = null
 
-    @get:JsonProperty("samplingRate")
-    @set:JsonProperty("samplingRate")
-    @JsonProperty("samplingRate")
-    @JsonPropertyDescription("A textual string specified in one or multiple languages, indexed by IETF language tag.")
+    @SerialName("samplingRate")
     var samplingRate: Int? = null
 
-    @get:JsonProperty("timingDir")
-    @set:JsonProperty("timingDir")
-    @JsonProperty("timingDir")
-    @JsonPropertyDescription("A textual string specified in one or multiple languages, indexed by IETF language tag.")
+    @SerialName("timingDir")
     var timingDir: String? = null
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

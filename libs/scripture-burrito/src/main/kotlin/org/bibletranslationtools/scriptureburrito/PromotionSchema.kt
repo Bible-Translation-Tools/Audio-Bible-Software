@@ -1,29 +1,19 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyDescription
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
-import com.fasterxml.jackson.databind.JsonNode
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.SerialName
 
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "statementPlain", "statementRich"
-)
+
+@Serializable
 class PromotionSchema {
 
-    @get:JsonProperty("statementPlain")
-    @set:JsonProperty("statementPlain")
-    @JsonProperty("statementPlain")
-    @JsonPropertyDescription("A textual string specified in one or multiple languages, indexed by IETF language tag.")
+    @SerialName("statementPlain")
     var statementPlain: LocalizedText? = null
     
-    @get:JsonProperty("statementRich")
-    @set:JsonProperty("statementRich")
-    @JsonProperty("statementRich")
-    @JsonPropertyDescription("A simplified XHTML string specified in one or multiple languages, indexed by IETF language tag.")
-    var statementRich: JsonNode? = null
+    @SerialName("statementRich")
+    var statementRich: JsonElement? = null
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is PromotionSchema) return false

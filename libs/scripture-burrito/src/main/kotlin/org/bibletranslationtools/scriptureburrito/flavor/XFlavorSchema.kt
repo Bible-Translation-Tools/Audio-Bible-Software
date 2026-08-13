@@ -1,18 +1,13 @@
 package org.bibletranslationtools.scriptureburrito.flavor
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "name"
-)
+
+@Serializable
 class XFlavorSchema {
-    @get:JsonProperty("name")
-    @set:JsonProperty("name")
-    @JsonProperty("name")
+    @SerialName("name")
     var name: String? = null
 
     override fun equals(other: Any?): Boolean {

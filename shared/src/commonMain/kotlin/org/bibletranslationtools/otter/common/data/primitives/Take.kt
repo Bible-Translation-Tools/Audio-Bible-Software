@@ -18,14 +18,22 @@
  */
 package org.bibletranslationtools.otter.common.data.primitives
 
+import kotlinx.serialization.Serializable
+
+import org.bibletranslationtools.otter.common.FileSerializer
+import org.bibletranslationtools.otter.common.LocalDateSerializer
 import java.io.File
 import java.time.LocalDate
 
+@Serializable
 data class Take(
     var filename: String,
+    @Serializable(with = FileSerializer::class)
     val path: File,
     var number: Int,
+    @Serializable(with = LocalDateSerializer::class)
     var created: LocalDate,
+    @Serializable(with = LocalDateSerializer::class)
     var deleted: LocalDate?,
     var played: Boolean,
     var checkingStatus: CheckingStatus,

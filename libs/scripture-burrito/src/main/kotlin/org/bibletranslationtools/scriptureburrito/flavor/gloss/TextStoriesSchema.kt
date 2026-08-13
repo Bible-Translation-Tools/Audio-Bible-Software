@@ -1,19 +1,14 @@
 package org.bibletranslationtools.scriptureburrito.flavor.gloss
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
-import com.fasterxml.jackson.databind.JsonNode
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.SerialName
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "name"
-)
+
+@Serializable
 class TextStoriesSchema {
-    @get:JsonProperty("name")
-    @set:JsonProperty("name")
-    @JsonProperty("name")
-    var name: JsonNode? = null
+    @SerialName("name")
+    var name: JsonElement? = null
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is TextStoriesSchema) return false

@@ -1,19 +1,14 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
+
 import org.bibletranslationtools.scriptureburrito.flavor.FlavorType
 
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "flavorType"
-)
+@Serializable
 class TypeSchema(
-    @get:JsonProperty("flavorType")
-    @set:JsonProperty("flavorType")
-    @JsonProperty("flavorType")
+    @SerialName("flavorType")
     var flavorType: FlavorType
 ) {
 

@@ -1,32 +1,21 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyDescription
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
-import com.fasterxml.jackson.databind.JsonNode
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.SerialName
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "type", "nameId", "content"
-)
+
+@Serializable
 class RecipeSectionSchema {
 
-    @get:JsonProperty("type")
-    @set:JsonProperty("type")
-    @JsonProperty("type")
-    var type: JsonNode? = null
+    @SerialName("type")
+    var type: JsonElement? = null
 
-    @get:JsonProperty("nameId")
-    @set:JsonProperty("nameId")
-    @JsonProperty("nameId")
-    @JsonPropertyDescription("Opaque system-specific identifier, without prefix.")
+    @SerialName("nameId")
     var nameId: String? = null
 
-    @get:JsonProperty("content")
-    @set:JsonProperty("content")
-    @JsonProperty("content")
-    var content: MutableList<JsonNode> = ArrayList()
+    @SerialName("content")
+    var content: MutableList<JsonElement> = ArrayList()
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is RecipeSectionSchema) return false

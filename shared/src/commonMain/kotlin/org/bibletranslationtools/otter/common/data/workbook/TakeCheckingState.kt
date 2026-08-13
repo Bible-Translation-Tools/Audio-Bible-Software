@@ -18,6 +18,9 @@
  */
 package org.bibletranslationtools.otter.common.data.workbook
 
+import kotlinx.serialization.Serializable
+
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
 
+@Serializable
 data class TakeCheckingState(val status: CheckingStatus, val checksum: String? = null)

@@ -1,9 +1,5 @@
 package org.wycliffeassociates.tstudio2rc
 
-import com.fasterxml.jackson.core.JsonFactory
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.readValue
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.wycliffeassociates.resourcecontainer.entity.Checking
 import org.wycliffeassociates.resourcecontainer.entity.DublinCore
 import org.wycliffeassociates.resourcecontainer.entity.Language
@@ -37,8 +33,7 @@ internal class TstudioMetadata(path: String) {
 
     private fun parseManifestFile(): ProjectManifest {
         val file = projectDir.resolve("manifest.json")
-        val mapper = ObjectMapper(JsonFactory()).registerKotlinModule()
-        return mapper.readValue(file)
+        return JSON.decodeFromString(ProjectManifest.serializer(), file.readText())
     }
 
     private val sources = tsManifest.sourceTranslations

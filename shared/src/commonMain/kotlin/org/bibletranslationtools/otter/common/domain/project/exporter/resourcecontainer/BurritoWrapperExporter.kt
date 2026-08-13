@@ -1,8 +1,5 @@
 package org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.SerializationFeature
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
@@ -55,6 +52,9 @@ import org.bibletranslationtools.otter.common.domain.audio.metadata.BurritoAlign
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstants
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
+import org.bibletranslationtools.scriptureburrito.BURRITO_JSON
+import org.bibletranslationtools.otter.common.OTTER_JSON
+import kotlinx.serialization.Serializable
 
 typealias ChapterNumber = Int
 
@@ -71,11 +71,6 @@ class BurritoWrapperExporter(
 ) : IProjectExporter {
 
     private val logger = LoggerFactory.getLogger(this.javaClass)
-    private val mapper = ObjectMapper().apply {
-        registerKotlinModule()
-        configure(SerializationFeature.WRITE_EMPTY_JSON_ARRAYS, false)
-        dateFormat = SimpleDateFormat("yyyy-MM-dd")
-    }
     private val appName = appInfo.appName
     private val appVersion = appInfo.appVersion
 
@@ -492,12 +487,12 @@ class BurritoWrapperExporter(
 
     private fun writeBurritoMetadata(metadata: MetadataSchema, burritoDir: File) {
         val metadataFile = File(burritoDir, "metadata.json")
-        mapper.writeValue(metadataFile, metadata)
+        metadataFile.writeText(BURRITO_JSON.encodeToString(MetadataSchema.serializer(), metadata))
     }
 
     private fun writeWrapperMetadata(metadata: WrapperMetadata, wrapperDir: File) {
         val metadataFile = File(wrapperDir, "wrapper.json")
-        mapper.writeValue(metadataFile, metadata)
+        metadataFile.writeText(OTTER_JSON.encodeToString(WrapperMetadata.serializer(), metadata))
     }
 
     private fun copyUsfmFilesToBurrito(
@@ -642,12 +637,14 @@ class BurritoWrapperExporter(
     }
 
     // Wrapper metadata classes
+    @Serializable
     data class WrapperMetadata(
         val meta: WrapperMeta,
         val format: String,
         val contents: WrapperContents
     )
 
+    @Serializable
     data class WrapperMeta(
         val name: Map<String, String>,
         val version: String,
@@ -658,10 +655,12 @@ class BurritoWrapperExporter(
         val abbreviation: Map<String, String>
     )
 
+    @Serializable
     data class WrapperContents(
         val burritos: List<WrapperBurrito>
     )
 
+    @Serializable
     data class WrapperBurrito(
         val id: String,
         val path: String,

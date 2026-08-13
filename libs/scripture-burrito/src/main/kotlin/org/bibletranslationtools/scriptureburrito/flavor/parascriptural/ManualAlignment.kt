@@ -1,29 +1,22 @@
 package org.bibletranslationtools.scriptureburrito.flavor.parascriptural
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "user", "references"
-)
+
+@Serializable
 class ManualAlignment {
 
-    @get:JsonProperty("user")
-    @set:JsonProperty("user")
-    @JsonProperty("user")
+    @SerialName("user")
     var user: String? = null
 
-    @JsonProperty("references")
+    @SerialName("references")
     private var references: MutableList<Reference>? = ArrayList<Reference>()
 
-    @JsonProperty("references")
     fun getReferences(): MutableList<Reference>? {
         return references
     }
 
-    @JsonProperty("references")
     fun setReferences(references: MutableList<Reference>?) {
         this.references = references
     }

@@ -1,54 +1,41 @@
 package org.bibletranslationtools.scriptureburrito.flavor.parascriptural
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
-import com.fasterxml.jackson.databind.JsonNode
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.SerialName
 
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "name", "autoAlignerVersion", "stopWords", "stemmer", "manualAlignment"
-)
+
+@Serializable
 class WordAlignmentSchema {
 
-    @get:JsonProperty("name")
-    @set:JsonProperty("name")
-    @JsonProperty("name")
-    var name: JsonNode? = null
+    @SerialName("name")
+    var name: JsonElement? = null
 
-    @get:JsonProperty("autoAlignerVersion")
-    @set:JsonProperty("autoAlignerVersion")
-    @JsonProperty("autoAlignerVersion")
+    @SerialName("autoAlignerVersion")
     var autoAlignerVersion: String? = null
 
-    @get:JsonProperty("stopWords")
-    @set:JsonProperty("stopWords")
-    @JsonProperty("stopWords")
+    @SerialName("stopWords")
     var stopWords: Boolean? = null
 
-    @JsonProperty("stemmer")
+    @SerialName("stemmer")
     private var stemmer: Stemmer? = null
 
-    @JsonProperty("manualAlignment")
+    @SerialName("manualAlignment")
     private var manualAlignment: ManualAlignment? = null
 
-    @JsonProperty("stemmer")
     fun getStemmer(): Stemmer? {
         return stemmer
     }
 
-    @JsonProperty("stemmer")
     fun setStemmer(stemmer: Stemmer?) {
         this.stemmer = stemmer
     }
 
-    @JsonProperty("manualAlignment")
     fun getManualAlignment(): ManualAlignment? {
         return manualAlignment
     }
 
-    @JsonProperty("manualAlignment")
     fun setManualAlignment(manualAlignment: ManualAlignment?) {
         this.manualAlignment = manualAlignment
     }

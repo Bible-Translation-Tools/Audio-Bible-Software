@@ -5,6 +5,7 @@
 // Package stays org.wycliffeassociates.resourcecontainer — :shared imports it directly.
 plugins {
     alias(libs.plugins.jetbrainsKotlinJvm)
+    alias(libs.plugins.kotlinSerialization)
 }
 
 kotlin {
@@ -21,10 +22,9 @@ kotlin {
 }
 
 dependencies {
-    // Jackson version comes from the catalog rather than the 2.15.1 the original build named:
-    // the root build forces 2.14.3 project-wide because 2.15+ cannot run on Android 7.
-    implementation(libs.jackson.module.kotlin)
-    implementation(libs.jackson.dataformat.yaml)
+    // kaml replaces jackson-module-kotlin + jackson-dataformat-yaml for manifest.yaml / media.yaml; it brings
+    // kotlinx-serialization-core transitively.
+    implementation(libs.kaml)
 
     // No tika-core. Its only use here was a private detectFileType() comparing against
     // MediaType.APPLICATION_ZIP; ResourceContainer.isZipFile() now reads the four-byte local file
@@ -34,4 +34,5 @@ dependencies {
     // Dropped from the original build: org.json:json:20180813 was declared but no source file
     // references it.
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.serialization.json)
 }

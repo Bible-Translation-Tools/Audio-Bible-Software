@@ -1,45 +1,41 @@
 package org.bibletranslationtools.kotlinscripturealignment.model
 
-import com.fasterxml.jackson.annotation.JsonIgnore
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.databind.DeserializationFeature
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.module.SimpleModule
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
-import com.fasterxml.jackson.databind.SerializationFeature
-import com.fasterxml.jackson.annotation.JsonInclude
-import org.bibletranslationtools.kotlinscripturealignment.deserializers.BurritoAudioAlignmentDeserializer
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
+import kotlinx.serialization.json.Json
 import org.bibletranslationtools.kotlinscripturealignment.serializers.BurritoAudioAlignmentSerializer
-import org.bibletranslationtools.kotlinscripturealignment.serializers.DocumentsSerializer
-import org.bibletranslationtools.kotlinscripturealignment.serializers.GroupSerializer
-import org.bibletranslationtools.kotlinscripturealignment.serializers.RecordSerializer
 import org.bibletranslationtools.vtt.WebVttDocument
 import java.io.File
 
+/**
+ * The alignment-document codec, replacing the per-call ObjectMapper + SimpleModule wiring.
+ *
+ * `ignoreUnknownKeys` is FAIL_ON_UNKNOWN_PROPERTIES=false. The old writer also set NON_NULL
+ * inclusion and WRITE_NULL_MAP_VALUES=false, but those never applied to the document itself —
+ * every class here is written by a hand-rolled serializer that decides its own keys, and those
+ * rules are reproduced inside BurritoAudioAlignmentSerializer, GroupSerializer and
+ * RecordSerializer. ORDER_MAP_ENTRIES_BY_KEYS only affected `documents` maps, whose insertion
+ * order is preserved instead.
+ */
+private val ALIGNMENT_JSON = Json {
+    ignoreUnknownKeys = true
+    explicitNulls = false
+    // NOT prettyPrint: ObjectMapper.writeValue is compact by default, and the alignment tests
+    // assert on exact `"key":"value"` substrings.
+}
+
+@Serializable(with = BurritoAudioAlignmentSerializer::class)
 data class BurritoAudioAlignment(
-    @JsonProperty("format")
     var format: FormatType = FormatType.ALIGNMENT,
-
-    @JsonProperty("version")
     var version: String = "0.3",
-
-    @JsonProperty("type")
     var type: String,
-
-    @JsonProperty("documents")
     var documents: Documents? = null,
-
-    @JsonProperty("roles")
     var roles: List<String>? = null,
-
-    @JsonProperty("records")
     var records: List<Record> = listOf(),
-
-    @JsonProperty("groups")
     var groups: List<Group>? = null
 ) {
 
-    @JsonIgnore
+    @Transient
     var alignmentFile: File? = null
 
     fun audioFileName(): String {
@@ -97,8 +93,7 @@ data class BurritoAudioAlignment(
         return docids.toList()
     }
 
-    @JsonIgnore
-    fun getVttCues(docid: String): List<WebVttDocument.WebVttCueContent> {
+        fun getVttCues(docid: String): List<WebVttDocument.WebVttCueContent> {
         val targetDocuments: Documents?
         val targetRecords: List<Record>
         val targetRoles: List<String>?
@@ -155,21 +150,7 @@ data class BurritoAudioAlignment(
     }
 
     fun write(outFile: File) {
-        val mapper = ObjectMapper().registerKotlinModule()
-        val module = SimpleModule()
-        module.addSerializer(Documents::class.java, DocumentsSerializer())
-        module.addSerializer(BurritoAudioAlignment::class.java, BurritoAudioAlignmentSerializer())
-        module.addSerializer(Group::class.java, GroupSerializer())
-        module.addSerializer(Record::class.java, RecordSerializer())
-        mapper.registerModule(module)
-        
-        mapper.configure(SerializationFeature.WRITE_NULL_MAP_VALUES, false)
-        mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL)
-        mapper.configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true)
-
-        outFile.outputStream().use {
-            mapper.writeValue(it, this)
-        }
+        outFile.writeText(ALIGNMENT_JSON.encodeToString(serializer(), this))
     }
 
     fun update() {
@@ -247,21 +228,7 @@ data class BurritoAudioAlignment(
                 listOf(group)
             )
 
-            val mapper = ObjectMapper().registerKotlinModule()
-            val module = SimpleModule()
-            module.addSerializer(Documents::class.java, DocumentsSerializer())
-            module.addSerializer(BurritoAudioAlignment::class.java, BurritoAudioAlignmentSerializer())
-            module.addSerializer(Group::class.java, GroupSerializer())
-            module.addSerializer(Record::class.java, RecordSerializer())
-            mapper.registerModule(module)
-
-            mapper.configure(SerializationFeature.WRITE_NULL_MAP_VALUES, false)
-            mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL)
-            mapper.configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true)
-
-            timingFile.outputStream().use {
-                mapper.writeValue(it, alignment)
-            }
+            timingFile.writeText(ALIGNMENT_JSON.encodeToString(serializer(), alignment))
             alignment.alignmentFile = timingFile // Assign the file to the returned alignment
             return alignment
         }
@@ -276,34 +243,12 @@ data class BurritoAudioAlignment(
         }
 
         fun load(timingFile: File): BurritoAudioAlignment {
-            val mapper = ObjectMapper().registerKotlinModule()
-            mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
-
-            val module = SimpleModule()
-            module.addDeserializer(BurritoAudioAlignment::class.java, BurritoAudioAlignmentDeserializer())
-            // module.addDeserializer(Documents::class.java, DocumentsDeserializer())
-            // module.addDeserializer(Group::class.java, GroupDeserializer())
-            // module.addDeserializer(Record::class.java, RecordDeserializer())
-            mapper.registerModule(module)
-
-            val timing = mapper.readValue(timingFile.readText(), BurritoAudioAlignment::class.java)
+            val timing = ALIGNMENT_JSON.decodeFromString(serializer(), timingFile.readText())
             timing.alignmentFile = timingFile
             return timing
         }
 
-        fun load(timing: String): BurritoAudioAlignment {
-            val mapper = ObjectMapper().registerKotlinModule()
-            mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
-
-            val module = SimpleModule()
-            module.addDeserializer(BurritoAudioAlignment::class.java, BurritoAudioAlignmentDeserializer())
-            // module.addDeserializer(Documents::class.java, DocumentsDeserializer())
-            // module.addDeserializer(Group::class.java, GroupDeserializer())
-            // module.addDeserializer(Record::class.java, RecordDeserializer())
-            mapper.registerModule(module)
-
-            val deserializedTiming = mapper.readValue(timing, BurritoAudioAlignment::class.java)
-            return deserializedTiming
-        }
+        fun load(timing: String): BurritoAudioAlignment =
+            ALIGNMENT_JSON.decodeFromString(serializer(), timing)
     }
 }

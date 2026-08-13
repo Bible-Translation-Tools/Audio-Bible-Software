@@ -1,80 +1,56 @@
 package org.bibletranslationtools.scriptureburrito.flavor.scripture.braille
 
-import com.fasterxml.jackson.annotation.*
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "chapterNumberStyle",
-    "chapterHeadingsNumberFirst",
-    "versedParagraphs",
-    "verseSeparator",
-    "includeIntros",
-    "footnotes",
-    "characterStyles",
-    "crossReferences"
-)
+
+@Serializable
 class Content {
 
-    @get:JsonProperty("chapterNumberStyle")
-    @set:JsonProperty("chapterNumberStyle")
-    @JsonProperty("chapterNumberStyle")
+    @SerialName("chapterNumberStyle")
     var chapterNumberStyle: ChapterNumberStyle? = null
 
-    @get:JsonProperty("chapterHeadingsNumberFirst")
-    @set:JsonProperty("chapterHeadingsNumberFirst")
-    @JsonProperty("chapterHeadingsNumberFirst")
+    @SerialName("chapterHeadingsNumberFirst")
     var chapterHeadingsNumberFirst: Boolean? = null
 
-    @get:JsonProperty("versedParagraphs")
-    @set:JsonProperty("versedParagraphs")
-    @JsonProperty("versedParagraphs")
+    @SerialName("versedParagraphs")
     var versedParagraphs: Boolean? = null
 
-    @get:JsonProperty("verseSeparator")
-    @set:JsonProperty("verseSeparator")
-    @JsonProperty("verseSeparator")
+    @SerialName("verseSeparator")
     var verseSeparator: String? = null
 
-    @get:JsonProperty("includeIntros")
-    @set:JsonProperty("includeIntros")
-    @JsonProperty("includeIntros")
+    @SerialName("includeIntros")
     var includeIntros: Boolean? = null
 
-    @JsonProperty("footnotes")
+    @SerialName("footnotes")
     private var footnotes: Footnotes? = null
 
-    @JsonProperty("characterStyles")
+    @SerialName("characterStyles")
     private var characterStyles: CharacterStyles? = null
 
-    @JsonProperty("crossReferences")
+    @SerialName("crossReferences")
     private var crossReferences: CrossReferences? = null
 
-    @JsonProperty("footnotes")
     fun getFootnotes(): Footnotes? {
         return footnotes
     }
 
-    @JsonProperty("footnotes")
     fun setFootnotes(footnotes: Footnotes?) {
         this.footnotes = footnotes
     }
 
-    @JsonProperty("characterStyles")
     fun getCharacterStyles(): CharacterStyles? {
         return characterStyles
     }
 
-    @JsonProperty("characterStyles")
     fun setCharacterStyles(characterStyles: CharacterStyles?) {
         this.characterStyles = characterStyles
     }
 
-    @JsonProperty("crossReferences")
     fun getCrossReferences(): CrossReferences? {
         return crossReferences
     }
 
-    @JsonProperty("crossReferences")
     fun setCrossReferences(crossReferences: CrossReferences?) {
         this.crossReferences = crossReferences
     }
@@ -119,7 +95,6 @@ class Content {
             return this.value
         }
 
-        @JsonValue
         fun value(): String {
             return this.value
         }
@@ -133,7 +108,6 @@ class Content {
                 }
             }
 
-            @JsonCreator
             fun fromValue(value: String): ChapterNumberStyle {
                 val constant = CONSTANTS[value]
                 requireNotNull(constant) { value }

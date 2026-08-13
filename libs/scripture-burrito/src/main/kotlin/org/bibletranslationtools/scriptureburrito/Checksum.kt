@@ -1,28 +1,19 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "md5", "sha3-256", "sha3-512"
-)
+
+@Serializable
 class Checksum {
 
-    @get:JsonProperty("md5")
-    @set:JsonProperty("md5")
-    @JsonProperty("md5")
+    @SerialName("md5")
     var md5: String? = null
 
-    @get:JsonProperty("sha3-256")
-    @set:JsonProperty("sha3-256")
-    @JsonProperty("sha3-256")
+    @SerialName("sha3-256")
     var sha3256: String? = null
 
-    @get:JsonProperty("sha3-512")
-    @set:JsonProperty("sha3-512")
-    @JsonProperty("sha3-512")
+    @SerialName("sha3-512")
     var sha3512: String? = null
 
     override fun equals(other: Any?): Boolean {

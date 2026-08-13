@@ -1,57 +1,36 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyDescription
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.SerialName
 
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "size", "lang", "mimeType", "checksum", "scope", "role", "properties"
-)
+
+@Serializable
 class IngredientSchema {
     
-    @get:JsonProperty("size")
-    @set:JsonProperty("size")
-    @JsonProperty("size")
-    @JsonPropertyDescription("The number of bytes that this ingredient takes up on disk.")
+    @SerialName("size")
     var size: Int? = null
     
-    @get:JsonProperty("lang")
-    @set:JsonProperty("lang")
-    @JsonProperty("lang")
-    @JsonPropertyDescription("A valid IETF language tag as specified by BCP 47.")
+    @SerialName("lang")
     var lang: String? = null
 
-    @get:JsonProperty("mimeType")
-    @set:JsonProperty("mimeType")
-    @JsonProperty("mimeType")
-    @JsonPropertyDescription("An IANA media type (also known as MIME type)")
+    @SerialName("mimeType")
     var mimeType: String? = null
 
-    @get:JsonProperty("checksum")
-    @set:JsonProperty("checksum")
-    @JsonProperty("checksum")
+    @SerialName("checksum")
     var checksum: Checksum? = null
 
-    @get:JsonProperty("scope")
-    @set:JsonProperty("scope")
-    @JsonProperty("scope")
-    @JsonPropertyDescription("Scope specification, used for the whole burrito and for specific ingredients. In both cases it describes the actual content, not future translation goals.")
+    @SerialName("scope")
     var scope: ScopeSchema? = null
 
-    @get:JsonProperty("role")
-    @set:JsonProperty("role")
-    @JsonProperty("role")
-    @JsonPropertyDescription("Roles which may be optionally attached to an ingredient.")
+    @SerialName("role")
     var role: String? = null
 
-    @get:JsonProperty("properties")
-    @set:JsonProperty("properties")
-    @JsonProperty("properties")
-    @JsonPropertyDescription("Properties which may be optionally attached to an ingredient.")
-    var properties: Map<String, Any>? = null
+    @SerialName("properties")
+    // Was Map<String, Any> under Jackson, which mapped arbitrary JSON onto Object.
+    // JsonElement is the kotlinx equivalent; no caller in this build reads it.
+    var properties: Map<String, JsonElement>? = null
 
 
     override fun equals(other: Any?): Boolean {

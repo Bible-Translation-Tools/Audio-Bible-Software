@@ -1,32 +1,21 @@
 package org.bibletranslationtools.scriptureburrito.flavor.scripture.print
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "top", "bottom", "inside", "outside"
-)
+
+@Serializable
 class EdgeSpace {
-    @get:JsonProperty("top")
-    @set:JsonProperty("top")
-    @JsonProperty("top")
+    @SerialName("top")
     var top: String? = null
 
-    @get:JsonProperty("bottom")
-    @set:JsonProperty("bottom")
-    @JsonProperty("bottom")
+    @SerialName("bottom")
     var bottom: String? = null
 
-    @get:JsonProperty("inside")
-    @set:JsonProperty("inside")
-    @JsonProperty("inside")
+    @SerialName("inside")
     var inside: String? = null
 
-    @get:JsonProperty("outside")
-    @set:JsonProperty("outside")
-    @JsonProperty("outside")
+    @SerialName("outside")
     var outside: String? = null
 
     override fun equals(other: Any?): Boolean {

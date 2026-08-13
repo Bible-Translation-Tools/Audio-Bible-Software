@@ -1,23 +1,16 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "dateStarted", "dateCompleted"
-)
+
+@Serializable
 class ProgressSchema {
-    @get:JsonProperty("dateStarted")
-    @set:JsonProperty("dateStarted")
-    @JsonProperty("dateStarted")
+    @SerialName("dateStarted")
     var dateStarted: String? = null
 
-    @get:JsonProperty("dateCompleted")
-    @set:JsonProperty("dateCompleted")
-    @JsonProperty("dateCompleted")
+    @SerialName("dateCompleted")
     var dateCompleted: String? = null
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

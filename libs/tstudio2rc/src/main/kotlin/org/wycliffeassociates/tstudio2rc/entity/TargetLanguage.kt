@@ -1,8 +1,10 @@
 package org.wycliffeassociates.tstudio2rc.entity
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
-@JsonIgnoreProperties(ignoreUnknown = true)
+
+@Serializable
 data class TargetLanguage(
     val id: String,
     val name: String,

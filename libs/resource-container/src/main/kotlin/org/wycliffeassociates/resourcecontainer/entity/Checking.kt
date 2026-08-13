@@ -1,13 +1,14 @@
 package org.wycliffeassociates.resourcecontainer.entity
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.fasterxml.jackson.annotation.JsonProperty
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
-@JsonIgnoreProperties(ignoreUnknown = true)
+
+@Serializable
 data class Checking(
-    @JsonProperty("checking_entity")
+    @SerialName("checking_entity")
     var checkingEntity: List<String> = arrayListOf(),
-    @JsonProperty("checking_level")
+    @SerialName("checking_level")
     var checkingLevel: String = ""
 )
 

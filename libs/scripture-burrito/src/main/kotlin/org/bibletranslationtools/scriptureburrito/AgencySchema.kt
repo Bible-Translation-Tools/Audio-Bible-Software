@@ -1,46 +1,28 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyDescription
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
 
+
+@Serializable(with = AgenciesSerializer::class)
 class Agencies: ArrayList<AgencySchema>()
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "id", "name", "abbr", "url", "roles"
-)
+@Serializable
 class AgencySchema(
-    @get:JsonProperty("id")
-    @set:JsonProperty("id")
-    @JsonProperty("id")
-    @JsonPropertyDescription("Opaque system-specific identifier, prefixed with the name of the system as declared in idAuthorities.")
+    @SerialName("id")
     var id: String,
 
-    @get:JsonProperty("name")
-    @set:JsonProperty("name")
-    @JsonProperty("name")
-    @JsonPropertyDescription("A textual string specified in one or multiple languages, indexed by IETF language tag.")
+    @SerialName("name")
     var name: LocalizedText,
 
-    @get:JsonProperty("roles")
-    @set:JsonProperty("roles")
-    @JsonProperty("roles")
-    @JsonPropertyDescription("A list of roles indicating in which respects this agency was involved with the production of this burrito.")
+    @SerialName("roles")
     var roles: MutableList<Role> = ArrayList()
 ) {
-    @get:JsonProperty("abbr")
-    @set:JsonProperty("abbr")
-    @JsonProperty("abbr")
-    @JsonPropertyDescription("A textual string specified in one or multiple languages, indexed by IETF language tag.")
+    @SerialName("abbr")
     var abbr: LocalizedText? = null
 
-    @get:JsonProperty("url")
-    @set:JsonProperty("url")
-    @JsonProperty("url")
-    @JsonPropertyDescription("A valid **Uniform Resource Locator**.")
+    @SerialName("url")
     var url: String? = null
 
     override fun equals(other: Any?): Boolean {

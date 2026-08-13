@@ -1,13 +1,19 @@
 package org.wycliffeassociates.tstudio2rc
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import com.charleskorn.kaml.Yaml
+import com.charleskorn.kaml.YamlConfiguration
 import org.wycliffeassociates.resourcecontainer.entity.Manifest
 import org.wycliffeassociates.tstudio2rc.TextToUSFM.Companion.getVersification
 import java.io.File
 import java.util.zip.ZipFile
 import kotlin.io.path.createTempDirectory
+
+/**
+ * Writes the resource-container manifest.yaml this converter produces. Mirrors the codec in
+ * :libs:resource-container — encodeDefaults reproduces Jackson's default inclusion, and the
+ * entity classes there carry @EncodeDefault(NEVER) where a key should be omitted instead.
+ */
+private val RC_YAML = Yaml(configuration = YamlConfiguration(strictMode = false, encodeDefaults = true))
 
 /**
  * API for converting a tstudio project to resource container(s).
@@ -31,9 +37,7 @@ object Tstudio2RcConverter {
         // manifest.yaml
         val manifest = buildManifest(sourceDir)
         val manifestFile = rcConvertDir.resolve(MANIFEST_YAML)
-        val mapper = ObjectMapper(YAMLFactory())
-            .registerKotlinModule()
-        mapper.writeValue(manifestFile, manifest)
+        manifestFile.writeText(RC_YAML.encodeToString(Manifest.serializer(), manifest))
 
         zipDirectory(rcConvertDir, outputFile)
 
@@ -59,9 +63,7 @@ object Tstudio2RcConverter {
         // manifest.yaml
         val manifest = buildManifest(inputDir.invariantSeparatorsPath)
         val manifestFile = tempConvertDir.resolve(MANIFEST_YAML)
-        val mapper = ObjectMapper(YAMLFactory())
-            .registerKotlinModule()
-        mapper.writeValue(manifestFile, manifest)
+        manifestFile.writeText(RC_YAML.encodeToString(Manifest.serializer(), manifest))
 
         zipDirectory(tempConvertDir, outputRc)
         tempConvertDir.deleteRecursively()

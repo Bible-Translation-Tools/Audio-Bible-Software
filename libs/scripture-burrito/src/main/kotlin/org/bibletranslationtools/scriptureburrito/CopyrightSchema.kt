@@ -1,33 +1,20 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyDescription
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "licenses", "publicDomain", "shortStatements"
-)
+
+@Serializable
 class CopyrightSchema {
 
-    @get:JsonProperty("licenses")
-    @set:JsonProperty("licenses")
-    @JsonProperty("licenses")
-    @JsonPropertyDescription("The licenses, which state under which terms the burrito may be used, can be specified either as URL or as path to an ingredient.")
+    @SerialName("licenses")
     var licenses: MutableList<License>? = ArrayList()
     
-    @get:JsonProperty("publicDomain")
-    @set:JsonProperty("publicDomain")
-    @JsonProperty("publicDomain")
-    @JsonPropertyDescription("If set to true, the contents of this burrito are in the public domain.")
+    @SerialName("publicDomain")
     var publicDomain: Boolean? = null
     
-    @get:JsonProperty("shortStatements")
-    @set:JsonProperty("shortStatements")
-    @JsonProperty("shortStatements")
-    @JsonPropertyDescription("A short statement to explain the copyright / license information to readers")
+    @SerialName("shortStatements")
     var shortStatements: MutableList<ShortStatement> = ArrayList()
 
     override fun equals(other: Any?): Boolean {

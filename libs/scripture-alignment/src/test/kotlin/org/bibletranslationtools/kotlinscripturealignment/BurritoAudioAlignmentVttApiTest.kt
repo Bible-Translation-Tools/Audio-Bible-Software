@@ -1,8 +1,6 @@
 package org.bibletranslationtools.kotlinscripturealignment
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.SerializationFeature
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+
 import org.bibletranslationtools.kotlinscripturealignment.model.BurritoAudioAlignment
 import org.bibletranslationtools.kotlinscripturealignment.model.Documents
 import org.bibletranslationtools.kotlinscripturealignment.model.FormatType
@@ -23,22 +21,15 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import java.io.File
+import kotlinx.serialization.json.Json
+
+/** Mirrors the codec the library writes with, so round-trip comparisons stay meaningful. */
+private val TEST_JSON = Json { ignoreUnknownKeys = true; explicitNulls = false }
 
 class BurritoAudioAlignmentVttApiTest {
 
     // data class TestWebVttCueInfo(val cue: Cue, val startTimeUs: Long, val endTimeUs: Long)
 
-    private val mapper = ObjectMapper().registerKotlinModule().apply {
-        configure(SerializationFeature.WRITE_NULL_MAP_VALUES, false)
-        setSerializationInclusion(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
-        configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true)
-        val module = com.fasterxml.jackson.databind.module.SimpleModule()
-        module.addSerializer(Documents::class.java, DocumentsSerializer())
-        module.addSerializer(BurritoAudioAlignment::class.java, BurritoAudioAlignmentSerializer())
-        module.addSerializer(org.bibletranslationtools.kotlinscripturealignment.model.Group::class.java, GroupSerializer())
-        module.addSerializer(org.bibletranslationtools.kotlinscripturealignment.model.Record::class.java, RecordSerializer())
-        registerModule(module)
-    }
 
     @Test
     fun testGetVttCuesFromAudioExample1() {
@@ -231,8 +222,8 @@ class BurritoAudioAlignmentVttApiTest {
         newAlignment.setRecordsFromVttCueContent(docid, vttCues)
 
         // 3. Serialize both to JSON and compare
-        val originalJsonNode = mapper.readTree(mapper.writeValueAsString(normalizedOriginalAlignment))
-        val newJsonNode = mapper.readTree(mapper.writeValueAsString(newAlignment))
+        val originalJsonNode = TEST_JSON.parseToJsonElement(TEST_JSON.encodeToString(BurritoAudioAlignment.serializer(), normalizedOriginalAlignment))
+        val newJsonNode = TEST_JSON.parseToJsonElement(TEST_JSON.encodeToString(BurritoAudioAlignment.serializer(), newAlignment))
 
         assertEquals(originalJsonNode, newJsonNode)
     }
@@ -271,8 +262,8 @@ class BurritoAudioAlignmentVttApiTest {
         newAlignment.setRecordsFromVttCueContent(docid, vttCues)
 
         // 3. Serialize both to JSON and compare
-        val originalJsonNode = mapper.readTree(mapper.writeValueAsString(normalizedOriginalAlignment))
-        val newJsonNode = mapper.readTree(mapper.writeValueAsString(newAlignment))
+        val originalJsonNode = TEST_JSON.parseToJsonElement(TEST_JSON.encodeToString(BurritoAudioAlignment.serializer(), normalizedOriginalAlignment))
+        val newJsonNode = TEST_JSON.parseToJsonElement(TEST_JSON.encodeToString(BurritoAudioAlignment.serializer(), newAlignment))
 
         assertEquals(originalJsonNode, newJsonNode)
     }
@@ -311,8 +302,8 @@ class BurritoAudioAlignmentVttApiTest {
         newAlignment.setRecordsFromVttCueContent(docid, vttCues)
 
         // 3. Serialize both to JSON and compare
-        val originalJsonNode = mapper.readTree(mapper.writeValueAsString(normalizedOriginalAlignment))
-        val newJsonNode = mapper.readTree(mapper.writeValueAsString(newAlignment))
+        val originalJsonNode = TEST_JSON.parseToJsonElement(TEST_JSON.encodeToString(BurritoAudioAlignment.serializer(), normalizedOriginalAlignment))
+        val newJsonNode = TEST_JSON.parseToJsonElement(TEST_JSON.encodeToString(BurritoAudioAlignment.serializer(), newAlignment))
 
         assertEquals(originalJsonNode, newJsonNode)
     }

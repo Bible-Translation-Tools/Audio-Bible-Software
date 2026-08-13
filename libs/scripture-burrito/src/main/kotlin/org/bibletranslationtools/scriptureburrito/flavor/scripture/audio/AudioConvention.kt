@@ -1,20 +1,15 @@
 package org.bibletranslationtools.scriptureburrito.flavor.scripture.audio
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonIgnoreProperties(ignoreUnknown = true)
+
+@Serializable
 class AudioConventions {
-    @get:JsonProperty("contentResourcesByChapter")
-    @set:JsonProperty("contentResourcesByChapter")
-    @JsonProperty("contentResourcesByChapter")
+    @SerialName("contentResourcesByChapter")
     var contentResourcesByChapter: String? = null
 
-    @get:JsonProperty("bookDirs")
-    @set:JsonProperty("bookDirs")
-    @JsonProperty("bookDirs")
+    @SerialName("bookDirs")
     var bookDirs: String? = null
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

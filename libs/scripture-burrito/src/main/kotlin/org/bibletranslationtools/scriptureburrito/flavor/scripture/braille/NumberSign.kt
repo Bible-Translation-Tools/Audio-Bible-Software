@@ -1,23 +1,16 @@
 package org.bibletranslationtools.scriptureburrito.flavor.scripture.braille
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "character", "useInMargin"
-)
+
+@Serializable
 class NumberSign {
 
-    @get:JsonProperty("character")
-    @set:JsonProperty("character")
-    @JsonProperty("character")
+    @SerialName("character")
     var character: String? = null
 
-    @get:JsonProperty("useInMargin")
-    @set:JsonProperty("useInMargin")
-    @JsonProperty("useInMargin")
+    @SerialName("useInMargin")
     var useInMargin: Boolean? = null
 
     override fun equals(other: Any?): Boolean {

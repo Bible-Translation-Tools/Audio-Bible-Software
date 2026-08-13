@@ -1,19 +1,24 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.JsonCreator
-import com.fasterxml.jackson.annotation.JsonValue
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
+
+@Serializable
 enum class Flavor(private val value: String) {
+    @SerialName("scripture")
     SCRIPTURE("scripture"),
+    @SerialName("gloss")
     GLOSS("gloss"),
+    @SerialName("parascriptural")
     PARASCRIPTURAL("parascriptural"),
+    @SerialName("peripheral")
     PERIPHERAL("peripheral");
 
     override fun toString(): String {
         return this.value
     }
 
-    @JsonValue
     fun value(): String {
         return this.value
     }
@@ -27,7 +32,6 @@ enum class Flavor(private val value: String) {
             }
         }
 
-        @JsonCreator
         fun fromValue(value: String): Flavor {
             val constant = CONSTANTS[value]
             requireNotNull(constant) { value }

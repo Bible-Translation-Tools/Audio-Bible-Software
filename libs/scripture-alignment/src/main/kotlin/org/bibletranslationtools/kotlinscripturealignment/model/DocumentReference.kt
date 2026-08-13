@@ -1,12 +1,16 @@
 package org.bibletranslationtools.kotlinscripturealignment.model
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
+/**
+ * `docid` was @JsonInclude(NON_NULL); the shared Json instance sets explicitNulls = false, which
+ * omits a null the same way rather than writing `"docid": null`.
+ */
+@Serializable
 class DocumentReference(
-    @JsonProperty("scheme")
+    @SerialName("scheme")
     val scheme: String,
-    @JsonProperty("docid")
-    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @SerialName("docid")
     val docid: String? = null
 )

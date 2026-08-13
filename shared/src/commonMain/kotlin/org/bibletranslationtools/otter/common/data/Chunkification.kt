@@ -19,5 +19,24 @@
 package org.bibletranslationtools.otter.common.data
 
 import org.bibletranslationtools.otter.common.data.primitives.Content
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+
 
 typealias Chunkification = HashMap<Int, List<Content>>
+
+/**
+ * chunks.json is a map of chapter number to its chunk [Content]s. kotlinx needs the serializer
+ * spelled out because Chunkification is a typealias, not a class it can look up.
+ */
+val CHUNKIFICATION: KSerializer<Chunkification> = object : KSerializer<Chunkification> {
+    private val delegate = MapSerializer(Int.serializer(), ListSerializer(Content.serializer()))
+    override val descriptor = delegate.descriptor
+    override fun serialize(encoder: Encoder, value: Chunkification) = delegate.serialize(encoder, value)
+    override fun deserialize(decoder: Decoder): Chunkification =
+        Chunkification().apply { putAll(delegate.deserialize(decoder)) }
+}

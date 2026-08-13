@@ -1,28 +1,21 @@
 package org.bibletranslationtools.scriptureburrito.flavor.scripture.audio
 
-import com.fasterxml.jackson.annotation.JsonIgnore
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
+
 import org.bibletranslationtools.scriptureburrito.flavor.FlavorSchema
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonIgnoreProperties(ignoreUnknown = true)
-@JsonPropertyOrder(
-    "name", "conventions"
-)
+@Serializable
+@SerialName("audioTranslation")
 class AudioFlavorSchema() : FlavorSchema() {
 
-    @JsonProperty("conventions")
+    @SerialName("conventions")
     private var conventions: AudioConventions? = null
 
-    @JsonProperty("conventions")
     fun getAudioConventions(): AudioConventions? {
         return conventions
     }
 
-    @JsonProperty("conventions")
     fun setAudioConventions(conventions: AudioConventions?) {
         this.conventions = conventions
     }

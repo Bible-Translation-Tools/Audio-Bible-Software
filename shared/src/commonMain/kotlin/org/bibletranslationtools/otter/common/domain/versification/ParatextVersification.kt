@@ -18,13 +18,15 @@
  */
 package org.bibletranslationtools.otter.common.domain.versification
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import kotlinx.serialization.Serializable
+import org.bibletranslationtools.otter.common.CoercingStringSerializer
+
 
 /**
  * Data class representing the json form of paratext vrs Versification files
  * https://github.com/ubsicap/versification_json/blob/master/versification_as_json.schema.json
  */
-@JsonIgnoreProperties(ignoreUnknown = true)
+@Serializable
 data class ParatextVersification(
     val basedOn: String?,
     val maxVerses: MaxVerses,
@@ -46,7 +48,7 @@ data class ParatextVersification(
     }
 }
 
-typealias MaxVerses = Map<String, List<String>>
+typealias MaxVerses = Map<String, List<@Serializable(with = CoercingStringSerializer::class) String>>
 
 typealias MappedVerses = Map<String, String>
 

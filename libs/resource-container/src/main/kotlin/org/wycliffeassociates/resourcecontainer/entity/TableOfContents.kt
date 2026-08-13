@@ -1,13 +1,14 @@
 package org.wycliffeassociates.resourcecontainer.entity
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.fasterxml.jackson.annotation.JsonProperty
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
 
-@JsonIgnoreProperties(ignoreUnknown = true)
+
+@Serializable
 data class TableOfContents(
     var title: String = "",
-    @JsonProperty("sub-title")
+    @SerialName("sub-title")
     var subtitle: String = "",
     var link: String = "",
     val sections: MutableList<TableOfContents> = arrayListOf()

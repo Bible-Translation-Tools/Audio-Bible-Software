@@ -1,7 +1,5 @@
 package org.bibletranslationtools.kotlinscripturealignment
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -12,7 +10,7 @@ import org.bibletranslationtools.kotlinscripturealignment.model.Group
 
 class BurritoAudioAlignmentSerializationTest {
 
-    private val mapper = ObjectMapper().registerKotlinModule()
+    
 
     @Test
     fun testSerializationOfNullableFieldsAndEmptyCollections() {

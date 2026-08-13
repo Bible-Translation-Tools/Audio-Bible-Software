@@ -1,94 +1,58 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.*
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "meta",
-    "type"
-)
-@JsonSubTypes(
-    JsonSubTypes.Type(value = DerivedMetadataSchema::class, name = "derived"),
-    JsonSubTypes.Type(value = SourceMetadataSchema::class, name = "source"),
-    JsonSubTypes.Type(value = TemplateMetadataSchema::class, name = "template")
-)
-abstract class MetadataSchema(
-    @get:JsonProperty("format")
-    @set:JsonProperty("format")
-    @JsonProperty("format")
-    var format: Format,
 
-    @get:JsonProperty("meta")
-    @set:JsonProperty("meta")
-    @JsonProperty("meta")
-    open var meta: Meta,
+/**
+ * Polymorphic on a NESTED field — `meta.category` — which is why this uses a content-based
+ * selector rather than a discriminator. Jackson expressed the same thing with a hand-written
+ * MetadataDeserializer; kotlinx has JsonContentPolymorphicSerializer for exactly this shape.
+ *
+ * Note there is no injected discriminator on the way out either: the old writer emitted the
+ * concrete subtype's own fields and nothing else, and `category` travels inside `meta`.
+ */
+@Serializable(with = MetadataSchemaSerializer::class)
+abstract class MetadataSchema {
+    @SerialName("format")
+    abstract var format: Format
 
-    @get:JsonProperty("copyright")
-    @set:JsonProperty("copyright")
-    @JsonProperty("copyright")
-    @JsonPropertyDescription("Describes the copyright holders and license terms of the burrito.")
-    var copyright: CopyrightSchema,
+    @SerialName("meta")
+    abstract var meta: Meta
 
-    @get:JsonProperty("idAuthorities")
-    @set:JsonProperty("idAuthorities")
-    @JsonProperty("idAuthorities")
-    @JsonPropertyDescription("Declares one or more identity authorities which may later be referred to using identifier prefixes.")
-    var idAuthorities: IdAuthoritiesSchema? = null,
+    @SerialName("copyright")
+    abstract var copyright: CopyrightSchema
 
-    @get:JsonProperty("identification")
-    @set:JsonProperty("identification")
-    @JsonProperty("identification")
-    @JsonPropertyDescription("Identification section.")
-    var identification: IdentificationSchema? = null,
+    @SerialName("idAuthorities")
+    abstract var idAuthorities: IdAuthoritiesSchema?
 
-    @get:JsonProperty("confidential")
-    @set:JsonProperty("confidential")
-    @JsonProperty("confidential")
-    @JsonPropertyDescription("a true value indicates that the project should not be publicly known and that the identity of project members needs to be kept confidential.")
-    var confidential: Boolean? = null,
+    @SerialName("identification")
+    abstract var identification: IdentificationSchema?
 
-    @get:JsonProperty("type")
-    @set:JsonProperty("type")
-    @JsonProperty("type")
-    @JsonPropertyDescription("Contains properties describing the burrito flavor type.")
-    open var type: TypeSchema? = null,
+    @SerialName("confidential")
+    abstract var confidential: Boolean?
 
-    @get:JsonProperty("relationships")
-    @set:JsonProperty("relationships")
-    @JsonProperty("relationships")
-    @JsonPropertyDescription("Describes a relationship to another burrito that may be obtained from an indicated server.")
-    var relationships: MutableList<RelationshipSchema> = ArrayList(),
+    @SerialName("type")
+    abstract var type: TypeSchema?
 
-    @get:JsonProperty("languages")
-    @set:JsonProperty("languages")
-    @JsonProperty("languages")
-    @JsonPropertyDescription("A list of all the languages of the contents of this burrito.")
-    var languages: Languages = Languages(),
+    @SerialName("relationships")
+    abstract var relationships: MutableList<RelationshipSchema>
 
-    @get:JsonProperty("targetAreas")
-    @set:JsonProperty("targetAreas")
-    @JsonProperty("targetAreas")
-    @JsonPropertyDescription("A list of areas of the primary target audience of this burrito.")
-    var targetAreas: MutableList<TargetAreaSchema> = ArrayList(),
+    @SerialName("languages")
+    abstract var languages: Languages
 
-    @get:JsonProperty("agencies")
-    @set:JsonProperty("agencies")
-    @JsonProperty("agencies")
-    @JsonPropertyDescription("A list of agencies involved with the contents of the burrito or the work it is derived from.")
-    var agencies: MutableList<AgencySchema> = ArrayList(),
+    @SerialName("targetAreas")
+    abstract var targetAreas: MutableList<TargetAreaSchema>
 
-    @get:JsonProperty("ingredients")
-    @set:JsonProperty("ingredients")
-    @JsonProperty("ingredients")
-    @JsonPropertyDescription("Describes the various files contained by the burrito, keyed by the canonical forward-slashed pathname of the file.")
-    var ingredients: IngredientsSchema = IngredientsSchema(),
+    @SerialName("agencies")
+    abstract var agencies: MutableList<AgencySchema>
 
-    @get:JsonProperty("localizedNames")
-    @set:JsonProperty("localizedNames")
-    @JsonProperty("localizedNames")
-    @JsonPropertyDescription("Contains localized names for books, etc.")
-    var localizedNames: LocalizedNamesSchema = LocalizedNamesSchema()
-) {
+    @SerialName("ingredients")
+    abstract var ingredients: IngredientsSchema
+
+    @SerialName("localizedNames")
+    abstract var localizedNames: LocalizedNamesSchema
+
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is MetadataSchema) return false

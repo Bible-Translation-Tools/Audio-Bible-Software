@@ -1,34 +1,39 @@
 package org.wycliffeassociates.resourcecontainer.entity
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.fasterxml.jackson.annotation.JsonProperty
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
-@JsonIgnoreProperties(ignoreUnknown = true)
+
+@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+@Serializable
 data class MediaManifest(
+    // Include.NON_NULL used to drop this key when null. kaml has no explicitNulls equivalent, so
+    // without this it would start emitting `resource: null` into every media.yaml.
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
     var resource: Resource? = null,
     var projects: List<MediaProject> = listOf()
 )
 
-@JsonIgnoreProperties(ignoreUnknown = true)
+@Serializable
 data class Resource(
     var version: String = "",
     var media: List<Media> = listOf()
 )
 
-@JsonIgnoreProperties(ignoreUnknown = true)
+@Serializable
 data class MediaProject(
     var identifier: String = "",
     var version: String = "",
     var media: List<Media> = listOf()
 )
 
-@JsonIgnoreProperties(ignoreUnknown = true)
+@Serializable
 data class Media(
     var identifier: String = "",
     var version: String = "",
     var url: String = "",
     var quality: List<String> = listOf(),
-    @JsonProperty("chapter_url")
+    @SerialName("chapter_url")
     var chapterUrl: String = ""
 )
 

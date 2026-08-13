@@ -1,22 +1,30 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.JsonCreator
-import com.fasterxml.jackson.annotation.JsonValue
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
+
+@Serializable
 enum class Role(private val value: String) {
+    @SerialName("rightsAdmin")
     RIGHTS_ADMIN("rightsAdmin"),
+    @SerialName("rightsHolder")
     RIGHTS_HOLDER("rightsHolder"),
+    @SerialName("content")
     CONTENT("content"),
+    @SerialName("publication")
     PUBLICATION("publication"),
+    @SerialName("management")
     MANAGEMENT("management"),
+    @SerialName("finance")
     FINANCE("finance"),
+    @SerialName("qa")
     QA("qa");
 
     override fun toString(): String {
         return this.value
     }
 
-    @JsonValue
     fun value(): String {
         return this.value
     }
@@ -30,7 +38,6 @@ enum class Role(private val value: String) {
             }
         }
 
-        @JsonCreator
         fun fromValue(value: String): Role {
             val constant = CONSTANTS[value]
             requireNotNull(constant) { value }

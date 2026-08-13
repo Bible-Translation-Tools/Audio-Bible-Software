@@ -1,42 +1,28 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.*
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
+
+@Serializable(with = LanguagesSerializer::class)
 class Languages: ArrayList<LanguageSchema>()
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "tag", "name", "numberingSystem", "rod", "scriptDirection"
-)
+@Serializable
 class LanguageSchema(
-    @get:JsonProperty("tag")
-    @set:JsonProperty("tag")
-    @JsonProperty("tag")
-    @JsonPropertyDescription("A valid IETF language tag as specified by BCP 47.")
+    @SerialName("tag")
     var tag: String,
     
-    @get:JsonProperty("name")
-    @set:JsonProperty("name")
-    @JsonProperty("name")
-    @JsonPropertyDescription("A textual string specified in one or multiple languages, indexed by IETF language tag.")
+    @SerialName("name")
     var name: HashMap<String, String> = hashMapOf()
 ) {
 
-    @get:JsonProperty("numberingSystem")
-    @set:JsonProperty("numberingSystem")
-    @JsonProperty("numberingSystem")
-    @JsonPropertyDescription("Numbering System")
+    @SerialName("numberingSystem")
     var numberingSystem: NumberingSystemSchema? = null
     
-    @get:JsonProperty("rod")
-    @set:JsonProperty("rod")
-    @JsonProperty("rod")
-    @JsonPropertyDescription("A five-digit code from the Registry of Dialects.")
+    @SerialName("rod")
     var rod: String? = null
 
-    @get:JsonProperty("scriptDirection")
-    @set:JsonProperty("scriptDirection")
-    @JsonProperty("scriptDirection")
+    @SerialName("scriptDirection")
     var scriptDirection: ScriptDirection? = null
 
     enum class NumberingSystemSchema(private val value: String) {
@@ -131,7 +117,6 @@ class LanguageSchema(
             return this.value
         }
 
-        @JsonValue
         fun value(): String {
             return this.value
         }
@@ -145,7 +130,6 @@ class LanguageSchema(
                 }
             }
 
-            @JsonCreator
             fun fromValue(value: String): NumberingSystemSchema {
                 val constant = CONSTANTS[value]
                 requireNotNull(constant) { value }
@@ -162,7 +146,6 @@ class LanguageSchema(
             return this.value
         }
 
-        @JsonValue
         fun value(): String {
             return this.value
         }
@@ -176,7 +159,6 @@ class LanguageSchema(
                 }
             }
 
-            @JsonCreator
             fun fromValue(value: String): ScriptDirection {
                 val constant = CONSTANTS[value]
                 requireNotNull(constant) { value }

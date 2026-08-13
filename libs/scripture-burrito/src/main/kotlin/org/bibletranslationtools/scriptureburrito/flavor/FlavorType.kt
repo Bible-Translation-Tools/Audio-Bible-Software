@@ -1,29 +1,20 @@
 package org.bibletranslationtools.scriptureburrito.flavor
 
-import com.fasterxml.jackson.annotation.*
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
+
 import org.bibletranslationtools.scriptureburrito.Flavor
 import org.bibletranslationtools.scriptureburrito.ScopeSchema
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "name",
-    "flavor",
-    "currentScope"
-)
+@Serializable
 class FlavorType(
-    @get:JsonProperty("name")
-    @set:JsonProperty("name")
-    @JsonProperty("name")
+    @SerialName("name")
     var name: Flavor,
 
-    @get:JsonProperty("flavor")
-    @set:JsonProperty("flavor")
-    @JsonProperty("flavor")
+    @SerialName("flavor")
     var flavor: FlavorSchema,
 
-    @get:JsonProperty("currentScope")
-    @set:JsonProperty("currentScope")
-    @JsonProperty("currentScope")
+    @SerialName("currentScope")
     var currentScope: ScopeSchema
 ) {
 

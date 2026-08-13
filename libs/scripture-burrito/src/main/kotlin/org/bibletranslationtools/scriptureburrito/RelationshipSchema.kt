@@ -1,40 +1,28 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.*
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
 
+
+@Serializable(with = RelationshipsSerializer::class)
 class Relationships: ArrayList<RelationshipSchema>()
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "relationType", "flavor", "id", "revision", "variant"
-)
+@Serializable
 class RelationshipSchema {
-    @get:JsonProperty("relationType")
-    @set:JsonProperty("relationType")
-    @JsonProperty("relationType")
+    @SerialName("relationType")
     var relationType: RelationType? = null
 
-    @get:JsonProperty("flavor")
-    @set:JsonProperty("flavor")
-    @JsonProperty("flavor")
+    @SerialName("flavor")
     var flavor: String? = null
 
-    @get:JsonProperty("id")
-    @set:JsonProperty("id")
-    @JsonProperty("id")
-    @JsonPropertyDescription("Opaque system-specific identifier, prefixed with the name of the system as declared in idAuthorities.")
+    @SerialName("id")
     var id: String? = null
     
-    @get:JsonProperty("revision")
-    @set:JsonProperty("revision")
-    @JsonProperty("revision")
-    @JsonPropertyDescription("Opaque system-specific revision identifier.")
+    @SerialName("revision")
     var revision: String? = null
 
-    @get:JsonProperty("variant")
-    @set:JsonProperty("variant")
-    @JsonProperty("variant")
+    @SerialName("variant")
     var variant: String? = null
 
     enum class RelationType(private val value: String) {
@@ -48,7 +36,6 @@ class RelationshipSchema {
             return this.value
         }
 
-        @JsonValue
         fun value(): String {
             return this.value
         }
@@ -62,7 +49,6 @@ class RelationshipSchema {
                 }
             }
 
-            @JsonCreator
             fun fromValue(value: String): RelationType {
                 val constant = CONSTANTS[value]
                 requireNotNull(constant) { value }

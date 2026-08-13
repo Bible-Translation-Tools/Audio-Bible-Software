@@ -1,78 +1,43 @@
 package org.bibletranslationtools.scriptureburrito
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "noSpaceBetweenBookAndChapter",
-    "chapterVerseSeparator",
-    "rangeIndicator",
-    "sequenceIndicator",
-    "chapterRangeSeparator",
-    "chapterNumberSeparator",
-    "bookSequenceSeparator",
-    "referenceExtraMaterial",
-    "referenceFinalPunctuation",
-    "bookSourceForMarkerXt",
-    "bookSourceForMarkerR"
-)
+
+@Serializable
 class ReferenceFormatSchema {
-    @get:JsonProperty("noSpaceBetweenBookAndChapter")
-    @set:JsonProperty("noSpaceBetweenBookAndChapter")
-    @JsonProperty("noSpaceBetweenBookAndChapter")
+    @SerialName("noSpaceBetweenBookAndChapter")
     var noSpaceBetweenBookAndChapter: Boolean? = null
 
-    @get:JsonProperty("chapterVerseSeparator")
-    @set:JsonProperty("chapterVerseSeparator")
-    @JsonProperty("chapterVerseSeparator")
+    @SerialName("chapterVerseSeparator")
     var chapterVerseSeparator: String? = null
 
-    @get:JsonProperty("rangeIndicator")
-    @set:JsonProperty("rangeIndicator")
-    @JsonProperty("rangeIndicator")
+    @SerialName("rangeIndicator")
     var rangeIndicator: String? = null
 
-    @get:JsonProperty("sequenceIndicator")
-    @set:JsonProperty("sequenceIndicator")
-    @JsonProperty("sequenceIndicator")
+    @SerialName("sequenceIndicator")
     var sequenceIndicator: String? = null
 
-    @get:JsonProperty("chapterRangeSeparator")
-    @set:JsonProperty("chapterRangeSeparator")
-    @JsonProperty("chapterRangeSeparator")
+    @SerialName("chapterRangeSeparator")
     var chapterRangeSeparator: String? = null
 
-    @get:JsonProperty("chapterNumberSeparator")
-    @set:JsonProperty("chapterNumberSeparator")
-    @JsonProperty("chapterNumberSeparator")
+    @SerialName("chapterNumberSeparator")
     var chapterNumberSeparator: String? = null
 
-    @get:JsonProperty("bookSequenceSeparator")
-    @set:JsonProperty("bookSequenceSeparator")
-    @JsonProperty("bookSequenceSeparator")
+    @SerialName("bookSequenceSeparator")
     var bookSequenceSeparator: String? = null
 
-    @get:JsonProperty("referenceExtraMaterial")
-    @set:JsonProperty("referenceExtraMaterial")
-    @JsonProperty("referenceExtraMaterial")
+    @SerialName("referenceExtraMaterial")
     var referenceExtraMaterial: MutableList<String>? = ArrayList()
 
-    @get:JsonProperty("referenceFinalPunctuation")
-    @set:JsonProperty("referenceFinalPunctuation")
-    @JsonProperty("referenceFinalPunctuation")
+    @SerialName("referenceFinalPunctuation")
     var referenceFinalPunctuation: String? = null
 
-    @get:JsonProperty("bookSourceForMarkerXt")
-    @set:JsonProperty("bookSourceForMarkerXt")
-    @JsonProperty("bookSourceForMarkerXt")
+    @SerialName("bookSourceForMarkerXt")
     var bookSourceForMarkerXt: String? = null
 
-    @get:JsonProperty("bookSourceForMarkerR")
-    @set:JsonProperty("bookSourceForMarkerR")
-    @JsonProperty("bookSourceForMarkerR")
+    @SerialName("bookSourceForMarkerR")
     var bookSourceForMarkerR: String? = null
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

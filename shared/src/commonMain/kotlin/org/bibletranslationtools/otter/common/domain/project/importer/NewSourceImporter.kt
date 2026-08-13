@@ -38,6 +38,7 @@ import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import java.io.File
 import java.io.IOException
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
+import org.bibletranslationtools.otter.common.OTTER_JSON
 
 /**
  * Which tree a source import writes, and whether the parsed text still has to be applied on top.
@@ -332,8 +333,10 @@ class NewSourceImporter(
         val versificationFile = File(rcDir, "ingredients/versification.json")
         if (versificationFile.exists()) {
             try {
-                val mapper = com.fasterxml.jackson.databind.ObjectMapper().registerModule(com.fasterxml.jackson.module.kotlin.KotlinModule())
-                return mapper.readValue(versificationFile, org.bibletranslationtools.otter.common.domain.versification.ParatextVersification::class.java)
+                return OTTER_JSON.decodeFromString(
+                    org.bibletranslationtools.otter.common.domain.versification.ParatextVersification.serializer(),
+                    versificationFile.readText()
+                )
             } catch (e: Exception) {
                 logger.error("Failed to parse versification.json", e)
             }

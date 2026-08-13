@@ -1,46 +1,38 @@
 package org.bibletranslationtools.scriptureburrito.flavor.scripture.video
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.annotation.JsonPropertyOrder
-import com.fasterxml.jackson.databind.JsonNode
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.SerialName
+
 import org.bibletranslationtools.scriptureburrito.flavor.FlavorSchema
 import org.bibletranslationtools.scriptureburrito.flavor.scripture.audio.Formats
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonPropertyOrder(
-    "name", "contentByChapter", "formats", "conventions"
-)
+@Serializable
+@SerialName("signLanguageVideoTranslation")
 class SignLanguageVideoTranslationSchema: FlavorSchema() {
 
-    @get:JsonProperty("contentByChapter")
-    @set:JsonProperty("contentByChapter")
-    @JsonProperty("contentByChapter")
+    @SerialName("contentByChapter")
     var contentByChapter: Boolean? = null
 
-    @JsonProperty("formats")
+    @SerialName("formats")
     private var formats: Formats? = null
 
-    @JsonProperty("conventions")
-    private var conventions: JsonNode? = null
+    @SerialName("conventions")
+    private var conventions: JsonElement? = null
 
-    @JsonProperty("formats")
     fun getFormats(): Formats? {
         return formats
     }
 
-    @JsonProperty("formats")
     fun setFormats(formats: Formats?) {
         this.formats = formats
     }
 
-    @JsonProperty("conventions")
-    fun getConventions(): JsonNode? {
+    fun getConventions(): JsonElement? {
         return conventions
     }
 
-    @JsonProperty("conventions")
-    fun setConventions(conventions: JsonNode?) {
+    fun setConventions(conventions: JsonElement?) {
         this.conventions = conventions
     }
 
