@@ -65,3 +65,13 @@ dependencyResolutionManagement {
 include(":shared")
 include(":app-recorder")
 include(":app-orature")
+
+// Vendored WA libraries — see libs/README.md. These are included from the start so the modules
+// exist and build, but nothing depends on them until the matching dependencySubstitution line is
+// uncommented in the root build.gradle.kts. An empty module is a valid (empty) jar, so including
+// one before its sources land is harmless.
+include(":libs:resource-container")
+include(":libs:scripture-burrito")
+include(":libs:tstudio2rc")
+include(":libs:scripture-alignment")
+include(":libs:vtt")

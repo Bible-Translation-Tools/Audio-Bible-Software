@@ -1,8 +1,14 @@
 [versions]
 agp = "9.1.0"
 android-compileSdk = "37"
-android-minSdk = "26"
+# 24 = Android 7.0. java.time and java.nio.file only reached the platform at API 26, so this
+# floor is only safe alongside core library desugaring — see `desugar` below and the
+# coreLibraryDesugaring dependency in each android module.
+android-minSdk = "24"
 android-targetSdk = "37"
+# The _nio variant, NOT plain desugar_jdk_libs: the standard artifact backports java.time but
+# not java.nio.file, which the backend uses throughout (Files.walk/copy/list, Path, ...).
+desugar = "2.1.5"
 androidx-activityCompose = "1.13.0"
 androidx-appcompat = "1.7.1"
 androidx-constraintlayout = "2.2.1"
@@ -32,6 +38,16 @@ mockk = "1.14.11"
 mockito = "5.23.0"
 mockito-kotlin = "2.2.0"
 datastore = "1.2.1"
+# Pinned for Android 7 — jackson-databind 2.15+ crashes on API 24/25. See the resolutionStrategy
+# in the root build.gradle.kts for the mechanism; it is forced project-wide, not just declared.
+jackson = "2.14.3"
+# The -android variant, NOT -jre: guava-jre's ChecksumHashFunction and Hashing use
+# MethodHandle.invoke, which D8 cannot dex below API 26 — the same failure mode tika-core has.
+# -android dexes clean at 24 and is equally valid on the desktop JVM.
+guava = "33.1.0-android"
+junitJupiter = "5.11.4"
+junitPlatform = "1.11.4"
+tika = "2.0.0"
 
 [libraries]
 sentry = { group = "io.sentry", name = "sentry", version.ref = "sentry" }
@@ -69,6 +85,18 @@ mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
 mockito = { group = "org.mockito", name = "mockito-core", version.ref = "mockito" }
 mockito-kotlin = { group = "com.nhaarman.mockitokotlin2", name = "mockito-kotlin", version.ref = "mockito-kotlin" }
 datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences-core", version.ref = "datastore" }
+desugar-jdk-libs-nio = { group = "com.android.tools", name = "desugar_jdk_libs_nio", version.ref = "desugar" }
+# Used by the vendored libraries under libs/ — see libs/README.md.
+guava = { group = "com.google.guava", name = "guava", version.ref = "guava" }
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version.ref = "junitJupiter" }
+# Gradle 9 no longer puts the launcher on the test runtime classpath implicitly; without it a
+# useJUnitPlatform() task fails with "Failed to load JUnit Platform".
+junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version.ref = "junitPlatform" }
+kotlin-test-junit5 = { module = "org.jetbrains.kotlin:kotlin-test-junit5", version.ref = "kotlin" }
+jackson-module-kotlin = { group = "com.fasterxml.jackson.module", name = "jackson-module-kotlin", version.ref = "jackson" }
+jackson-dataformat-yaml = { group = "com.fasterxml.jackson.dataformat", name = "jackson-dataformat-yaml", version.ref = "jackson" }
+jackson-dataformat-csv = { group = "com.fasterxml.jackson.dataformat", name = "jackson-dataformat-csv", version.ref = "jackson" }
+tika-core = { group = "org.apache.tika", name = "tika-core", version.ref = "tika" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
