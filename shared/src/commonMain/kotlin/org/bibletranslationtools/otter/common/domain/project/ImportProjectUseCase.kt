@@ -18,6 +18,10 @@
  */
 package org.bibletranslationtools.otter.common.domain.project
 
+import com.fasterxml.jackson.core.JsonFactory
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
+import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.reactivex.Completable
 import io.reactivex.Maybe
 import io.reactivex.Single
@@ -109,11 +113,13 @@ class ImportProjectUseCase(
     }
 
     private fun getEmbeddedSource(language: Language): File {
-        val resourceName = glSourceCatalog.sources.find { it.languageCode == language.slug }?.name
-        val pathToSource = SOURCE_PATH_TEMPLATE.format(resourceName)
+        val resourceName = glSources.find { it.languageCode == language.slug }?.name
+        val pathToSource = org.bibletranslationtools.otter.common.domain.project.SOURCE_PATH_TEMPLATE.format(resourceName)
 
-        val sourceFile = bundledContent.readBlocking(pathToSource)
-            .inputStream()
+        val sourceFile = javaClass
+            .classLoader
+            .getResource(pathToSource)
+            .openStream()
             .use { input ->
                 val tempFile = File.createTempFile(
                     resourceName,
@@ -121,7 +127,7 @@ class ImportProjectUseCase(
                     tempFiles.tempDirectory
                 )
                 tempFile.outputStream().use { output ->
-                    input.copyTo(output)
+                    input.transferTo(output)
                 }
                 tempFile
             }
@@ -156,6 +162,7 @@ class ImportProjectUseCase(
      */
     private fun getImporter(format: ProjectFormat): IProjectImporter {
         val factory: IProjectImporterFactory = when(format) {
+            ProjectFormat.BURRITO_WRAPPER,
             ProjectFormat.SCRIPTURE_BURRITO -> burritoFactoryProvider
             ProjectFormat.RESOURCE_CONTAINER -> rcFactoryProvider
             ProjectFormat.TSTUDIO -> tsFactoryProvider
@@ -164,6 +171,16 @@ class ImportProjectUseCase(
         return factory.makeImporter()
     }
 
+    companion object {
+        val glSources: List<ResourceInfoSerializable> by lazy {
+            javaClass.classLoader.getResource(org.bibletranslationtools.otter.common.domain.project.SOURCES_JSON_FILE)!!
+                .openStream().use { stream ->
+                    val mapper = ObjectMapper(JsonFactory()).registerKotlinModule()
+                    val sources: List<ResourceInfoSerializable> = mapper.readValue(stream)
+                    sources
+                }
+        }
+    }
 }
 
 data class ResourceInfoSerializable(val name: String, val languageCode: String, val url: String)

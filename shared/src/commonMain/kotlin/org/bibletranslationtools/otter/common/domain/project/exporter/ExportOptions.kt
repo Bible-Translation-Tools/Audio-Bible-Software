@@ -18,4 +18,9 @@
  */
 package org.bibletranslationtools.otter.common.domain.project.exporter
 
-data class ExportOptions(val chapters: List<Int>)
+import org.bibletranslationtools.otter.common.audio.AudioFileFormat
+
+data class ExportOptions(
+    val chapters: List<Int>,
+    val audioFormat: AudioFileFormat = AudioFileFormat.MP3
+)

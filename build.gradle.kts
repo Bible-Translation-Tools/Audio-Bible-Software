@@ -53,14 +53,14 @@ subprojects {
             dependencySubstitution {
                 substitute(module("org.wycliffeassociates:kotlin-resource-container"))
                     .using(project(":libs:resource-container"))
-                // substitute(module("org.bibletranslationtools:kotlin-scripture-burrito"))
-                //     .using(project(":libs:scripture-burrito"))
+                substitute(module("org.bibletranslationtools:kotlin-scripture-burrito"))
+                    .using(project(":libs:scripture-burrito"))
                 substitute(module("org.wycliffeassociates:kotlin-tstudio2rc"))
                     .using(project(":libs:tstudio2rc"))
-                // substitute(module("org.bibletranslationtools:kotlin-scripture-alignment"))
-                //     .using(project(":libs:scripture-alignment"))
-                // substitute(module("org.bibletranslationtools:kotlin-vtt"))
-                //     .using(project(":libs:vtt"))
+                substitute(module("org.bibletranslationtools:kotlin-scripture-alignment"))
+                    .using(project(":libs:scripture-alignment"))
+                substitute(module("org.bibletranslationtools:kotlin-vtt"))
+                    .using(project(":libs:vtt"))
             }
         }
     }

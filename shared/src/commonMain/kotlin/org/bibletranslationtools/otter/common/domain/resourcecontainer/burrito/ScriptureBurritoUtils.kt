@@ -3,7 +3,6 @@ package org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
-import org.bibletranslationtools.kotlinscripturealignment.BurritoAudioAlignment
 import org.bibletranslationtools.scriptureburrito.Checksum
 import org.bibletranslationtools.scriptureburrito.CopyrightSchema
 import org.bibletranslationtools.scriptureburrito.Flavor
@@ -46,13 +45,15 @@ import java.security.NoSuchAlgorithmException
 import java.text.SimpleDateFormat
 import java.time.Instant
 import java.util.*
+import org.bibletranslationtools.kotlinscripturealignment.model.BurritoAudioAlignment
+import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 
 typealias ChapterNumber = Int
 
 class ScriptureBurritoUtils(
     private val idAuthorityProvider: AuthProvider,
     private val appInfo: IAppInfo,
-    directoryProvider: ITempFileProvider
+    directoryProvider: IDirectoryProvider
 ) {
 
     private val tempDir = directoryProvider.tempDirectory
@@ -115,13 +116,7 @@ class ScriptureBurritoUtils(
             type = TypeSchema(
                 FlavorType(
                     name = Flavor.SCRIPTURE,
-                    AudioFlavorSchema(
-                        mutableSetOf(Performance.READING, Performance.SINGLE_VOICE),
-                        formats = Formats().apply {
-                            put("format-wav", AudioFormat(Compression.WAV))
-                            put("format-mp3", AudioFormat(Compression.MP3))
-                        }
-                    ),
+                    AudioFlavorSchema(),
                     currentScope = ScopeSchema().apply {
                         this[workbook.target.slug.uppercase(Locale.US)] =
                             takes.keys.map { "$it" }.toMutableList()
@@ -162,7 +157,7 @@ class ScriptureBurritoUtils(
                     .getInputStream(project.path.removePrefix("./"))
                     .use { ifs ->
                         outFile.outputStream().use { ofs ->
-                            ifs.copyTo(ofs)
+                            ifs.transferTo(ofs)
                         }
                     }
 
@@ -256,7 +251,7 @@ class ScriptureBurritoUtils(
         val pathInRC = "${RcConstants.SOURCE_MEDIA_DIR}/${timingFile.name}"
         rc.accessor.write(pathInRC) { ofs ->
             timingFile.inputStream().use { ifs ->
-                ifs.copyTo(ofs)
+                ifs.transferTo(ofs)
             }
         }
         return Pair(ingredient, pathInRC)

@@ -21,6 +21,7 @@ package org.bibletranslationtools.otter.common.domain.content
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import java.util.regex.Pattern
+import kotlin.toString
 
 class FileNamer(
     val start: Int? = null,
@@ -110,5 +111,24 @@ class FileNamer(
             val fileName = "(chapter_narration.pcm|active_verses.json)"
             Pattern.compile(chapter + fileName)
         }
+    }
+}
+
+
+class BibleFileNamer(
+    val languageSlug: String,
+    val bookSlug: String,
+    val rcSlug: String
+) {
+    fun chapterFileName(
+        chapter: Int,
+        extension: String = "wav"
+    ): String {
+        return listOfNotNull(
+            languageSlug,
+            rcSlug,
+            bookSlug,
+            chapter
+        ).joinToString("_", postfix = ".${extension}")
     }
 }

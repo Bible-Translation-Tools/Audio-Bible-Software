@@ -26,8 +26,10 @@ dependencies {
     // library's public surface, so consumers need them on the compile classpath.
     api(libs.jackson.module.kotlin)
     api(libs.jackson.dataformat.yaml)
-    // Slated for removal along with resource-container's copy — see libs/README.md.
-    api(libs.tika.core)
+    // No tika-core. Its only use here was a private detectFileType() comparing against
+    // MediaType.APPLICATION_ZIP; BurritoContainer.isZipFile() now reads the four-byte local file
+    // header instead, matching :libs:resource-container. With both libraries off it, nothing in
+    // the build needs Tika and :shared no longer has to repackage it for D8 at minSdk 24.
 
     // Dropped from the original build, neither is referenced by any source file here:
     //   org.slf4j:slf4j-api:2.0.13

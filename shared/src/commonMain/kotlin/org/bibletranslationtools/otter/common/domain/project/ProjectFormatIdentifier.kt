@@ -20,12 +20,15 @@ package org.bibletranslationtools.otter.common.domain.project
 
 import org.bibletranslationtools.scriptureburrito.container.BurritoContainer
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito.BurritoToResourceContainerConverter
+import org.slf4j.LoggerFactory
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import org.wycliffeassociates.tstudio2rc.Tstudio2RcConverter
 import java.io.File
 import java.lang.Exception
 import java.lang.IllegalArgumentException
 import kotlin.jvm.Throws
+import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito.ScriptureBurritoWrapper
 
 object ProjectFormatIdentifier {
 
@@ -34,10 +37,12 @@ object ProjectFormatIdentifier {
             // set up the chains for identifying the project format
             val orature = OratureFileIdentifier()
             val tstudio = TstudioFileIdentifier()
+            val wrapper = BurritoWrapperIdentifier()
             val burrito = ScriptureBurritoFileIdentifier()
 
             orature.next = tstudio
-            tstudio.next = burrito
+            tstudio.next = wrapper
+            wrapper.next = burrito
 
             return orature
         }
@@ -50,54 +55,82 @@ object ProjectFormatIdentifier {
             ?: throw IllegalArgumentException("The following file is not supported: $file")
     }
 
+
+}
+
+/**
+ * Chains of Responsibility - getting the corresponding format of a given project file
+ */
+private interface IFormatIdentifier {
+    var next: IFormatIdentifier?
+
     /**
-     * Chains of Responsibility - getting the corresponding format of a given project file
+     * Returns the project format of the given file
      */
-    private interface IFormatIdentifier {
-        var next: IFormatIdentifier?
+    fun getFormat(file: File): ProjectFormat?
+}
 
-        /**
-         * Returns the project format of the given file
-         */
-        fun getFormat(file: File): ProjectFormat?
-    }
+private class OratureFileIdentifier : IFormatIdentifier {
+    private val logger = LoggerFactory.getLogger(OratureFileIdentifier::class.java)
 
-    private class OratureFileIdentifier : IFormatIdentifier {
+    override var next: IFormatIdentifier? = null
 
-        override var next: IFormatIdentifier? = null
-
-        override fun getFormat(file: File): ProjectFormat? {
-            return try {
-                ResourceContainer.load(file).close()
-                ProjectFormat.RESOURCE_CONTAINER
-            } catch (e: Exception) {
-                next?.getFormat(file)
-            }
+    override fun getFormat(file: File): ProjectFormat? {
+        return try {
+            ResourceContainer.load(file).close()
+            ProjectFormat.RESOURCE_CONTAINER
+        } catch (e: Exception) {
+            logger.info("${file.name} is not a valid Resource Container: ", e)
+            next?.getFormat(file)
         }
     }
-    private class TstudioFileIdentifier : IFormatIdentifier {
+}
+private class TstudioFileIdentifier : IFormatIdentifier {
+    private val logger = LoggerFactory.getLogger(TstudioFileIdentifier::class.java)
 
-        override var next: IFormatIdentifier? = null
+    override var next: IFormatIdentifier? = null
 
-        override fun getFormat(file: File): ProjectFormat? {
-            return if (Tstudio2RcConverter.isValidFormat(file)) {
-                ProjectFormat.TSTUDIO
-            } else {
-                next?.getFormat(file)
-            }
+    override fun getFormat(file: File): ProjectFormat? {
+        return if (Tstudio2RcConverter.isValidFormat(file)) {
+            ProjectFormat.TSTUDIO
+        } else {
+            next?.getFormat(file)
         }
     }
+}
 
-    private class ScriptureBurritoFileIdentifier : IFormatIdentifier {
-        override var next: IFormatIdentifier? = null
+private class ScriptureBurritoFileIdentifier : IFormatIdentifier {
+    private val logger = LoggerFactory.getLogger(ScriptureBurritoFileIdentifier::class.java)
 
-        override fun getFormat(file: File): ProjectFormat? {
-            return try {
-                BurritoContainer.load(file).close()
-                ProjectFormat.SCRIPTURE_BURRITO
-            } catch (e: Exception) {
-                next?.getFormat(file)
-            }
+    override var next: IFormatIdentifier? = null
+
+    override fun getFormat(file: File): ProjectFormat? {
+        return try {
+            BurritoContainer.load(file).close()
+            ProjectFormat.SCRIPTURE_BURRITO
+        } catch (e: Exception) {
+            logger.info("${file.name} is not a valid Scripture Burrito: ", e)
+            next?.getFormat(file)
+        }
+    }
+}
+
+
+// No directoryProvider parameter: the pre-KMP version took one but never read it — getFormat()
+// only calls ScriptureBurritoWrapper.load(file). Keeping it would have forced ProjectFormatIdentifier
+// to stop being an `object`, which every call site depends on.
+private class BurritoWrapperIdentifier : IFormatIdentifier {
+    private val logger = LoggerFactory.getLogger(BurritoWrapperIdentifier::class.java)
+
+    override var next: IFormatIdentifier? = null
+
+    override fun getFormat(file: File): ProjectFormat? {
+        return try {
+            ScriptureBurritoWrapper.load(file)
+            ProjectFormat.BURRITO_WRAPPER
+        } catch (e: Exception) {
+            logger.info("${file.name} is not a valid Scripture Burrito: ", e)
+            next?.getFormat(file)
         }
     }
 }

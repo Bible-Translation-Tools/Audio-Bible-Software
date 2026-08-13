@@ -65,7 +65,6 @@ kotlin {
     val jump3rVer = "1.0.5"
     val tarsosDspVer = "2.4.1"
     val mp3TagVer = "0.9.3"
-    val tikaVer = "2.0.0"
     val tstudio2rcVer = "1.0.2"
     val kotlinVttVer = "1.0.0"
     val kotlinScriptureAlignmentVer = "1.0.0"
@@ -133,7 +132,11 @@ kotlin {
                 implementation("com.squareup.retrofit2:adapter-rxjava2:$retrofitRxJava2Ver")
 
                 implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-csv:$jacksonVer")
-                implementation("org.apache.tika:tika-core:$tikaVer")
+                // commons-io, declared directly. It used to arrive transitively through
+                // tika-core, which is gone now that :libs:resource-container and
+                // :libs:scripture-burrito sniff the zip magic number instead. Used for
+                // FileUtils.sizeOfDirectory in BackupProjectExporter and nothing else.
+                implementation("commons-io:commons-io:2.19.0")
                 implementation("org.jetbrains.kotlin:kotlin-reflect:$kotlinVer")
 
                 // Audio codecs, used only behind the audio/ and domain/audio/ facades.
@@ -208,7 +211,17 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+        // Required by minSdk 24: java.time and java.nio.file are API 26 on Android, and this
+        // module's backend leans on both heavily (LocalDate/LocalDateTime on the entity layer,
+        // Files.walk/copy/list across io/ and domain/). D8 rewrites those call sites to the
+        // bundled j$.* backports. Both apps enable this too — the rewriting happens at dex time
+        // in the app module, not here.
+        isCoreLibraryDesugaringEnabled = true
     }
+}
+
+dependencies {
+    coreLibraryDesugaring(libs.desugar.jdk.libs.nio)
 }
 
 // ── GL source download + bundling ────────────────────────────────────────────────────

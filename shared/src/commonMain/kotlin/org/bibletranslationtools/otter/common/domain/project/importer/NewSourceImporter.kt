@@ -37,6 +37,7 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IReso
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import java.io.File
 import java.io.IOException
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
 
 /**
  * Which tree a source import writes, and whether the parsed text still has to be applied on top.
@@ -78,6 +79,9 @@ class NewSourceImporter(
     private val resourceContainerRepository: IResourceContainerRepository,
     resourceMetadataRepository: IResourceMetadataRepository,
     private val versificationTreeBuilder: VersificationTreeBuilder,
+    // Kept alongside the tree builder: getVersification() below reads "ulb" directly to synthesize
+    // USFM for audio-only containers, which the tree builder has no entry point for.
+    private val versificationRepository: IVersificationRepository,
     private val zipEntryTreeBuilder: IZipEntryTreeBuilder
 ) : RCImporter(directoryProvider, resourceMetadataRepository) {
 
@@ -105,12 +109,39 @@ class NewSourceImporter(
             val fileToImport = prepareFileToImport(file)
 
             val container = try {
-                ResourceContainer
-                    .load(fileToImport, OtterResourceContainerConfig())
-                    .also {
-                        sourceLanguageName = it.manifest.dublinCore.language.title
-                        projectSlug = it.media?.projects?.singleOrNull()?.identifier
+                val rc = ResourceContainer.load(fileToImport, OtterResourceContainerConfig())
+                rc.also {
+                    sourceLanguageName = it.manifest.dublinCore.language.title
+                    projectSlug = it.media?.projects?.singleOrNull()?.identifier
+                }
+
+                if (rc.manifest.projects.isEmpty()) {
+                    val booksInMedia = rc.media?.projects?.map { it.identifier } ?: emptyList()
+                    if (booksInMedia.isNotEmpty()) {
+                        val versification = getVersification(fileToImport)
+                        if (versification != null) {
+                            booksInMedia.forEach { bookSlug ->
+                                val usfmContent = generateUsfmContent(bookSlug, versification)
+                                val usfmFile = File(fileToImport, "$bookSlug.usfm")
+                                usfmFile.writeText(usfmContent)
+
+                                (rc.manifest.projects as MutableList).add(
+                                    org.wycliffeassociates.resourcecontainer.entity.Project(
+                                        title = bookSlug,
+                                        versification = "ulb",
+                                        identifier = bookSlug,
+                                        sort = 0,
+                                        path = "./${usfmFile.name}",
+                                        categories = listOf()
+                                    )
+                                )
+                            }
+                            // Re-write manifest to include new projects
+                            rc.writeManifest()
+                        }
                     }
+                }
+                rc
             } catch (e: Exception) {
                 logger.error("Error loading rc in importFromInternalDir, file: $fileToImport", e)
                 cleanUp(fileToImport, ImportResult.LOAD_RC_ERROR).subscribe(emitter::onSuccess)
@@ -131,13 +162,10 @@ class NewSourceImporter(
                 localizeKey = "importingSource", percent = 50.0
             )
 
-            // A versification problem must not fail the import. This whole path was disabled during
-            // the port because the versification could not be read at all — the bundled file never
-            // reached disk (see InitializeVersification, fixed in "Read bundled content through a
-            // port instead of the Compose Res object"), and the tree builder reaches that file
-            // through a blockingGet() that throws rather than returning empty when it is missing or
-            // malformed. Degrading to a text-only import is what the app did for that whole period,
-            // so it is a known-good fallback rather than a guess.
+            // A versification problem must not fail the import: the tree builder reaches the
+            // bundled file through a blockingGet() that throws rather than returning empty when it
+            // is missing or malformed. Degrading to a text-only import is what the app did for the
+            // whole period this path was disabled, so it is a known-good fallback.
             val versificationTrees = runCatching { versificationTreeBuilder.build(container) }
                 .getOrElse {
                     logger.error(
@@ -148,31 +176,13 @@ class NewSourceImporter(
                     null
                 }
 
-            // NOT yet verified end-to-end. VersificationTreeBuilderTest pins the structure and
-            // PlanImportTest pins this branch, but nothing exercises the join — a real source RC
-            // through importResourceContainer + updateContent against a real database. The original
-            // Orature covered that with an integration tier (DatabaseEnvironment/TestRcImport) this
-            // repo does not have yet.
-            //
-            // What "working" looks like, from TestRcImport.ulb() in the JavaFX app: importing one
-            // en_ulb.zip yields 31104 TEXT, 1189 META and 1255 TITLE contents across 1256
-            // collections. Those are VERSIFICATION totals, not text totals — 1189 is the chapter
-            // count of the Protestant canon, 1255 = 1189 chapter titles + 66 book titles, and
-            // 1256 = 1189 chapters + 66 books + 1 root. So one source import writes on the order of
-            // 34k content rows where a text-only import writes a fraction of that; queries tuned
-            // against the smaller shape are the thing to watch.
-            //
-            // Verses with no text are EXPECTED, not a failed backfill: the original's own
-            // assertChapters filtered on `text != null` to "remove content allocated from
-            // versification without a matching verse in ULB".
             val plan = planImport(container.toCollection(), tree, versificationTrees)
 
             importTree(container, plan.treeToImport, fileToImport)
                 .flatMap { result ->
-                    // Only backfill text into a structure that actually imported. The JavaFX code
-                    // chained this unconditionally, but importTree reports failure as a VALUE, so a
-                    // failed import fell straight through into updateContent — where a second
-                    // failure would replace the first and hide what actually went wrong.
+                    // Only backfill text into a structure that actually imported. Chaining this
+                    // unconditionally lets a failed import fall through into updateContent, where a
+                    // second failure replaces the first and hides what actually went wrong.
                     if (plan.applyParsedTextAfter && result == ImportResult.SUCCESS) {
                         updateContentFromTextContent(container, tree)
                     } else {
@@ -305,7 +315,7 @@ class NewSourceImporter(
         directoryProvider
             .newFileReader(source)
             .use { fileReader ->
-                fileReader.copyDirectory("/", targetDir).blockingSubscribe()
+                fileReader.copyDirectory("/", targetDir)
             }
 
         targetDir.walk().forEach {
@@ -315,5 +325,36 @@ class NewSourceImporter(
         }
 
         return targetDir
+    }
+
+    private fun getVersification(rcDir: File): org.bibletranslationtools.otter.common.domain.versification.Versification? {
+        // Try to find versification.json in the container
+        val versificationFile = File(rcDir, "ingredients/versification.json")
+        if (versificationFile.exists()) {
+            try {
+                val mapper = com.fasterxml.jackson.databind.ObjectMapper().registerModule(com.fasterxml.jackson.module.kotlin.KotlinModule())
+                return mapper.readValue(versificationFile, org.bibletranslationtools.otter.common.domain.versification.ParatextVersification::class.java)
+            } catch (e: Exception) {
+                logger.error("Failed to parse versification.json", e)
+            }
+        }
+        // Fallback to default
+        return versificationRepository.getVersification("ulb").blockingGet()
+    }
+
+    private fun generateUsfmContent(bookSlug: String, versification: org.bibletranslationtools.otter.common.domain.versification.Versification): String {
+        val sb = StringBuilder()
+        sb.append("\\id ${bookSlug.uppercase(java.util.Locale.US)}\n")
+
+        val chapterCount = versification.getChaptersInBook(bookSlug)
+        for (chapter in 1..chapterCount) {
+            sb.append("\\c $chapter\n")
+            sb.append("\\p\n")
+            val verseCount = versification.getVersesInChapter(bookSlug, chapter)
+            for (verse in 1..verseCount) {
+                sb.append("\\v $verse \n")
+            }
+        }
+        return sb.toString()
     }
 }
