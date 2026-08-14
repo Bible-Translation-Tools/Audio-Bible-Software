@@ -320,8 +320,12 @@ class ContentRepository(
         updateAll(content).await()
 
     private fun buildContent(entity: ContentEntity): Content {
-        // Check for sources
-        val sources = contentDao.fetchSources(entity)
+        // No fetchSources() here. It ran TWO queries per content row — one over CONTENT_DERIVATIVE
+        // and one over CONTENT_ENTITY — and assigned the result to a local that was never read;
+        // mapFromEntity takes only (entity, selectedTake). That made loading a chapter O(rows)
+        // round trips for nothing, and this database is configured with
+        // StatementType.STATIC_STATEMENT, so every one of them was a fresh SQL parse rather than a
+        // reused prepared statement.
         val selectedTake = entity
             .selectedTakeFk?.let { selectedTakeFk ->
                 // Retrieve the markers

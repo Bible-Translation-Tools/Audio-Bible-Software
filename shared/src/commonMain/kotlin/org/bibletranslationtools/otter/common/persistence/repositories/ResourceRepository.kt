@@ -273,8 +273,8 @@ class ResourceRepository(private val database: IAppDatabase) : IResourceReposito
     }
 
     private fun buildResource(entity: ContentEntity): Content {
-        // Check for sources
-        val sources = contentDao.fetchSources(entity)
+        // Same dead per-row fetchSources() as ContentRepository.buildContent had: two queries per
+        // row whose result was never read.
         val selectedTake = entity
             .selectedTakeFk?.let { selectedTakeFk ->
                 // Retrieve the markers
