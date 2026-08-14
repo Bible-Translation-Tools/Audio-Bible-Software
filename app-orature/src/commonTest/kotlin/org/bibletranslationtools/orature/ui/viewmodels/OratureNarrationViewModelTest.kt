@@ -26,6 +26,7 @@ import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.domain.narration.LoadChapterSourceText
 import org.bibletranslationtools.otter.common.domain.project.InitializeProjectFiles
 import org.bibletranslationtools.otter.common.domain.project.OpenWorkbook
+import org.bibletranslationtools.otter.common.domain.project.ProjectCompletionStatus
 import org.bibletranslationtools.orature.di.oratureViewModelModule
 import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
@@ -49,6 +50,10 @@ class OratureNarrationViewModelTest : KoinTest {
 
     private val descriptorId = 7
 
+    // Narration completion reads active_verses.json through ChapterRepresentation, which needs a
+    // real project directory on disk. Stubbed per-chapter by [chapter] instead.
+    private val completionStatus: ProjectCompletionStatus = mockk(relaxed = true)
+
     @BeforeTest
     fun setup() {
         Dispatchers.setMain(testDispatcher)
@@ -66,7 +71,9 @@ class OratureNarrationViewModelTest : KoinTest {
                     // In the app these come from implicitCommonModule (asserted by
                     // SharedGraphWiringTest); this module is not composed here, so they are
                     // supplied explicitly rather than left to fail lazily at first use.
-                    single { OpenWorkbook(descriptorRepo, workbookRepo, testDispatcher) }
+                    single {
+                        OpenWorkbook(descriptorRepo, workbookRepo, completionStatus, testDispatcher)
+                    }
                     single { LoadChapterSourceText(testDispatcher) }
                     single { InitializeProjectFiles(testDispatcher) }
                 }
@@ -85,7 +92,11 @@ class OratureNarrationViewModelTest : KoinTest {
     private fun chapter(sort: Int, completed: Boolean = false): Chapter = mockk {
         every { this@mockk.sort } returns sort
         every { title } returns sort.toString()
+        // Both, because OpenWorkbook picks the one that matches the project mode: narration
+        // progress for NARRATION/DIALECT, the selected take for TRANSLATION.
         every { hasSelectedAudio() } returns completed
+        every { completionStatus.getChapterNarrationProgress(any(), this@mockk) } returns
+            if (completed) 1.0 else 0.0
     }
 
     /** Wire the descriptor→workbook→chapters chain used by the VM's load(). */

@@ -200,7 +200,7 @@
     <string name="compileChapterMessage">Đang kết xuất bản thu %1$s %2$s...</string>
     <string name="bookNameImportTitle">Nhập dữ liệu %1$s</string>
     <string name="bookNameExportTitle">Xuất dữ liệu %1$s</string>
-    <string name="estimatedFileSize">Ước tính dung lượng Tệp tin\: %1$s</string>
+    <string name="estimatedFileSize">Ước tính dung lượng Tệp tin\: %1$s MB</string>
     <string name="importConflictDescription">Xung đột khi nhập dữ liệu từ %1$s Chương của %2$s. Chọn một phương án để tiếp tục.</string>
     <string name="keepOriginal">Giữa nguyên bản gốc</string>
     <string name="keepOriginalDescription">Giữ nguyên các tập tin gốc trên máy của bạn và hủy bỏ các tập tin mới gây ra xung đột.</string>

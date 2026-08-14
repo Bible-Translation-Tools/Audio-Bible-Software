@@ -16,6 +16,7 @@ import org.bibletranslationtools.otter.common.data.primitives.Anthology
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.orature.services.OratureImportEvents
+import org.bibletranslationtools.orature.services.OratureProjectEvents
 import org.bibletranslationtools.orature.services.OratureProjectDeletion
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -95,6 +96,7 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
 
     private val workbookDescriptorRepository: IWorkbookDescriptorRepository by inject()
     private val importEvents: OratureImportEvents by inject()
+    private val projectEvents: OratureProjectEvents by inject()
     private val projectDeletion: OratureProjectDeletion by inject()
 
     private val _uiState = MutableStateFlow(OratureHomeUiState())
@@ -113,6 +115,38 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
         loadProjects()
         // Refresh when a project is imported via the global Add Files drawer.
         launchLogged { importEvents.imported.collect { loadProjects() } }
+        // Re-read ONE book's progress after the user leaves it. This ViewModel stays alive on the
+        // back stack the whole time a book is open, so its `init` does not run again on the way
+        // back and the ring kept whatever it was built with — a chapter narrated end to end still
+        // read 0%. A whole reload would answer this too, but at the price of rebuilding a Workbook
+        // per book (see WorkbookDescriptorRepository.getProgress), and only the book just closed
+        // can have changed.
+        launchLogged {
+            projectEvents.progressChanged.collect { id -> refreshBookProgress(id) }
+        }
+    }
+
+    /**
+     * Recompute a single book's progress and patch its ring.
+     *
+     * The descriptor's `progress` is a cold Single that re-reads on every subscription, so awaiting
+     * the one built by the last load returns current state rather than a memoized value. If the id
+     * is not in the current list there is nothing on screen to patch.
+     */
+    private fun refreshBookProgress(workbookDescriptorId: Int) {
+        val descriptor = loadedDescriptors.firstOrNull { it.id == workbookDescriptorId } ?: return
+        val job = launchLogged {
+            val resolved = try {
+                descriptor.progress.await()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logFailure("refreshing project progress", e)
+                return@launchLogged
+            }
+            applyBookProgress(descriptor.id, resolved)
+        }
+        progressJobs.add(job)
     }
 
     /** Reload projects, selecting the most-recently-modified group (the default landing state). */

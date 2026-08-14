@@ -29,13 +29,19 @@ class OpenWorkbookTest {
 
     private val descriptorRepo: IWorkbookDescriptorRepository = mockk(relaxed = true)
     private val workbookRepo: IWorkbookRepository = mockk(relaxed = true)
-    private val openWorkbook = OpenWorkbook(descriptorRepo, workbookRepo)
+    // Narration completion reads active_verses.json off disk through ChapterRepresentation, so it
+    // is stubbed rather than exercised — these tests are about the orchestration, and the real one
+    // needs a project directory.
+    private val completionStatus: ProjectCompletionStatus = mockk(relaxed = true)
+    private val openWorkbook = OpenWorkbook(descriptorRepo, workbookRepo, completionStatus)
 
     private val descriptorId = 7
 
     private fun chapter(sort: Int, completed: Boolean = false): Chapter = mockk {
         every { this@mockk.sort } returns sort
         every { hasSelectedAudio() } returns completed
+        every { completionStatus.getChapterNarrationProgress(any(), this@mockk) } returns
+            if (completed) 1.0 else 0.0
     }
 
     /** @param emitted the chapters as the target book's observable emits them */
@@ -89,7 +95,7 @@ class OpenWorkbookTest {
     @Test
     fun `open does not touch chapter completion`() = runTest {
         val chapters = listOf(chapter(1, completed = true), chapter(2), chapter(3))
-        stub(chapters)
+        stub(chapters, mode = ProjectMode.TRANSLATION)
 
         openWorkbook.open(descriptorId)
 
@@ -129,6 +135,52 @@ class OpenWorkbookTest {
             mapOf(1 to false, 2 to true, 3 to false),
             opened.completedByChapterSort
         )
+    }
+
+    /**
+     * The export dialog greyed out its own Export button for a finished narration project because
+     * completion was asked as `hasSelectedAudio()` in every mode. That is the TRANSLATION question:
+     * a narrated chapter's work is in active_verses.json, and its compiled take is a later artifact
+     * that may legitimately not exist yet — so the chapter scored 0 while the home screen, which
+     * already branched on mode, showed the same book 100%.
+     */
+    @Test
+    fun `narration completion comes from narration progress, not the chapter take`() = runTest {
+        val narrated: Chapter = mockk {
+            every { sort } returns 1
+            // No compiled take, yet every verse is recorded.
+            every { hasSelectedAudio() } returns false
+            every { completionStatus.getChapterNarrationProgress(any(), this@mockk) } returns 1.0
+        }
+        stub(listOf(narrated), mode = ProjectMode.NARRATION)
+
+        val opened = openWorkbook.openWithChapters(descriptorId)
+
+        assertEquals(mapOf(1 to true), opened.completedByChapterSort)
+    }
+
+    @Test
+    fun `a partly narrated chapter is not complete`() = runTest {
+        val partial: Chapter = mockk {
+            every { sort } returns 1
+            every { hasSelectedAudio() } returns true
+            every { completionStatus.getChapterNarrationProgress(any(), this@mockk) } returns 0.5
+        }
+        stub(listOf(partial), mode = ProjectMode.DIALECT)
+
+        val opened = openWorkbook.openWithChapters(descriptorId)
+
+        assertEquals(mapOf(1 to false), opened.completedByChapterSort)
+    }
+
+    /** Translation still asks the take question — that mode has no per-verse narration state. */
+    @Test
+    fun `translation completion still comes from the selected take`() = runTest {
+        stub(listOf(chapter(1, completed = true), chapter(2)), mode = ProjectMode.TRANSLATION)
+
+        val opened = openWorkbook.openWithChapters(descriptorId)
+
+        assertEquals(mapOf(1 to true, 2 to false), opened.completedByChapterSort)
     }
 
     @Test
