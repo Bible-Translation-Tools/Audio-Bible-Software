@@ -259,6 +259,13 @@ class AudioBufferPlayer(
                     sinkFrameBaseline = _sink.framePosition
                 }
 
+                // Reused across iterations rather than allocated per pass. This loop runs once per
+                // ~23ms of audio, so a fresh array each time is steady garbage on the one path that
+                // must never wait for a collector — a GC pause here is an underrun, and Android drops
+                // an underrunning track off the mixer entirely. Re-allocated only when the required
+                // size actually changes, which is a reader swap, not a normal iteration.
+                var inputBuffer = ByteArray(0)
+
                 while (isActive && !isPaused && isCurrent(session)) {
                     val (currentReader, currentSink) = mutex.withLock {
                         reader to _sink
@@ -267,7 +274,8 @@ class AudioBufferPlayer(
                     if (currentReader == null || !currentReader.hasRemaining()) break
 
                     val bytesPerFrame = currentReader.spec.bytesPerFrame.coerceAtLeast(1)
-                    val inputBuffer = ByteArray(processor.inputBufferSize * bytesPerFrame)
+                    val requiredSize = processor.inputBufferSize * bytesPerFrame
+                    if (inputBuffer.size != requiredSize) inputBuffer = ByteArray(requiredSize)
 
                     // WSOLA is designed to be fed a SLIDING, overlapping analysis window, not
                     // disjoint forward-only chunks: rewind by `processor.overlap` frames before each

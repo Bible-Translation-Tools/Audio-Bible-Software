@@ -436,7 +436,7 @@ open class BurritoToResourceContainerConverter(
         // Copy audio file from accessor
         inputAccessor.getInputStream(audioFile).use { ifs ->
             tempAudioFile.outputStream().use { ofs ->
-                ifs.transferTo(ofs)
+                ifs.copyTo(ofs)
             }
         }
 
@@ -467,13 +467,13 @@ open class BurritoToResourceContainerConverter(
         val tempTimingFile = createTempFileSafely("burrito_timing_${File(timingFile).nameWithoutExtension}", ".json")
         inputAccessor.getInputStream(audioFile).use { ifs ->
             tempAudioFile.outputStream().use { ofs ->
-                ifs.transferTo(ofs)
+                ifs.copyTo(ofs)
             }
         }
 
         inputAccessor.getInputStream(timingFile).use { ifs ->
             tempTimingFile.outputStream().use { ofs ->
-                ifs.transferTo(ofs)
+                ifs.copyTo(ofs)
             }
         }
 
@@ -692,13 +692,13 @@ open class BurritoToResourceContainerConverter(
             // Copy audio and timing files from accessor to temp files
             inputAccessor.getInputStream(file).use { ifs ->
                 tempAudioFile.outputStream().use { ofs ->
-                    ifs.transferTo(ofs)
+                    ifs.copyTo(ofs)
                 }
             }
 
             inputAccessor.getInputStream(timing).use { ifs ->
                 tempTimingFile.outputStream().use { ofs ->
-                    ifs.transferTo(ofs)
+                    ifs.copyTo(ofs)
                 }
             }
 
@@ -769,7 +769,7 @@ open class BurritoToResourceContainerConverter(
             if (file.isAbsolute && file.exists()) {
                 file.inputStream().use { ifs ->
                     outputAccessor.write(newPath) {
-                        ifs.transferTo(it)
+                        ifs.copyTo(it)
                     }
                 }
                 newIngredientsByBook.put(book, usfmFiles)
@@ -777,7 +777,7 @@ open class BurritoToResourceContainerConverter(
                 try {
                     inputAccessor.getInputStream(usfmFile).use { ifs ->
                         outputAccessor.write(newPath) {
-                            ifs.transferTo(it)
+                            ifs.copyTo(it)
                         }
                     }
                     newIngredientsByBook.put(book, usfmFiles)
@@ -844,7 +844,7 @@ open class BurritoToResourceContainerConverter(
                     try {
                         af.inputStream().use { ifs ->
                             outputAccessor.write(newPath) {
-                                ifs.transferTo(it)
+                                ifs.copyTo(it)
                             }
                         }
 

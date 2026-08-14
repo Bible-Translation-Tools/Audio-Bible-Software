@@ -157,13 +157,12 @@ fun main() {
 @Composable
 private fun OratureSplashWindow(onFinished: () -> Unit) {
     val vm = remember { OratureSplashViewModel() }
-    LaunchedEffect(Unit) {
-        val disposable = vm.initApp().subscribe({ onFinished() }, { onFinished() })
-        try {
-            awaitCancellation()
-        } finally {
-            disposable.dispose()
-        }
+    // The ViewModel owns the subscription now — see OratureSplashViewModel. Desktop has no
+    // configuration-change recreation, but keeping both platforms on one path means the splash
+    // behaves the same and there is only one place where init can be cancelled.
+    LaunchedEffect(Unit) { vm.startInit() }
+    LaunchedEffect(vm.initComplete) {
+        if (vm.initComplete) onFinished()
     }
     OratureTheme {
         OratureSplashScreen(vm)

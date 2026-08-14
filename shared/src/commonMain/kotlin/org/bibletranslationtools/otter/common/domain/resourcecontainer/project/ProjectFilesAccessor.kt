@@ -795,7 +795,9 @@ class ProjectFilesAccessor(
                 val license = kotlin.io.path.createTempFile(suffix = ".md")
 
                 rc.accessor.getInputStream(RcConstants.LICENSE_FILE).use { input ->
-                    license.outputStream().write(input.readAllBytes())
+                    // readBytes(), not InputStream.readAllBytes(): that is API 33 and threw
+                    // NoSuchMethodError on Android 7 when opening a book.
+                    license.outputStream().write(input.readBytes())
                 }
                 return license.toFile()
             }

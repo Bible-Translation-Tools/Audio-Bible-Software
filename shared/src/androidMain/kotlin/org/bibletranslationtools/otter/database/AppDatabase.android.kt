@@ -48,21 +48,40 @@ private const val MIN_UPSERT_SQLITE = "3.24.0"
  * Newer devices therefore keep the original SQLDroid path over the system SQLite: no native load,
  * no second copy of the engine in memory, and the behaviour that has been shipping.
  */
-private fun openConnection(databasePath: String): Connection {
+private class OpenedDatabase(val connection: Connection, val usingSqlDroid: Boolean)
+
+private fun openConnection(databasePath: String): OpenedDatabase {
     val platformVersion = platformSqliteVersion()
     val platformCanUpsert = platformVersion != null &&
         compareVersions(platformVersion, MIN_UPSERT_SQLITE) >= 0
 
     return if (platformCanUpsert) {
         Class.forName("org.sqldroid.SQLDroidDriver").newInstance()
-        DriverManager.getConnection("jdbc:sqlite:$databasePath")
+        OpenedDatabase(DriverManager.getConnection("jdbc:sqlite:$databasePath"), usingSqlDroid = true)
     } else {
         // Xerial resolves libsqlitejdbc.so through System.loadLibrary, which finds the copy the
         // installer unpacked from jniLibs into nativeLibraryDir. Its own extract-to-tmp fallback
         // cannot work here: Android blocks dlopen from app-writable storage for targetSdk 29+.
         Class.forName("org.sqlite.JDBC").newInstance()
-        DriverManager.getConnection("jdbc:sqlite:$databasePath")
+        OpenedDatabase(DriverManager.getConnection("jdbc:sqlite:$databasePath"), usingSqlDroid = false)
     }
+}
+
+/**
+ * jOOQ settings matching the driver actually in use.
+ *
+ * STATIC_STATEMENT and fetchWarnings=false are SQLDroid workarounds — its JDBC surface has an
+ * incomplete PreparedStatement and no usable getWarnings(). STATIC_STATEMENT inlines every bind
+ * value into the SQL text, which means SQLite re-parses and re-compiles each statement instead of
+ * reusing a prepared one. That is a real per-query cost, and it lands hardest on exactly the old
+ * hardware that now runs Xerial — which has neither limitation. So the workarounds apply only
+ * where they are needed.
+ */
+private fun settingsFor(usingSqlDroid: Boolean): Settings = when {
+    usingSqlDroid -> Settings()
+        .withFetchWarnings(false)
+        .withStatementType(StatementType.STATIC_STATEMENT)
+    else -> Settings()
 }
 
 /** The SQLite the platform itself provides, or null if it cannot be determined. */
@@ -103,13 +122,10 @@ class AndroidAppDatabase(
         // regardless of which driver ends up reading the file afterwards.
         val databasePath = SQLiteAssetHelper(context, "tr.sqlite", null, 14).writableDatabase.path
 
-        connection = openConnection(databasePath)
+        val opened = openConnection(databasePath)
+        connection = opened.connection
 
-        val settings = Settings()
-            .withFetchWarnings(false) // This is the key fix
-            .withStatementType(StatementType.STATIC_STATEMENT) // Forces inlined SQL
-
-        dsl = DSL.using(connection, SQLDialect.SQLITE, settings)
+        dsl = DSL.using(connection, SQLDialect.SQLITE, settingsFor(opened.usingSqlDroid))
 
         try {
             context.assets.open("databases/CreateAppDb.sql").use {

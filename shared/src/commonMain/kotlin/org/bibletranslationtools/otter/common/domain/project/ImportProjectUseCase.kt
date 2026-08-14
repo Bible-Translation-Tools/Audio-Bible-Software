@@ -127,7 +127,7 @@ class ImportProjectUseCase(
                     tempFiles.tempDirectory
                 )
                 tempFile.outputStream().use { output ->
-                    input.transferTo(output)
+                    input.copyTo(output)
                 }
                 tempFile
             }

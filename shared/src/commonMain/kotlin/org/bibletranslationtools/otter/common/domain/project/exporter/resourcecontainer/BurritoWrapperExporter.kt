@@ -122,7 +122,7 @@ class BurritoWrapperExporter(
 
                             rc.accessor.getInputStream(path).use { inputStream ->
                                 targetUsfmFile.outputStream().use { outputStream ->
-                                    inputStream.transferTo(outputStream)
+                                    inputStream.copyTo(outputStream)
                                 }
                             }
                             usfmFiles.add(Pair(path, targetUsfmFile))
