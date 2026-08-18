@@ -20,7 +20,7 @@ import org.bibletranslationtools.scriptureburrito.IngredientsSchema
 import org.bibletranslationtools.scriptureburrito.LanguageSchema
 import org.bibletranslationtools.scriptureburrito.Languages
 import org.bibletranslationtools.scriptureburrito.LocalizedNamesSchema
-import org.bibletranslationtools.scriptureburrito.LocalizedText
+import org.bibletranslationtools.scriptureburrito.LocalizedName
 import org.bibletranslationtools.scriptureburrito.MetaVersionSchema
 import org.bibletranslationtools.scriptureburrito.MetadataSchema
 import org.bibletranslationtools.scriptureburrito.ScopeSchema
@@ -129,7 +129,7 @@ class BurritoWrapperExporter(
 
                             // Build localized names
                             val key = "book-${project.identifier}"
-                            localizedNames[key] = LocalizedText(
+                            localizedNames[key] = LocalizedName(
                                 short = hashMapOf(
                                     dublinCore.language.identifier to project.title
                                 )
@@ -438,7 +438,7 @@ class BurritoWrapperExporter(
                     names[key]!!.short[langCode] = it.title
                 }
             } else {
-                names[key] = LocalizedText(
+                names[key] = LocalizedName(
                     short = hashMapOf(
                         langCode to it.title
                     )

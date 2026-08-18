@@ -59,11 +59,19 @@ class Mp3Metadata(val mp3File: File, val cueFile: File) : AudioMetadata {
         if (cueFile.exists() && cueFile.length() > 0) {
             try {
                 val cuesheet = CueParser.parse(cueFile, Charsets.UTF_8)
-                if (cuesheet.title.isNotEmpty()) {
-                    title = cuesheet.title
-                }
+                // cuelib is Java: every getter here is a platform type and returns null when the
+                // field is absent. TITLE is optional in a cue sheet and the ones Orature writes
+                // alongside exported chapter audio have none, so `cuesheet.title` was null and the
+                // implicit non-null check threw before a single track was read — taking every cue
+                // with it. The catch below logged it and carried on with NO markers, so source audio
+                // simply had no verses on the waveform, with only an "Error in initializing Mp3
+                // Metadata" line to say so.
+                cuesheet.title?.takeIf { it.isNotEmpty() }?.let { title = it }
                 cuesheet.allTrackData.forEach {
-                    val label = it.title
+                    // Same for the track's own TITLE. Labels are read as verse numbers
+                    // (MarkerParsers: `^(\d+)(?:-(\d+))?$`), and a track without one is exactly the
+                    // track number it carries — TRACK 01 is verse 1.
+                    val label = it.title?.takeIf { t -> t.isNotEmpty() } ?: it.number.toString()
                     val index = it.indices.find { it.number == DEFAULT_CUE_TRACK_INDEX }
                     index?.let {
                         val position = (

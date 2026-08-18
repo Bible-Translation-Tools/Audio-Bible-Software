@@ -1,10 +1,12 @@
 package org.bibletranslationtools.scriptureburrito
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 
 @Serializable
 enum class MetaVersionSchema(private val value: String) {
+    @SerialName("1.0.0")
     _1_0_0("1.0.0");
 
     override fun toString(): String {

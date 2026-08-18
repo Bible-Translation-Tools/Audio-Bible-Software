@@ -100,7 +100,9 @@ class TypesetScriptureSchema: FlavorSchema() {
 
 
     enum class ColorSpace(private val value: String) {
+        @SerialName("cmyk")
         CMYK("cmyk"),
+        @SerialName("rgb")
         RGB("rgb");
 
         override fun toString(): String {
@@ -129,7 +131,9 @@ class TypesetScriptureSchema: FlavorSchema() {
     }
 
     enum class Orientation(private val value: String) {
+        @SerialName("portrait")
         PORTRAIT("portrait"),
+        @SerialName("landscape")
         LANDSCAPE("landscape");
 
         override fun toString(): String {

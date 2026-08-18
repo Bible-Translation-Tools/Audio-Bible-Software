@@ -9,7 +9,7 @@ import org.bibletranslationtools.scriptureburrito.IngredientsSchema
 import org.bibletranslationtools.scriptureburrito.LanguageSchema
 import org.bibletranslationtools.scriptureburrito.Languages
 import org.bibletranslationtools.scriptureburrito.LocalizedNamesSchema
-import org.bibletranslationtools.scriptureburrito.LocalizedText
+import org.bibletranslationtools.scriptureburrito.LocalizedName
 import org.bibletranslationtools.scriptureburrito.MetaVersionSchema
 import org.bibletranslationtools.scriptureburrito.MetadataSchema
 import org.bibletranslationtools.scriptureburrito.ScopeSchema
@@ -272,7 +272,7 @@ class ScriptureBurritoUtils(
                     names[key]!!.short[langCode] = it.title
                 }
             } else {
-                names[key] = LocalizedText(
+                names[key] = LocalizedName(
                     short = hashMapOf(
                         langCode to it.title
                     )

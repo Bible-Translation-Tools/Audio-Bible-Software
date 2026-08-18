@@ -19,7 +19,7 @@ import org.bibletranslationtools.scriptureburrito.flavor.scripture.audio.Formats
  */
 
 object LocalizedNamesSchemaSerializer : KSerializer<LocalizedNamesSchema> {
-    private val delegate = MapSerializer(String.serializer(), LocalizedText.serializer())
+    private val delegate = MapSerializer(String.serializer(), LocalizedName.serializer())
     override val descriptor: SerialDescriptor = delegate.descriptor
     override fun serialize(encoder: Encoder, value: LocalizedNamesSchema) = delegate.serialize(encoder, value)
     override fun deserialize(decoder: Decoder): LocalizedNamesSchema =

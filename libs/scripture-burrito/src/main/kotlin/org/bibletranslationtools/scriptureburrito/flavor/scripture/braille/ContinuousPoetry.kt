@@ -44,8 +44,11 @@ class ContinuousPoetry {
     }
 
     enum class LineIndicatorSpaced(private val value: String) {
+        @SerialName("never")
         NEVER("never"),
+        @SerialName("always")
         ALWAYS("always"),
+        @SerialName("sometimes")
         SOMETIMES("sometimes");
 
         override fun toString(): String {

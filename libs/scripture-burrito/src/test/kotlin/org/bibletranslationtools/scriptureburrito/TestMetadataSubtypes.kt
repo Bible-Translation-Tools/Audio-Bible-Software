@@ -87,7 +87,7 @@ class TestMetadataSubtypes {
             dateCreated = Date.from(Instant.now()),
             version = MetaVersionSchema._1_0_0,
             defaultLocale = "en",
-            templateName = LocalizedText(short = hashMapOf("en" to "testTemplate")),
+            templateName = hashMapOf("en" to "testTemplate"),
             generator = SoftwareAndUserInfoSchema().apply {
                 softwareName = "test"
                 softwareVersion = "1.0.0"

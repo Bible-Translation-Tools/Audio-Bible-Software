@@ -61,11 +61,17 @@ class TextTranslationSchema: FlavorSchema() {
     }
 
     enum class Audience(private val value: String) {
+        @SerialName("basic")
         BASIC("basic"),
+        @SerialName("common")
         COMMON("common"),
+        @SerialName("common-literary")
         COMMON_LITERARY("common-literary"),
+        @SerialName("literary")
         LITERARY("literary"),
+        @SerialName("liturgical")
         LITURGICAL("liturgical"),
+        @SerialName("children")
         CHILDREN("children");
 
         override fun toString(): String {
@@ -94,13 +100,21 @@ class TextTranslationSchema: FlavorSchema() {
     }
 
     enum class ProjectType(private val value: String) {
+        @SerialName("standard")
         STANDARD("standard"),
+        @SerialName("daughter")
         DAUGHTER("daughter"),
+        @SerialName("studyBible")
         STUDY_BIBLE("studyBible"),
+        @SerialName("studyBibleAdditions")
         STUDY_BIBLE_ADDITIONS("studyBibleAdditions"),
+        @SerialName("backTranslation")
         BACK_TRANSLATION("backTranslation"),
+        @SerialName("auxiliary")
         AUXILIARY("auxiliary"),
+        @SerialName("transliterationManual")
         TRANSLITERATION_MANUAL("transliterationManual"),
+        @SerialName("transliterationWithEncoder")
         TRANSLITERATION_WITH_ENCODER("transliterationWithEncoder");
 
         override fun toString(): String {
@@ -129,9 +143,13 @@ class TextTranslationSchema: FlavorSchema() {
     }
 
     enum class TranslationType(private val value: String) {
+        @SerialName("firstTranslation")
         FIRST_TRANSLATION("firstTranslation"),
+        @SerialName("newTranslation")
         NEW_TRANSLATION("newTranslation"),
+        @SerialName("revision")
         REVISION("revision"),
+        @SerialName("studyOrHelpMaterial")
         STUDY_OR_HELP_MATERIAL("studyOrHelpMaterial");
 
         override fun toString(): String {

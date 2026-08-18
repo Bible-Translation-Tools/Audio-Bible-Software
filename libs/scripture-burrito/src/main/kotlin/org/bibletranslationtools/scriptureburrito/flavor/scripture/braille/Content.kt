@@ -88,7 +88,9 @@ class Content {
     }
 
     enum class ChapterNumberStyle(private val value: String) {
+        @SerialName("upper")
         UPPER("upper"),
+        @SerialName("lower")
         LOWER("lower");
 
         override fun toString(): String {

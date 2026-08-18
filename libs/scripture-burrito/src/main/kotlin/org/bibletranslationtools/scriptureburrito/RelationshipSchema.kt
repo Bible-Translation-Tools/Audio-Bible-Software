@@ -26,10 +26,15 @@ class RelationshipSchema {
     var variant: String? = null
 
     enum class RelationType(private val value: String) {
+        @SerialName("source")
         SOURCE("source"),
+        @SerialName("target")
         TARGET("target"),
+        @SerialName("expression")
         EXPRESSION("expression"),
+        @SerialName("parascriptural")
         PARASCRIPTURAL("parascriptural"),
+        @SerialName("peripheral")
         PERIPHERAL("peripheral");
 
         override fun toString(): String {

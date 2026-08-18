@@ -36,7 +36,7 @@ import org.wycliffeassociates.resourcecontainer.entity.Project
 import java.io.File
 import java.text.SimpleDateFormat
 import java.time.LocalDateTime
-import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.*
 import java.util.zip.ZipFile
@@ -440,6 +440,13 @@ open class BurritoToResourceContainerConverter(
             }
         }
 
+        // See filterAcceptedAudioFormats: an empty chapter recording contributes nothing and only
+        // throws on decode. A chapter with no audio is a chapter Orature simply shows as unrecorded.
+        if (tempAudioFile.length() == 0L) {
+            logger.warn("Skipping empty audio ingredient (0 bytes on extraction): $audioFile")
+            return emptyList()
+        }
+
         // Process timing if available
         val timing = findMatchingTimingFile(audioFile, ingredients, inputAccessor)
         timing?.let {
@@ -623,6 +630,13 @@ open class BurritoToResourceContainerConverter(
                 timingFile,
                 inputAccessor
             )
+            // Second line of defence behind the declared-size filter in filterAcceptedAudioFormats:
+            // an ingredient can claim a size it does not have. Decoding nothing throws, and the
+            // throw would take the whole book down rather than this one file.
+            if (tempAudio.length() == 0L) {
+                logger.warn("Skipping empty audio ingredient (0 bytes on extraction): $audioFile")
+                continue
+            }
             val audioSections = getRelevantAudioSections(chapter, tempAudio, audioFile, tempTiming)
             relevantSections[tempAudio] = audioSections
         }
@@ -946,20 +960,34 @@ internal fun dublinCoreFromBurrito(burrito: MetadataSchema): DublinCore {
     )
 }
 
+/**
+ * The burrito's creation date, as the `issued` field of the generated manifest.
+ *
+ * Rendered in UTC, which is the zone the date was read in. This used to use
+ * `ZoneId.systemDefault()`, so the answer depended on where the import happened: the inner burritos
+ * of a wrapper carry a bare `2026-06-05`, that reads as midnight UTC, and rendering midnight UTC
+ * anywhere west of Greenwich moves it back a day — the same file imported in New York produced
+ * `issued: 2026-06-04` and in Tokyo `2026-06-05`.
+ */
 internal fun getCreationDateFromBurrito(burrito: MetadataSchema): String {
     return burrito
         .meta
         .dateCreated
         .toInstant()
-        .atZone(ZoneId.systemDefault())
-        .toLocalDateTime()
+        .atZone(ZoneOffset.UTC)
+        .toLocalDate()
         .format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
-        .toString()
 }
 
 internal fun getCreatorFromBurrito(burrito: MetadataSchema): String {
     val defaultLocale = burrito.meta.defaultLocale
-    val rightsHolder = burrito.agencies.find { it.roles.contains(Role.RIGHTS_HOLDER) }?.name?.short?.getOrDefault(defaultLocale, "")
+    // `agency.name` is a localizedText — one string per language tag — so the name is read straight
+    // out of it. It used to go through `.short`, which belongs to localizedName and was therefore
+    // never populated for an agency: this returned null for every burrito ever imported and the
+    // generated manifest always said `creator: "unknown"`.
+    val rightsHolder = burrito.agencies
+        .find { it.roles.contains(Role.RIGHTS_HOLDER) }
+        ?.name?.getOrDefault(defaultLocale, "")
     return if (!rightsHolder.isNullOrEmpty()) {
         rightsHolder
     } else {
@@ -1069,15 +1097,25 @@ internal fun findMatchingTimingFile(
 internal fun filterAcceptedAudioFormats(
     burrito: MetadataSchema, ingedientsByBook: IngredientsByBook
 ): IngredientsByBook {
+    val logger = LoggerFactory.getLogger("filterAcceptedAudioFormats")
     val accepted = HashMap<String, List<Pair<String, IngredientSchema>>>()
     ingedientsByBook.forEach { (book, ingredients) ->
         accepted[book] = ingredients.filter { (filename, ingredient) ->
-            ingredient.mimeType in listOf(
+            val acceptedType = ingredient.mimeType in listOf(
                 "audio/mpeg",
                 "audio/wav",
                 "application/x-cue"
-            ) ||
-                    ingredient.role == "timing"
+            ) || ingredient.role == "timing"
+
+            // An ingredient the burrito itself declares as empty. Real exports contain these — a
+            // recording that was never made, or was cleared — and there is nothing to decode: the
+            // mp3 reader hits BitStreamEOF on the first frame. That aborted the ENTIRE import, so
+            // one empty file made a twenty-thousand-file burrito unimportable. The rest of the
+            // chapter is still perfectly good, so drop just this ingredient and carry on.
+            val isEmpty = acceptedType && (ingredient.size ?: 0) <= 0
+            if (isEmpty) logger.warn("Skipping empty ingredient (declared size 0): $book/$filename")
+
+            acceptedType && !isEmpty
         }
     }
     return accepted

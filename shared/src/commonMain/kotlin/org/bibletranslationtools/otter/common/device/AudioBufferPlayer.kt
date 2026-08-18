@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.atomic.AtomicLong
+import org.slf4j.LoggerFactory
 
 class AudioBufferPlayer(
     sink: AudioSink,
@@ -422,9 +423,21 @@ class AudioBufferPlayer(
                 // Never forward: the play cursor cannot legitimately be past what was written, and if a
                 // device ever claims otherwise, skipping content is the one outcome worth ruling out.
                 val resumeFrom = audible.coerceIn(0L, currentReader.framePosition.toLong())
-                currentReader.seek(resumeFrom)
-                lastKnownLocationInFrames = resumeFrom
-                sessionStartFrame = resumeFrom
+                // Best effort. Putting the reader back over the flushed queue refines where a resume
+                // starts; it is not what makes the pause happen. A reader that cannot be seeked (a
+                // closed one throws "Tried to seek before opening file") must therefore not be able
+                // to abort this call — `connect()` pauses before every load, so a throw here stopped
+                // the transport of every connection, permanently, until the app was restarted.
+                val seeked = runCatching { currentReader.seek(resumeFrom) }
+                    .onFailure {
+                        LoggerFactory.getLogger(AudioBufferPlayer::class.java)
+                            .warn("Could not reposition the reader on pause; resuming from the last known frame", it)
+                    }
+                    .isSuccess
+                if (seeked) {
+                    lastKnownLocationInFrames = resumeFrom
+                    sessionStartFrame = resumeFrom
+                }
             } else {
                 // At a stretched rate the reader's position is NOT the write cursor — the loop rewinds it
                 // by `processor.overlap` for WSOLA's sliding window — so there is no honest way to say how
@@ -499,12 +512,28 @@ class AudioBufferPlayer(
     // reader-side write cursor while diagnosing waveform-scroll stutter.
     fun debugSinkFramePosition(): Long = _sink.framePosition
 
-    fun release() = runBlocking {
+    /**
+     * Stops playback and lets go of the current take. Deliberately does NOT close the sink.
+     *
+     * The sink is the audio system's, not the worker's: it is created by the hardware provider and
+     * owned by [AudioPlayerConnectionFactory], which is the only thing that may open, swap or close
+     * it. The worker is handed one to write into.
+     *
+     * It used to close it here, and because this is reachable from a per-screen
+     * [AudioPlayerConnection], leaving one screen for another closed the shared output device — after
+     * the incoming screen had already opened it, since navigation constructs the new screen before
+     * clearing the old one. Playback then did nothing, on every screen, until the app was restarted.
+     * Closing the line is a decision about the audio *configuration*; a screen going away is not one.
+     */
+    fun release() = runBlocking { releaseContent() }
+
+    /** [release] for callers already inside a coroutine. */
+    suspend fun releaseContent() {
         mutex.withLock {
             endSession()
             playbackJob?.cancel()
             reader?.close()
-            _sink.close()
+            reader = null
             sinkHoldsOurAudio = false
         }
     }
