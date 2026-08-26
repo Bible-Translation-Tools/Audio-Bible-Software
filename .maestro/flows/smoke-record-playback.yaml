@@ -12,10 +12,14 @@ appId: org.bibletranslationtools.recorder2
 - extendedWaitUntil:
     visible: "Record transport"
     timeout: 3000
-# loadTarget is async; wait for header labels before engaging mic.
+# loadTarget is async and does real work before the header can render: it walks every chapter of
+# the book (all 50 of Genesis) and loads each one's chunks, then sets sourceLabel/bookLabel. The
+# static "Record transport" above paints immediately; this header lags behind that IO, and 3s is not
+# enough on the CI emulator (it is on desktop). Give it room, matching the generous waits the rest of
+# the suite uses — a real empty-header regression still fails, just later.
 - extendedWaitUntil:
     visible: ".*Genesis.*|.*ULB.*"
-    timeout: 3000
+    timeout: 60000
 
 - tapOn: "Record transport"
 
