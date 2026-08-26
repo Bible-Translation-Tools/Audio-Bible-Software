@@ -218,3 +218,7 @@ tasks.withType<JavaExec>().configureEach {
         jvmArgs("-Xdock:name=BTT-Recorder")
     }
 }
+
+// Guards against calling java.*/javax.* APIs newer than minSdk — the class of bug that
+// compiles and dexes cleanly and then throws NoSuchMethodError on an Android 7 device.
+apply(from = rootProject.file("gradle/android-api-level-check.gradle.kts"))

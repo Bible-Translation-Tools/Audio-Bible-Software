@@ -1,0 +1,8 @@
+# Calls to java.*/javax.* APIs newer than minSdk that are deliberately safe.
+#
+# One `owner.name+descriptor` per line, exactly as checkAndroidApiLevel reports it, e.g.
+#   java/io/InputStream.transferTo(Ljava/io/OutputStream;)J
+#
+# Only add an entry when the call is genuinely guarded — a Build.VERSION.SDK_INT branch, or a code
+# path that cannot run on an old device — and say which, here, next to it. An unexplained entry is
+# indistinguishable from the bug this check exists to catch.

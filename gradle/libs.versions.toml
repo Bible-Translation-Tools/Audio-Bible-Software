@@ -75,6 +75,11 @@ mockito = { group = "org.mockito", name = "mockito-core", version.ref = "mockito
 mockito-kotlin = { group = "com.nhaarman.mockitokotlin2", name = "mockito-kotlin", version.ref = "mockito-kotlin" }
 datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences-core", version.ref = "datastore" }
 desugar-jdk-libs-nio = { group = "com.android.tools", name = "desugar_jdk_libs_nio", version.ref = "desugar" }
+# Read by checkAndroidApiLevel only: carries META-INF/desugar/d8/desugar.json, the spec listing
+# which methods D8 RETARGETS (java.io.File#toPath, java.util.Date#toInstant, ...). Those are
+# available at minSdk but live on classes that are not themselves backported, so nothing in the
+# runtime artifact reveals them.
+desugar-jdk-libs-configuration-nio = { group = "com.android.tools", name = "desugar_jdk_libs_configuration_nio", version.ref = "desugar" }
 # Used by the vendored libraries under libs/ — see libs/README.md.
 guava = { group = "com.google.guava", name = "guava", version.ref = "guava" }
 junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version.ref = "junitJupiter" }
