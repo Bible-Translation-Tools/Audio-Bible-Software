@@ -37,5 +37,5 @@ dependencies {
     // Dropped from the original build, neither is referenced by any source file here:
     //   org.slf4j:slf4j-api:2.0.13
     //   org.json:json:20180813
-    testImplementation(libs.junit)
+    testImplementation(libs.junit4)
 }

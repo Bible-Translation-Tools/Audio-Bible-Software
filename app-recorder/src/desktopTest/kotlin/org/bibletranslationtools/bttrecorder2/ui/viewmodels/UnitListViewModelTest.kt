@@ -64,6 +64,15 @@ import kotlin.test.assertTrue
  * `getAllTakes()`/`getSelectedTake()` would assert only that the stubs were returned.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
+/**
+ * desktopTest, not commonTest: the failure-path tests resolve a localized message with Compose's
+ * `getString(Res.string.*)`, both in the ViewModel and in the assertion. That reads the device
+ * locale via `Resources.getSystem()`, which a plain Android unit test (no Robolectric) leaves
+ * unmocked — so on `testDebugUnitTest` these three throw "Method getSystem in ... not mocked".
+ * The ViewModel is commonMain, so the JVM run here exercises the same code; moving the whole class
+ * keeps it cohesive rather than splitting three cases out. (Distinct reason from
+ * OraturePluginStoreSelectionTest, which is desktop-only because the feature itself is.)
+ */
 class UnitListViewModelTest : KoinTest {
 
     private val workbookRepository: IWorkbookRepository = mockk()

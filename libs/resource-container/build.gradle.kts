@@ -33,6 +33,6 @@ dependencies {
     //
     // Dropped from the original build: org.json:json:20180813 was declared but no source file
     // references it.
-    testImplementation(libs.junit)
+    testImplementation(libs.junit4)
     testImplementation(libs.kotlinx.serialization.json)
 }

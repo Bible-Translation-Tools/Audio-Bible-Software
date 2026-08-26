@@ -20,6 +20,12 @@ import kotlin.test.assertNull
  *
  * Round-trips through the real JSON file so the id/capability matching is tested against what
  * `save` actually wrote, not against a hand-built registry.
+ *
+ * desktopTest, not commonTest: `selected()` short-circuits to null unless `canLaunchPlugins()` is
+ * true, which it only is on desktop (external editors are a desktop-only feature — see
+ * PluginLauncher.android.kt, where it is false). Run on Android these assertions fail with
+ * `expected:<1> but was:<null>`, because there `selected()` is correctly returning null for a
+ * capability the platform cannot provide at all.
  */
 class OraturePluginStoreSelectionTest : KoinTest {
 

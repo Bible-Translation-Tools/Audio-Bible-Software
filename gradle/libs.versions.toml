@@ -36,6 +36,7 @@ datastore = "1.2.1"
 # MethodHandle.invoke, which D8 cannot dex below API 26 — the same failure mode tika-core has.
 # -android dexes clean at 24 and is equally valid on the desktop JVM.
 guava = "33.1.0-android"
+junit4 = "4.13.2"
 junitJupiter = "5.11.4"
 junitPlatform = "1.11.4"
 # kotlinx-serialization + kaml (YAML). 1.9.0 is what kaml 0.104 builds against; keeping them
@@ -82,6 +83,10 @@ desugar-jdk-libs-nio = { group = "com.android.tools", name = "desugar_jdk_libs_n
 desugar-jdk-libs-configuration-nio = { group = "com.android.tools", name = "desugar_jdk_libs_configuration_nio", version.ref = "desugar" }
 # Used by the vendored libraries under libs/ — see libs/README.md.
 guava = { group = "com.google.guava", name = "guava", version.ref = "guava" }
+# JUnit 4, for the vendored libraries whose tests use the raw org.junit.* APIs
+# (resource-container) rather than JUnit 5. Distinct from the junit-jupiter/junit-platform 5.x
+# entries below.
+junit4 = { module = "junit:junit", version.ref = "junit4" }
 junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version.ref = "junitJupiter" }
 # Gradle 9 no longer puts the launcher on the test runtime classpath implicitly; without it a
 # useJUnitPlatform() task fails with "Failed to load JUnit Platform".
