@@ -16,6 +16,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.fail
+import kotlinx.coroutines.runBlocking
 
 /**
  * Drives the real audio transport — [AudioBufferPlayer], [AudioPlayerConnectionFactory] and
@@ -267,7 +268,7 @@ class AudioTransportHarness internal constructor(
 
     internal fun shutdown() {
         recorder.cancel()
-        worker.release()
+        runBlocking { factory.shutdown() }
         scope.cancel()
     }
 

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
@@ -29,6 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -80,7 +82,20 @@ fun OratureTeleprompter(
     modifier: Modifier = Modifier
 ) {
     val lastVerseIndex = verses.lastOrNull { !it.isTitle }?.index
+    val listState = rememberLazyListState()
+
+    // Follow the row that owns the primary action, so a narrator can record a whole chapter without
+    // chasing the button down the page (JVM: TeleprompterView scrolled to the active verse on every
+    // change). Pressing Next hands the action to the next row and this brings it back to the same
+    // place, which means the button lands under the pointer that just clicked it — rows put their
+    // buttons at the TOP, so a fixed row top is a fixed button position however long the verse text.
+    val activeIndex = verses.indexOfFirst { it.state in ACTIVE_ITEM_STATES }.takeIf { it >= 0 }
+    LaunchedEffect(activeIndex) {
+        if (activeIndex != null) listState.animateScrollToItem(activeIndex)
+    }
+
     LazyColumn(
+        state = listState,
         modifier = modifier.fillMaxSize().background(OratureColors.Foreground),
         contentPadding = PaddingValues(vertical = 8.dp)
     ) {
@@ -96,6 +111,26 @@ fun OratureTeleprompter(
         }
     }
 }
+
+/**
+ * The states in which a row owns the record/next/save action — see [VerseButtons], where exactly
+ * these render a Record, or a Pause/Resume paired with Next/Save.
+ *
+ * PLAYING is deliberately absent, and it is the one that matters: playing back a finished verse
+ * must not drag the page off the verse being recorded. The JVM got there differently, switching an
+ * `autoScrollProperty` off in `play(verseIndex)` and back on when playback paused; keying off which
+ * row holds the action needs no flag to keep in sync, and RECORD_AGAIN_ACTIVE means re-recording a
+ * verse further up scrolls to it for free.
+ */
+private val ACTIVE_ITEM_STATES = setOf(
+    TeleprompterItemState.BEGIN_RECORDING,
+    TeleprompterItemState.RECORD,
+    TeleprompterItemState.RECORD_ACTIVE,
+    TeleprompterItemState.RECORDING_PAUSED,
+    TeleprompterItemState.PLAYING_WHILE_RECORDING_PAUSED,
+    TeleprompterItemState.RECORD_AGAIN_ACTIVE,
+    TeleprompterItemState.RECORD_AGAIN_PAUSED
+)
 
 @Composable
 private fun VerseRow(

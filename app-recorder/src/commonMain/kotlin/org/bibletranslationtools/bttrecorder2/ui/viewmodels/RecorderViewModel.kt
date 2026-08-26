@@ -29,6 +29,7 @@ import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.shared.audio.engine.SourceAudioPlayerController
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
+import org.bibletranslationtools.otter.common.device.AudioRecorderConnection
 import org.bibletranslationtools.otter.common.device.AudioRecorderConnectionFactory
 import org.bibletranslationtools.otter.common.device.AudioSpec
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
@@ -54,6 +55,20 @@ class RecorderViewModel(
 
     private val sourceAudioController = SourceAudioPlayerController(
         factory = audioPlayerFactory,
+        scope = viewModelScope
+    )
+
+    /**
+     * This screen's claim on the microphone.
+     *
+     * Goes through a connection rather than [AudioRecorderConnectionFactory.getRecorderWorker] so the
+     * hardware has one owner across both apps: the factory arbitrates by id, and this screen's teardown
+     * can no longer release a microphone that the playback page's insert has already taken over — the
+     * two overlap for the length of a navigation transition.
+     */
+    private val recorder = AudioRecorderConnection(
+        id = RECORDER_ID,
+        factory = audioRecorderFactory,
         scope = viewModelScope
     )
 
@@ -350,10 +365,8 @@ class RecorderViewModel(
     }
 
     fun initializeAudio(width: Int) {
-        val recorder = audioRecorderFactory.getRecorderWorker()
-
         val renderer = ActiveRecordingRenderer(
-            recorder.audioStream,
+            recorder.getAudioStream(),
             isRecording,
             width,
             10,
@@ -369,7 +382,9 @@ class RecorderViewModel(
                 try {
                     // Keep the recorder running while the screen is visible so the
                     // volume meter shows live mic input even before recording starts.
-                    recorder.start(captureSpec)
+                    // startAndJoin, not start: a device that will not open has to reach the banner
+                    // below rather than vanish into a launched coroutine.
+                    recorder.startAndJoin(captureSpec)
                     recorderInitialized = true
                     _audioError.value = null
                 } catch (e: Exception) {
@@ -380,7 +395,7 @@ class RecorderViewModel(
         }
 
         if (currentTempAudioFile == null) {
-            setupTempWriter(recorder.audioStream)
+            setupTempWriter(recorder.getAudioStream())
         }
     }
 
@@ -424,7 +439,7 @@ class RecorderViewModel(
         wavFileWriter?.start()
         launchLogged(Dispatchers.IO) {
             try {
-                audioRecorderFactory.getRecorderWorker().start(captureSpec)
+                recorder.startAndJoin(captureSpec)
                 withContext(Dispatchers.Main) {
                     _audioError.value = null
                 }
@@ -459,7 +474,7 @@ class RecorderViewModel(
         wavFileWriter?.start()
         launchLogged(Dispatchers.IO) {
             try {
-                audioRecorderFactory.getRecorderWorker().start(captureSpec)
+                recorder.startAndJoin(captureSpec)
                 withContext(Dispatchers.Main) {
                     _isRecording.value = true
                     _recordingState.value = RecordingUiState.Recording
@@ -612,8 +627,7 @@ class RecorderViewModel(
         _volumeLevel.value = 0f
 
         wavFileWriter?.pause()
-        val recorder = audioRecorderFactory.getRecorderWorker()
-        setupTempWriter(recorder.audioStream)
+        setupTempWriter(recorder.getAudioStream())
         _waveformRenderer.value?.clearData()
         updateNavigationAvailability()
     }
@@ -636,12 +650,11 @@ class RecorderViewModel(
 
     private fun startVolumeMonitor() {
         if (volumeTickerJob?.isActive == true) return
-        val recorder = audioRecorderFactory.getRecorderWorker()
         // Read raw audio bytes from the SharedFlow and compute peak amplitude per packet.
         // SharedFlow allows multiple collectors, so this runs alongside the renderer and writer.
         volumeTickerJob = launchLogged(Dispatchers.IO) {
             try {
-                recorder.audioStream.collect { bytes ->
+                recorder.getAudioStream().collect { bytes ->
                     var peak = 0
                     var i = 0
                     while (i + 1 < bytes.size) {
@@ -699,14 +712,18 @@ class RecorderViewModel(
         volumeTickerJob?.cancel()
         recorderJob?.cancel()
         sourceAudioController.release()
-        launchLogged {
-            try {
-                audioRecorderFactory.getRecorderWorker().stop()
-            } catch (e: Exception) {
-                logFailure("stopping the recorder worker during cleanup", e)
-            }
-        }
+        // Runs from `onDispose`, with the ViewModel cleared moments later — so the release must not be
+        // launched on viewModelScope, where it was cancelled part-way through and left the capture line
+        // open for Windows to refuse on the next visit. The connection's stop() owns that: released on a
+        // scope that outlives this screen, and skipped entirely if another connection already took the
+        // microphone over.
+        recorder.stop()
         currentTempAudioFile?.delete()
         recorderInitialized = false
+    }
+
+    private companion object {
+        /** This screen's connection id. Distinct from `InsertRecorder`'s, which competes for the mic. */
+        const val RECORDER_ID = 80_010
     }
 }

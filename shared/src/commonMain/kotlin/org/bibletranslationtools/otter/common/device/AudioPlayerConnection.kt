@@ -6,6 +6,8 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import org.slf4j.LoggerFactory
 
 class AudioPlayerConnection(
     private val id: Int,
@@ -77,7 +79,11 @@ class AudioPlayerConnection(
     }
 
     override fun play() {
-        val reader = _reader ?: return
+        val reader = _reader ?: run {
+            LoggerFactory.getLogger(AudioPlayerConnection::class.java)
+                .warn("play() on connection $id with no reader loaded; nothing to play")
+            return
+        }
         playRequested = true
         launchControl {
             // Rewind a finished take BEFORE connecting, not after.
@@ -295,15 +301,45 @@ class AudioPlayerConnection(
             throw e
         } catch (e: Throwable) {
             // One failed control call must not stall the ones queued behind it: this job still completes,
-            // so the next in the chain proceeds.
+            // so the next in the chain proceeds. But it must not vanish either — every transport call
+            // goes through here, so a throw from `connect()` (opening the device, loading the take)
+            // was the transport simply not happening, with nothing logged anywhere to say why.
+            LoggerFactory.getLogger(AudioPlayerConnection::class.java)
+                .error("Audio control call failed on connection $id; transport did not happen", e)
         }
     }
 
+    /**
+     * Gives up this connection's own resources. It must NOT tear down the worker or the sink: those
+     * are app-scoped singletons shared by every screen, and this is called from a ViewModel's
+     * `onCleared`.
+     *
+     * It used to call `worker.release()`, which closes the hardware line. Leaving one screen for
+     * another therefore closed the output device out from under the screen taking over — and
+     * because the replacement's `load()` (which opens the line) runs BEFORE the outgoing
+     * ViewModel is cleared, the close landed after the open and nothing reopened it. Play then did
+     * nothing at all, on that screen and on every screen after it, until the app was restarted.
+     *
+     * Stopping the audio is still right when the content being torn down is what is actually
+     * playing, so that leaving a screen silences it. That is a question about the loaded READER,
+     * not about the connection id: the screens use fixed ids, so the outgoing connection and its
+     * replacement share one and the id alone would also match the take that just took over.
+     */
     override fun release() {
-        if (factory.isActiveConnection(id)) {
-            factory.getPlayerWorker().release()
+        if (factory.isActiveConnection(id) && factory.holdsReader(_reader)) {
+            // Ours is the take the audio system is holding, so the audio system is what lets go of
+            // it — stopping playback, closing the reader and forgetting it, as one step under its
+            // own lock. Closing `_reader` here instead would pull it out from under the worker,
+            // which still uses it on the next connect().
+            //
+            // Blocking, as the `worker.release()` this replaced already was: the caller is
+            // `onCleared`, whose scope is being cancelled, so anything merely launched would never
+            // run. Bounded by the sink's buffer depth (50ms) — see AudioBufferPlayer.pause.
+            runBlocking { factory.releaseLoadedContent() }
+        } else {
+            // Never handed over (or already superseded): ours alone to close.
+            _reader?.release()
         }
-        _reader?.release()
         _reader = null
     }
 }

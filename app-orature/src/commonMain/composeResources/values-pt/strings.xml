@@ -200,7 +200,7 @@
     <string name="compileChapterMessage">Compilando áudio para %1$s %2$s...</string>
     <string name="bookNameImportTitle">%1$s Importação</string>
     <string name="bookNameExportTitle">%1$s Exportar</string>
-    <string name="estimatedFileSize">Estimated File Size\: %1$s</string>
+    <string name="estimatedFileSize">Estimated File Size\: %1$s MB</string>
     <string name="importConflictDescription">Houve um conflito ao importar os capítulos %1$s de %2$s. Selecione uma opção abaixo para terminar a importação do seu projeto.</string>
     <string name="keepOriginal">Manter o Original</string>
     <string name="keepOriginalDescription">Mantenha os arquivos originais em seu computador e remova os novos arquivos conflitantes.</string>

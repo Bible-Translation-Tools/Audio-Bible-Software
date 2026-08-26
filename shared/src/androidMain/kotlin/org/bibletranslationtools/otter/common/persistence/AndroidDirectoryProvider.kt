@@ -2,13 +2,12 @@ package org.bibletranslationtools.otter.common.persistence
 
 import android.content.Context
 import org.bibletranslationtools.otter.common.io.zip.AndroidZipFileReader
+import org.bibletranslationtools.otter.common.io.zip.AndroidZipFileWriter
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.api.io.zip.IFileReader
 import org.bibletranslationtools.otter.common.api.io.zip.IFileWriter
 import org.bibletranslationtools.otter.common.io.zip.NioDirectoryFileReader
-import org.bibletranslationtools.otter.common.io.zip.NioZipFileReader
-import org.bibletranslationtools.otter.common.io.zip.NioZipFileWriter
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.data.OratureFileFormat
 import org.bibletranslationtools.otter.common.data.primitives.ContainerType
@@ -146,7 +145,10 @@ class AndroidDirectoryProvider(val context: Context): IDirectoryProvider {
         return path
     }
 
-    override fun newFileWriter(file: File) = NioZipFileWriter(file)
+    // Not NioZipFileWriter: Android has no zip FileSystemProvider at any API level, so its
+    // FileSystems.newFileSystem("jar:file:...") throws ProviderNotFoundException. See
+    // AndroidZipFileWriter. The reader below has been on the java.util.zip path already.
+    override fun newFileWriter(file: File): IFileWriter = AndroidZipFileWriter(file)
 
     override fun newFileReader(file: File): IFileReader {
         if (!file.exists()) throw FileNotFoundException("File ${file.absolutePath} does not exist.")

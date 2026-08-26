@@ -18,7 +18,6 @@
  */
 package org.bibletranslationtools.otter.common.domain.narration
 
-import com.fasterxml.jackson.annotation.JsonAutoDetect
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.audio.AudioFile
 import org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio
@@ -31,7 +30,6 @@ import kotlin.math.absoluteValue
  * To perform a narration action,
  * and provide undo/redo functionality
  */
-@JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.ANY)
 internal interface NarrationAction {
     fun execute(totalVerses: MutableList<VerseNode>, workingAudio: AudioFile)
     fun undo(totalVerses: MutableList<VerseNode>)

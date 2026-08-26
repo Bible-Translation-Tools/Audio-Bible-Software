@@ -18,9 +18,12 @@
  */
 package org.bibletranslationtools.otter.common.data.primitives
 
+import kotlinx.serialization.Serializable
+
 import java.util.*
 
 /** The kinds of [Content] elements */
+@Serializable
 enum class ContentType {
     /** ContentType of primary [Content] elements. */
     TEXT,

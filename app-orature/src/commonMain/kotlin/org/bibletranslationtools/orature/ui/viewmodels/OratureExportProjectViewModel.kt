@@ -77,6 +77,15 @@ class OratureExportProjectViewModel(
         ExportType.LISTEN -> audioExporter
         ExportType.SOURCE_AUDIO, ExportType.PUBLISH -> sourceExporter
         ExportType.BACKUP -> backupExporter
+        // BurritoWrapperExporter exists but is NOT bound in Koin, because it needs the same
+        // `AuthProvider` and `IAppInfo` ports that leave SourceProjectExporter unresolvable — see
+        // the note in KoinModules and `SharedGraphWiringTest.source project exporter is
+        // unresolvable while AuthProvider and IAppInfo are unbound`. Nothing in either app offers
+        // this export type yet, so this branch is unreachable; it fails loudly rather than
+        // silently exporting some other format if that changes before the ports land.
+        ExportType.BURRITO_WRAPPER -> error(
+            "Burrito wrapper export is not wired up: AuthProvider and IAppInfo are unbound."
+        )
     }
 
     private fun load() {

@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.bibletranslationtools.shared.logging.launchLogged
 
 class AudioRecorder(
     source: AudioSource,
@@ -24,11 +25,26 @@ class AudioRecorder(
     private var recordingJob: Job? = null
     private var isPaused = false
 
+    /** The most recent [releaseAsync], so the next [start] can wait for it. See [releaseAsync]. */
+    @Volatile
+    private var pendingRelease: Job? = null
+
     suspend fun setSource(newSource: AudioSource) = mutex.withLock {
         _source = newSource
     }
 
-    suspend fun start(spec: AudioSpec) = mutex.withLock {
+    suspend fun start(spec: AudioSpec) {
+        // A release scheduled by the screen this one is replacing has to land BEFORE the mic is
+        // opened again, or it lands after and closes the line out from under us — the same handover
+        // race [stop] documents, one level up. Callers only guarantee the *calls* are ordered (both
+        // happen on the UI thread, dispose before the next screen's init); this is what makes the
+        // *effects* ordered, without the caller having to suspend during teardown.
+        pendingRelease?.join()
+        pendingRelease = null
+        startLocked(spec)
+    }
+
+    private suspend fun startLocked(spec: AudioSpec) = mutex.withLock {
         this.currentSpec = spec
         if (recordingJob?.isActive == true && !isPaused) return@withLock
 
@@ -92,6 +108,32 @@ class AudioRecorder(
             _source.stop()
             _source.close()
         }
+    }
+
+    /**
+     * [stop], for a caller that is about to stop existing — screen teardown.
+     *
+     * Releasing the microphone must not depend on the caller's scope outliving the call, and from a
+     * teardown path it never does. `RecorderViewModel.cleanup()` runs from `onDispose`, and the
+     * ViewModel is cleared moments later; a `viewModelScope.launch { recorder.stop() }` there gets
+     * cancelled at its first suspension point, which is [stop]'s `cancelAndJoin` — *before*
+     * `_source.close()`. The read loop's own `finally` still stops the source, so the line is left
+     * stopped but open, and on Windows a capture line is exclusive: re-entering the record screen
+     * then failed with "cannot allocate a line supporting this configuration".
+     *
+     * It failed every *other* time for the same reason it failed at all. The visit that failed to
+     * open never started a read loop, so its teardown had no job to join, so nothing suspended and
+     * the release ran to completion synchronously — closing the leaked line and letting the visit
+     * after that succeed.
+     *
+     * So this runs on the recorder's own scope, detached from it with [NonCancellable] so that even
+     * a caller-supplied scope being torn down cannot interrupt the release half-way. The returned
+     * [Job] is only for tests that need to await it; [start] already waits for it on its own.
+     */
+    fun releaseAsync(): Job {
+        val job = scope.launchLogged(owner = this, context = NonCancellable) { stop() }
+        pendingRelease = job
+        return job
     }
 
     fun isRecording(): Boolean = recordingJob?.isActive == true && !isPaused

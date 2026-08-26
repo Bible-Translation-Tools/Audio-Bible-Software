@@ -2,6 +2,7 @@ package org.bibletranslationtools.orature.di
 
 import org.bibletranslationtools.orature.plugins.OraturePluginStore
 import org.bibletranslationtools.orature.services.OratureImportEvents
+import org.bibletranslationtools.orature.services.OratureProjectEvents
 import org.bibletranslationtools.orature.services.OratureProjectDeletion
 import org.bibletranslationtools.orature.services.OratureVerseMarkerEditor
 import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
@@ -27,6 +28,7 @@ val oratureViewModelModule = module {
     single { OratureHomeViewModel() }
     // App-scoped bus so a successful import (global Add Files drawer in the shell) refreshes home.
     single { OratureImportEvents() }
+    single { OratureProjectEvents() }
     // App-scoped project-deletion coordinator + pending-delete counter (guards project creation).
     single { OratureProjectDeletion() }
     // App-scoped registry of external-editor plugins (Settings → plugins; desktop-only).

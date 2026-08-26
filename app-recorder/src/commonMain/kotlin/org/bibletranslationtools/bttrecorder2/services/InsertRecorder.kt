@@ -1,10 +1,12 @@
 package org.bibletranslationtools.bttrecorder2.services
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
+import org.bibletranslationtools.otter.common.device.AudioRecorderConnection
 import org.bibletranslationtools.otter.common.device.AudioRecorderConnectionFactory
 import org.bibletranslationtools.otter.common.device.AudioSpec
 import org.bibletranslationtools.otter.common.recorder.ActiveRecordingRenderer
@@ -25,10 +27,24 @@ data class RecordedClip(val file: File, val frames: Int)
  * captured at a different rate would play at the wrong speed and throw off all the frame math.
  */
 class InsertRecorder(
-    private val recorderFactory: AudioRecorderConnectionFactory,
+    recorderFactory: AudioRecorderConnectionFactory,
     private val scope: CoroutineScope
 ) {
     private val logger = LoggerFactory.getLogger(InsertRecorder::class.java)
+
+    /**
+     * This session's claim on the microphone, held through a connection so the factory arbitrates
+     * between it and the record screen by id — the two are live together for the length of a
+     * navigation transition, and each must only ever release the microphone it actually holds.
+     */
+    private val recorder = AudioRecorderConnection(
+        id = RECORDER_ID,
+        factory = recorderFactory,
+        scope = scope
+    )
+
+    /** The mic stream this session is capturing — see [AudioRecorderConnection.getAudioStream]. */
+    val audioStream: Flow<ByteArray> get() = recorder.getAudioStream()
 
     private val _isRecording = MutableStateFlow(false)
     /** Drives both the WAV writer's gate and the live renderer's "is active" state. */
@@ -59,10 +75,9 @@ class InsertRecorder(
         discard() // never leave a previous attempt half-open
 
         this.clipFile = clipFile
-        val recorder = recorderFactory.getRecorderWorker()
 
         _renderer.value = ActiveRecordingRenderer(
-            recorder.audioStream,
+            recorder.getAudioStream(),
             isRecording,
             waveformWidth,
             SECONDS_ON_SCREEN,
@@ -73,7 +88,7 @@ class InsertRecorder(
         val clipAudio = OratureAudioFile(clipFile, spec.channels, spec.sampleRate, spec.bitDepth)
         writer = WavFileWriter(
             oratureAudioFile = clipAudio,
-            audioStream = recorder.audioStream,
+            audioStream = recorder.getAudioStream(),
             append = false,
             onComplete = {},
             scope = scope
@@ -81,7 +96,9 @@ class InsertRecorder(
 
         sampleRate = spec.sampleRate
         recordedNanos = 0L
-        recorder.start(spec)
+        // Awaited: a mic that will not open has to surface to the caller opening the insert overlay,
+        // not disappear into a launched coroutine.
+        recorder.startAndJoin(spec)
         micOpen = true
     }
 
@@ -128,6 +145,32 @@ class InsertRecorder(
         file?.let { runCatching { it.delete() } }
     }
 
+    /**
+     * [discard] for a caller whose scope is already gone — `PlaybackViewModel.onCleared`, where
+     * androidx has cancelled `viewModelScope` (and therefore [scope]) before `onCleared` is even
+     * called. A `launch { discard() }` there never ran at all, so leaving the playback page with an
+     * insert open leaked the microphone: on Windows a capture line is exclusive, and the next screen
+     * to want the mic could not allocate one.
+     *
+     * Nothing here suspends, so nothing can be dropped half-way: the mic goes back through
+     * [AudioRecorder.releaseAsync], which does not need this scope to survive.
+     */
+    fun discardOnTeardown() {
+        _isRecording.value = false
+        if (micOpen) {
+            recorder.stop()
+            micOpen = false
+        }
+        runCatching { writer?.close() }
+            .onFailure { logger.error("Error closing the insert clip writer during teardown", it) }
+        writer = null
+
+        val file = clipFile
+        clipFile = null
+        _renderer.value = null
+        file?.let { runCatching { it.delete() } }
+    }
+
     /** Approximate frames captured so far (viewport positioning only — see [recordedNanos]). */
     fun recordedFramesSoFar(): Int {
         val live = if (_isRecording.value) System.nanoTime() - resumedAtNanos else 0L
@@ -138,7 +181,9 @@ class InsertRecorder(
         if (_isRecording.value) recordedNanos += System.nanoTime() - resumedAtNanos
         _isRecording.value = false
         if (micOpen) {
-            runCatching { recorderFactory.getRecorderWorker().stop() }
+            // Awaited: the writer is closed and the clip measured right below, so a mic still
+            // delivering packets would land them after the header was finalised.
+            runCatching { recorder.stopAndJoin() }
                 .onFailure { logger.error("Error stopping the insert recorder", it) }
             micOpen = false
         }
@@ -150,5 +195,8 @@ class InsertRecorder(
     companion object {
         /** Matches the playback/record waveform zoom so the live clip scrolls at the same rate. */
         private const val SECONDS_ON_SCREEN = 10
+
+        /** This session's connection id. Distinct from the record screen's, which competes for the mic. */
+        private const val RECORDER_ID = 80_020
     }
 }

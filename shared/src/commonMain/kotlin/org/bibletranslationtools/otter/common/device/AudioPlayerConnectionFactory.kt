@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.slf4j.LoggerFactory
 
 class AudioPlayerConnectionFactory private constructor(
     private var sink: AudioSink,
@@ -26,6 +27,17 @@ class AudioPlayerConnectionFactory private constructor(
     private val mutex = Mutex()
 
     fun isActiveConnection(id: Int): Boolean = activeConnectionId == id
+
+    /**
+     * Whether the hardware is currently holding [reader] — i.e. whether what is loaded is this
+     * caller's content rather than someone else's.
+     *
+     * Connection ids alone cannot answer that: the screens use fixed ids (see the `PLAYER_ID`
+     * constants in the Orature ViewModels), so a screen and its replacement share one, and
+     * [isActiveConnection] is true for both. Identity of the reader is what actually distinguishes
+     * them.
+     */
+    fun holdsReader(reader: AudioFileReader?): Boolean = reader != null && activeReader === reader
 
     suspend fun connect(connectionId: Int, reader: AudioFileReader, position: Long) = mutex.withLock {
         val needsReconnect = activeConnectionId != connectionId ||
@@ -87,7 +99,17 @@ class AudioPlayerConnectionFactory private constructor(
      */
     suspend fun updateHardwareSink(newSink: AudioSink) = mutex.withLock {
         // Stop the writer before the hardware goes away, so it is not mid-`write()` into a closed line.
+        // Nothing may come between taking the lock and this: the playback loop is still running, and
+        // every instruction here is another buffer written to the device being replaced. Logging
+        // sat above this and cost the old sink two extra writes, which
+        // AudioDeviceChangeTest.theNextPlayOpensTheNewDeviceAndPlaysThroughIt caught.
         player.pause()
+
+        // Logged because closing the line is the one thing that can silence the whole app, and it
+        // used to happen invisibly from screen teardown. If audio ever stops working again, the
+        // first question is whether this ran, and now the log answers it.
+        LoggerFactory.getLogger(AudioPlayerConnectionFactory::class.java)
+            .info("Output device changing: closing the current line and taking a new one")
 
         sink.stop()
         sink.close()
@@ -96,6 +118,42 @@ class AudioPlayerConnectionFactory private constructor(
         player.setSink(newSink)
 
         // Nothing is connected to the new device yet. Saying so is what forces the re-open.
+        activeConnectionId = null
+        activeReader = null
+        activeStartPosition = 0
+    }
+
+    /**
+     * Lets go of whatever take is currently loaded: stops playback, closes the reader, and forgets
+     * it. The device is untouched.
+     *
+     * This is how a screen gives its audio back. It cannot simply close its own reader, because
+     * `load()` handed that same object to the worker and the worker keeps using it — `connect()`
+     * pauses before every load, and pausing seeks the loaded reader. A reader closed behind the
+     * worker's back therefore made the next `connect()` throw "Tried to seek before opening file",
+     * which aborted the transport for EVERY connection from then on, narration included.
+     */
+    suspend fun releaseLoadedContent() = mutex.withLock {
+        player.releaseContent()
+        activeConnectionId = null
+        activeReader = null
+        activeStartPosition = 0
+    }
+
+    /**
+     * Releases the output device. The ONLY teardown of the line outside a device change, and the
+     * audio system's own call — app shutdown, not screen navigation.
+     *
+     * Connections have no way to reach this on purpose. The line stays open for the life of the app
+     * so that switching screens costs nothing: a connection changing is a change of *content*, and
+     * the hardware neither knows nor cares which screen is currently pointing at it.
+     */
+    suspend fun shutdown() = mutex.withLock {
+        LoggerFactory.getLogger(AudioPlayerConnectionFactory::class.java)
+            .info("Audio system shutting down: releasing the output line")
+        player.release()
+        sink.stop()
+        sink.close()
         activeConnectionId = null
         activeReader = null
         activeStartPosition = 0

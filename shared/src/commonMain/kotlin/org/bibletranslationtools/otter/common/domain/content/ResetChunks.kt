@@ -18,18 +18,15 @@
  */
 package org.bibletranslationtools.otter.common.domain.content
 
-import com.fasterxml.jackson.core.JsonFactory
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.KotlinModule
-import com.fasterxml.jackson.module.kotlin.readValue
 import io.reactivex.Completable
 import io.reactivex.schedulers.Schedulers
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.bibletranslationtools.otter.common.data.Chunkification
 import java.io.File
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.DateHolder
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesAccessor
+import org.bibletranslationtools.otter.common.OTTER_JSON
+import org.bibletranslationtools.otter.common.data.CHUNKIFICATION
 
 class ResetChunks() {
     fun resetChapter(accessor: ProjectFilesAccessor, chapter: Chapter): Completable {
@@ -69,12 +66,11 @@ class ResetChunks() {
             return
         }
 
-        val mapper = ObjectMapper(JsonFactory()).registerKotlinModule()
-        val chunks: Chunkification = mapper.readValue(chunkFile)
+        val chunks: Chunkification = OTTER_JSON.decodeFromString(CHUNKIFICATION, chunkFile.readText())
         chunks.remove(chapterNumber)
 
         chunkFile.writer().use {
-            mapper.writeValue(it, chunks)
+            it.write(OTTER_JSON.encodeToString(CHUNKIFICATION, chunks))
         }
     }
 }

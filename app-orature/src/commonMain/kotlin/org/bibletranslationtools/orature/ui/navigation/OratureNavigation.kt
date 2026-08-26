@@ -36,19 +36,16 @@ fun OratureNavigation(navController: NavHostController, startWithSplash: Boolean
     ) {
         composable<OratureSplashRoute> {
             val vm = viewModel { OratureSplashViewModel() }
-            LaunchedEffect(Unit) {
-                // Run backend init (DB migrate + seed); navigate home on completion.
-                val disposable = vm.initApp().subscribe {
-                    scope.launch {
-                        navController.navigate(OratureHomeRoute) {
-                            popUpTo(OratureSplashRoute) { inclusive = true }
-                        }
+            // The ViewModel owns the init subscription so an activity recreation cannot dispose
+            // it mid-flight — disposing an in-flight RxJava chain interrupts its thread, and
+            // InitializeApp is built from blocking calls, so that surfaced as a fatal
+            // InterruptedException. startInit() is idempotent, so re-running this effect is safe.
+            LaunchedEffect(Unit) { vm.startInit() }
+            LaunchedEffect(vm.initComplete) {
+                if (vm.initComplete) {
+                    navController.navigate(OratureHomeRoute) {
+                        popUpTo(OratureSplashRoute) { inclusive = true }
                     }
-                }
-                try {
-                    awaitCancellation()
-                } finally {
-                    disposable.dispose()
                 }
             }
             OratureSplashScreen(vm)

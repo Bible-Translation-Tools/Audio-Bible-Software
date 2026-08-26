@@ -18,8 +18,11 @@
  */
 package org.bibletranslationtools.otter.common.data.primitives
 
-import com.fasterxml.jackson.annotation.JsonIgnore
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
+
+@Serializable
 data class Content(
     var sort: Int,
     var labelKey: String,
@@ -30,7 +33,7 @@ data class Content(
     var format: String?,
     var type: ContentType,
     var draftNumber: Int,
-    @JsonIgnore
+    @Transient
     var id: Int = 0,
     var bridged: Boolean = false
 ) : CollectionOrContent

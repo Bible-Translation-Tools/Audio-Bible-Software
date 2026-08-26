@@ -18,11 +18,6 @@
  */
 package org.bibletranslationtools.otter.common.domain.languages
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.fasterxml.jackson.core.JsonFactory
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.KotlinModule
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.reactivex.Completable
 import io.reactivex.schedulers.Schedulers
 import org.bibletranslationtools.otter.common.api.persistence.ILanguageDataSource
@@ -30,6 +25,9 @@ import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ILanguageRepository
 import java.io.InputStream
+import org.bibletranslationtools.otter.common.OTTER_JSON
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.Serializable
 
 // Imports from langnames.json
 class ImportLanguages(
@@ -75,16 +73,14 @@ class ImportLanguages(
     }
 
     private fun mapLanguages(inputStream: InputStream): List<Language> {
-        val mapper = ObjectMapper(JsonFactory())
-        mapper.registerKotlinModule()
         val languages = inputStream.bufferedReader().use {
-            mapper.readValue(it, Array<Door43Language>::class.java)
+            OTTER_JSON.decodeFromString(ListSerializer(Door43Language.serializer()), it.readText())
         }
-        return languages.toList().map { it.toLanguage() }
+        return languages.map { it.toLanguage() }
     }
 }
 
-@JsonIgnoreProperties(ignoreUnknown = true)
+@Serializable
 private data class Door43Language(
     val pk: Int, // id
     val lc: String, // slug

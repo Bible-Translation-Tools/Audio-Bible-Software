@@ -1,9 +1,5 @@
 package org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.SerializationFeature
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
-import org.bibletranslationtools.kotlinscripturealignment.BurritoAudioAlignment
 import org.bibletranslationtools.scriptureburrito.Checksum
 import org.bibletranslationtools.scriptureburrito.CopyrightSchema
 import org.bibletranslationtools.scriptureburrito.Flavor
@@ -13,7 +9,7 @@ import org.bibletranslationtools.scriptureburrito.IngredientsSchema
 import org.bibletranslationtools.scriptureburrito.LanguageSchema
 import org.bibletranslationtools.scriptureburrito.Languages
 import org.bibletranslationtools.scriptureburrito.LocalizedNamesSchema
-import org.bibletranslationtools.scriptureburrito.LocalizedText
+import org.bibletranslationtools.scriptureburrito.LocalizedName
 import org.bibletranslationtools.scriptureburrito.MetaVersionSchema
 import org.bibletranslationtools.scriptureburrito.MetadataSchema
 import org.bibletranslationtools.scriptureburrito.ScopeSchema
@@ -46,25 +42,21 @@ import java.security.NoSuchAlgorithmException
 import java.text.SimpleDateFormat
 import java.time.Instant
 import java.util.*
+import org.bibletranslationtools.kotlinscripturealignment.model.BurritoAudioAlignment
+import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.scriptureburrito.BURRITO_JSON
 
 typealias ChapterNumber = Int
 
 class ScriptureBurritoUtils(
     private val idAuthorityProvider: AuthProvider,
     private val appInfo: IAppInfo,
-    directoryProvider: ITempFileProvider
+    directoryProvider: IDirectoryProvider
 ) {
 
     private val tempDir = directoryProvider.tempDirectory
-    private val mapper = ObjectMapper()
     private val appName = appInfo.appName
     private val appVersion = appInfo.appVersion
-
-    init {
-        mapper.registerKotlinModule()
-        mapper.configure(SerializationFeature.WRITE_EMPTY_JSON_ARRAYS, false)
-        mapper.setDateFormat(SimpleDateFormat("yyyy-MM-dd"))
-    }
 
     fun writeBurritoManifest(
         workbook: Workbook,
@@ -79,7 +71,7 @@ class ScriptureBurritoUtils(
         )
 
         outputStream.use {
-            mapper.writeValue(it, manifest)
+            it.write(BURRITO_JSON.encodeToString(MetadataSchema.serializer(), manifest).toByteArray())
         }
     }
 
@@ -115,13 +107,7 @@ class ScriptureBurritoUtils(
             type = TypeSchema(
                 FlavorType(
                     name = Flavor.SCRIPTURE,
-                    AudioFlavorSchema(
-                        mutableSetOf(Performance.READING, Performance.SINGLE_VOICE),
-                        formats = Formats().apply {
-                            put("format-wav", AudioFormat(Compression.WAV))
-                            put("format-mp3", AudioFormat(Compression.MP3))
-                        }
-                    ),
+                    AudioFlavorSchema(),
                     currentScope = ScopeSchema().apply {
                         this[workbook.target.slug.uppercase(Locale.US)] =
                             takes.keys.map { "$it" }.toMutableList()
@@ -286,7 +272,7 @@ class ScriptureBurritoUtils(
                     names[key]!!.short[langCode] = it.title
                 }
             } else {
-                names[key] = LocalizedText(
+                names[key] = LocalizedName(
                     short = hashMapOf(
                         langCode to it.title
                     )

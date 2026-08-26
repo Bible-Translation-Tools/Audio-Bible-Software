@@ -28,6 +28,7 @@ import org.bibletranslationtools.shared.audio.engine.WaveformPeakCache
 import org.bibletranslationtools.shared.audio.engine.buildPeakCache
 import kotlin.math.max
 import org.bibletranslationtools.orature.ui.narration.OratureNarrationFactory
+import org.bibletranslationtools.orature.services.OratureProjectEvents
 import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
 import org.bibletranslationtools.otter.common.domain.narration.LoadChapterSourceText
 import org.bibletranslationtools.otter.common.domain.project.InitializeProjectFiles
@@ -202,6 +203,7 @@ class OratureNarrationViewModel(
 ) : ViewModel(), KoinComponent {
 
     private val openWorkbook: OpenWorkbook by inject()
+    private val projectEvents: OratureProjectEvents by inject()
     private val loadChapterSourceText: LoadChapterSourceText by inject()
     private val workbookDataStore: OratureWorkbookDataStore by inject()
     private val narrationFactory: OratureNarrationFactory by inject()
@@ -530,6 +532,19 @@ class OratureNarrationViewModel(
             val sm = TeleprompterStateMachine(prepared.narration.totalVerses)
             sm.initialize(prepared.narration.versesWithRecordings())
             stateMachine = sm
+
+            // Reconcile the chapter take against what is actually recorded, on load as well as on
+            // edit. Until now syncChapterTake ran ONLY from the onActiveVersesUpdated subscription,
+            // so the take was compiled at the instant the last verse landed and never again — and
+            // that instant is exactly when the user is most likely to leave the screen, which
+            // cancels the coroutine that compiles it. A chapter could then sit fully narrated with
+            // no take forever: reopening it did not retry, because nothing asked the question
+            // again. That leaves the project unexportable, since a chapter with no take reads as
+            // 0% to every consumer that goes through the database.
+            //
+            // Running it here makes reopening the chapter the repair, which is what a user trying
+            // to fix this reaches for anyway. It is a no-op when the take is already there.
+            syncChapterTake()
 
             // Mic runs for the whole narration session; the writer only captures while a verse
             // is recording. Guard so a missing input device doesn't crash the page.
@@ -1396,6 +1411,12 @@ class OratureNarrationViewModel(
     }
 
     override fun onCleared() {
+        // The home list was built before this screen opened and its ViewModel outlived it on the
+        // back stack, so without this a chapter narrated end to end still showed the book at 0%
+        // after backing out — while the export dialog, which reopens the workbook, showed it
+        // finished. Emitted before the teardown below so it goes out even if something there
+        // throws.
+        projectEvents.notifyProgressChanged(workbookDescriptorId)
         if (_uiState.value.isPluginOpen) navigationLock.unlock()
         stopPositionTicker()
         waveformTickerJob?.cancel()

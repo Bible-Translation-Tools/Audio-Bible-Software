@@ -5,13 +5,21 @@ import io.reactivex.schedulers.Schedulers
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito.BurritoToResourceContainerConverter
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
+import org.slf4j.LoggerFactory
 import java.io.File
+import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 
 class BurritoImporter(
-    private val directoryProvider: ITempFileProvider,
+    private val directoryProvider: IDirectoryProvider,
     private val converter: BurritoToResourceContainerConverter,
 ): IProjectImporter {
 
+    private data class ConversionResult(
+        val output: File? = null,
+        val result: ImportResult? = null
+    )
+
+    private val logger = LoggerFactory.getLogger(this.javaClass)
     private var next: RCImporter? = null
 
     override fun import(
@@ -25,12 +33,24 @@ class BurritoImporter(
                     localizeKey = "converting_file",
                     percent = 10.0
                 )
-                val tempRc = directoryProvider.createTempFile("burrito_converted_rc", ".zip")
-                converter.convert(burrito, tempRc)
-                tempRc
+                val tempRc = directoryProvider.createTempFile("${burrito.nameWithoutExtension}_converted_rc", ".zip")
+                val converted = converter.convert(burrito, tempRc)
+                if (!converted || !tempRc.exists()) {
+                    val cause = converter.lastConversionError
+                    if (cause != null) {
+                        logger.error("Burrito conversion failed for {}", burrito.absolutePath, cause)
+                    } else {
+                        logger.error("Burrito conversion failed for {} with no exception detail", burrito.absolutePath)
+                    }
+                    return@fromCallable ConversionResult(result = ImportResult.FAILED)
+                }
+                ConversionResult(output = tempRc)
             }
-            .flatMap { fileToImport ->
-                next?.import(fileToImport, callback, options)
+            .flatMap { conversion ->
+                conversion.result?.let { earlyResult ->
+                    return@flatMap Single.just(earlyResult)
+                }
+                next?.import(conversion.output!!, callback, options)
                     ?: Single.just(ImportResult.FAILED)
             }
             .subscribeOn(Schedulers.io())

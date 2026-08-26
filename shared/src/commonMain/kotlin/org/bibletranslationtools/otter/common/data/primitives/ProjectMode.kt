@@ -18,6 +18,9 @@
  */
 package org.bibletranslationtools.otter.common.data.primitives
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 enum class ProjectMode(val titleKey: String) {
     TRANSLATION("translation"),
     NARRATION("narration"),
@@ -30,4 +33,5 @@ enum class ProjectMode(val titleKey: String) {
     }
 }
 
+@Serializable
 internal data class SerializableProjectMode(val mode: ProjectMode)

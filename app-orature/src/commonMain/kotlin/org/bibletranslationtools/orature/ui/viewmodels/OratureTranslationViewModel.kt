@@ -14,6 +14,7 @@ import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.orature.resources.Res
 import org.bibletranslationtools.orature.resources.errOpenProject
+import org.bibletranslationtools.orature.services.OratureProjectEvents
 import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
 import org.bibletranslationtools.orature.ui.translation.ChunkingStep
 import org.jetbrains.compose.resources.getString
@@ -129,6 +130,7 @@ class OratureTranslationViewModel(
 ) : ViewModel(), KoinComponent {
 
     private val openWorkbook: OpenWorkbook by inject()
+    private val projectEvents: OratureProjectEvents by inject()
     private val workbookDataStore: OratureWorkbookDataStore by inject()
 
     private val _uiState = MutableStateFlow(OratureTranslationUiState())
@@ -595,4 +597,12 @@ class OratureTranslationViewModel(
                 selected = chapter.sort == activeSort
             )
         }
+
+    override fun onCleared() {
+        // See OratureNarrationViewModel.onCleared — the home ring is stale until someone says the
+        // book changed, and the translation steps (chunking, blind draft, peer edit, chapter
+        // review) all move this book's progress.
+        projectEvents.notifyProgressChanged(workbookDescriptorId)
+        super.onCleared()
+    }
 }

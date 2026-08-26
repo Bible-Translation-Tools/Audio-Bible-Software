@@ -18,6 +18,9 @@
  */
 package org.bibletranslationtools.otter.common.data.primitives
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 enum class CheckingStatus {
     UNCHECKED,
     PEER_EDIT,

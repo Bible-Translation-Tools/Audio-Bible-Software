@@ -276,8 +276,13 @@ private fun ChapterTable(
     }
 }
 
+/**
+ * The megabyte COUNT only — the unit belongs to the `estimatedFileSize` string, which is where a
+ * translator can localize it (ru "МБ", fr "Mo"). This used to append " MB" itself while the
+ * template appended it too, so the dialog read "Estimated File Size: 8 MB MB".
+ */
 private fun formatSize(bytes: Long): String {
-    if (bytes <= 0) return "0 MB"
+    if (bytes <= 0) return "0"
     val mb = bytes.toDouble() / (1024 * 1024)
-    return if (mb < 1) "< 1 MB" else "${mb.toLong()} MB"
+    return if (mb < 1) "< 1" else "${mb.toLong()}"
 }

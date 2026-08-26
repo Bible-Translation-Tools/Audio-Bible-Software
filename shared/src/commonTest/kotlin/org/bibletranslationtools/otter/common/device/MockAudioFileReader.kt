@@ -27,7 +27,18 @@ class MockAudioFileReader(
         return bytesToReturn
     }
 
+    /**
+     * Throws when the reader is not open, exactly as the real ones do
+     * (`WavFileReader.seek`: "Tried to seek before opening file").
+     *
+     * This used to seek happily whether open or not, and that leniency hid a live bug for an entire
+     * debugging session: a connection was closing a reader the worker still held, every subsequent
+     * `connect()` threw out of `pause()`, and playback died app-wide — while every test here passed,
+     * because this double did not care. A double that is kinder than the real thing cannot prove
+     * anything about the real thing.
+     */
     override fun seek(frame: Long) {
+        check(isOpen) { "Tried to seek before opening file" }
         framePosition = frame.toInt().coerceIn(0, totalFrames)
     }
 

@@ -55,7 +55,6 @@ kotlin {
     val retrofitVer = "2.9.0"
     val retrofitJacksonVer = "2.9.0"
     val retrofitRxJava2Ver = "2.9.0"
-    val jacksonVer = "2.15.1"
     val kotlinresourcecontainerVer = "0.12.0"
     val kotlinscriptureburritoVer = "1.0.1"
     val slf4jApiVer = "2.0.13"
@@ -65,7 +64,6 @@ kotlin {
     val jump3rVer = "1.0.5"
     val tarsosDspVer = "2.4.1"
     val mp3TagVer = "0.9.3"
-    val tikaVer = "2.0.0"
     val tstudio2rcVer = "1.0.2"
     val kotlinVttVer = "1.0.0"
     val kotlinScriptureAlignmentVer = "1.0.0"
@@ -101,11 +99,10 @@ kotlin {
                 api("org.slf4j:slf4j-api:$slf4jApiVer")
                 api(libs.koin.core)
 
-                // Orature's plugin registry reads its YAML definitions with these directly.
-                api("com.fasterxml.jackson.module:jackson-module-kotlin:$jacksonVer")
-                api("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:$jacksonVer")
 
-                api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
+                api(libs.kotlinx.serialization.json)
+                // config.yaml inside a resource container, matching :libs:resource-container.
+                api(libs.kaml)
 
                 api("io.github.vinceglb:filekit-core:0.12.0")
                 api("io.github.vinceglb:filekit-dialogs:0.12.0")
@@ -129,11 +126,17 @@ kotlin {
                 implementation("org.bibletranslationtools:kotlin-scripture-alignment:$kotlinScriptureAlignmentVer")
 
                 implementation("com.squareup.retrofit2:retrofit:$retrofitVer")
-                implementation("com.squareup.retrofit2:converter-jackson:$retrofitJacksonVer")
+                implementation("com.jakewharton.retrofit:retrofit2-kotlinx-serialization-converter:1.0.0")
+                // The converter factory takes an okhttp MediaType; Retrofit pulls okhttp in
+                // transitively but does not put it on our compile classpath.
+                implementation("com.squareup.okhttp3:okhttp:3.14.9")
                 implementation("com.squareup.retrofit2:adapter-rxjava2:$retrofitRxJava2Ver")
 
-                implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-csv:$jacksonVer")
-                implementation("org.apache.tika:tika-core:$tikaVer")
+                // commons-io, declared directly. It used to arrive transitively through
+                // tika-core, which is gone now that :libs:resource-container and
+                // :libs:scripture-burrito sniff the zip magic number instead. Used for
+                // FileUtils.sizeOfDirectory in BackupProjectExporter and nothing else.
+                implementation("commons-io:commons-io:2.19.0")
                 implementation("org.jetbrains.kotlin:kotlin-reflect:$kotlinVer")
 
                 // Audio codecs, used only behind the audio/ and domain/audio/ facades.
@@ -162,7 +165,16 @@ kotlin {
         val androidMain by getting {
             dependencies {
                 // Runtime-only sqlite plumbing for the android AppDatabase actual.
+                // Two SQLite drivers on purpose — AppDatabase.android.kt picks between them by
+                // asking the device what SQLite it has. SQLDroid wraps the platform engine and
+                // stays the default; sqlite-jdbc carries its own (see jniLibs/) for devices whose
+                // SQLite predates upsert, i.e. Android 7. Version must match those .so files.
                 implementation(libs.sqldroid)
+                implementation("org.xerial:sqlite-jdbc:3.53.2.0")
+                // Without a binding, every backend logger.error() on Android goes to slf4j's NOP
+                // logger — an import failing during first-run init reports nothing at all. simple
+                // writes to System.err, which logcat captures, matching the desktop setup.
+                implementation("org.slf4j:slf4j-simple:2.0.13")
                 implementation("com.readystatesoftware.sqliteasset:sqliteassethelper:2.0.1")
                 // api: the android apps call org.koin.android.ext.koin.androidContext in their
                 // Application classes.
@@ -208,7 +220,17 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+        // Required by minSdk 24: java.time and java.nio.file are API 26 on Android, and this
+        // module's backend leans on both heavily (LocalDate/LocalDateTime on the entity layer,
+        // Files.walk/copy/list across io/ and domain/). D8 rewrites those call sites to the
+        // bundled j$.* backports. Both apps enable this too — the rewriting happens at dex time
+        // in the app module, not here.
+        isCoreLibraryDesugaringEnabled = true
     }
+}
+
+dependencies {
+    coreLibraryDesugaring(libs.desugar.jdk.libs.nio)
 }
 
 // ── GL source download + bundling ────────────────────────────────────────────────────

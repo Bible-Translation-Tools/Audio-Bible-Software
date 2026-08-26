@@ -52,13 +52,15 @@ class SourceAudioAccessor(
         ResourceContainer.load(metadata.path).use { rc ->
             if (rc.media != null) {
                 val mediaProject = rc.media!!.projects.find { it.identifier == project }
+                val mediaOptions = mutableListOf<Media>()
+                mediaProject?.media?.find { it.identifier == "wav" }?.let { mediaOptions.add(it) }
                 var media = mediaProject?.media?.find { it.identifier == "mp3" }
                 val cue = mediaProject?.media?.find { it.identifier == "cue" }
-                if (media == null || cue == null) {
-                    media = mediaProject?.media?.find { it.identifier == "wav" }
+                if (media != null && cue != null) {
+                    mediaOptions.add(media)
                 }
-                if (media != null) {
-                    return getChapter(media, chapter, rc)
+                for (media in mediaOptions) {
+                    getChapter(media, chapter, rc)?.let { return it }
                 }
             }
         }
@@ -101,9 +103,11 @@ class SourceAudioAccessor(
                                 .apply { createNewFile() }
                             cueFile.deleteOnExit()
                             val cuePath = path.replace(".mp3", ".cue")
-                            rc.accessor.getInputStream(cuePath).use { input ->
-                                cueFile.outputStream().use { output ->
-                                    input.copyTo(output)
+                            if (rc.accessor.fileExists(cuePath)) {
+                                rc.accessor.getInputStream(cuePath).use { input ->
+                                    cueFile.outputStream().use { output ->
+                                        input.copyTo(output)
+                                    }
                                 }
                             }
                         }
@@ -120,6 +124,9 @@ class SourceAudioAccessor(
 
                 val oratureAudioFile = OratureAudioFile(file)
                 val size = oratureAudioFile.totalFrames
+
+                if (size == 0) return null
+
                 SourceAudio(file, 0, size)
             } else {
                 null
@@ -142,6 +149,9 @@ class SourceAudioAccessor(
                 val nextMarker = if (chunks.lastIndex > markerIndex) chunks[markerIndex + 1] else null
                 val start = marker.location
                 val end = nextMarker?.location ?: oratureAudioFile.totalFrames
+
+                if (end - start == 0) return null
+
                 return SourceAudio(file, start, end)
             }
         }
@@ -161,6 +171,9 @@ class SourceAudioAccessor(
                 val nextMarker = if (verses.lastIndex > markerIndex) verses[markerIndex + 1] else null
                 val start = marker.location
                 val end = nextMarker?.location ?: oratureAudioFile.totalFrames
+
+                if (end - start == 0) return null
+
                 return SourceAudio(file, start, end)
             }
         }
@@ -201,7 +214,6 @@ class SourceAudioAccessor(
                 return hasAudioFile
             }
         }
-
         /**
          * Batch variant: answer hasSourceAudio for MANY project slugs against the SAME resource
          * container by opening it (a zip) and listing its media directory ONCE. Building many project

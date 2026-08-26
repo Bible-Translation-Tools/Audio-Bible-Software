@@ -155,8 +155,9 @@ class BackupProjectExporter(
 
         if (sourceFile.isFile) {
             ZipFile(sourceFile).use { zip ->
+                // asSequence(), not Enumeration.asIterator(): that is API 33.
                 zip.entries()
-                    .asIterator()
+                    .asSequence()
                     .forEach {
                         if (it.name.contains("${RcConstants.SOURCE_MEDIA_DIR}/${project}")) {
                             size += it.compressedSize

@@ -18,13 +18,6 @@
  */
 package org.bibletranslationtools.otter.common.domain.project.importer
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.core.JsonFactory
-import com.fasterxml.jackson.core.JsonGenerator
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.exc.MismatchedInputException
-import com.fasterxml.jackson.module.kotlin.readValue
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.reactivex.Maybe
 import io.reactivex.Observable
 import io.reactivex.Single
@@ -77,6 +70,10 @@ import java.io.File
 import java.io.IOException
 import java.time.LocalDate
 import java.time.LocalDateTime
+import kotlinx.serialization.SerializationException
+import org.bibletranslationtools.otter.common.OTTER_JSON
+import org.bibletranslationtools.otter.common.data.CHUNKIFICATION
+import org.bibletranslationtools.otter.common.domain.project.TAKE_CHECKING
 
 class OngoingProjectImporter(
     private val directoryProvider: IDirectoryProvider,
@@ -388,9 +385,9 @@ class OngoingProjectImporter(
     ): ProjectMode {
         if (fileReader.exists(RcConstants.PROJECT_MODE_FILE)) {
             projectAppVersion = ProjectAppVersion.THREE
-            val mapper = ObjectMapper(JsonFactory()).registerKotlinModule()
             fileReader.bufferedReader(RcConstants.PROJECT_MODE_FILE).use {
-                val serialized: SerializableProjectMode = mapper.readValue(it)
+                val serialized: SerializableProjectMode =
+                    OTTER_JSON.decodeFromString(SerializableProjectMode.serializer(), it.readText())
                 return serialized.mode
             }
         }
@@ -406,19 +403,13 @@ class OngoingProjectImporter(
     private fun importChunks(project: Collection, accessor: ProjectFilesAccessor, fileReader: IFileReader) {
         accessor.copyChunkFile(fileReader)
 
-        val factory = JsonFactory()
-        factory.disable(JsonGenerator.Feature.AUTO_CLOSE_TARGET)
-        val mapper = ObjectMapper(factory)
-        mapper.registerKotlinModule()
-        mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL)
-
         val chunkFileExists = fileReader.exists(RcConstants.CHUNKS_FILE)
         val chunks: Chunkification = if (chunkFileExists) {
             try {
                 fileReader.stream(RcConstants.CHUNKS_FILE).let { input ->
-                    mapper.readValue(input)
+                    OTTER_JSON.decodeFromString(CHUNKIFICATION, input.readBytes().decodeToString())
                 }
-            } catch (e: MismatchedInputException) {
+            } catch (e: SerializationException) {
                 // empty file
                 Chunkification()
             }
@@ -481,8 +472,7 @@ class OngoingProjectImporter(
         } else {
             try {
                 fileReader.stream(RcConstants.CHUNKS_FILE).let { input ->
-                    val mapper = ObjectMapper(JsonFactory()).registerKotlinModule()
-                    val chunks: Chunkification = mapper.readValue(input)
+                    val chunks: Chunkification = OTTER_JSON.decodeFromString(CHUNKIFICATION, input.readBytes().decodeToString())
                     val chapters = chunks.map { it.key }
                     chapters
                 }
@@ -572,10 +562,7 @@ class OngoingProjectImporter(
     private fun parseCheckingStatusFile(fileReader: IFileReader) =
         if (fileReader.exists(RcConstants.CHECKING_STATUS_FILE)) {
             fileReader.stream(RcConstants.CHECKING_STATUS_FILE).use { stream ->
-                ObjectMapper(JsonFactory())
-                    .registerKotlinModule()
-                    .setSerializationInclusion(JsonInclude.Include.NON_NULL)
-                    .readValue<TakeCheckingStatusMap>(stream)
+                OTTER_JSON.decodeFromString(TAKE_CHECKING, stream.readBytes().decodeToString())
                     .mapKeys { File(it.key).name } // take name as key
             }
         } else {

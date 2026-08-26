@@ -64,6 +64,9 @@ kotlin {
                 // koinInject() for reading app-scoped Koin singles (e.g. OratureNavigationLock)
                 // directly in a plain @Composable that isn't itself a ViewModel/KoinComponent.
                 implementation(libs.koin.compose)
+                // Plugin definitions are YAML — see OraturePluginRegistrar. Declared explicitly
+                // rather than leaning on :shared's api(kaml), since this module uses it directly.
+                implementation(libs.kaml)
             }
         }
 
@@ -116,6 +119,11 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+        // Required by minSdk 24 — see the matching block in :shared. Dexing happens here, so
+        // this flag is what actually rewrites the backend's java.time/java.nio.file call sites
+        // to j$.*; without it the app compiles and dexes fine and then dies at runtime on
+        // Android 7 with NoClassDefFoundError.
+        isCoreLibraryDesugaringEnabled = true
     }
 }
 
@@ -123,6 +131,7 @@ dependencies {
     implementation(libs.androidx.runtime.android)
     implementation(libs.androidx.ui.android)
     debugImplementation(compose.uiTooling)
+    coreLibraryDesugaring(libs.desugar.jdk.libs.nio)
 }
 
 compose.desktop {

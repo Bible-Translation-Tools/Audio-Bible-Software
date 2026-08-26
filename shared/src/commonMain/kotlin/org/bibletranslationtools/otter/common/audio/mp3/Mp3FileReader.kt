@@ -91,17 +91,28 @@ class MP3FileReader(
     }
 
     private fun getPCMData(outBuff: ByteArray, pos: Int) {
-        fillBuffers(pos, buff)
-        val n = buff.size
+        // Only the part of the scratch buffer this call will actually read. The loop below reads
+        // `buff` at even indices up to outBuff.size - 2, so outBuff.size shorts is all that matters;
+        // fillBuffers used to copy all 49152 of them on every call regardless. The player asks for
+        // 1024 frames at a time (AudioProcessor.inputBufferSize), i.e. 2048 bytes, so ~96% of that
+        // copy was thrown away — roughly two million wasted short-copies per second of audio, each
+        // one a bounds-checked read plus a ring-buffer mask. Invisible on a desktop, not on an
+        // Android 7 tablet decoding MP3 in pure Java while Compose redraws the waveform.
+        //
+        // The decode itself is untouched: the `seek` below still asks for the same lookahead, so the
+        // decoder fills at exactly the same rate and this stays a pure removal of copying.
+        val needed = min(buff.size, outBuff.size)
+        fillBuffers(pos, buff, needed)
         var j = 0
-        for (i in 0 until min(n, outBuff.size) step 2) {
+        for (i in 0 until needed step 2) {
             val leftShort = buff[i].toInt()
             outBuff[j++] = (leftShort and 0xff).toByte()
             outBuff[j++] = (leftShort ushr 0x08 and 0xff).toByte()
         }
     }
 
-    private fun fillBuffers(pos: Int, leftRight: ShortArray) {
+    /** Copies [count] shorts of decoded audio starting at frame [pos] into [leftRight]. */
+    private fun fillBuffers(pos: Int, leftRight: ShortArray, count: Int) {
         decoder?.let { _decoder ->
             val sourceAudio = _decoder.audioShorts
             var sourceIdx = 0
@@ -110,7 +121,7 @@ class MP3FileReader(
             } catch (e: IOException) {
                 e.printStackTrace()
             }
-            for (i in leftRight.indices) {
+            for (i in 0 until count) {
                 leftRight[i] = sourceAudio[sourceIdx++]
                 sourceIdx = sourceIdx and RandomAccessDecoder.BUFFER_LAST
             }
