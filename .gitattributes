@@ -1,2 +1,7 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Gradle wrapper jar is binary; `* text=auto` would otherwise let Git
+# normalize line endings inside the ZIP and strip Main-Class from the
+# manifest (CI then fails with "no main manifest attribute").
+/gradle/wrapper/gradle-wrapper.jar binary

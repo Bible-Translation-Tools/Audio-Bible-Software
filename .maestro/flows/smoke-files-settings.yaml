@@ -1,0 +1,28 @@
+appId: org.bibletranslationtools.recorder2
+---
+# MainMenuNavigationFlowTest.filesOpensProjectManagementAndSettings
+# Assumes main menu. Leaves app on main menu.
+- runFlow: dismiss-anr-if-visible.yaml
+- runFlow: shared/open_files.yaml
+
+- tapOn: "More options"
+- extendedWaitUntil:
+    visible: "Settings"
+    timeout: 3000
+- tapOn: "Settings"
+- extendedWaitUntil:
+    visible: "Audio"
+    timeout: 3000
+- assertVisible: "Audio"
+
+- tapOn: "Back"
+- extendedWaitUntil:
+    visible: "Project Management"
+    timeout: 3000
+- assertVisible: "Project Management"
+
+# Project Management has no toolbar back; system back returns to main menu.
+- pressKey: back
+- extendedWaitUntil:
+    visible: "Files"
+    timeout: 3000

@@ -1,0 +1,6 @@
+appId: org.bibletranslationtools.recorder2
+---
+# CreateProjectWizardFlowTest.createNewProjectViaWizard
+# Assumes main menu (or Project Management). Leaves Genesis on Project Management.
+- runFlow: dismiss-anr-if-visible.yaml
+- runFlow: shared/create_project_genesis.yaml

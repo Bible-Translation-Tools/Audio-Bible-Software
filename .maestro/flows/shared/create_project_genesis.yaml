@@ -1,0 +1,54 @@
+appId: org.bibletranslationtools.recorder2
+---
+# Files → New Project → English → Afar → Genesis → Project Management.
+# Paths are relative to this file (shared/), not the workspace root.
+- runFlow: open_files.yaml
+- tapOn: "New Project"
+- extendedWaitUntil:
+    visible: "New Project|Select Source"
+    timeout: 3000
+
+# Prefer en_ulb, else English, else search "en".
+- runFlow:
+    when:
+      visible: ".*en_ulb.*"
+    commands:
+      - tapOn: ".*en_ulb.*"
+- runFlow:
+    when:
+      notVisible: "Choose Target Language"
+      visible: ".*English.*"
+    commands:
+      - tapOn: ".*English.*"
+- runFlow:
+    when:
+      notVisible: "Choose Target Language"
+    commands:
+      - runFlow:
+          file: search_and_tap.yaml
+          env:
+            QUERY: "en"
+            RESULT: ".*English.*"
+
+- extendedWaitUntil:
+    visible: "Choose Target Language"
+    timeout: 3000
+- runFlow:
+    file: search_and_tap.yaml
+    env:
+      QUERY: "aa"
+      RESULT: ".*Afar.*"
+
+- extendedWaitUntil:
+    visible: "Choose a Book"
+    timeout: 3000
+- runFlow:
+    file: search_and_tap.yaml
+    env:
+      QUERY: "gen"
+      RESULT: ".*Genesis.*"
+
+- extendedWaitUntil:
+    visible: "Project Management"
+    timeout: 3000
+- assertVisible: ".*Genesis.*"

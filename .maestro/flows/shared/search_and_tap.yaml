@@ -1,0 +1,14 @@
+appId: org.bibletranslationtools.recorder2
+---
+# Env: QUERY (search string), RESULT (regex for row text / contentDescription).
+- repeat:
+    times: 10
+    while:
+      notVisible: "Close search"
+    commands:
+      - tapOn: "Search"
+- inputText: ${QUERY}
+- extendedWaitUntil:
+    visible: ${RESULT}
+    timeout: 3000
+- tapOn: ${RESULT}

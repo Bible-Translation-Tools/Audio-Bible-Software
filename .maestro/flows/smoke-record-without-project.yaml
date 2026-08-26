@@ -1,0 +1,17 @@
+appId: org.bibletranslationtools.recorder2
+---
+# MainMenuNavigationFlowTest.recordWithoutActiveProjectGoesToProjectManagement
+# Assumes main menu, no active project. Leaves app on main menu.
+- runFlow: dismiss-anr-if-visible.yaml
+- repeat:
+    times: 20
+    while:
+      notVisible: "Project Management"
+    commands:
+      - tapOn: "Record"
+- assertVisible: "Project Management"
+
+- pressKey: back
+- extendedWaitUntil:
+    visible: "Files"
+    timeout: 3000

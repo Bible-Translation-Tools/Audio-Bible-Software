@@ -1,0 +1,8 @@
+appId: org.bibletranslationtools.recorder2
+---
+# Used when already past splash; keep in sync with smoke-launch wait.
+- extendedWaitUntil:
+    visible: "Files"
+    timeout: 60000
+- assertVisible: "Files"
+- assertVisible: "Record"

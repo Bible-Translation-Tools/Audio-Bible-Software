@@ -1,0 +1,25 @@
+appId: org.bibletranslationtools.recorder2
+---
+# Launch → splash → main menu (Files / Record).
+# Files/Record are contentDescriptions (icons), matching instrumented By.desc("Files").
+#
+# Maestro retry.maxRetries is capped at 3 — do NOT use a high retry count for splash.
+# Cold InitializeApp (langnames + en_ulb) needs a long single wait on CI (see
+# waitForMainMenuAfterSplash(240_000) in instrumented tests).
+- launchApp:
+    clearState: true
+    permissions:
+      microphone: allow
+- runFlow: dismiss-anr-if-visible.yaml
+# Runtime permission sheet can still appear despite pm grant + launchApp permissions.
+- runFlow:
+    when:
+      visible: "While using the app|Allow|ONLY THIS TIME"
+    commands:
+      - tapOn: "While using the app|Allow|ONLY THIS TIME"
+- extendedWaitUntil:
+    visible: "Files"
+    timeout: 240000
+- runFlow: dismiss-anr-if-visible.yaml
+- assertVisible: "Files"
+- assertVisible: "Record"

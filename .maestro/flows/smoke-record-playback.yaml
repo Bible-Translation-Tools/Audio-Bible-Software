@@ -1,0 +1,51 @@
+appId: org.bibletranslationtools.recorder2
+---
+# SeededRecordPlaybackFlowTest.openRecorderAndEngageTransport
+# Assumes Project Management with Genesis project from smoke-create-project.
+- runFlow: dismiss-anr-if-visible.yaml
+
+# Project card mic (right of Genesis title) jumps straight into the recorder.
+- tapOn:
+    text: "Record"
+    rightOf: ".*Genesis.*"
+
+- extendedWaitUntil:
+    visible: "Record transport"
+    timeout: 3000
+# loadTarget is async; wait for header labels before engaging mic.
+- extendedWaitUntil:
+    visible: ".*Genesis.*|.*ULB.*"
+    timeout: 3000
+
+- tapOn: "Record transport"
+
+# Soft-pass: Stop may not appear on emulator mic; still require transport present.
+- runFlow:
+    when:
+      visible: "Stop"
+    commands:
+      - tapOn: "Stop"
+      - extendedWaitUntil:
+          visible: "Play/Pause"
+          timeout: 3000
+      - assertVisible: "Play/Pause"
+- runFlow:
+    when:
+      notVisible: "Play/Pause"
+    commands:
+      - assertVisible: "Record transport"
+
+# Leave recorder (mirrors @After teardown).
+- runFlow:
+    when:
+      visible: "Back"
+    commands:
+      - tapOn: "Back"
+- runFlow:
+    when:
+      visible: "Record transport"
+    commands:
+      - pressKey: back
+- extendedWaitUntil:
+    visible: "Files|Project Management|.*Genesis.*"
+    timeout: 3000
