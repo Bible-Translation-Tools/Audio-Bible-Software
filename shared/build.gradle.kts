@@ -262,6 +262,13 @@ val glSourcesManifest = file("src/commonMain/composeResources/files/gl_sources.j
 // Force a full re-check with -PrecheckGlSources (or delete the file).
 val glUnavailableCache = file(".gl-sources-unavailable.json")
 val recheckGlSources = providers.gradleProperty("recheckGlSources").isPresent
+// InitializeUlb reads files/content/en_ulb.zip at startup, so the app (and every E2E/Maestro test
+// that launches it) cannot run without it — unlike the ~95 optional wizard languages. It must never
+// be left un-downloaded by a stale "unavailable" entry: WACS 403s bots and the download already
+// sends the X-Requested-With: WA-Tool-* header WACS allows, but if a transient once recorded en_ulb
+// as unavailable, that entry is cached (build.yml caches .gl-sources-unavailable.json) and would
+// otherwise skip the download forever. So en_ulb is always re-attempted.
+val mandatoryGlSources = setOf("en_ulb")
 
 tasks.register("downloadGLSources") {
     // The zips land directly in src/ (survives `clean`), so guarding on existence means a
@@ -306,7 +313,7 @@ tasks.register("downloadGLSources") {
                 unavailable.remove(artifactName)
                 return@forEach
             }
-            if (unavailable[artifactName] == artifactUrl) {
+            if (artifactName !in mandatoryGlSources && unavailable[artifactName] == artifactUrl) {
                 cached++
                 return@forEach
             }
