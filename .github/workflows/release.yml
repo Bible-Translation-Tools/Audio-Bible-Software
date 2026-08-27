@@ -1,0 +1,421 @@
+name: release
+
+# Cuts a signed release from a version tag.
+#
+#   v1.2.3            -> both apps, one GitHub Release
+#   recorder-v1.2.3   -> BTT-Recorder only
+#   orature-v1.2.3    -> Orature only
+#   *-v1.2.3-beta.1   -> marked as a GitHub pre-release (any tag with a -suffix)
+#
+# Artifacts per app: macOS .dmg (arm64 + x64, signed + notarized), Windows .exe (Azure Trusted
+# Signing), Linux .deb, and a release .apk (signed if the Android keystore secret is present,
+# unsigned otherwise). Everything is attached to the GitHub Release and synced to S3.
+#
+# UNTESTED END TO END. The Gradle version injection and the unsigned-APK fallback are verified
+# locally; the signing/notarization/Azure/S3 paths cannot be exercised without the real credentials
+# and runners, so treat the first tagged run as the real test. Secrets required are listed in
+# docs/RELEASE.md.
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+      - 'recorder-v[0-9]+.[0-9]+.[0-9]+'
+      - 'recorder-v[0-9]+.[0-9]+.[0-9]+-*'
+      - 'orature-v[0-9]+.[0-9]+.[0-9]+'
+      - 'orature-v[0-9]+.[0-9]+.[0-9]+-*'
+  workflow_dispatch:
+    inputs:
+      apps:
+        description: Which app(s) to build
+        type: choice
+        options: [both, recorder, orature]
+        default: both
+      version:
+        description: Version, no leading v (e.g. 1.2.3 or 1.2.3-beta.1)
+        required: true
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # create the GitHub Release
+
+defaults:
+  run:
+    # gradlew is a shell script; the Windows runner defaults to PowerShell, which cannot run it.
+    # Git Bash is on every runner image, so one shell keeps the gradle lines identical everywhere.
+    shell: bash
+
+env:
+  JAVA_VERSION: '21'
+  JAVA_DISTRIBUTION: temurin
+
+jobs:
+  # ── derive scope + version from the tag ──────────────────────────────────────
+  meta:
+    runs-on: ubuntu-latest
+    outputs:
+      apps_json: ${{ steps.parse.outputs.apps_json }}   # ["recorder","orature"] for the build matrix
+      version: ${{ steps.parse.outputs.version }}        # 1.2.3 or 1.2.3-beta.1
+      version_code: ${{ steps.parse.outputs.version_code }}
+      prerelease: ${{ steps.parse.outputs.prerelease }}
+      s3_dest: ${{ steps.parse.outputs.s3_dest }}
+      release_name: ${{ steps.parse.outputs.release_name }}
+    steps:
+      - id: parse
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            case "${{ github.event.inputs.apps }}" in
+              recorder) apps='["recorder"]' ;;
+              orature)  apps='["orature"]' ;;
+              *)        apps='["recorder","orature"]' ;;
+            esac
+            version="${{ github.event.inputs.version }}"
+            release_name="v${version}"
+          else
+            tag="${GITHUB_REF_NAME}"
+            case "$tag" in
+              recorder-v*) apps='["recorder"]'; version="${tag#recorder-v}" ;;
+              orature-v*)  apps='["orature"]';  version="${tag#orature-v}" ;;
+              v*)          apps='["recorder","orature"]'; version="${tag#v}" ;;
+              *) echo "Unrecognized tag '$tag'"; exit 1 ;;
+            esac
+            release_name="$tag"
+          fi
+
+          # Pre-release if the version carries a -suffix (e.g. 1.2.3-beta.1).
+          if [[ "$version" == *-* ]]; then prerelease=true; else prerelease=false; fi
+
+          # versionCode: a monotonic integer from the numeric core. major*1e6 + minor*1e3 + patch
+          # leaves room for 999 minor / 999 patch and is stable for a given version.
+          core="${version%%-*}"; core="${core%%+*}"
+          IFS=. read -r maj min pat <<< "$core"
+          version_code=$(( ${maj:-0} * 1000000 + ${min:-0} * 1000 + ${pat:-0} ))
+
+          # S3 layout mirrors the old Orature pipeline: <owner>/<repo>/{release | pre-release/<ver>}.
+          if [[ "$prerelease" == "true" ]]; then update_path="pre-release/${version}"; else update_path="release"; fi
+          s3_dest="${GITHUB_REPOSITORY}/${update_path}"
+
+          {
+            echo "apps_json=$apps"
+            echo "version=$version"
+            echo "version_code=$version_code"
+            echo "prerelease=$prerelease"
+            echo "s3_dest=$s3_dest"
+            echo "release_name=$release_name"
+          } >> "$GITHUB_OUTPUT"
+          echo "Parsed: apps=$apps version=$version code=$version_code prerelease=$prerelease s3=$s3_dest"
+
+  # ── desktop installers (macOS arm64 + x64, Windows exe, Linux deb) ───────────
+  desktop:
+    needs: meta
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.meta.outputs.apps_json) }}
+        target:
+          - { os: macos-14,       arch: arm64, fmt: dmg, task: packageReleaseDmg }
+          - { os: macos-13,       arch: x64,   fmt: dmg, task: packageReleaseDmg }
+          - { os: windows-latest, arch: x64,   fmt: exe, task: packageReleaseExe }
+          - { os: ubuntu-latest,  arch: x64,   fmt: deb, task: packageReleaseDeb }
+    runs-on: ${{ matrix.target.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
+      - uses: gradle/actions/setup-gradle@v4
+
+      # GL sources (en_ulb.zip etc.) are downloaded by :shared:downloadGLSources into src/ and are
+      # not in git; cache them so packaging does not re-fetch every run.
+      - name: Cache bundled GL sources
+        uses: actions/cache@v4
+        with:
+          path: |
+            shared/src/commonMain/composeResources/files/content
+            shared/.gl-sources-unavailable.json
+          key: gl-sources-${{ hashFiles('shared/src/commonMain/composeResources/files/gl_sources.json') }}
+          restore-keys: gl-sources-
+
+      - name: Install Linux packaging tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fakeroot binutils
+
+      # macOS signing degrades gracefully: with no 1Password token the signing steps are skipped and
+      # the DMG is built UNSIGNED (Gradle omits the signing config without MAC_SIGNING_IDENTITY), the
+      # same philosophy as the Android keystore fallback. With the token present it signs + notarizes.
+      - name: Detect macOS signing availability
+        id: macsign
+        if: startsWith(matrix.target.os, 'macos')
+        env:
+          OP_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+        run: |
+          if [[ -n "${OP_TOKEN:-}" ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::OP_SERVICE_ACCOUNT_TOKEN not set — building macOS DMG UNSIGNED."
+          fi
+
+      # 1Password's action runs on macOS/Linux (not Windows). The Developer ID identity name is read
+      # back out of the keychain rather than stored.
+      - name: Load macOS signing secrets
+        if: startsWith(matrix.target.os, 'macos') && steps.macsign.outputs.available == 'true'
+        uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          MAC_SIGNING_KEY_BASE64: "op://DevOps/Orature_CI_CD/Mac-Cert-and-Signing-Key/B64_CERT_AND_SIGNING"
+          MAC_KEYSTORE_PW: "op://DevOps/Orature_CI_CD/MAC-P12-SIGNING-PASSWORD"
+          MAC_APP_STORE_NOTARY_API_KEY: "op://DevOps/Orature_CI_CD/App-Store-Connect-API-Key/app-store-connect-private-key.p8"
+          MAC_NOTARY_ISSUER: "op://DevOps/Orature_CI_CD/MAC_NOTARY_ISSUER"
+          MAC_NOTARY_KEY_ID: "op://DevOps/Orature_CI_CD/MAC_NOTARY_KEY_ID"
+
+      - name: Import Developer ID certificate
+        if: startsWith(matrix.target.os, 'macos') && steps.macsign.outputs.available == 'true' 
+        run: |
+          set -euo pipefail
+          echo -n "$MAC_SIGNING_KEY_BASE64" | base64 --decode > /tmp/cert.p12
+          KEYCHAIN=build.keychain
+          security create-keychain -p actions "$KEYCHAIN"
+          security default-keychain -s "$KEYCHAIN"
+          security unlock-keychain -p actions "$KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security import /tmp/cert.p12 -k "$KEYCHAIN" -P "$MAC_KEYSTORE_PW" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions "$KEYCHAIN" >/dev/null
+          identity=$(security find-identity -v -p codesigning "$KEYCHAIN" \
+            | grep 'Developer ID Application' | head -1 | sed -E 's/.*"(.*)".*/\1/')
+          if [[ -z "$identity" ]]; then echo "No Developer ID Application identity found"; exit 1; fi
+          echo "MAC_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
+          rm -f /tmp/cert.p12
+
+      # The Gradle build reads MAC_SIGNING_IDENTITY (mac) to sign the .app during packaging; on
+      # Windows/Linux it is unset and the package is unsigned (Windows is signed later, Linux is not
+      # code-signed). Version comes from the tag.
+      - name: Package ${{ matrix.app }} (${{ matrix.target.fmt }})
+        run: >-
+          ./gradlew :app-${{ matrix.app }}:${{ matrix.target.task }}
+          -PappVersion=${{ needs.meta.outputs.version }}
+          -PappVersionCode=${{ needs.meta.outputs.version_code }}
+
+      - name: Notarize and staple (macOS)
+        if: startsWith(matrix.target.os, 'macos') && steps.macsign.outputs.available == 'true' 
+        run: |
+          set -euo pipefail
+          echo -n "$MAC_APP_STORE_NOTARY_API_KEY" > /tmp/notary.p8
+          dmg=$(ls app-${{ matrix.app }}/build/compose/binaries/main-release/dmg/*.dmg | head -1)
+          echo "Notarizing $dmg"
+          xcrun notarytool submit "$dmg" \
+            --key /tmp/notary.p8 --key-id "$MAC_NOTARY_KEY_ID" --issuer "$MAC_NOTARY_ISSUER" --wait
+          xcrun stapler staple "$dmg"
+          rm -f /tmp/notary.p8
+
+      # jpackage names files <PackageName>-<version>.<fmt> with no arch, so the two macOS DMGs would
+      # collide. Rename with the arch and stage into a flat dist/ for uploading.
+      - name: Stage artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          # macOS is signed in THIS job, so its signed-ness is known here; mark the file -unsigned when
+          # signing was unavailable. Windows is signed later in sign-windows (named there); the Linux
+          # .deb is never code-signed, so it gets no suffix.
+          suffix=""
+          if [[ "${{ matrix.target.os }}" == macos-* && "${{ steps.macsign.outputs.available }}" != "true" ]]; then
+            suffix="-unsigned"
+          fi
+          src="app-${{ matrix.app }}/build/compose/binaries/main-release/${{ matrix.target.fmt }}"
+          for f in "$src"/*.${{ matrix.target.fmt }}; do
+            base=$(basename "$f" ".${{ matrix.target.fmt }}")
+            cp "$f" "dist/${base}-${{ matrix.target.arch }}${suffix}.${{ matrix.target.fmt }}"
+          done
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.app }}-${{ matrix.target.os }}-${{ matrix.target.arch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  # ── Android release APK (signed if the keystore secret exists, else unsigned) ─
+  android:
+    needs: meta
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.meta.outputs.apps_json) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: android-actions/setup-android@v3
+
+      - name: Cache bundled GL sources
+        uses: actions/cache@v4
+        with:
+          path: |
+            shared/src/commonMain/composeResources/files/content
+            shared/.gl-sources-unavailable.json
+          key: gl-sources-${{ hashFiles('shared/src/commonMain/composeResources/files/gl_sources.json') }}
+          restore-keys: gl-sources-
+
+      # TODO(secrets): create an upload keystore and store it + its passwords in 1Password, then set
+      # these op:// paths. Until then ANDROID_KEYSTORE_BASE64 resolves empty and the build below
+      # produces an UNSIGNED apk — the agreed fallback, not a failure.
+      - name: Load Android signing secrets
+        uses: 1password/load-secrets-action@v2
+        continue-on-error: true      # missing item -> unsigned build, not a failed release
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          ANDROID_KEYSTORE_BASE64: "op://DevOps/BTT-Recorder_CI_CD/Android-Upload-Keystore/keystore.b64"
+          ANDROID_KEYSTORE_PASSWORD: "op://DevOps/BTT-Recorder_CI_CD/Android-Upload-Keystore/store-password"
+          ANDROID_KEY_ALIAS: "op://DevOps/BTT-Recorder_CI_CD/Android-Upload-Keystore/key-alias"
+          ANDROID_KEY_PASSWORD: "op://DevOps/BTT-Recorder_CI_CD/Android-Upload-Keystore/key-password"
+
+      - name: Decode keystore if present
+        run: |
+          set -euo pipefail
+          if [[ -n "${ANDROID_KEYSTORE_BASE64:-}" ]]; then
+            echo -n "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.keystore"
+            echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+            echo "Keystore present -> signed APK"
+          else
+            echo "No keystore -> UNSIGNED APK (fallback)"
+          fi
+
+      - name: Build release APK
+        run: >-
+          ./gradlew :app-${{ matrix.app }}:assembleRelease
+          -PappVersion=${{ needs.meta.outputs.version }}
+          -PappVersionCode=${{ needs.meta.outputs.version_code }}
+
+      - name: Stage APK
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          apk=$(ls app-${{ matrix.app }}/build/outputs/apk/release/*.apk | head -1)
+          cp "$apk" "dist/$(basename "$apk" .apk)-${{ needs.meta.outputs.version }}.apk"
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-${{ matrix.app }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  # ── Windows code signing (Azure Trusted Signing) ─────────────────────────────
+  # Separate job because 1Password's action does not run on Windows, so this uses GitHub Secrets.
+  sign-windows:
+    needs: [meta, desktop]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Download unsigned Windows installers
+        uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*-windows-latest-*
+          path: winbin
+          merge-multiple: true
+      # Same graceful degradation as macOS: without the Azure credentials the installer passes
+      # through UNSIGNED rather than failing the release.
+      - name: Detect Azure signing availability
+        id: azsign
+        env:
+          AZ_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        run: |
+          if [[ -n "${AZ_ID:-}" ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Azure signing secrets not set — Windows installer left UNSIGNED."
+          fi
+      - name: Sign .exe with Azure Trusted Signing
+        if: steps.azsign.outputs.available == 'true'
+        uses: azure/trusted-signing-action@v0.5.1
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: https://eus.codesigning.azure.net/
+          trusted-signing-account-name: ${{ secrets.AZURE_CODE_SIGNING_ACCOUNT_NAME }}
+          certificate-profile-name: ${{ secrets.AZURE_CERTIFICATE_PROFILE_NAME }}
+          files-folder: winbin
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+      - name: Mark unsigned if signing was skipped
+        if: steps.azsign.outputs.available != 'true'
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for f in winbin/*.exe; do mv "$f" "${f%.exe}-unsigned.exe"; done
+          ls -la winbin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-signed
+          path: winbin/*
+          if-no-files-found: error
+          retention-days: 14
+
+  # ── publish: S3 sync + GitHub Release ────────────────────────────────────────
+  publish:
+    needs: [meta, desktop, android, sign-windows]
+    runs-on: ubuntu-latest
+    steps:
+      # Everything EXCEPT the unsigned Windows installers (those are replaced by windows-signed).
+      - name: Download mac/linux/android artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '{desktop-*-macos-*,desktop-*-ubuntu-*,android-*}'
+          path: staging
+          merge-multiple: true
+      - name: Download signed Windows installers
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-signed
+          path: staging
+      - run: ls -la staging
+
+      - name: Load S3 credentials
+        uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          AWS_ACCESS_KEY_ID: "op://DevOps/travis-nightlybuilds aws s3 api access for travis uploads/S3_ACCESS_KEY_ID"
+          AWS_SECRET_ACCESS_KEY: "op://DevOps/travis-nightlybuilds aws s3 api access for travis uploads/S3_SECRET_ACCESS_KEY"
+          AWS_BUCKET: "op://DevOps/travis-nightlybuilds aws s3 api access for travis uploads/S3_BUCKET"
+
+      - name: Sync to S3
+        run: |
+          set -euo pipefail
+          AWS_DEFAULT_REGION=us-east-1 aws s3 sync staging \
+            "s3://${AWS_BUCKET}/${{ needs.meta.outputs.s3_dest }}" --no-progress
+        working-directory: ${{ github.workspace }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ needs.meta.outputs.release_name }}
+          prerelease: ${{ needs.meta.outputs.prerelease == 'true' }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: staging/*

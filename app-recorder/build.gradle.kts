@@ -13,6 +13,10 @@ plugins {
     alias(libs.plugins.ksp)
     kotlin("plugin.serialization") version "2.1.10"
 }
+// Version comes from the release workflow (see .github/workflows/release.yml); falls back to 1.0 / 1
+// for local builds. Sets extra["appVersionName"], ["appVersionCode"], ["desktopPackageVersion"].
+apply(from = rootProject.file("gradle/release-version.gradle.kts"))
+
 
 kotlin {
     androidTarget {
@@ -98,17 +102,35 @@ android {
         applicationId = "org.bibletranslationtools.recorder2"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = (project.extra["appVersionCode"] as Int)
+        versionName = (project.extra["appVersionName"] as String)
     }
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+    // Release signing from a keystore the CI provides via env (see the release workflow). When the
+    // keystore is absent — a local build, or a fork without the secret — no release signingConfig is
+    // created and `assembleRelease` produces an UNSIGNED apk rather than failing. That is the agreed
+    // fallback: the workflow still publishes it, clearly named, when signing is not configured.
+    val releaseKeystore = System.getenv("ANDROID_KEYSTORE_PATH")
+        ?.let(::file)?.takeIf { it.exists() }
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = releaseKeystore
+                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
     buildTypes {
         getByName("release") {
             isMinifyEnabled = false
+            // null when no keystore was provided -> unsigned apk.
+            signingConfig = signingConfigs.findByName("release")
         }
     }
     compileOptions {
@@ -163,7 +185,7 @@ compose.desktop {
             // upgrade. Each format only builds on its own OS.
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Exe, TargetFormat.Deb)
             packageName = "BTT-Recorder"
-            packageVersion = "1.0.0"
+            packageVersion = (project.extra["desktopPackageVersion"] as String)
 
             // jpackage trims the bundled JRE to the declared modules only, so anything reached at
             // runtime must be listed. This is the UNION of two sources:
@@ -188,6 +210,27 @@ compose.desktop {
 
             macOS {
                 iconFile.set(project.file("src/desktopMain/resources/icons/ic_launcher.icns"))
+                // Microphone usage string. On a hardened, notarized macOS build, accessing the mic
+                // without NSMicrophoneUsageDescription makes macOS terminate the app the moment it
+                // starts recording — so this is required for the signed build to record at all. A
+                // plain jpackage app has no Info.plist entry for it; this adds one.
+                infoPlist {
+                    extraKeysRawXml = """
+                        <key>NSMicrophoneUsageDescription</key>
+                        <string>BTT Recorder uses the microphone to record audio for Bible translation.</string>
+                    """.trimIndent()
+                }
+                // Developer ID signing runs only when the workflow has imported the certificate and
+                // exported its identity name; a local build has neither and packages unsigned.
+                // Notarization is NOT done here: Compose's notarization DSL only speaks Apple-ID +
+                // app-specific-password, while the WA notary account is an App Store Connect API key,
+                // so the workflow notarizes with `xcrun notarytool` after packaging instead.
+                System.getenv("MAC_SIGNING_IDENTITY")?.takeIf { it.isNotBlank() }?.let { id ->
+                    signing {
+                        sign.set(true)
+                        identity.set(id)
+                    }
+                }
             }
             windows {
                 iconFile.set(project.file("src/desktopMain/resources/icons/ic_launcher.ico"))
