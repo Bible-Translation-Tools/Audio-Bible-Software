@@ -9,7 +9,9 @@
 // about day-to-day development changes.
 
 val versionName = (findProperty("appVersion") as String?)?.takeIf { it.isNotBlank() } ?: "1.0"
-val versionCodeInt = (findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 1
+// versionCode must be a POSITIVE integer — AGP rejects 0. Coerce so a caller passing 0 (e.g. a CI
+// smoke test with -PappVersionCode=0, or a v0.0.0 tag) still builds rather than failing config.
+val versionCodeInt = ((findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 1).coerceAtLeast(1)
 
 // Desktop installers are stricter than Android about the version string: an MSI ProductVersion and a
 // DMG CFBundleVersion must be a purely numeric major.minor.patch, with no `-beta.1` prerelease or
