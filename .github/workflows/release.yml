@@ -7,7 +7,7 @@ name: release
 #   orature-v1.2.3    -> Orature only
 #   *-v1.2.3-beta.1   -> marked as a GitHub pre-release (any tag with a -suffix)
 #
-# Artifacts per app: macOS .dmg (arm64 + x64, signed + notarized), Windows .exe (Azure Trusted
+# Artifacts per app: macOS .dmg (arm64, signed + notarized), Windows .exe (Azure Trusted
 # Signing), Linux .deb, and a release .apk (signed if the Android keystore secret is present,
 # unsigned otherwise). Everything is attached to the GitHub Release and synced to S3.
 #
@@ -110,7 +110,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Parsed: apps=$apps version=$version code=$version_code prerelease=$prerelease s3=$s3_dest"
 
-  # ── desktop installers (macOS arm64 + x64, Windows exe, Linux deb) ───────────
+  # ── desktop installers (macOS arm64, Windows exe, Linux deb) ────────────────
   desktop:
     needs: meta
     strategy:
@@ -119,7 +119,6 @@ jobs:
         app: ${{ fromJSON(needs.meta.outputs.apps_json) }}
         target:
           - { os: macos-14,       arch: arm64, fmt: dmg, task: packageReleaseDmg }
-          - { os: macos-13,       arch: x64,   fmt: dmg, task: packageReleaseDmg }
           - { os: windows-latest, arch: x64,   fmt: exe, task: packageReleaseExe }
           - { os: ubuntu-latest,  arch: x64,   fmt: deb, task: packageReleaseDeb }
     runs-on: ${{ matrix.target.os }}

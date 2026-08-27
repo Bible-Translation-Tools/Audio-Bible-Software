@@ -40,7 +40,8 @@ unchanged.
 
 ## Artifacts
 
-Per app: macOS `.dmg` (arm64 **and** x64, signed + notarized), Windows `.exe` (Azure Trusted
+Per app: macOS `.dmg` (**arm64 / Apple Silicon only** — the Intel x86_64 build was dropped because
+GitHub's Intel runners queue unreliably; Intel Macs are not supported), Windows `.exe` (Azure Trusted
 Signing), Linux `.deb`, and a release `.apk`. All are attached to the Release and synced to
 `s3://<bucket>/<owner>/<repo>/{release | pre-release/<version>}`.
 
