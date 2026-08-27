@@ -22,7 +22,15 @@ val desktopVersion = versionName
     .substringBefore('-')
     .substringBefore('+')
     .split('.')
-    .let { parts -> (0..2).joinToString(".") { parts.getOrNull(it)?.toIntOrNull()?.toString() ?: "0" } }
+    .let { parts ->
+        val nums = (0..2).map { parts.getOrNull(it)?.toIntOrNull() ?: 0 }.toMutableList()
+        // jpackage refuses a macOS app-version whose FIRST number is 0 ("cannot be zero or
+        // negative"), so a 0.x tag — or the 0.0.0 CI smoke version — cannot be packaged as written.
+        // Bump the major to 1 for the desktop installer ONLY; Android keeps the true version. Moot
+        // for any 1.x release, which is the norm here.
+        nums[0] = nums[0].coerceAtLeast(1)
+        nums.joinToString(".")
+    }
 
 extra["appVersionName"] = versionName
 extra["appVersionCode"] = versionCodeInt

@@ -31,6 +31,9 @@ The tag's version is injected into the build (`-PappVersion` / `-PappVersionCode
   integer `major*1_000_000 + minor*1_000 + patch`.
 - **Desktop** installer version = the numeric core only (`1.2.3`) — jpackage rejects `-beta`/`+build`
   suffixes in an MSI/DMG version, so the prerelease label lives only in the tag and Release name.
+  Additionally, jpackage refuses a macOS app-version whose **first number is 0**, so a `0.x` tag's
+  desktop major is bumped to `1` (e.g. `0.9.3` → desktop `1.9.3`); Android keeps the true `0.9.3`.
+  Release from `1.x` to avoid the mismatch — the apps already sit at 1.0.
 
 A local build with no `-PappVersion` keeps the historical `1.0` / `1`, so day-to-day work is
 unchanged.
@@ -101,6 +104,14 @@ step is `continue-on-error`, and `app-*/build.gradle.kts` creates no release sig
 the keystore). The release still publishes; the APK is just `…-release-unsigned.apk`. Keep the
 keystore and its passwords safe — losing them means a new signing key, which Android treats as a
 different app on upgrade.
+
+## Partial builds still publish
+
+A per-platform failure does not block the rest. `desktop` is a matrix job, so if (say) the macOS
+cells fail, that job is marked failed — but `fail-fast: false` lets Windows/Linux finish, and
+`sign-windows`/`publish` run under `if: !cancelled()`, attaching whatever built (Windows, `.deb`,
+`.apk`) to the Release. The failed platform is simply missing from the Release, and its job is red in
+the run. The Release step is skipped only if *no* platform produced an artifact.
 
 ## Not yet verified
 

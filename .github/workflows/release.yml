@@ -320,8 +320,13 @@ jobs:
 
   # ── Windows code signing (Azure Trusted Signing) ─────────────────────────────
   # Separate job because 1Password's action does not run on Windows, so this uses GitHub Secrets.
+  # ── Windows code signing (Azure Trusted Signing) ─────────────────────────────
+  # Runs even if the macOS cells of `desktop` failed — a per-platform failure must not stop the
+  # platforms that did build from being published. Guards on whether a Windows installer actually
+  # exists so it is a no-op when the Windows build itself was the one that failed.
   sign-windows:
     needs: [meta, desktop]
+    if: ${{ !cancelled() && needs.meta.result == 'success' }}
     runs-on: windows-latest
     steps:
       - uses: actions/setup-dotnet@v4
@@ -333,10 +338,19 @@ jobs:
           pattern: desktop-*-windows-latest-*
           path: winbin
           merge-multiple: true
-      # Same graceful degradation as macOS: without the Azure credentials the installer passes
-      # through UNSIGNED rather than failing the release.
+      - name: Any Windows installers to sign?
+        id: haswin
+        run: |
+          if ls winbin/*.exe >/dev/null 2>&1; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::No Windows installer artifact — the Windows build must have failed; nothing to sign."
+          fi
+      # Without the Azure credentials the installer passes through UNSIGNED rather than failing.
       - name: Detect Azure signing availability
         id: azsign
+        if: steps.haswin.outputs.found == 'true'
         env:
           AZ_ID: ${{ secrets.AZURE_CLIENT_ID }}
         run: |
@@ -347,7 +361,7 @@ jobs:
             echo "::warning::Azure signing secrets not set — Windows installer left UNSIGNED."
           fi
       - name: Sign .exe with Azure Trusted Signing
-        if: steps.azsign.outputs.available == 'true'
+        if: steps.haswin.outputs.found == 'true' && steps.azsign.outputs.available == 'true'
         uses: azure/trusted-signing-action@v0.5.1
         with:
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -362,13 +376,14 @@ jobs:
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
       - name: Mark unsigned if signing was skipped
-        if: steps.azsign.outputs.available != 'true'
+        if: steps.haswin.outputs.found == 'true' && steps.azsign.outputs.available != 'true'
         run: |
           set -euo pipefail
           shopt -s nullglob
           for f in winbin/*.exe; do mv "$f" "${f%.exe}-unsigned.exe"; done
           ls -la winbin
       - uses: actions/upload-artifact@v4
+        if: steps.haswin.outputs.found == 'true'
         with:
           name: windows-signed
           path: winbin/*
@@ -376,11 +391,16 @@ jobs:
           retention-days: 14
 
   # ── publish: S3 sync + GitHub Release ────────────────────────────────────────
+  # `!cancelled()` so a partial build still publishes what succeeded (the whole point of the user's
+  # report: macOS failed, but Windows/deb/Android should still land on the Release). Only the Release
+  # step is gated on there being at least one artifact; S3 is skipped without a 1Password token.
   publish:
     needs: [meta, desktop, android, sign-windows]
+    if: ${{ !cancelled() && needs.meta.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
-      # Everything EXCEPT the unsigned Windows installers (those are replaced by windows-signed).
+      # mac/linux/android come from their build artifacts; Windows comes from windows-signed (which
+      # replaced the unsigned exe). Any of these may be absent if that platform's build failed.
       - name: Download mac/linux/android artifacts
         uses: actions/download-artifact@v4
         with:
@@ -389,12 +409,36 @@ jobs:
           merge-multiple: true
       - name: Download signed Windows installers
         uses: actions/download-artifact@v4
+        continue-on-error: true            # absent if the Windows build failed
         with:
           name: windows-signed
           path: staging
-      - run: ls -la staging
+      - name: List staged artifacts
+        id: artifacts
+        run: |
+          mkdir -p staging
+          ls -la staging || true
+          if [ -n "$(find staging -type f -print -quit)" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::error::No artifacts from any platform — nothing to publish."
+          fi
 
+      # S3 is optional — only with the 1Password token, and only if there is something to upload.
+      - name: Detect S3 availability
+        id: s3
+        env:
+          OP_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+        run: |
+          if [[ -n "${OP_TOKEN:-}" ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::No OP_SERVICE_ACCOUNT_TOKEN — skipping S3 sync."
+          fi
       - name: Load S3 credentials
+        if: steps.s3.outputs.available == 'true' && steps.artifacts.outputs.present == 'true'
         uses: 1password/load-secrets-action@v2
         with:
           export-env: true
@@ -403,19 +447,19 @@ jobs:
           AWS_ACCESS_KEY_ID: "op://DevOps/travis-nightlybuilds aws s3 api access for travis uploads/S3_ACCESS_KEY_ID"
           AWS_SECRET_ACCESS_KEY: "op://DevOps/travis-nightlybuilds aws s3 api access for travis uploads/S3_SECRET_ACCESS_KEY"
           AWS_BUCKET: "op://DevOps/travis-nightlybuilds aws s3 api access for travis uploads/S3_BUCKET"
-
       - name: Sync to S3
+        if: steps.s3.outputs.available == 'true' && steps.artifacts.outputs.present == 'true'
         run: |
           set -euo pipefail
-          AWS_DEFAULT_REGION=us-east-1 aws s3 sync staging \
-            "s3://${AWS_BUCKET}/${{ needs.meta.outputs.s3_dest }}" --no-progress
+          AWS_DEFAULT_REGION=us-east-1 aws s3 sync staging             "s3://${AWS_BUCKET}/${{ needs.meta.outputs.s3_dest }}" --no-progress
         working-directory: ${{ github.workspace }}
 
       - name: Create GitHub Release
+        if: steps.artifacts.outputs.present == 'true'
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ needs.meta.outputs.release_name }}
           prerelease: ${{ needs.meta.outputs.prerelease == 'true' }}
           generate_release_notes: true
-          fail_on_unmatched_files: true
+          fail_on_unmatched_files: false     # attach whatever built; a missing platform is not an error
           files: staging/*
