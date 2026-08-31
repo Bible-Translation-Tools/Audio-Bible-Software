@@ -183,7 +183,16 @@ class ProjectCreationViewModel : ViewModel(), KoinComponent {
     private fun createWorkbook() {
         val state = _uiState.value
         val source = state.selectedBook ?: return // This is the book collection in source language
+        val sourceLang = state.selectedSource?.language ?: return
         val targetLang = state.selectedTarget ?: return
+
+        // Recording in the same language as the source is narration; recording into a
+        // different language is a dialect project.
+        val mode = if (sourceLang.slug == targetLang.slug) {
+            ProjectMode.NARRATION
+        } else {
+            ProjectMode.DIALECT
+        }
 
         launchLogged {
             _uiState.update { it.copy(isLoading = true) }
@@ -192,7 +201,7 @@ class ProjectCreationViewModel : ViewModel(), KoinComponent {
                     createProject.create(
                         sourceProject = source,
                         targetLanguage = targetLang,
-                        mode = ProjectMode.NARRATION,
+                        mode = mode,
                         // MUST stay true, and the two arguments are independent: `mode` does not
                         // imply verses. Only `createAllBooks` couples them, so NARRATION with this
                         // false derives a target book with chapters and NO verse rows — the project
