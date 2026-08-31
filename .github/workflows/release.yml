@@ -296,18 +296,27 @@ jobs:
             echo "No keystore -> UNSIGNED APK (fallback)"
           fi
 
-      - name: Build release APK
+      # Build BOTH: the debug APK is signed with the committed project debug key (app-*/build.gradle
+      # signingConfigs.debug), so it always installs and upgrades on a device — the reliable
+      # sideload artifact. The release APK is signed only when the upload keystore is present, else
+      # unsigned (which Android refuses to install); it is the distribution artifact once signing is
+      # configured.
+      - name: Build APKs
         run: >-
-          ./gradlew :app-${{ matrix.app }}:assembleRelease
+          ./gradlew :app-${{ matrix.app }}:assembleDebug :app-${{ matrix.app }}:assembleRelease
           -PappVersion=${{ needs.meta.outputs.version }}
           -PappVersionCode=${{ needs.meta.outputs.version_code }}
 
-      - name: Stage APK
+      - name: Stage APKs
         run: |
           set -euo pipefail
           mkdir -p dist
-          apk=$(ls app-${{ matrix.app }}/build/outputs/apk/release/*.apk | head -1)
-          cp "$apk" "dist/$(basename "$apk" .apk)-${{ needs.meta.outputs.version }}.apk"
+          for apk in \
+            app-${{ matrix.app }}/build/outputs/apk/debug/*.apk \
+            app-${{ matrix.app }}/build/outputs/apk/release/*.apk; do
+            [ -e "$apk" ] || continue
+            cp "$apk" "dist/$(basename "$apk" .apk)-${{ needs.meta.outputs.version }}.apk"
+          done
           ls -la dist
 
       - uses: actions/upload-artifact@v4

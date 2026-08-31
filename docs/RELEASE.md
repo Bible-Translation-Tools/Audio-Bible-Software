@@ -42,8 +42,21 @@ unchanged.
 
 Per app: macOS `.dmg` (**arm64 / Apple Silicon only** — the Intel x86_64 build was dropped because
 GitHub's Intel runners queue unreliably; Intel Macs are not supported), Windows `.exe` (Azure Trusted
-Signing), Linux `.deb`, and a release `.apk`. All are attached to the Release and synced to
+Signing), Linux `.deb`, and **two Android APKs**:
+
+- `…-debug.apk` — signed with the committed project debug key (`keystore/debug.keystore`), so it
+  **always installs on a device**, no secret required. This is the sideload/testing artifact. It is a
+  debug build (`debuggable`), not for store distribution.
+- `…-release.apk` — the distribution build. Signed with the upload keystore when that secret is
+  configured, otherwise emitted **unsigned** (`…-release-unsigned.apk`), which Android refuses to
+  install ("package appears to be corrupted"). Use the debug APK until upload signing is set up.
+
+All are attached to the Release and synced to
 `s3://<bucket>/<owner>/<repo>/{release | pre-release/<version>}`.
+
+> Because the debug key is committed and stable, every CI debug APK shares one certificate — so a
+> newer debug build installs over an older one without an uninstall. The debug keystore is **not** a
+> secret (its passwords are the public Android defaults) and is never used for a release artifact.
 
 ## Signing is optional everywhere
 

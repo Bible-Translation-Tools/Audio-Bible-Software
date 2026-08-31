@@ -122,6 +122,16 @@ android {
     val releaseKeystore = System.getenv("ANDROID_KEYSTORE_PATH")
         ?.let(::file)?.takeIf { it.exists() }
     signingConfigs {
+        // Committed, non-secret Android debug key (store/key password "android"), shared by local
+        // AND CI debug builds so every debug APK is signed with the SAME certificate and therefore
+        // installs and upgrades on a device without an uninstall. A debug keystore is not a security
+        // boundary — its credentials are public — and is never used for release artifacts.
+        getByName("debug") {
+            storeFile = rootProject.file("keystore/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
         if (releaseKeystore != null) {
             create("release") {
                 storeFile = releaseKeystore
