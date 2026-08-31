@@ -133,6 +133,11 @@ android {
     }
     buildTypes {
         getByName("release") {
+            // R8/ProGuard stays OFF, deliberately — same reasoning as the desktop packaging
+            // (see the application.buildTypes.release.proguard comment below). Code shrinking
+            // strips methods reached only through edges static analysis can't see (JNA/native
+            // callbacks, reflection, ServiceLoader), and no keep list can be proven complete;
+            // do not enable minify/shrinkResources to trim the APK.
             isMinifyEnabled = false
             // null when no keystore was provided -> unsigned apk.
             signingConfig = signingConfigs.findByName("release")
@@ -165,18 +170,15 @@ compose.desktop {
             "-Dapple.awt.application.name=Orature"
         )
 
-        // ProGuard runs in SHRINK-ONLY mode for release packaging — same setup as :app-recorder
-        // (see proguard/desktop-shrink.pro). Orature adds Sentry, which resolves its integrations
-        // reflectively, so it carries an extra rules file.
+        // ProGuard is DISABLED for release packaging — same decision as :app-recorder. Shrink-only
+        // mode strips code reached through edges static analysis cannot see (JNA/native callbacks,
+        // reflection, ServiceLoader, resource-path lookups — Orature adds Sentry, another
+        // reflective consumer), so its keep list is a reactive blocklist that can never be proven
+        // complete. The ~50 MB saving does not justify an unprovable class of release-only crash.
+        // Re-enabling requires the shrink-only rationale AND CI runtime coverage of every
+        // reflective path on the shrunk binary; see git history for the former desktop-shrink*.pro.
         buildTypes.release.proguard {
-            isEnabled.set(true)
-            obfuscate.set(false)
-            optimize.set(false)
-            joinOutputJars.set(false)
-            configurationFiles.from(
-                rootProject.file("proguard/desktop-shrink.pro"),
-                rootProject.file("proguard/desktop-shrink-orature.pro")
-            )
+            isEnabled.set(false)
         }
 
         nativeDistributions {

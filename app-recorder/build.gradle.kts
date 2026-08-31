@@ -128,6 +128,11 @@ android {
     }
     buildTypes {
         getByName("release") {
+            // R8/ProGuard stays OFF, deliberately — same reasoning as the desktop packaging
+            // (see the application.buildTypes.release.proguard comment below). Code shrinking
+            // strips methods reached only through edges static analysis can't see (JNA/native
+            // callbacks, reflection, ServiceLoader), and no keep list can be proven complete;
+            // do not enable minify/shrinkResources to trim the APK.
             isMinifyEnabled = false
             // null when no keystore was provided -> unsigned apk.
             signingConfig = signingConfigs.findByName("release")
@@ -163,20 +168,18 @@ compose.desktop {
             )
         }
 
-        // ProGuard runs in SHRINK-ONLY mode for release packaging: dead code is removed, but
-        // nothing is renamed or inlined. The target is material-icons-extended, which ships all
-        // ~11,100 Material icons while this app references a few dozen.
-        // Renaming/inlining is what would break the reflective paths here (jOOQ record mapping,
-        // Jackson, snakeyaml, JNA, sqlite-jdbc, ServiceLoader), so both stay off and the
-        // reflective libraries are kept whole. See proguard/desktop-shrink.pro for the rules and
-        // the -dontwarn list that silences the optional deps absent on desktop.
+        // ProGuard is DISABLED for release packaging. Even in shrink-only mode it strips code
+        // reached through edges static analysis cannot see — JNA/native callbacks, reflection,
+        // ServiceLoader, resource-path lookups — so its keep list is a reactive blocklist that can
+        // never be proven complete. That is not hypothetical: a stripped filekit JNA callback
+        // crashed the release build at runtime the moment a native file dialog opened. The only
+        // win was ~50 MB (~36 MB of it material-icons-extended shipping ~11,100 icons for the ~100
+        // we use), which does not justify an unprovable class of release-only crash. Recover most
+        // of that size safely by dropping the over-broad icon dependency, not by shrinking.
+        // Re-enabling requires BOTH the shrink-only rationale AND CI runtime coverage of every
+        // reflective path on the shrunk binary; see git history for the former desktop-shrink.pro.
         buildTypes.release.proguard {
-            isEnabled.set(true)
-            obfuscate.set(false)
-            optimize.set(false)
-            // Keep one output jar per input jar so per-library size changes stay measurable.
-            joinOutputJars.set(false)
-            configurationFiles.from(rootProject.file("proguard/desktop-shrink.pro"))
+            isEnabled.set(false)
         }
 
         nativeDistributions {
