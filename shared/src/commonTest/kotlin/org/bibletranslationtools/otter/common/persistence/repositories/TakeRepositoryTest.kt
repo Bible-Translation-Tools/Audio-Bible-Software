@@ -5,16 +5,16 @@ import io.reactivex.Completable
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.test.runTest
-import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.Take
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.CollectionMapper
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.MarkerMapper
-import org.bibletranslationtools.otter.common.persistence.database.daos.TakeDao
-import org.bibletranslationtools.otter.common.persistence.database.daos.MarkerDao
-import org.bibletranslationtools.otter.common.persistence.database.daos.ContentDao
-import org.bibletranslationtools.otter.common.persistence.database.daos.ContentTypeDao
-import org.bibletranslationtools.otter.common.persistence.database.daos.CheckingStatusDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.TakeDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.MarkerDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.ContentDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.ContentTypeDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.CheckingStatusDao
 import org.bibletranslationtools.otter.common.persistence.entities.TakeEntity
 import java.time.LocalDate
 import kotlin.test.BeforeTest
@@ -23,7 +23,7 @@ import kotlin.test.assertEquals
 
 class TakeRepositoryTest {
 
-    private val db = mockk<IAppDatabase>()
+    private val db = mockk<DaoProvider>()
     private val takeDao = mockk<TakeDao>()
     private val markerDao = mockk<MarkerDao>()
     private val contentDao = mockk<ContentDao>()

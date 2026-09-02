@@ -1,0 +1,122 @@
+-- Mirrors sql/CreateAppDb.sql `dublin_core_entity` (resource metadata).
+CREATE TABLE dublin_core_entity (
+    id          INTEGER AS kotlin.Int PRIMARY KEY AUTOINCREMENT,
+    conformsTo  TEXT NOT NULL,
+    creator     TEXT NOT NULL,
+    description TEXT NOT NULL,
+    format      TEXT NOT NULL,
+    identifier  TEXT NOT NULL,
+    issued      TEXT NOT NULL,
+    language_fk INTEGER AS kotlin.Int NOT NULL REFERENCES language_entity(id),
+    modified    TEXT NOT NULL,
+    publisher   TEXT NOT NULL,
+    subject     TEXT NOT NULL,
+    type        TEXT NOT NULL,
+    title       TEXT NOT NULL,
+    version     TEXT NOT NULL,
+    license     TEXT NOT NULL DEFAULT '',
+    path        TEXT NOT NULL,
+    derivedFrom_fk INTEGER AS kotlin.Int REFERENCES dublin_core_entity(id),
+    UNIQUE (language_fk, identifier, version, creator, derivedFrom_fk)
+);
+
+-- Queries for ResourceMetadataDao (over dublin_core_entity + the rc_link_entity join table). -----
+
+exists:
+SELECT count(*) FROM dublin_core_entity
+WHERE language_fk = :languageId AND identifier = :identifier AND version = :version AND creator = :creator;
+
+fetch:
+SELECT * FROM dublin_core_entity
+WHERE language_fk = :languageId AND identifier = :identifier AND version = :version AND creator = :creator;
+
+fetchById:
+SELECT * FROM dublin_core_entity WHERE id = ?;
+
+fetchByIds:
+SELECT * FROM dublin_core_entity WHERE id IN ?;
+
+fetchAll:
+SELECT * FROM dublin_core_entity;
+
+-- The linked metadata rows: the "other side" of every rc_link the given id participates in.
+fetchLinks:
+SELECT * FROM dublin_core_entity
+WHERE id IN (
+    SELECT CASE WHEN rc1_fk = :id THEN rc2_fk ELSE rc1_fk END
+    FROM rc_link_entity
+    WHERE rc1_fk = :id OR rc2_fk = :id
+);
+
+insert:
+INSERT INTO dublin_core_entity
+    (conformsTo, creator, description, format, identifier, issued, language_fk, modified,
+     publisher, subject, type, title, version, license, path, derivedFrom_fk)
+VALUES
+    (:conformsTo, :creator, :description, :format, :identifier, :issued, :languageFk, :modified,
+     :publisher, :subject, :type, :title, :version, :license, :path, :derivedFromFk);
+
+selectMaxId:
+SELECT max(id) FROM dublin_core_entity;
+
+update:
+UPDATE dublin_core_entity
+SET conformsTo = :conformsTo, creator = :creator, description = :description, format = :format,
+    identifier = :identifier, issued = :issued, language_fk = :languageFk, modified = :modified,
+    publisher = :publisher, subject = :subject, type = :type, title = :title, version = :version,
+    license = :license, path = :path, derivedFrom_fk = :derivedFromFk
+WHERE id = :id;
+
+delete:
+DELETE FROM dublin_core_entity WHERE id = ?;
+
+-- rc_link_entity. addLink is called with (min, max); insert-if-absent replaces the DAO's
+-- catch-DataAccessException dedupe (the row's PRIMARY KEY has no ON CONFLICT clause).
+addLink:
+INSERT INTO rc_link_entity (rc1_fk, rc2_fk)
+SELECT :low, :high
+WHERE NOT EXISTS (SELECT 1 FROM rc_link_entity WHERE rc1_fk = :low AND rc2_fk = :high);
+
+removeLink:
+DELETE FROM rc_link_entity WHERE rc1_fk = :low AND rc2_fk = :high;
+
+-- fetchLatestVersion (private overload): dynamic creator/derivedFrom filters folded into one query.
+-- :creator IS NULL  -> no creator filter (the relax-creator retry passes null).
+-- :derivedFromFk IS NULL -> require derivedFrom_fk IS NULL; otherwise match it exactly.
+-- ORDER BY version DESC is a TEXT sort, preserving the existing (lexical) behavior.
+fetchLatestVersion:
+SELECT dublin_core_entity.* FROM dublin_core_entity
+JOIN language_entity ON dublin_core_entity.language_fk = language_entity.id
+WHERE language_entity.slug = :languageSlug
+  AND dublin_core_entity.identifier = :identifier
+  AND (:creator IS NULL OR dublin_core_entity.creator = :creator)
+  AND ((:derivedFromFk IS NULL AND dublin_core_entity.derivedFrom_fk IS NULL)
+       OR dublin_core_entity.derivedFrom_fk = :derivedFromFk)
+ORDER BY dublin_core_entity.version DESC
+LIMIT 1;
+
+-- fetchLatestVersion (2-arg overload): no creator / derivedFrom filter at all.
+fetchLatestVersionByLanguageAndIdentifier:
+SELECT dublin_core_entity.* FROM dublin_core_entity
+JOIN language_entity ON dublin_core_entity.language_fk = language_entity.id
+WHERE language_entity.slug = :languageSlug AND dublin_core_entity.identifier = :identifier
+ORDER BY dublin_core_entity.version DESC
+LIMIT 1;
+
+-- ResourceRepository.getResourceMetadata(content): distinct metadata rows linked via resource_link.content_fk.
+resourceMetadataByContent:
+SELECT DISTINCT dublin_core_entity.* FROM resource_link
+JOIN dublin_core_entity ON dublin_core_entity.id = resource_link.dublin_core_fk
+WHERE resource_link.content_fk = :contentId;
+
+-- ResourceRepository.getResourceMetadata(collection): distinct metadata rows linked via resource_link.collection_fk.
+resourceMetadataByCollection:
+SELECT DISTINCT dublin_core_entity.* FROM resource_link
+JOIN dublin_core_entity ON dublin_core_entity.id = resource_link.dublin_core_fk
+WHERE resource_link.collection_fk = :collectionId;
+
+-- ResourceRepository.getSubtreeResourceMetadata: metadata rows recorded in subtree_has_resource for a collection.
+subtreeResourceMetadata:
+SELECT dublin_core_entity.* FROM subtree_has_resource
+JOIN dublin_core_entity ON dublin_core_entity.id = subtree_has_resource.dublin_core_fk
+WHERE subtree_has_resource.collection_fk = :collectionId;

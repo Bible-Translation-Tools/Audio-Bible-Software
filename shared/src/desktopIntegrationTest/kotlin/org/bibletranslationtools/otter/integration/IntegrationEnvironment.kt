@@ -17,7 +17,7 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.V
 import org.bibletranslationtools.otter.common.initialization.InitializeVersification
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import org.bibletranslationtools.otter.common.persistence.DesktopDirectoryProvider
-import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.bibletranslationtools.otter.common.persistence.entities.ContentEntity
 import org.bibletranslationtools.otter.common.persistence.entities.CollectionEntity
 import org.bibletranslationtools.shared.di.koin.appDatabaseModule
@@ -67,7 +67,7 @@ class IntegrationEnvironment private constructor(
     private val koin: Koin
 ) : AutoCloseable {
 
-    val db: IAppDatabase = koin.get()
+    val db: DaoProvider = koin.get()
     val directoryProvider: IDirectoryProvider = koin.get()
 
     private val importerFactory: RCImporterFactory = koin.get()

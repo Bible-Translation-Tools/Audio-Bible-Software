@@ -5,14 +5,14 @@ import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
-import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.Content
-import org.bibletranslationtools.otter.common.persistence.database.daos.ContentTypeDao
-import org.bibletranslationtools.otter.common.persistence.database.daos.CheckingStatusDao
-import org.bibletranslationtools.otter.common.persistence.database.daos.ContentDao
-import org.bibletranslationtools.otter.common.persistence.database.daos.MarkerDao
-import org.bibletranslationtools.otter.common.persistence.database.daos.TakeDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.ContentTypeDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.CheckingStatusDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.ContentDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.MarkerDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.TakeDao
 import org.bibletranslationtools.otter.common.persistence.entities.ContentEntity
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -20,7 +20,7 @@ import kotlin.test.assertEquals
 
 class ContentRepositoryTest {
 
-    private val db = mockk<IAppDatabase>()
+    private val db = mockk<DaoProvider>()
     private val contentDao = mockk<ContentDao>()
     private val takeDao = mockk<TakeDao>()
     private val markerDao = mockk<MarkerDao>()

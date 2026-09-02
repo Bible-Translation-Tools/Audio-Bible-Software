@@ -1,0 +1,17 @@
+-- Mirrors sql/CreateAppDb.sql `checking_status`.
+CREATE TABLE checking_status (
+    id          INTEGER AS kotlin.Int PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL,
+    UNIQUE (name COLLATE NOCASE) ON CONFLICT IGNORE
+);
+
+-- Queries for CheckingStatusDao (enum cache: DAO lazily seeds missing enum rows on first access). -
+
+selectAll:
+SELECT id, name FROM checking_status;
+
+insert:
+INSERT INTO checking_status (name) VALUES (?);
+
+selectMaxId:
+SELECT max(id) FROM checking_status;

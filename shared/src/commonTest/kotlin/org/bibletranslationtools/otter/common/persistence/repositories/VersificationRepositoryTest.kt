@@ -3,9 +3,9 @@ package org.bibletranslationtools.otter.common.persistence.repositories
 import io.mockk.*
 import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.test.runTest
-import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
-import org.bibletranslationtools.otter.common.persistence.database.daos.VersificationDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.VersificationDao
 import java.io.File
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -13,7 +13,7 @@ import kotlin.test.assertEquals
 
 class VersificationRepositoryTest {
 
-    private val db = mockk<IAppDatabase>()
+    private val db = mockk<DaoProvider>()
     private val directoryProvider = mockk<IDirectoryProvider>()
     private val versificationDao = mockk<VersificationDao>()
 

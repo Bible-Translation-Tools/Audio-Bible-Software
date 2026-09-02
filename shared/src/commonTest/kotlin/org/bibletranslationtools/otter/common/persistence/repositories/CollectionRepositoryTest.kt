@@ -4,14 +4,14 @@ import io.mockk.*
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.test.runTest
-import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.data.primitives.Collection
-import org.bibletranslationtools.otter.common.persistence.database.daos.CollectionDao
-import org.bibletranslationtools.otter.common.persistence.database.daos.ContentDao
-import org.bibletranslationtools.otter.common.persistence.database.daos.ResourceMetadataDao
-import org.bibletranslationtools.otter.common.persistence.database.daos.LanguageDao
-import org.bibletranslationtools.otter.common.persistence.database.daos.WorkbookTypeDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.CollectionDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.ContentDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.ResourceMetadataDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.LanguageDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.WorkbookTypeDao
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.CollectionMapper
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.LanguageMapper
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.ResourceMetadataMapper
@@ -22,17 +22,19 @@ import kotlin.test.assertEquals
 
 class CollectionRepositoryTest {
 
-    private val db = mockk<IAppDatabase>()
+    private val db = mockk<DaoProvider>()
     private val directoryProvider = mockk<IDirectoryProvider>()
     private val collectionMapper = mockk<CollectionMapper>()
     private val metadataMapper = mockk<ResourceMetadataMapper>()
     private val languageMapper = mockk<LanguageMapper>()
-    
+
     private val collectionDao = mockk<CollectionDao>()
     private val contentDao = mockk<ContentDao>()
     private val metadataDao = mockk<ResourceMetadataDao>()
     private val languageDao = mockk<LanguageDao>()
     private val workbookTypeDao = mockk<WorkbookTypeDao>()
+    private val takeDao = mockk<org.bibletranslationtools.otter.common.persistence.database.dao.TakeDao>()
+    private val resourceLinkDao = mockk<org.bibletranslationtools.otter.common.persistence.database.dao.ResourceLinkDao>()
 
     private lateinit var repository: CollectionRepository
 
@@ -46,6 +48,8 @@ class CollectionRepositoryTest {
         every { db.resourceMetadataDao } returns metadataDao
         every { db.languageDao } returns languageDao
         every { db.workbookTypeDao } returns workbookTypeDao
+        every { db.takeDao } returns takeDao
+        every { db.resourceLinkDao } returns resourceLinkDao
 
         repository = CollectionRepository(
             db,

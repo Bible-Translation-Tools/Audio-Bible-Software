@@ -34,11 +34,11 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IColl
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IContentRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
-import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.bibletranslationtools.otter.common.persistence.entities.WorkbookDescriptorEntity
 
 class WorkbookDescriptorRepository(
-    database: IAppDatabase,
+    database: DaoProvider,
     private val collectionRepository: ICollectionRepository,
     private val contentRepository: IContentRepository,
     private val workbookRepository: IWorkbookRepository,

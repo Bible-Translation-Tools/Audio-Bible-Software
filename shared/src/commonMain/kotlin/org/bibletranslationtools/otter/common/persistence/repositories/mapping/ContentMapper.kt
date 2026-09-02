@@ -20,7 +20,7 @@ package org.bibletranslationtools.otter.common.persistence.repositories.mapping
 
 import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.Take
-import org.bibletranslationtools.otter.common.persistence.database.daos.ContentTypeDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.ContentTypeDao
 import org.bibletranslationtools.otter.common.persistence.entities.ContentEntity
 
 class ContentMapper(

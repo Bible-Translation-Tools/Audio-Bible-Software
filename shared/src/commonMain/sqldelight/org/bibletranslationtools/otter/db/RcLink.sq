@@ -1,0 +1,7 @@
+-- Mirrors sql/CreateAppDb.sql `rc_link_entity`.
+CREATE TABLE rc_link_entity (
+    rc1_fk      INTEGER AS kotlin.Int NOT NULL REFERENCES dublin_core_entity(id) ON DELETE CASCADE,
+    rc2_fk      INTEGER AS kotlin.Int NOT NULL REFERENCES dublin_core_entity(id) ON DELETE CASCADE,
+    PRIMARY KEY (rc1_fk, rc2_fk),
+    CONSTRAINT directionless CHECK (rc1_fk < rc2_fk)
+);

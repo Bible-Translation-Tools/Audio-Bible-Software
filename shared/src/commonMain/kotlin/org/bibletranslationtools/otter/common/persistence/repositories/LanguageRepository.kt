@@ -27,12 +27,12 @@ import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.workbook.Translation
 import org.bibletranslationtools.otter.common.domain.project.GlSourceCatalog
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ILanguageRepository
-import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.LanguageMapper
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.TranslationMapper
 
 class LanguageRepository(
-    database: IAppDatabase,
+    database: DaoProvider,
     private val mapper: LanguageMapper,
     private val translationMapper: TranslationMapper,
     private val glSourceCatalog: GlSourceCatalog

@@ -1,0 +1,15 @@
+-- Mirrors sql/CreateAppDb.sql `subtree_has_resource`.
+CREATE TABLE subtree_has_resource (
+  collection_fk       INTEGER AS kotlin.Int NOT NULL REFERENCES collection_entity (id) ON DELETE CASCADE,
+  dublin_core_fk      INTEGER AS kotlin.Int NOT NULL REFERENCES dublin_core_entity (id) ON DELETE CASCADE,
+  PRIMARY KEY (collection_fk, dublin_core_fk) ON CONFLICT IGNORE
+);
+
+-- Queries for SubtreeHasResourceDao. The batch insert(Sequence) is a Kotlin loop over `insert`
+-- inside one transaction; each `insert` returns its affected-row count.
+
+insert:
+INSERT INTO subtree_has_resource (collection_fk, dublin_core_fk) VALUES (:collectionId, :dublinCoreId);
+
+fetchDublinCoreIdsByCollectionId:
+SELECT dublin_core_fk FROM subtree_has_resource WHERE collection_fk = ?;

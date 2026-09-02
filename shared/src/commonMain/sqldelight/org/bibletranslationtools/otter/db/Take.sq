@@ -1,0 +1,88 @@
+-- Mirrors sql/CreateAppDb.sql `take_entity`.
+CREATE TABLE take_entity (
+    id               INTEGER AS kotlin.Int PRIMARY KEY AUTOINCREMENT,
+    content_fk       INTEGER AS kotlin.Int NOT NULL REFERENCES content_entity(id) ON DELETE CASCADE,
+    filename         TEXT NOT NULL,
+    path             TEXT NOT NULL,
+    number           INTEGER AS kotlin.Int NOT NULL,
+    created_ts       TEXT NOT NULL,
+    deleted_ts       TEXT DEFAULT NULL,
+    played           INTEGER AS kotlin.Int DEFAULT 0 NOT NULL,
+    checking_fk      INTEGER AS kotlin.Int NOT NULL REFERENCES checking_status(id) ON DELETE RESTRICT,
+    checksum         TEXT
+);
+
+-- Queries for TakeDao. The `includeDeleted` flag in the DAO selects between the plain and the
+-- IncludingDeleted variant of each fetch (deleted = deleted_ts IS NOT NULL).
+
+fetchByContentId:
+SELECT * FROM take_entity WHERE content_fk = ? AND deleted_ts IS NULL;
+
+fetchByContentIdIncludingDeleted:
+SELECT * FROM take_entity WHERE content_fk = ?;
+
+fetchById:
+SELECT * FROM take_entity WHERE id = ?;
+
+fetchAll:
+SELECT * FROM take_entity;
+
+insert:
+INSERT INTO take_entity (content_fk, filename, path, number, created_ts, deleted_ts, played, checking_fk, checksum)
+VALUES (:contentFk, :filename, :path, :number, :createdTs, :deletedTs, :played, :checkingFk, :checksum);
+
+selectMaxId:
+SELECT max(id) FROM take_entity;
+
+update:
+UPDATE take_entity
+SET content_fk = :contentFk, filename = :filename, path = :path, number = :number,
+    created_ts = :createdTs, deleted_ts = :deletedTs, played = :played,
+    checking_fk = :checkingFk, checksum = :checksum
+WHERE id = :id;
+
+delete:
+DELETE FROM take_entity WHERE id = ?;
+
+fetchSoftDeletedTakes:
+SELECT * FROM take_entity WHERE deleted_ts IS NOT NULL;
+
+-- Soft-deleted takes under a project: takes whose content is in a chapter (child collection) of the project.
+fetchSoftDeletedTakesForProject:
+SELECT * FROM take_entity
+WHERE content_fk IN (
+    SELECT id FROM content_entity WHERE collection_fk IN (
+        SELECT id FROM collection_entity WHERE parent_fk = :projectId
+    )
+) AND deleted_ts IS NOT NULL;
+
+fetchByCollectionId:
+SELECT * FROM take_entity
+WHERE content_fk IN (SELECT id FROM content_entity WHERE collection_fk = :collectionId)
+  AND deleted_ts IS NULL;
+
+fetchByCollectionIdIncludingDeleted:
+SELECT * FROM take_entity
+WHERE content_fk IN (SELECT id FROM content_entity WHERE collection_fk = :collectionId);
+
+-- CollectionRepository.deleteResources: delete take rows of the project's resource content that is
+-- linked under RCs derived from the source. Folds getSourceLinkedRCs + fetchContentByProjectSlug + delete.
+deleteResourceTakesForProject:
+DELETE FROM take_entity
+WHERE content_fk IN (
+    SELECT resource_content_fk FROM resource_link
+    WHERE dublin_core_fk IN (
+        SELECT rc2_fk FROM rc_link_entity
+        WHERE rc1_fk IN (
+            SELECT derivedFrom_fk FROM dublin_core_entity
+            WHERE id IN (SELECT dublin_core_fk FROM collection_entity WHERE id = :projectId)
+        )
+    )
+    AND resource_content_fk IN (
+        SELECT id FROM content_entity
+        WHERE collection_fk IN (
+            SELECT id FROM collection_entity
+            WHERE parent_fk IN (SELECT id FROM collection_entity WHERE slug = :projectSlug)
+        )
+    )
+);

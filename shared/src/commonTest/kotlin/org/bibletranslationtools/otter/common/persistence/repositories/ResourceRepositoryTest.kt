@@ -7,24 +7,24 @@ import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
-import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
-import org.bibletranslationtools.otter.common.persistence.database.daos.ContentTypeDao
-import org.bibletranslationtools.otter.common.persistence.database.daos.ResourceLinkDao
-import org.bibletranslationtools.otter.common.persistence.database.daos.SubtreeHasResourceDao
-import org.bibletranslationtools.otter.common.persistence.database.daos.*
+import org.bibletranslationtools.otter.common.persistence.database.dao.ContentTypeDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.ResourceLinkDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.SubtreeHasResourceDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.*
 import org.bibletranslationtools.otter.common.persistence.entities.ContentEntity
 import org.bibletranslationtools.otter.common.persistence.entities.ResourceLinkEntity
-import org.bibletranslationtools.otter.common.persistence.database.daos.CheckingStatusDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.CheckingStatusDao
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class ResourceRepositoryTest {
 
-    private val db = mockk<IAppDatabase>()
+    private val db = mockk<DaoProvider>()
     private val contentDao = mockk<ContentDao>()
     private val contentTypeDao = mockk<ContentTypeDao>()
     private val collectionDao = mockk<CollectionDao>()
@@ -32,6 +32,7 @@ class ResourceRepositoryTest {
     private val markerDao = mockk<MarkerDao>()
     private val resourceLinkDao = mockk<ResourceLinkDao>()
     private val subtreeHasResourceDao = mockk<SubtreeHasResourceDao>()
+    private val resourceMetadataDao = mockk<ResourceMetadataDao>()
     private val languageDao = mockk<LanguageDao>()
     private val checkingStatusDao = mockk<CheckingStatusDao>()
 
@@ -49,6 +50,7 @@ class ResourceRepositoryTest {
         every { db.markerDao } returns markerDao
         every { db.resourceLinkDao } returns resourceLinkDao
         every { db.subtreeHasResourceDao } returns subtreeHasResourceDao
+        every { db.resourceMetadataDao } returns resourceMetadataDao
         every { db.languageDao } returns languageDao
         every { db.checkingStatusDao } returns checkingStatusDao
         

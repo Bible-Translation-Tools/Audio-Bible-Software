@@ -1,0 +1,60 @@
+-- Mirrors sql/CreateAppDb.sql `language_entity`. Column order, types (by affinity), nullability,
+-- defaults and constraints must match — schema parity is enforced by SchemaParityTest.
+CREATE TABLE language_entity (
+  id            INTEGER AS kotlin.Int PRIMARY KEY AUTOINCREMENT,
+  slug          TEXT NOT NULL UNIQUE,
+  name          TEXT NOT NULL,
+  gateway       INTEGER AS kotlin.Int DEFAULT 0 NOT NULL,
+  anglicized    TEXT NOT NULL,
+  direction     TEXT NOT NULL,
+  region        TEXT
+);
+
+-- Queries for LanguageDao. --------------------------------------------------------------------
+
+fetchGateway:
+SELECT * FROM language_entity WHERE gateway = 1;
+
+fetchTargets:
+SELECT * FROM language_entity WHERE gateway = 0;
+
+fetchBySlug:
+SELECT * FROM language_entity WHERE slug = ?;
+
+fetchById:
+SELECT * FROM language_entity WHERE id = ?;
+
+fetchByIds:
+SELECT * FROM language_entity WHERE id IN ?;
+
+fetchAll:
+SELECT * FROM language_entity;
+
+insert:
+INSERT INTO language_entity (slug, name, anglicized, direction, gateway, region)
+VALUES (:slug, :name, :anglicized, :direction, :gateway, :region);
+
+-- Replaces jOOQ onConflictDoNothing() in LanguageDao.insertAll (Android-7-safe: no ON CONFLICT).
+insertIfAbsentBySlug:
+INSERT INTO language_entity (slug, name, anglicized, direction, gateway, region)
+SELECT :slug, :name, :anglicized, :direction, :gateway, :region
+WHERE NOT EXISTS (SELECT 1 FROM language_entity WHERE slug = :slug);
+
+selectMaxId:
+SELECT max(id) FROM language_entity;
+
+update:
+UPDATE language_entity
+SET slug = :slug, name = :name, anglicized = :anglicized, direction = :direction, gateway = :gateway, region = :region
+WHERE id = :id;
+
+updateBySlug:
+UPDATE language_entity
+SET name = :name, anglicized = :anglicized, direction = :direction, gateway = :gateway, region = :region
+WHERE slug = :slug;
+
+updateRegionBySlug:
+UPDATE language_entity SET region = :region WHERE slug = :slug;
+
+delete:
+DELETE FROM language_entity WHERE id = ?;

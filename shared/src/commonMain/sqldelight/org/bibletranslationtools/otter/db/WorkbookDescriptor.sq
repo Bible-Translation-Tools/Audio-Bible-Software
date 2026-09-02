@@ -1,0 +1,37 @@
+-- Mirrors sql/CreateAppDb.sql `workbook_descriptor_entity`.
+-- NOTE the column names source_FK / target_FK are upper-cased in the original schema; keep them
+-- verbatim so PRAGMA table_info reports identical column names.
+CREATE TABLE workbook_descriptor_entity (
+    id                INTEGER AS kotlin.Int PRIMARY KEY AUTOINCREMENT,
+    source_FK         INTEGER AS kotlin.Int NOT NULL REFERENCES collection_entity(id) ON DELETE CASCADE,
+    target_FK         INTEGER AS kotlin.Int NOT NULL REFERENCES collection_entity(id) ON DELETE CASCADE,
+    type_fk           INTEGER AS kotlin.Int NOT NULL REFERENCES workbook_type(id) ON DELETE RESTRICT,
+    UNIQUE (source_FK, target_FK, type_fk)
+);
+
+-- Queries for WorkbookDescriptorDao. ----------------------------------------------------------
+
+fetch:
+SELECT * FROM workbook_descriptor_entity
+WHERE source_FK = :sourceId AND target_FK = :targetId AND type_fk = :typeId;
+
+fetchById:
+SELECT * FROM workbook_descriptor_entity WHERE id = ?;
+
+fetchAll:
+SELECT * FROM workbook_descriptor_entity;
+
+insert:
+INSERT INTO workbook_descriptor_entity (source_FK, target_FK, type_fk)
+VALUES (:sourceFk, :targetFk, :typeFk);
+
+selectMaxId:
+SELECT max(id) FROM workbook_descriptor_entity;
+
+update:
+UPDATE workbook_descriptor_entity
+SET source_FK = :sourceFk, target_FK = :targetFk, type_fk = :typeFk
+WHERE id = :id;
+
+delete:
+DELETE FROM workbook_descriptor_entity WHERE id = ?;

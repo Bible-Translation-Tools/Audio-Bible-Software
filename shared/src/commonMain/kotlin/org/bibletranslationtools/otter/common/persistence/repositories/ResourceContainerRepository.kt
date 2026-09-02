@@ -22,10 +22,6 @@ import io.reactivex.Completable
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.rx2.await
-import org.jooq.DSLContext
-import org.jooq.Record3
-import org.jooq.Select
-import org.jooq.impl.DSL
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.collections.OtterTree
 import org.bibletranslationtools.otter.common.collections.OtterTreeNode
@@ -37,7 +33,7 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportExc
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.castOrFindImportException
 import org.bibletranslationtools.otter.common.api.persistence.repositories.*
-import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.CollectionMapper
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.ContentMapper
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.LanguageMapper
@@ -45,7 +41,7 @@ import org.bibletranslationtools.otter.common.persistence.repositories.mapping.R
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 
 class ResourceContainerRepository(
-    private val database: IAppDatabase,
+    private val database: DaoProvider,
     private val collectionRepository: ICollectionRepository,
     private val contentRepository: IContentRepository,
     private val resourceRepository: IResourceRepository,
@@ -69,17 +65,17 @@ class ResourceContainerRepository(
         val dublinCore = rc.manifest.dublinCore
         return Completable
             .fromAction {
-                database.transaction { dsl ->
-                    val languageEntity = languageDao.fetchBySlug(languageSlug, dsl)
+                database.transaction {
+                    val languageEntity = languageDao.fetchBySlug(languageSlug)
                         ?: throw NullPointerException("Could not find language with slug $languageSlug.")
                     val language = LanguageMapper().mapFromEntity(languageEntity)
                     val metadata = dublinCore.mapToMetadata(rc.file, language)
                         .let {
-                            insertMetadataOrThrow(dsl, it)
+                            insertMetadataOrThrow(it)
                         }
 
                     val relatedDublinCoreIds: List<Int> =
-                        linkRelatedResourceContainers(metadata, dublinCore.relation, dublinCore.creator, dsl)
+                        linkRelatedResourceContainers(metadata, dublinCore.relation, dublinCore.creator)
 
                     if (ContainerType.of(rc.type()) == ContainerType.Help) {
                         if (relatedDublinCoreIds.isEmpty()) {
@@ -87,11 +83,11 @@ class ResourceContainerRepository(
                             throw ImportException(ImportResult.UNMATCHED_HELP)
                         }
                         relatedDublinCoreIds.forEach { relatedId ->
-                            val ih = ImportHelper(metadata, relatedId, dsl)
+                            val ih = ImportHelper(metadata, relatedId)
                             ih.import(rcTree)
                         }
                     } else {
-                        val ih = ImportHelper(metadata, null, dsl)
+                        val ih = ImportHelper(metadata, null)
                         ih.import(rcTree)
                     }
                 }
@@ -350,7 +346,6 @@ class ResourceContainerRepository(
      * @throws [ImportException] if a matching row already exists.
      */
     private fun insertMetadataOrThrow(
-        dsl: DSLContext,
         metadata: ResourceMetadata
     ): ResourceMetadata {
         val existingRow = resourceMetadataDao.fetchLatestVersion(metadata.language.slug, metadata.identifier)
@@ -359,15 +354,14 @@ class ResourceContainerRepository(
             throw ImportException(ImportResult.ALREADY_EXISTS)
         }
         val entity = ResourceMetadataMapper().mapToEntity(metadata)
-        val rowId = resourceMetadataDao.insert(entity, dsl)
+        val rowId = resourceMetadataDao.insert(entity)
         return metadata.copy(id = rowId)
     }
 
     private fun linkRelatedResourceContainers(
         newDublinCore: ResourceMetadata,
         relations: List<String>,
-        creator: String,
-        dsl: DSLContext
+        creator: String
     ): List<Int> {
         val relatedIds = mutableListOf<Int>()
         relations.forEach { relation ->
@@ -378,10 +372,9 @@ class ResourceContainerRepository(
                 creator = creator,
                 relaxCreatorIfNoMatch = true,
                 derivedFromFk = null, // derivedFromFk=null since we are looking for the original resource container
-                dsl = dsl
             )
                 ?.let { relatedDublinCore ->
-                    resourceMetadataDao.addLink(newDublinCore.id, relatedDublinCore.id, dsl)
+                    resourceMetadataDao.addLink(newDublinCore.id, relatedDublinCore.id)
                     relatedIds.add(relatedDublinCore.id)
                 }
         }
@@ -394,13 +387,12 @@ class ResourceContainerRepository(
         return Single.fromCallable {
             var result = DeleteResult.SUCCESS
 
-            database.transaction { dsl ->
+            database.transaction {
                 val metadataEntity = resourceMetadataDao.fetchLatestVersion(
                     resourceContainer.manifest.dublinCore.language.identifier,
                     resourceContainer.manifest.dublinCore.identifier,
                     resourceContainer.manifest.dublinCore.creator,
                     derivedFromFk = null,
-                    dsl = dsl
                 )
 
                 val derivedRcExists = resourceMetadataDao.fetchAll().any {
@@ -422,13 +414,13 @@ class ResourceContainerRepository(
                 }
 
                 // delete entities with foreign keys refer to rc first
-                collectionDao.fetchAll(dsl)
+                collectionDao.fetchAll()
                     .filter { it.dublinCoreFk == metadataEntity.id }
                     .forEach {
-                        collectionDao.delete(it, dsl)
+                        collectionDao.delete(it)
                     }
 
-                resourceMetadataDao.delete(metadataEntity, dsl)
+                resourceMetadataDao.delete(metadataEntity)
             }
 
             result
@@ -469,11 +461,8 @@ class ResourceContainerRepository(
 
     inner class ImportHelper(
         private val metadata: ResourceMetadata,
-        private val relatedBundleDublinCoreId: Int?,
-        private val dsl: DSLContext
+        private val relatedBundleDublinCoreId: Int?
     ) {
-        private val dublinCoreIdDslVal = DSL.`val`(metadata.id)
-
         fun import(node: OtterTreeNode<CollectionOrContent>) {
             importCollection(null, node)
 
@@ -502,7 +491,7 @@ class ResourceContainerRepository(
                 parentFk = parent?.id
                 dublinCoreFk = metadata.id
             }
-            val insertedId = collectionDao.insert(entity, dsl)
+            val insertedId = collectionDao.insert(entity)
             return collection.copy(id = insertedId)
         }
 
@@ -545,26 +534,20 @@ class ResourceContainerRepository(
         }
 
         private fun linkVerseResources(parentCollection: Collection) {
-            @Suppress("UNCHECKED_CAST")
-            val matchingVerses = contentDao.selectLinkableVerses(
-                primaryContentTypes,
-                helpContentTypes,
-                parentCollection.id,
-                dublinCoreIdDslVal
-            ) as Select<Record3<Int, Int, Int>>
-
-            resourceLinkDao.insertContentResourceNoReturn(matchingVerses)
+            resourceLinkDao.insertLinkableVerses(
+                dublinCoreId = metadata.id,
+                parentCollectionId = parentCollection.id,
+                mainTypeIds = primaryContentTypes.map(contentTypeDao::fetchId),
+                helpTypeIds = helpContentTypes.map(contentTypeDao::fetchId),
+            )
         }
 
         private fun linkChapterResources(parentCollection: Collection) {
-            @Suppress("UNCHECKED_CAST")
-            val matchingVerses = contentDao.selectLinkableChapters(
-                helpContentTypes,
-                parentCollection.id,
-                dublinCoreIdDslVal
-            ) as Select<Record3<Int, Int, Int>>
-
-            resourceLinkDao.insertCollectionResourceNoReturn(matchingVerses)
+            resourceLinkDao.insertLinkableChapters(
+                dublinCoreId = metadata.id,
+                collectionId = parentCollection.id,
+                helpTypeIds = helpContentTypes.map(contentTypeDao::fetchId),
+            )
         }
     }
 }

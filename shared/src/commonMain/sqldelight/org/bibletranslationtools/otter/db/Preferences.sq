@@ -1,0 +1,5 @@
+-- Mirrors sql/CreateAppDb.sql `preferences`.
+CREATE TABLE preferences (
+    key                 TEXT NOT NULL UNIQUE,
+    value               TEXT
+);
