@@ -21,6 +21,7 @@ package org.bibletranslationtools.otter.common.initialization
 import io.reactivex.Observable
 import io.reactivex.schedulers.Schedulers
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
+import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.ProgressStatus
 
@@ -32,7 +33,8 @@ class InitializeApp(
     private val initializeTakeRepository: InitializeTakeRepository,
     private val initializeProjects: InitializeProjects,
     private val initializeTranslations: InitializeTranslations,
-    private val directoryProvider: ITempFileProvider
+    private val directoryProvider: ITempFileProvider,
+    private val daoProvider: DaoProvider
 ) {
 
     private val logger = LoggerFactory.getLogger(InitializeApp::class.java)
@@ -52,18 +54,25 @@ class InitializeApp(
 
                 var total = 0.0
                 val increment = (1.0).div(initializers.size)
-                initializers.forEach {
-                    total += increment
-                    progressStatusEmitter.onNext(
-                        ProgressStatus(percent = total)
-                    )
-                    it
-                        .exec(progressStatusEmitter)
-                        .doOnError { e ->
-                            logger.error("Error in Initialization", e)
-                        }
-                        .blockingAwait()
+                val appStart = System.currentTimeMillis()
+                daoProvider.withBulkLoad {
+                    logger.info("INIT withBulkLoad started (${System.currentTimeMillis() - appStart} ms)")
+                    initializers.forEach {
+                        total += increment
+                        progressStatusEmitter.onNext(
+                            ProgressStatus(percent = total)
+                        )
+                        val stepStart = System.currentTimeMillis()
+                        it
+                            .exec(progressStatusEmitter)
+                            .doOnError { e ->
+                                logger.error("Error in Initialization", e)
+                            }
+                            .blockingAwait()
+                        logger.info("INIT ${it::class.simpleName} took ${System.currentTimeMillis() - stepStart} ms (total ${System.currentTimeMillis() - appStart} ms)")
+                    }
                 }
+                logger.info("INIT withBulkLoad complete (${System.currentTimeMillis() - appStart} ms total)")
                 progressStatusEmitter.onComplete()
             }
             .doOnError { e ->

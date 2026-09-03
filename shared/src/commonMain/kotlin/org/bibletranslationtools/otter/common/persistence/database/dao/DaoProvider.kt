@@ -45,4 +45,11 @@ interface DaoProvider {
 
     fun transaction(block: () -> Unit)
     fun <T> transactionResult(block: () -> T): T
+
+    /**
+     * Runs [block] with first-install bulk-load optimizations when the DB is empty; a plain call
+     * otherwise. Default-passthrough so only the SQLDelight backend needs to optimize anything —
+     * jOOQ's adapter, mocks, and every other implementer get this for free.
+     */
+    fun <T> withBulkLoad(block: () -> T): T = block()
 }

@@ -18,6 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.persistence.database.sqldelight
 
+import app.cash.sqldelight.db.SqlDriver
 import org.bibletranslationtools.otter.common.persistence.database.InsertionException
 import org.bibletranslationtools.otter.common.persistence.database.dao.LanguageDao
 import org.bibletranslationtools.otter.common.persistence.entities.LanguageEntity
@@ -28,7 +29,12 @@ import org.bibletranslationtools.otter.db.OtterDatabase
  * `insert → SELECT max(id)` id retrieval and `insertAll`'s contiguous-id-range return computed from
  * max(id) before/after (with insert-if-absent-by-slug standing in for jOOQ's onConflictDoNothing).
  */
-internal class SqlDelightLanguageDao(private val db: OtterDatabase) : LanguageDao {
+private const val LANGUAGE_INSERT_COLUMNS = 6  // slug, name, anglicized, direction, gateway, region
+
+internal class SqlDelightLanguageDao(
+    private val db: OtterDatabase,
+    private val driver: SqlDriver
+) : LanguageDao {
     private val queries = db.languageQueries
 
     override fun fetchGateway(): List<LanguageEntity> =
@@ -56,17 +62,30 @@ internal class SqlDelightLanguageDao(private val db: OtterDatabase) : LanguageDa
     }
 
     override fun insertAll(entities: List<LanguageEntity>): List<Int> {
+        if (entities.isEmpty()) return emptyList()
         val initialLargest = queries.selectMaxId().executeAsOne().max ?: 0
+        // Multi-row INSERT OR IGNORE: slug is UNIQUE so conflicts are skipped without ON CONFLICT DO UPDATE
+        // (which requires SQLite 3.24+, not available on Android 7 / SQLite 3.9.2). Chunk to stay under
+        // SQLite's 999-bound-parameter limit: 999 / 6 columns = 166 rows per chunk.
+        val maxRowsPerChunk = 999 / LANGUAGE_INSERT_COLUMNS
         db.transaction {
-            entities.forEach { entity ->
-                queries.insertIfAbsentBySlug(
-                    slug = entity.slug,
-                    name = entity.name,
-                    anglicized = entity.anglicizedName,
-                    direction = entity.direction,
-                    gateway = entity.gateway,
-                    region = entity.region,
-                )
+            entities.chunked(maxRowsPerChunk).forEach { chunk ->
+                val placeholders = List(chunk.size) { "(?,?,?,?,?,?)" }.joinToString(", ")
+                driver.execute(
+                    null,
+                    "INSERT OR IGNORE INTO language_entity (slug, name, anglicized, direction, gateway, region) VALUES $placeholders",
+                    chunk.size * LANGUAGE_INSERT_COLUMNS
+                ) {
+                    var i = 0
+                    chunk.forEach { e ->
+                        bindString(i++, e.slug)
+                        bindString(i++, e.name)
+                        bindString(i++, e.anglicizedName)
+                        bindString(i++, e.direction)
+                        bindLong(i++, e.gateway.toLong())
+                        bindString(i++, e.region)
+                    }
+                }
             }
         }
         val finalLargest = queries.selectMaxId().executeAsOne().max!!

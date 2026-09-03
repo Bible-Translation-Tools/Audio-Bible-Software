@@ -18,6 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.persistence.database.sqldelight
 
+import app.cash.sqldelight.db.SqlDriver
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.persistence.database.InsertionException
 import org.bibletranslationtools.otter.common.persistence.database.dao.ContentDao
@@ -26,6 +27,9 @@ import org.bibletranslationtools.otter.common.persistence.entities.CollectionEnt
 import org.bibletranslationtools.otter.common.persistence.entities.ContentEntity
 import org.bibletranslationtools.otter.db.OtterDatabase
 
+/** content_entity's `insert` has this many columns; drives the Android-7 999-bound-parameter chunk size. */
+private const val CONTENT_INSERT_COLUMNS = 11
+
 /**
  * SQLDelight-backed [ContentDao]. Behavior mirrors the jOOQ ContentDao, including the
  * `insert → SELECT max(id)` id retrieval (wrapped in a transaction) and the id-must-be-0 guard on
@@ -33,6 +37,7 @@ import org.bibletranslationtools.otter.db.OtterDatabase
  */
 internal class SqlDelightContentDao(
     private val db: OtterDatabase,
+    private val driver: SqlDriver,
     private val contentTypeDao: ContentTypeDao
 ) : ContentDao {
     private val queries = db.contentQueries
@@ -91,23 +96,42 @@ internal class SqlDelightContentDao(
         }
     }
 
+    /**
+     * Chunked multi-row `INSERT … VALUES (?,…),(?,…),…` executed directly on [driver], instead of one
+     * `queries.insert(...)` execution per row. `importContent` calls this once per chapter (up to 176
+     * rows for Psalm 119), so the per-row-execution loop was a real cost during first-install seeding.
+     *
+     * CRITICAL: Android 7 / SQLite 3.9.2 caps bound parameters at 999 (`SQLITE_MAX_VARIABLE_NUMBER`).
+     * content_entity's insert has [CONTENT_INSERT_COLUMNS] (11) columns, so a chunk may hold at most
+     * `999 / 11 = 90` rows — a single naive multi-row insert of a whole chapter could exceed 999 and
+     * throw "too many SQL variables" on-device. Chunking is mandatory, not an optimization.
+     */
     override fun insertNoReturn(vararg entities: ContentEntity) {
+        entities.forEach { if (it.id != 0) throw InsertionException("Entity ID was not 0") }
+        if (entities.isEmpty()) return
+        val maxRowsPerChunk = 999 / CONTENT_INSERT_COLUMNS
         db.transaction {
-            entities.forEach { e ->
-                if (e.id != 0) throw InsertionException("Entity ID was not 0")
-                queries.insert(
-                    collectionFk = e.collectionFk,
-                    sort = e.sort,
-                    start = e.start,
-                    vEnd = e.end,
-                    label = e.labelKey,
-                    selectedTakeFk = e.selectedTakeFk,
-                    text = e.text,
-                    format = e.format,
-                    typeFk = e.type_fk,
-                    draftNumber = e.draftNumber,
-                    bridged = e.bridged,
-                )
+            entities.asList().chunked(maxRowsPerChunk).forEach { chunk ->
+                val rowPlaceholders = List(chunk.size) { "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)" }.joinToString(", ")
+                val sql = "INSERT INTO content_entity " +
+                    "(collection_fk, sort, start, v_end, label, selected_take_fk, text, format, type_fk, draft_number, bridged) " +
+                    "VALUES $rowPlaceholders"
+                driver.execute(identifier = null, sql = sql, parameters = chunk.size * CONTENT_INSERT_COLUMNS) {
+                    var i = 0
+                    chunk.forEach { e ->
+                        bindLong(i++, e.collectionFk.toLong())
+                        bindLong(i++, e.sort.toLong())
+                        bindLong(i++, e.start.toLong())
+                        bindLong(i++, e.end.toLong())
+                        bindString(i++, e.labelKey)
+                        bindLong(i++, e.selectedTakeFk?.toLong())
+                        bindString(i++, e.text)
+                        bindString(i++, e.format)
+                        bindLong(i++, e.type_fk.toLong())
+                        bindLong(i++, e.draftNumber.toLong())
+                        bindBoolean(i++, e.bridged)
+                    }
+                }
             }
         }
     }
