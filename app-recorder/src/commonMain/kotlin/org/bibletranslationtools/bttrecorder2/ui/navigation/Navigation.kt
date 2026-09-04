@@ -27,6 +27,7 @@ import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectCreationViewM
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SplashScreenViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.WacsLoginViewModel
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.WacsPublishViewModel
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.foundation.layout.Box
@@ -39,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.toRoute
+import org.koin.core.parameter.parametersOf
 import org.koin.mp.KoinPlatform.getKoin
 
 @Composable
@@ -144,15 +146,32 @@ fun Navigation(
                     }
                 },
                 onSettingsClick = { navController.navigate(SettingsRoute) },
-                onPublishClick = { navController.navigate(WacsPublishRoute) }
+                onPublishClick = { descriptor, chapters ->
+                    navController.navigate(
+                        WacsPublishRoute(
+                            sourceId = descriptor.sourceCollection.id,
+                            targetId = descriptor.targetCollection.id,
+                            chapters = chapters.joinToString(",")
+                        )
+                    )
+                }
             )
         }
 
-        composable<WacsPublishRoute> {
+        composable<WacsPublishRoute> { backStackEntry ->
+            val route = backStackEntry.toRoute<WacsPublishRoute>()
+            val chapterSorts = route.chapters
+                .split(",")
+                .mapNotNull { it.trim().toIntOrNull() }
+
             val koin = getKoin()
-            val vm: WacsLoginViewModel = viewModel { koin.get() }
+            val loginViewModel: WacsLoginViewModel = viewModel { koin.get() }
+            val publishViewModel: WacsPublishViewModel = viewModel {
+                koin.get { parametersOf(route.sourceId, route.targetId, chapterSorts) }
+            }
             WacsPublishScreen(
-                viewModel = vm,
+                viewModel = loginViewModel,
+                publishViewModel = publishViewModel,
                 onBackClick = { navController.popBackStack() }
             )
         }

@@ -80,7 +80,7 @@ class WacsLoginViewModel(
         viewModelScope.launch {
             try {
                 val credential = authenticator.login(current.host, current.username, current.password)
-                session.set(credential)
+                session.set(credential, current.host)
                 _state.update {
                     it.copy(
                         isLoading = false,

@@ -110,7 +110,7 @@ fun ProjectManagementScreen(
     onProjectClick: (WorkbookDescriptor) -> Unit,
     onRecordClick: (WorkbookDescriptor) -> Unit = {},
     onSettingsClick: () -> Unit = {},
-    onPublishClick: () -> Unit = {}
+    onPublishClick: (WorkbookDescriptor, List<Int>) -> Unit = { _, _ -> }
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
@@ -151,7 +151,7 @@ fun ProjectManagementScreen(
                 // FileKit's save dialog. The M0/M1 gate already keeps this unreachable when
                 // WacsPlatform.isGitSyncSupported is false (the dialog disables the option).
                 exportViewModel.closeOptions()
-                onPublishClick()
+                onPublishClick(ready.descriptor, ready.selectedChapterSorts.sorted())
             } else {
                 scope.launch {
                     val destination = FileKit.openFileSaver(

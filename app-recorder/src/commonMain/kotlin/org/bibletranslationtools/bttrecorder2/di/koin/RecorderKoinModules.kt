@@ -9,6 +9,7 @@ import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementVie
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.RecorderViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.UnitListViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.WacsLoginViewModel
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.WacsPublishViewModel
 import org.koin.core.module.dsl.factoryOf
 import org.koin.dsl.module
 
@@ -36,6 +37,11 @@ val recorderViewModelModule = module {
     factoryOf(::RecorderViewModel)
     factoryOf(::PlaybackViewModel)
     factoryOf(::WacsLoginViewModel)
+    // M2: parameterized by the nav args WacsPublishRoute carries (sourceId/targetId/chapters) —
+    // see Navigation.kt's `composable<WacsPublishRoute>` for the `parametersOf` call site.
+    factory { (sourceId: Int, targetId: Int, chapters: List<Int>) ->
+        WacsPublishViewModel(get(), get(), sourceId, targetId, chapters)
+    }
     // Process-lifetime singleton so the ProjectManagement + Recorder routes share the
     // same export state (isCurrentlyExporting gates UI); auto-cleans temp dirs on init.
     single { ExportProjectViewModel() }

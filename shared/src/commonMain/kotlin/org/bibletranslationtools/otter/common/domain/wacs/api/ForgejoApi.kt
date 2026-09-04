@@ -107,6 +107,7 @@ data class ForgejoRepo(
     val name: String,
     @SerialName("full_name") val fullName: String,
     @SerialName("clone_url") val cloneUrl: String,
+    @SerialName("html_url") val htmlUrl: String? = null,
     @SerialName("default_branch") val defaultBranch: String = "master",
     val owner: ForgejoOwner,
     val fork: Boolean = false,

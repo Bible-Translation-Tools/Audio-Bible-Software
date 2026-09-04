@@ -12,6 +12,7 @@ import org.bibletranslationtools.otter.common.domain.wacs.auth.WacsSession
 import org.bibletranslationtools.otter.common.domain.wacs.git.IWacsGitClient
 import org.bibletranslationtools.otter.common.domain.wacs.git.JGitWacsGitClient
 import org.bibletranslationtools.otter.common.domain.wacs.lfs.LfsBatchClient
+import org.bibletranslationtools.otter.common.domain.wacs.usecase.PublishChapterToWacs
 import org.koin.dsl.module
 
 /**
@@ -55,4 +56,9 @@ val wacsModule = module {
     // In-memory only — never persisted (see WacsSession's KDoc).
     single { WacsSession() }
     single<IWacsAuthenticator> { BasicAuthenticator(get()) }
+
+    // M2: publish. Takes WacsApiFactory (not a fixed ForgejoApi) because it must target whatever
+    // host WacsSession was logged into, which may differ from WacsConfig.baseUrl — see
+    // WacsSession.host's KDoc.
+    single { PublishChapterToWacs(get(), get(), get(), get(), get(), get()) }
 }

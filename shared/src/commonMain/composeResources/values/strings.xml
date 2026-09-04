@@ -241,5 +241,30 @@
     <string name="wacs_login_error_unreachable">Couldn\'t reach that server. Check the address and your connection.</string>
     <string name="wacs_logged_in_as">Logged in as %1$s</string>
     <string name="wacs_logout">Log out</string>
-    <string name="wacs_publish_coming_soon">Publishing chapters to WACS is coming soon. You\'re signed in and ready for when it lands.</string>
+
+    <!-- M2: publish -->
+    <string name="wacs_publish_button">Publish</string>
+    <string name="wacs_publish_chapters_label">Chapters to publish (%1$d)</string>
+    <string name="wacs_publish_chapter_label">Chapter %1$d</string>
+    <string name="wacs_publish_no_chapters">No chapters selected. Choose \"Publish to WACS\" from a project\'s export options and select at least one complete chapter.</string>
+    <string name="wacs_publish_success">Published %1$d chapter(s) to your WACS fork.</string>
+    <string name="wacs_publish_status_pending">Not started</string>
+    <string name="wacs_publish_status_in_progress">Publishing…</string>
+    <string name="wacs_publish_status_success">Published</string>
+    <string name="wacs_publish_status_failed">Failed</string>
+    <string name="wacs_publish_progress_checking_repo">Checking for the official repository…</string>
+    <string name="wacs_publish_progress_forking">Forking to your account…</string>
+    <string name="wacs_publish_progress_cloning">Cloning your fork…</string>
+    <string name="wacs_publish_progress_preparing">Preparing chapter files…</string>
+    <string name="wacs_publish_progress_committing">Committing…</string>
+    <string name="wacs_publish_progress_uploading">Uploading audio…</string>
+    <string name="wacs_publish_progress_pushing">Pushing to your fork…</string>
+    <string name="wacs_publish_error_not_authenticated">You\'re not logged in. Log in and try again.</string>
+    <string name="wacs_publish_error_auth_rejected">The server rejected your credentials. Log in again.</string>
+    <string name="wacs_publish_error_network">Couldn\'t reach the WACS server. Check your connection and try again.</string>
+    <string name="wacs_publish_error_no_official_repo">No official WACS repository exists yet for this project. Ask an administrator to create it first.</string>
+    <string name="wacs_publish_error_no_audio">This chapter has no finished recording to publish.</string>
+    <string name="wacs_publish_error_conflict">Someone else changed this repository. Try again.</string>
+    <string name="wacs_publish_error_integrity">The uploaded audio didn\'t verify correctly. Try again.</string>
+    <string name="wacs_publish_error_generic">Couldn\'t publish to WACS. Try again.</string>
 </resources>
