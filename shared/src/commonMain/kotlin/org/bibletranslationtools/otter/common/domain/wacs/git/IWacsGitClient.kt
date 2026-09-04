@@ -50,6 +50,31 @@ interface IWacsGitClient {
         branch: String = DEFAULT_BRANCH,
     ): Boolean
 
+    /**
+     * M4: add/refresh an `upstream` remote pointing at [upstreamUrl] (the *official*
+     * `AudioTranslation/<repo>`, not `origin` — which is the user's fork), fetch it, and
+     * fast-forward-merge [branch] from it onto the currently checked-out branch. Run this after
+     * [clone] and before writing/committing new files, so a fork that has fallen behind the
+     * official repo (someone else's contribution merged upstream since the fork was created)
+     * doesn't cause a later [push] to be rejected as non-fast-forward.
+     *
+     * Pointer-only and cheap: with [GitConfigIsolation] installed, nothing here ever smudges an
+     * LFS pointer into real bytes, so this is an ordinary small-object git fetch + fast-forward,
+     * not an LFS download. A brand-new fork is already even with upstream, so this is a no-op
+     * (returns `false`) immediately after cloning it.
+     *
+     * Throws if the local branch can't fast-forward (diverged — e.g. an in-progress local commit
+     * conflicts with upstream). Callers classify that the same way as [fetchAndFastForward]'s
+     * "someone else changed it" case (see `PublishChapterToWacs.classifyGitFailure`) — no
+     * line-level merge is attempted (see the plan doc, §6).
+     */
+    suspend fun syncFromUpstream(
+        dir: File,
+        upstreamUrl: String,
+        credential: WacsCredential,
+        branch: String = DEFAULT_BRANCH,
+    ): Boolean
+
     /** Stage [paths] (repo-relative) and commit. Returns the new commit's SHA-1. */
     suspend fun commit(
         dir: File,

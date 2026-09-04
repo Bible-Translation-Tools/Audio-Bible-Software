@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -81,9 +82,13 @@ import org.bibletranslationtools.shared.resources.wacs_publish_progress_checking
 import org.bibletranslationtools.shared.resources.wacs_publish_progress_cloning
 import org.bibletranslationtools.shared.resources.wacs_publish_progress_committing
 import org.bibletranslationtools.shared.resources.wacs_publish_progress_forking
+import org.bibletranslationtools.shared.resources.wacs_publish_progress_opening_pr
 import org.bibletranslationtools.shared.resources.wacs_publish_progress_preparing
 import org.bibletranslationtools.shared.resources.wacs_publish_progress_pushing
+import org.bibletranslationtools.shared.resources.wacs_publish_progress_syncing
 import org.bibletranslationtools.shared.resources.wacs_publish_progress_uploading
+import org.bibletranslationtools.shared.resources.wacs_publish_pr_submitted_message
+import org.bibletranslationtools.shared.resources.wacs_publish_pr_submitted_title
 import org.bibletranslationtools.shared.resources.wacs_publish_status_failed
 import org.bibletranslationtools.shared.resources.wacs_publish_status_in_progress
 import org.bibletranslationtools.shared.resources.wacs_publish_status_pending
@@ -264,6 +269,39 @@ private fun LoggedInContent(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.primary
                 )
+
+                // M4: the session's pull request back to the official repo — one per session (see
+                // WacsPublishViewModel's KDoc), shown as selectable/copyable text since desktop has
+                // no in-app browser to launch it from.
+                publishState.pullRequestUrl?.let { url ->
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = stringResource(Res.string.wacs_publish_pr_submitted_title),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = stringResource(Res.string.wacs_publish_pr_submitted_message),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    SelectionContainer {
+                        Text(
+                            text = url,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+                publishState.pullRequestError?.let { message ->
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+
                 TextButton(onClick = onAcknowledgeSuccess) { Text(stringResource(Res.string.action_dismiss)) }
             }
 
@@ -316,10 +354,12 @@ private fun progressLabel(progress: PublishChapterToWacs.Progress): String = whe
     is PublishChapterToWacs.Progress.CheckingOfficialRepo -> stringResource(Res.string.wacs_publish_progress_checking_repo)
     is PublishChapterToWacs.Progress.Forking -> stringResource(Res.string.wacs_publish_progress_forking)
     is PublishChapterToWacs.Progress.Cloning -> stringResource(Res.string.wacs_publish_progress_cloning)
+    is PublishChapterToWacs.Progress.SyncingUpstream -> stringResource(Res.string.wacs_publish_progress_syncing)
     is PublishChapterToWacs.Progress.PreparingFiles -> stringResource(Res.string.wacs_publish_progress_preparing)
     is PublishChapterToWacs.Progress.Committing -> stringResource(Res.string.wacs_publish_progress_committing)
     is PublishChapterToWacs.Progress.UploadingAudio -> stringResource(Res.string.wacs_publish_progress_uploading)
     is PublishChapterToWacs.Progress.Pushing -> stringResource(Res.string.wacs_publish_progress_pushing)
+    is PublishChapterToWacs.Progress.OpeningPullRequest -> stringResource(Res.string.wacs_publish_progress_opening_pr)
     is PublishChapterToWacs.Progress.Done -> ""
 }
 

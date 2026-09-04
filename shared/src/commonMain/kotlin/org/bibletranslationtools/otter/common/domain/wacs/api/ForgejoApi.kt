@@ -25,6 +25,7 @@ import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 /**
  * The slice of the Forgejo (Gitea-compatible) REST API the WACS client needs: identify the user,
@@ -71,6 +72,21 @@ interface ForgejoApi {
         @Header("Authorization") auth: String,
         @Body request: CreatePullRequestRequest,
     ): ForgejoPullRequest
+
+    /**
+     * M4: list `owner/repo`'s pull requests, so a caller can find one already open from a
+     * particular fork/branch instead of creating a duplicate (Forgejo/Gitea auto-updates an open
+     * PR's diff whenever its head branch gets new commits, which is exactly what re-publishing a
+     * later chapter to the same fork branch does). [ForgejoPullRequest.head]/[base] carry enough
+     * (`repo_id` + `ref`) to match without a second lookup.
+     */
+    @GET("api/v1/repos/{owner}/{repo}/pulls")
+    suspend fun listPullRequests(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Header("Authorization") auth: String,
+        @Query("state") state: String = "open",
+    ): List<ForgejoPullRequest>
 
     companion object {
         /** WACS bot-blocks unknown clients (403); this header is on the allowlist (see build.gradle.kts). */
@@ -142,4 +158,18 @@ data class ForgejoPullRequest(
     val number: Long,
     @SerialName("html_url") val htmlUrl: String,
     val state: String,
+    val head: ForgejoPrBranchInfo? = null,
+    val base: ForgejoPrBranchInfo? = null,
+)
+
+/**
+ * The slice of Forgejo's `PRBranchInfo` needed to identify which repo/branch a PR's head or base
+ * points at, e.g. to tell "this open PR's head is fork #42's `master` branch" apart from another
+ * fork's PR against the same official repo. [repoId] is enough to match a fork ([ForgejoRepo.id])
+ * without decoding the (much larger) nested repository object Forgejo also includes.
+ */
+@Serializable
+data class ForgejoPrBranchInfo(
+    val ref: String? = null,
+    @SerialName("repo_id") val repoId: Long? = null,
 )

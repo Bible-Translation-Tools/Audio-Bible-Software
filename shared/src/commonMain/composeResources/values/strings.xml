@@ -255,10 +255,12 @@
     <string name="wacs_publish_progress_checking_repo">Checking for the official repository…</string>
     <string name="wacs_publish_progress_forking">Forking to your account…</string>
     <string name="wacs_publish_progress_cloning">Cloning your fork…</string>
+    <string name="wacs_publish_progress_syncing">Syncing your fork with the official repository…</string>
     <string name="wacs_publish_progress_preparing">Preparing chapter files…</string>
     <string name="wacs_publish_progress_committing">Committing…</string>
     <string name="wacs_publish_progress_uploading">Uploading audio…</string>
     <string name="wacs_publish_progress_pushing">Pushing to your fork…</string>
+    <string name="wacs_publish_progress_opening_pr">Submitting your contribution…</string>
     <string name="wacs_publish_error_not_authenticated">You\'re not logged in. Log in and try again.</string>
     <string name="wacs_publish_error_auth_rejected">The server rejected your credentials. Log in again.</string>
     <string name="wacs_publish_error_network">Couldn\'t reach the WACS server. Check your connection and try again.</string>
@@ -267,4 +269,9 @@
     <string name="wacs_publish_error_conflict">Someone else changed this repository. Try again.</string>
     <string name="wacs_publish_error_integrity">The uploaded audio didn\'t verify correctly. Try again.</string>
     <string name="wacs_publish_error_generic">Couldn\'t publish to WACS. Try again.</string>
+
+    <!-- M4: contribute + sync -->
+    <string name="wacs_publish_pr_submitted_title">Contribution submitted</string>
+    <string name="wacs_publish_pr_submitted_message">Your chapters were published. View the pull request:</string>
+    <string name="wacs_publish_pr_error">Chapters were published to your fork, but submitting the pull request failed: %1$s</string>
 </resources>

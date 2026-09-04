@@ -92,17 +92,46 @@ class JGitWacsGitClient : IWacsGitClient {
         requireSupported()
         open(dir).use { git ->
             git.fetch().setCredentialsProvider(credential.toProvider()).call()
-            val upstream = git.repository.resolve("${Constants.DEFAULT_REMOTE_NAME}/$branch")
-                ?: error("No origin/$branch to fast-forward from")
-            val result = git.merge()
-                .include(upstream)
-                .setFastForward(MergeCommand.FastForwardMode.FF_ONLY)
+            git.fastForwardTo("${Constants.DEFAULT_REMOTE_NAME}/$branch")
+        }
+    }
+
+    override suspend fun syncFromUpstream(
+        dir: File,
+        upstreamUrl: String,
+        credential: WacsCredential,
+        branch: String,
+    ): Boolean = withContext(Dispatchers.IO) {
+        requireSupported()
+        open(dir).use { git ->
+            // `git remote add upstream <url>` is just these two config keys — set them directly
+            // (idempotent; a fresh clone never already has an "upstream" remote) rather than
+            // pulling in JGit's RemoteAddCommand for a one-shot per-publish clone.
+            val remoteName = "upstream"
+            val repoConfig = git.repository.config
+            repoConfig.setString("remote", remoteName, "url", upstreamUrl)
+            repoConfig.setString("remote", remoteName, "fetch", "+refs/heads/*:refs/remotes/$remoteName/*")
+            repoConfig.save()
+
+            git.fetch()
+                .setRemote(remoteName)
+                .setCredentialsProvider(credential.toProvider())
                 .call()
-            when (result.mergeStatus) {
-                MergeResult.MergeStatus.FAST_FORWARD -> true
-                MergeResult.MergeStatus.ALREADY_UP_TO_DATE -> false
-                else -> error("Cannot fast-forward $branch: ${result.mergeStatus} (someone else changed it)")
-            }
+            git.fastForwardTo("$remoteName/$branch")
+        }
+    }
+
+    /** Fast-forward-merge the currently checked-out branch onto [remoteRef] (e.g. `origin/master`). */
+    private fun Git.fastForwardTo(remoteRef: String): Boolean {
+        val target = repository.resolve(remoteRef) ?: error("No $remoteRef to fast-forward from")
+        val result = merge()
+            .include(target)
+            .setFastForward(MergeCommand.FastForwardMode.FF_ONLY)
+            .call()
+        return when (result.mergeStatus) {
+            MergeResult.MergeStatus.FAST_FORWARD -> true
+            MergeResult.MergeStatus.ALREADY_UP_TO_DATE -> false
+            else -> error("Cannot fast-forward to $remoteRef: ${result.mergeStatus} (someone else changed it)")
         }
     }
 

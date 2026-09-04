@@ -26,7 +26,9 @@ import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.audio.metadata.BurritoAlignmentMetadata
 import org.bibletranslationtools.kotlinscripturealignment.model.BurritoAudioAlignment
 import org.bibletranslationtools.otter.common.domain.wacs.WacsConfig
+import org.bibletranslationtools.otter.common.domain.wacs.api.CreatePullRequestRequest
 import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoApi
+import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoPullRequest
 import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoRepo
 import org.bibletranslationtools.otter.common.domain.wacs.api.WacsApiFactory
 import org.bibletranslationtools.otter.common.domain.wacs.auth.WacsCredential
@@ -45,21 +47,29 @@ import java.io.IOException
 import java.util.UUID
 
 /**
- * M2: publish one recorded chapter to the user's fork of `AudioTranslation/<repo>`.
+ * M2/M4: publish one recorded chapter to the user's fork of `AudioTranslation/<repo>`, and (M4)
+ * complete the contribution loop back to the official repo.
  *
  * Orchestrates, in the order the plan's §0 requires (pointer written and committed BEFORE the real
  * bytes are uploaded, and uploaded BEFORE the ref is pushed):
  *
  * 1. Resolve (or fork) the user's copy of the official repo via [ForgejoApi].
  * 2. Clone the fork (pointers only — [IWacsGitClient] runs with host git config isolated).
- * 3. Produce the chapter's alignment JSON from the selected take's master WAV, reusing the same
+ * 3. M4: fast-forward the fork's default branch to the official repo's, so a fork left behind by
+ *    someone else's merged contribution doesn't turn this session's push into a rejected
+ *    non-fast-forward (see [IWacsGitClient.syncFromUpstream]).
+ * 4. Produce the chapter's alignment JSON from the selected take's master WAV, reusing the same
  *    `BurritoAlignmentMetadata`/`OratureAudioFile` machinery `BurritoWrapperExporter` uses — no new
  *    serializer.
- * 4. Write the LFS *pointer* text (never the audio bytes) + refreshed `.gitattributes` +
+ * 5. Write the LFS *pointer* text (never the audio bytes) + refreshed `.gitattributes` +
  *    alignment JSON + `metadata.json` into the working tree, via [WacsRepoLayout]/[MetadataJsonWriter].
- * 5. `git add` + commit (pointer + text only).
- * 6. LFS Batch-upload the real bytes.
- * 7. Push to the fork.
+ * 6. `git add` + commit (pointer + text only).
+ * 7. LFS Batch-upload the real bytes.
+ * 8. Push to the fork.
+ *
+ * M4's other half, [openContributionPullRequest], is a separate call the UI makes ONCE per publish
+ * session — after the loop over every selected chapter has finished calling [publish] — not once
+ * per chapter; see that method's KDoc for why.
  *
  * Every failure is classified into a [WacsPublishException] — no JGit, retrofit2, or java.io
  * exception crosses out of this class, mirroring `BasicAuthenticator`'s error-boundary pattern.
@@ -79,6 +89,19 @@ class PublishChapterToWacs(
         val forkHtmlUrl: String?,
         val chapterNumber: Int,
         val commitSha: String,
+        /** M4: enough of the fork/official-repo identity to open the session's PR afterward. */
+        val forkId: Long,
+        val forkOwner: String,
+        val branch: String,
+        val officialDefaultBranch: String,
+    )
+
+    /** The pull request [openContributionPullRequest] found or opened. */
+    data class PullRequestResult(
+        val number: Long,
+        val htmlUrl: String,
+        /** True if an open PR for this fork/branch already existed and was reused, not created. */
+        val reused: Boolean,
     )
 
     /** Coarse publish stages, reported via [onProgress] for a progress UI (fork -> ... -> push). */
@@ -86,10 +109,12 @@ class PublishChapterToWacs(
         data object CheckingOfficialRepo : Progress
         data object Forking : Progress
         data object Cloning : Progress
+        data object SyncingUpstream : Progress
         data object PreparingFiles : Progress
         data object Committing : Progress
         data class UploadingAudio(val totalBytes: Long) : Progress
         data object Pushing : Progress
+        data object OpeningPullRequest : Progress
         data object Done : Progress
     }
 
@@ -105,7 +130,7 @@ class PublishChapterToWacs(
         val repoName = WacsRepoLayout.repoName(request.workbook)
 
         onProgress(Progress.CheckingOfficialRepo)
-        ensureOfficialRepoExists(api, repoName, auth)
+        val officialRepo = ensureOfficialRepoExists(api, repoName, auth)
 
         onProgress(Progress.Forking)
         val fork = forkOrGetExisting(api, repoName, auth, username)
@@ -130,6 +155,18 @@ class PublishChapterToWacs(
             onProgress(Progress.Cloning)
             try {
                 gitClient.clone(fork.cloneUrl, workDir, credential, fork.defaultBranch)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                throw classifyGitFailure(e)
+            }
+
+            // M4: catch the fork up to the official repo BEFORE writing/committing anything, so a
+            // fork left behind by someone else's merged contribution can't turn this session's
+            // push into a rejected non-fast-forward. Pointer-only, and a no-op on a fresh fork.
+            onProgress(Progress.SyncingUpstream)
+            try {
+                gitClient.syncFromUpstream(workDir, officialRepo.cloneUrl, credential, officialRepo.defaultBranch)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -240,15 +277,106 @@ class PublishChapterToWacs(
             }
 
             onProgress(Progress.Done)
-            return Result(fork.fullName, fork.htmlUrl, request.chapterNumber, commitSha)
+            return Result(
+                forkFullName = fork.fullName,
+                forkHtmlUrl = fork.htmlUrl,
+                chapterNumber = request.chapterNumber,
+                commitSha = commitSha,
+                forkId = fork.id,
+                forkOwner = username,
+                branch = fork.defaultBranch,
+                officialDefaultBranch = officialRepo.defaultBranch,
+            )
         } finally {
             runCatching { stagingDir?.deleteRecursively() }
             runCatching { workDir?.deleteRecursively() }
         }
     }
 
-    private suspend fun ensureOfficialRepoExists(api: ForgejoApi, repoName: String, auth: String) {
+    /**
+     * M4: ensure a pull request exists from the fork's branch back to
+     * `AudioTranslation/<repo>:<default branch>`, so the chapters [publish] already pushed to the
+     * fork actually reach the canonical repo as a reviewable contribution.
+     *
+     * **Call this once per publish session**, after the loop over every selected chapter has
+     * finished (any successful [Result] from that loop works — every chapter in a session lands on
+     * the exact same fork and branch). Opening or even checking for a PR is a repo-wide,
+     * branch-wide fact, not a per-chapter one: all chapters share one branch, so they share one PR.
+     * Doing this per chapter instead would mean extra network round-trips for a no-op result after
+     * the first chapter (Forgejo/Gitea auto-updates an open PR's diff as more commits land on its
+     * head branch, so a later chapter's push already updates the existing PR with zero extra calls
+     * here) — once per session is both correct and the cheaper choice.
+     *
+     * Idempotent: looks for an already-open PR for this exact fork/branch -> official/branch pair
+     * first (a previous session's PR, or a race), and reuses it rather than creating a duplicate.
+     * If creation still races with something else and Forgejo rejects it as a duplicate (409, or
+     * 422 on some Forgejo/Gitea versions), the existing PR is looked up again and surfaced instead
+     * of failing the publish.
+     */
+    suspend fun openContributionPullRequest(after: Result): PullRequestResult {
+        val credential = session.credential
+            ?: throw WacsPublishException(WacsPublishException.Reason.NOT_AUTHENTICATED)
+        val host = session.host ?: config.baseUrl
+        val api = apiFactory.create(host)
+        val auth = credential.authorizationHeader()
+        val repoName = after.forkFullName.substringAfterLast('/')
+
         try {
+            findExistingPullRequest(api, repoName, after, auth)?.let {
+                return PullRequestResult(it.number, it.htmlUrl, reused = true)
+            }
+
+            val created = try {
+                api.createPullRequest(
+                    config.org,
+                    repoName,
+                    auth,
+                    CreatePullRequestRequest(
+                        head = "${after.forkOwner}:${after.branch}",
+                        base = after.officialDefaultBranch,
+                        title = "Publish $repoName",
+                        body = "Opened automatically by the BTT Recorder WACS publish flow.",
+                    ),
+                )
+            } catch (e: HttpException) {
+                if (e.code() == 409 || e.code() == 422) {
+                    findExistingPullRequest(api, repoName, after, auth)?.let {
+                        return PullRequestResult(it.number, it.htmlUrl, reused = true)
+                    }
+                }
+                throw e
+            }
+            return PullRequestResult(created.number, created.htmlUrl, reused = false)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: WacsPublishException) {
+            throw e
+        } catch (e: HttpException) {
+            throw classifyHttp(e)
+        } catch (e: IOException) {
+            throw WacsPublishException(WacsPublishException.Reason.NETWORK, e)
+        } catch (e: Exception) {
+            throw WacsPublishException(WacsPublishException.Reason.UNKNOWN, e)
+        }
+    }
+
+    /** An open PR whose head is [after]'s fork/branch and whose base is the official default branch, if any. */
+    private suspend fun findExistingPullRequest(
+        api: ForgejoApi,
+        repoName: String,
+        after: Result,
+        auth: String,
+    ): ForgejoPullRequest? {
+        val open = api.listPullRequests(config.org, repoName, auth, state = "open")
+        return open.firstOrNull { pr ->
+            pr.head?.repoId == after.forkId &&
+                pr.head.ref == after.branch &&
+                pr.base?.ref == after.officialDefaultBranch
+        }
+    }
+
+    private suspend fun ensureOfficialRepoExists(api: ForgejoApi, repoName: String, auth: String): ForgejoRepo {
+        return try {
             api.getRepo(config.org, repoName, auth)
         } catch (e: CancellationException) {
             throw e
