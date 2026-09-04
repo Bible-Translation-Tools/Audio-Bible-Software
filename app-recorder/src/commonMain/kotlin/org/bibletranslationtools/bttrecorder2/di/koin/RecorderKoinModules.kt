@@ -8,6 +8,7 @@ import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectCreationViewM
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.RecorderViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.UnitListViewModel
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.WacsLoginViewModel
 import org.koin.core.module.dsl.factoryOf
 import org.koin.dsl.module
 
@@ -34,6 +35,7 @@ val recorderViewModelModule = module {
     single { UnitListViewModel() }
     factoryOf(::RecorderViewModel)
     factoryOf(::PlaybackViewModel)
+    factoryOf(::WacsLoginViewModel)
     // Process-lifetime singleton so the ProjectManagement + Recorder routes share the
     // same export state (isCurrentlyExporting gates UI); auto-cleans temp dirs on init.
     single { ExportProjectViewModel() }

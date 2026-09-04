@@ -45,6 +45,9 @@ import org.bibletranslationtools.shared.resources.export_load_chapters_error_tit
 import org.bibletranslationtools.shared.resources.export_options_title
 import org.bibletranslationtools.shared.resources.export_type_backup_subtitle
 import org.bibletranslationtools.shared.resources.export_type_backup_title
+import org.bibletranslationtools.shared.resources.export_type_publish_subtitle
+import org.bibletranslationtools.shared.resources.export_type_publish_title
+import org.bibletranslationtools.shared.resources.export_type_publish_unsupported
 import org.bibletranslationtools.shared.resources.export_type_source_audio_subtitle
 import org.bibletranslationtools.shared.resources.export_type_source_audio_title
 import org.bibletranslationtools.shared.resources.export_type_label
@@ -53,6 +56,7 @@ import org.jetbrains.compose.resources.stringResource
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportChapter
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportOptionsState
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportType
+import org.bibletranslationtools.otter.common.domain.wacs.WacsPlatform
 
 /**
  * Pre-export options dialog modeled on Orature's `ExportProjectDialog`:
@@ -175,6 +179,20 @@ private fun ReadyDialog(
                         selected = state.type == ExportType.SOURCE_AUDIO,
                         onClick = { onSetType(ExportType.SOURCE_AUDIO) }
                     )
+                    // Gated per WacsPlatform.isGitSyncSupported (JGit needs Android 8/API 26+ —
+                    // see the plan's Spike A). Disabled + explained rather than hidden, so a user
+                    // on an unsupported device still learns the feature exists and why it's off.
+                    ExportTypeCard(
+                        title = stringResource(Res.string.export_type_publish_title),
+                        subtitle = if (WacsPlatform.isGitSyncSupported) {
+                            stringResource(Res.string.export_type_publish_subtitle)
+                        } else {
+                            stringResource(Res.string.export_type_publish_unsupported)
+                        },
+                        selected = state.type == ExportType.PUBLISH,
+                        enabled = WacsPlatform.isGitSyncSupported,
+                        onClick = { onSetType(ExportType.PUBLISH) }
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -230,6 +248,7 @@ private fun ExportTypeCard(
     title: String,
     subtitle: String,
     selected: Boolean,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     val borderColor = if (selected) {
@@ -242,16 +261,17 @@ private fun ExportTypeCard(
     } else {
         MaterialTheme.colorScheme.surface
     }
+    val contentAlpha = if (enabled) 1f else 0.4f
 
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .clickable(enabled = enabled, onClick = onClick),
         color = container,
         shape = RoundedCornerShape(8.dp),
         border = androidx.compose.foundation.BorderStroke(
             width = if (selected) 2.dp else 1.dp,
-            color = borderColor
+            color = borderColor.copy(alpha = contentAlpha)
         )
     ) {
         Row(
@@ -260,18 +280,19 @@ private fun ExportTypeCard(
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            RadioButton(selected = selected, onClick = onClick)
+            RadioButton(selected = selected, onClick = onClick, enabled = enabled)
             Spacer(modifier = Modifier.width(8.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
                     style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
                 )
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha)
                 )
             }
         }

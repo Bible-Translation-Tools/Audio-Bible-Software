@@ -17,6 +17,10 @@ object ProjectWizardRoute
 @Serializable
 object SettingsRoute
 
+/** M1: login + (stub) publish entry point — see WacsPublishScreen. */
+@Serializable
+object WacsPublishRoute
+
 @Serializable
 object ChapterListRoute
 

@@ -123,5 +123,6 @@ val sharedCommonModules = listOf(
     appRepositoriesModule,
     zipEntryTreeBuilderModule,
     bundledContentModule,
-    directoryPortsModule
+    directoryPortsModule,
+    wacsModule
 )

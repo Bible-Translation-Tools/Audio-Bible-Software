@@ -19,12 +19,14 @@ import org.bibletranslationtools.bttrecorder2.ui.screens.ProjectManagementScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.ProjectWizardScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.SplashScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.UnitListScreen
+import org.bibletranslationtools.bttrecorder2.ui.screens.WacsPublishScreen
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportProjectViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.MainMenuViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.PlaybackViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectCreationViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SplashScreenViewModel
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.WacsLoginViewModel
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.foundation.layout.Box
@@ -141,7 +143,17 @@ fun Navigation(
                         )
                     }
                 },
-                onSettingsClick = { navController.navigate(SettingsRoute) }
+                onSettingsClick = { navController.navigate(SettingsRoute) },
+                onPublishClick = { navController.navigate(WacsPublishRoute) }
+            )
+        }
+
+        composable<WacsPublishRoute> {
+            val koin = getKoin()
+            val vm: WacsLoginViewModel = viewModel { koin.get() }
+            WacsPublishScreen(
+                viewModel = vm,
+                onBackClick = { navController.popBackStack() }
             )
         }
 

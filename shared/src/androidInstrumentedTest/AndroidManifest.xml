@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Instrumented-test-only manifest. Enables cleartext HTTP so the WACS sync test can reach the local
+  Forgejo prototype at http://10.0.2.2:3000 from the emulator (Android blocks cleartext by default
+  once targetSdk >= 28). This applies to the androidTest APK only, never the shipping library.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <application android:usesCleartextTraffic="true" />
+</manifest>

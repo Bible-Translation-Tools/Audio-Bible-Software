@@ -68,6 +68,14 @@ kotlin {
     val kotlinVttVer = "1.0.0"
     val kotlinScriptureAlignmentVer = "1.0.0"
     val koinVer = "3.5.6"
+    // JGit — pure-Java git for the WACS sync client (no `git`/`git-lfs` binary required). Pinned to
+    // the 5.13.x LINE (Java 8) for Android: the 6.x/7.x lines call Java 11+ APIs such as
+    // InputStream.readNBytes on subclass receivers that D8 cannot desugar — dexes clean but throws
+    // NoSuchMethodError at runtime on Android < 33 (caught by the WACS instrumented test on API 24,
+    // 2026-09). 5.13.x is Java-8 source so it structurally avoids those. Do NOT bump without re-running
+    // :shared:connectedDebugAndroidTest on an API-24 device. Pulls JavaEWAH transitively; slf4j-api is
+    // already an api dep. (POSIX file-mode is still handled by JGitWacsGitClient.AndroidExecutableBitFS.)
+    val jgitVer = "5.13.3.202401111512-r"
 
     sourceSets {
         val commonMain by getting {
@@ -131,6 +139,10 @@ kotlin {
                 // transitively but does not put it on our compile classpath.
                 implementation("com.squareup.okhttp3:okhttp:3.14.9")
                 implementation("com.squareup.retrofit2:adapter-rxjava2:$retrofitRxJava2Ver")
+
+                // WACS sync: JGit drives clone/commit/push; LFS transfer is hand-rolled over the
+                // okhttp above (see domain/wacs/). Behind the wacs/ facade — not app-facing API.
+                implementation("org.eclipse.jgit:org.eclipse.jgit:$jgitVer")
 
                 // commons-io, declared directly. It used to arrive transitively through
                 // tika-core, which is gone now that :libs:resource-container and

@@ -99,6 +99,7 @@ import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SortState
 import org.bibletranslationtools.bttrecorder2.ui.components.ProjectInfoDialog
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
+import org.bibletranslationtools.otter.common.domain.project.exporter.ExportType
 import org.koin.mp.KoinPlatform.getKoin
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -108,7 +109,8 @@ fun ProjectManagementScreen(
     onNewProjectClick: () -> Unit,
     onProjectClick: (WorkbookDescriptor) -> Unit,
     onRecordClick: (WorkbookDescriptor) -> Unit = {},
-    onSettingsClick: () -> Unit = {}
+    onSettingsClick: () -> Unit = {},
+    onPublishClick: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
@@ -144,13 +146,21 @@ fun ProjectManagementScreen(
         onDeselectAll = exportViewModel::deselectAllChapters,
         onExport = {
             val ready = exportOptionsState as? ExportOptionsState.Ready ?: return@ExportOptionsDialog
-            scope.launch {
-                val destination = FileKit.openFileSaver(
-                    suggestedName = exportViewModel.suggestedExportName(ready.descriptor),
-                    extension = exportViewModel.fileExtensionForType(ready.type)
-                )
-                if (destination != null) {
-                    exportViewModel.beginExport(destination)
+            if (ready.type == ExportType.PUBLISH) {
+                // No file to save — publishing goes to the WACS login/publish flow instead of
+                // FileKit's save dialog. The M0/M1 gate already keeps this unreachable when
+                // WacsPlatform.isGitSyncSupported is false (the dialog disables the option).
+                exportViewModel.closeOptions()
+                onPublishClick()
+            } else {
+                scope.launch {
+                    val destination = FileKit.openFileSaver(
+                        suggestedName = exportViewModel.suggestedExportName(ready.descriptor),
+                        extension = exportViewModel.fileExtensionForType(ready.type)
+                    )
+                    if (destination != null) {
+                        exportViewModel.beginExport(destination)
+                    }
                 }
             }
         }
