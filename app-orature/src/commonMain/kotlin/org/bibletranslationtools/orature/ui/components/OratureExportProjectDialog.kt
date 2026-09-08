@@ -56,6 +56,7 @@ import org.bibletranslationtools.orature.resources.progress
 import org.bibletranslationtools.orature.resources.publish
 import org.bibletranslationtools.orature.resources.sourceAudio
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportType
+import org.bibletranslationtools.otter.common.domain.wacs.WacsPlatform
 import org.bibletranslationtools.orature.ui.OratureColors
 import org.bibletranslationtools.orature.ui.viewmodels.OratureExportChapter
 import org.bibletranslationtools.orature.ui.viewmodels.OratureExportProjectViewModel
@@ -69,12 +70,21 @@ import java.io.File
  * includes any chapter with audio; the other types only fully-complete chapters.
  *
  * (The JVM's 5th type, Burrito Wrapper, is intentionally omitted — its exporter isn't in :shared.)
+ *
+ * M5(a): "Publish" no longer exports through [OratureExportProjectViewModel] itself — it hands off
+ * to [onPublishToWacs] with the selected chapter sorts, and the caller
+ * ([org.bibletranslationtools.orature.ui.screens.OratureHomeScreen]) navigates to
+ * `OratureWacsPublishRoute` instead (mirroring the recorder app's Export Options dialog, which
+ * repurposes the same `ExportType.PUBLISH` slot for its own WACS hand-off). Gated on
+ * [WacsPlatform.isGitSyncSupported] — disabled + explained rather than hidden, so a user on an
+ * unsupported device still learns the feature exists and why it's off.
  */
 @Composable
 fun OratureExportProjectDialog(
     workbookDescriptorId: Int,
     onDismiss: () -> Unit,
-    onFinished: (success: Boolean, location: File?) -> Unit
+    onFinished: (success: Boolean, location: File?) -> Unit,
+    onPublishToWacs: (chapters: List<Int>) -> Unit = {}
 ) {
     val vm = viewModel(key = "export-$workbookDescriptorId") { OratureExportProjectViewModel(workbookDescriptorId) }
     val state by vm.uiState.collectAsState()
@@ -137,7 +147,13 @@ fun OratureExportProjectDialog(
                             ExportTypeCard(stringResource(Res.string.backup), state.selectedType == ExportType.BACKUP) { vm.selectType(ExportType.BACKUP) }
                             ExportTypeCard(stringResource(Res.string.sourceAudio), state.selectedType == ExportType.SOURCE_AUDIO) { vm.selectType(ExportType.SOURCE_AUDIO) }
                             ExportTypeCard(stringResource(Res.string.listen), state.selectedType == ExportType.LISTEN) { vm.selectType(ExportType.LISTEN) }
-                            ExportTypeCard(stringResource(Res.string.publish), state.selectedType == ExportType.PUBLISH) { vm.selectType(ExportType.PUBLISH) }
+                            // M5(a): "Publish" hands off to the WACS publish flow — gated per
+                            // WacsPlatform.isGitSyncSupported (JGit needs Android 8/API 26+).
+                            ExportTypeCard(
+                                label = stringResource(Res.string.publish),
+                                selected = state.selectedType == ExportType.PUBLISH,
+                                enabled = WacsPlatform.isGitSyncSupported
+                            ) { vm.selectType(ExportType.PUBLISH) }
                         }
                         VerticalDivider(color = OratureColors.SurfaceTertiary)
                         ChapterTable(
@@ -167,7 +183,18 @@ fun OratureExportProjectDialog(
                                 )
                                 val anySelected = state.chapters.any { it.selected }
                                 Button(
-                                    onClick = { vm.acknowledgeError(); dirPicker.launch() },
+                                    onClick = {
+                                        if (state.selectedType == ExportType.PUBLISH) {
+                                            // No file to save — publishing goes to the WACS
+                                            // login/publish flow instead of FileKit's directory
+                                            // picker. The card above already disables PUBLISH when
+                                            // WacsPlatform.isGitSyncSupported is false.
+                                            onPublishToWacs(state.chapters.filter { it.selected }.map { it.sort })
+                                        } else {
+                                            vm.acknowledgeError()
+                                            dirPicker.launch()
+                                        }
+                                    },
                                     enabled = anySelected,
                                     shape = RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = OratureColors.Primary)
@@ -187,11 +214,12 @@ fun OratureExportProjectDialog(
 
 /** Left-rail export-type card (JVM: `cardRadioButton`). Selected = primary-light fill. */
 @Composable
-private fun ExportTypeCard(label: String, selected: Boolean, onSelect: () -> Unit) {
+private fun ExportTypeCard(label: String, selected: Boolean, enabled: Boolean = true, onSelect: () -> Unit) {
+    val contentAlpha = if (enabled) 1f else 0.4f
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .selectable(selected = selected, onClick = onSelect)
+            .selectable(selected = selected, enabled = enabled, onClick = onSelect)
             .background(if (selected) OratureColors.PrimaryLight else MaterialTheme.colorScheme.surface)
             .padding(horizontal = 16.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -199,6 +227,7 @@ private fun ExportTypeCard(label: String, selected: Boolean, onSelect: () -> Uni
         RadioButton(
             selected = selected,
             onClick = onSelect,
+            enabled = enabled,
             colors = RadioButtonDefaults.colors(
                 selectedColor = OratureColors.Primary,
                 unselectedColor = OratureColors.NoteText
@@ -206,7 +235,7 @@ private fun ExportTypeCard(label: String, selected: Boolean, onSelect: () -> Uni
         )
         Text(
             label,
-            color = OratureColors.RegularText,
+            color = OratureColors.RegularText.copy(alpha = contentAlpha),
             fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
             modifier = Modifier.padding(start = 8.dp)
         )

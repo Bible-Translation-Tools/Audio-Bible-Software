@@ -15,13 +15,19 @@ import org.bibletranslationtools.orature.ui.screens.OratureNarrationScreen
 import org.bibletranslationtools.orature.ui.screens.OratureSplashScreen
 import org.bibletranslationtools.orature.ui.screens.OratureTranslationScreen
 import org.bibletranslationtools.orature.ui.screens.OratureVerseMarkerScreen
+import org.bibletranslationtools.orature.ui.screens.OratureWacsPublishScreen
+import org.bibletranslationtools.orature.ui.screens.OratureWacsPullScreen
 import org.bibletranslationtools.orature.ui.viewmodels.OratureVerseMarkerViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureHomeViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureNarrationViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureProjectWizardViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureSplashViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureTranslationViewModel
+import org.bibletranslationtools.orature.ui.viewmodels.OratureWacsLoginViewModel
+import org.bibletranslationtools.orature.ui.viewmodels.OratureWacsPublishViewModel
+import org.bibletranslationtools.orature.ui.viewmodels.OratureWacsPullViewModel
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
+import org.koin.core.parameter.parametersOf
 import org.koin.mp.KoinPlatform.getKoin
 
 @Composable
@@ -70,9 +76,49 @@ fun OratureNavigation(navController: NavHostController, startWithSplash: Boolean
                     } else {
                         navController.navigate(OratureNarrationRoute(book.id))
                     }
-                }
+                },
+                // M5(a): the per-book Export dialog's "Publish" type hands off here instead of
+                // running an exporter directly — see OratureExportProjectDialog's onPublishToWacs.
+                onPublishToWacs = { workbookDescriptorId, chapters ->
+                    navController.navigate(
+                        OratureWacsPublishRoute(
+                            workbookDescriptorId = workbookDescriptorId,
+                            chapters = chapters.joinToString(",")
+                        )
+                    )
+                },
+                onRestoreFromWacsClick = { navController.navigate(OratureWacsPullRoute) }
                 // The project-import modal is hosted inside the home screen (opened by its import
                 // button). Settings/Info are left drawers hosted by the shell, toggled by the rail.
+            )
+        }
+
+        composable<OratureWacsPublishRoute> { backStackEntry ->
+            val route = backStackEntry.toRoute<OratureWacsPublishRoute>()
+            val chapterSorts = route.chapters
+                .split(",")
+                .mapNotNull { it.trim().toIntOrNull() }
+
+            val koin = getKoin()
+            val loginViewModel: OratureWacsLoginViewModel = viewModel { koin.get() }
+            val publishViewModel: OratureWacsPublishViewModel = viewModel {
+                koin.get { parametersOf(route.workbookDescriptorId, chapterSorts) }
+            }
+            OratureWacsPublishScreen(
+                viewModel = loginViewModel,
+                publishViewModel = publishViewModel,
+                onBackClick = { navController.popBackStack() }
+            )
+        }
+
+        composable<OratureWacsPullRoute> {
+            val koin = getKoin()
+            val loginViewModel: OratureWacsLoginViewModel = viewModel { koin.get() }
+            val pullViewModel: OratureWacsPullViewModel = viewModel { koin.get() }
+            OratureWacsPullScreen(
+                loginViewModel = loginViewModel,
+                pullViewModel = pullViewModel,
+                onBackClick = { navController.popBackStack() }
             )
         }
 

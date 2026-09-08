@@ -11,6 +11,10 @@ import org.bibletranslationtools.orature.ui.narration.OratureNarrationFactory
 import org.bibletranslationtools.orature.ui.viewmodels.OratureHomeViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureProjectWizardViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureSettingsViewModel
+import org.bibletranslationtools.orature.ui.viewmodels.OratureWacsLoginViewModel
+import org.bibletranslationtools.orature.ui.viewmodels.OratureWacsPublishViewModel
+import org.bibletranslationtools.orature.ui.viewmodels.OratureWacsPullViewModel
+import org.koin.core.module.dsl.factoryOf
 import org.koin.core.parameter.parametersOf
 import org.koin.dsl.module
 
@@ -51,6 +55,19 @@ val oratureViewModelModule = module {
     // Factory: the wizard resolves the shared use-cases/repos via KoinComponent; the caller
     // passes the onComplete callback (home reload) as a param. Each wizard entry is fresh.
     factory { (onComplete: () -> Unit) -> OratureProjectWizardViewModel(onComplete) }
+
+    // M5(a): WACS sync UI, ported from the recorder app's recorderViewModelModule (mirrored, not
+    // shared — see OratureWacsLoginViewModel's KDoc). WacsSession is the process-lifetime login
+    // state; these VMs are Koin factories scoped per navigation into the publish/pull screens.
+    factoryOf(::OratureWacsLoginViewModel)
+    // Parameterized by the nav args OratureWacsPublishRoute carries (workbookDescriptorId/chapters)
+    // — see OratureNavigation.kt's `composable<OratureWacsPublishRoute>` for the `parametersOf` call.
+    factory { (workbookDescriptorId: Int, chapters: List<Int>) ->
+        OratureWacsPublishViewModel(get(), get(), workbookDescriptorId, chapters)
+    }
+    // Restore from WACS (as takes). No nav-arg parameters (unlike OratureWacsPublishViewModel) —
+    // the flow starts from a repo picker, not an existing project.
+    factoryOf(::OratureWacsPullViewModel)
 }
 
 /** Convenience for resolving the wizard VM with its onComplete callback. */

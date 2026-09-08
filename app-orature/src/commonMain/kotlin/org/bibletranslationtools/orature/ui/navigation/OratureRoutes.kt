@@ -33,3 +33,24 @@ data class OratureTranslationRoute(val workbookDescriptorId: Int)
  */
 @Serializable
 object OratureVerseMarkerRoute
+
+/**
+ * M5(a) login + publish entry point — see `OratureWacsPublishScreen`. [workbookDescriptorId]
+ * identifies the project and [chapters] the chapter sorts the user selected under the per-book
+ * Export dialog's "Publish" type (comma-joined rather than a `List<Int>` nav arg, to keep this a
+ * plain-value route); left at their defaults when reached some other way (there is none today), in
+ * which case the screen has nothing to publish and says so instead of crashing.
+ */
+@Serializable
+data class OratureWacsPublishRoute(
+    val workbookDescriptorId: Int = -1,
+    val chapters: String = ""
+)
+
+/**
+ * M5(a) "Restore from WACS" entry point — see `OratureWacsPullScreen`. Reached from the Projects
+ * pane's own button (next to Import); no nav args (unlike [OratureWacsPublishRoute]) since the
+ * flow starts by picking a repo, not a project.
+ */
+@Serializable
+object OratureWacsPullRoute

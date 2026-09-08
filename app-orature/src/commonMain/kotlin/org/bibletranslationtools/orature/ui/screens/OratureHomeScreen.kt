@@ -74,7 +74,12 @@ import org.bibletranslationtools.orature.resources.search
 fun OratureHomeScreen(
     viewModel: OratureHomeViewModel,
     wizardViewModel: OratureProjectWizardViewModel,
-    onBookClick: (OratureBookUiModel) -> Unit
+    onBookClick: (OratureBookUiModel) -> Unit,
+    // M5(a): WACS sync hooks. onPublishToWacs is handed the workbook + selected chapter sorts
+    // by the Export dialog's "Publish" type; onRestoreFromWacsClick opens the repo-picker flow.
+    // Both navigate (see OratureNavigation.kt), so they're threaded down rather than resolved here.
+    onPublishToWacs: (workbookDescriptorId: Int, chapters: List<Int>) -> Unit = { _, _ -> },
+    onRestoreFromWacsClick: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val wizardState by wizardViewModel.uiState.collectAsState()
@@ -132,7 +137,9 @@ fun OratureHomeScreen(
         onWizardLanguageSelected = wizardViewModel::onLanguageSelected,
         onWizardResourceVersionSelected = wizardViewModel::onResourceVersionSelected,
         onWizardSourceSearchChange = wizardViewModel::onSourceLanguageSearchQueryChange,
-        onWizardTargetSearchChange = wizardViewModel::onTargetLanguageSearchQueryChange
+        onWizardTargetSearchChange = wizardViewModel::onTargetLanguageSearchQueryChange,
+        onPublishToWacs = onPublishToWacs,
+        onRestoreFromWacsClick = onRestoreFromWacsClick
     )
 
     if (showImport) {
@@ -163,7 +170,9 @@ fun OratureHomeContent(
     onWizardLanguageSelected: (org.bibletranslationtools.otter.common.data.primitives.Language) -> Unit,
     onWizardResourceVersionSelected: (org.bibletranslationtools.orature.ui.viewmodels.OratureResourceVersion) -> Unit,
     onWizardSourceSearchChange: (String) -> Unit,
-    onWizardTargetSearchChange: (String) -> Unit
+    onWizardTargetSearchChange: (String) -> Unit,
+    onPublishToWacs: (workbookDescriptorId: Int, chapters: List<Int>) -> Unit = { _, _ -> },
+    onRestoreFromWacsClick: () -> Unit = {}
 ) {
     // The nav rail + Settings/Info drawers now live in the persistent OratureRootShell
     // (present on every screen); the home content is just the projects pane + center section.
@@ -175,6 +184,7 @@ fun OratureHomeContent(
             onSelectGroup = onSelectGroup,
             onNewProjectClick = onNewProjectClick,
             onImportClick = onImportClick,
+            onRestoreFromWacsClick = onRestoreFromWacsClick,
             modifier = Modifier.width(320.dp).fillMaxHeight()
         )
 
@@ -187,6 +197,7 @@ fun OratureHomeContent(
                 onScheduleGroupDelete = onScheduleGroupDelete,
                 onUndoGroupDelete = onUndoGroupDelete,
                 onDeleteBook = onDeleteBook,
+                onPublishToWacs = onPublishToWacs,
                 modifier = Modifier.weight(1f).fillMaxHeight()
             )
             CenterPaneMode.WIZARD -> OratureProjectWizardSection(
@@ -210,6 +221,7 @@ private fun OratureProjectsPane(
     onSelectGroup: (OratureProjectGroupKey) -> Unit,
     onNewProjectClick: () -> Unit,
     onImportClick: () -> Unit,
+    onRestoreFromWacsClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -265,6 +277,14 @@ private fun OratureProjectsPane(
         Spacer(modifier = Modifier.height(12.dp))
 
         OratureImportButton(onClick = onImportClick)
+
+        // M5(a): "Restore from WACS" — the project-import entry point for the sync feature,
+        // alongside the file-based Import button above. The destination screen itself gates on
+        // WacsPlatform.isGitSyncSupported and shows an explanatory notice when unsupported (same
+        // pattern as the recorder app's Project Management overflow menu), so this button is
+        // always shown rather than disabled here.
+        Spacer(modifier = Modifier.height(8.dp))
+        org.bibletranslationtools.orature.ui.components.OratureRestoreFromWacsButton(onClick = onRestoreFromWacsClick)
     }
 }
 
@@ -276,6 +296,7 @@ private fun OratureBookSection(
     onScheduleGroupDelete: (OratureProjectGroupKey) -> Unit,
     onUndoGroupDelete: (OratureProjectGroupKey) -> Unit,
     onDeleteBook: (Int) -> Unit,
+    onPublishToWacs: (workbookDescriptorId: Int, chapters: List<Int>) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val projectDeletedMsg = stringResource(Res.string.projectDeleted)
@@ -444,6 +465,10 @@ private fun OratureBookSection(
                         org.bibletranslationtools.orature.platform.openInFileManager(location!!)
                     }
                 }
+            },
+            onPublishToWacs = { chapters ->
+                exportBookId = null
+                onPublishToWacs(id, chapters)
             }
         )
     }

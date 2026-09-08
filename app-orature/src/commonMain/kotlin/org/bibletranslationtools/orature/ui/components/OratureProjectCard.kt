@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Hearing
+import androidx.compose.material.icons.filled.SettingsBackupRestore
 import androidx.compose.material.icons.filled.KeyboardDoubleArrowRight
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.outlined.Info
@@ -38,6 +39,10 @@ import org.bibletranslationtools.orature.ui.viewmodels.OratureProjectGroupUiMode
 import org.jetbrains.compose.resources.stringResource
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.orature.resources.Res
+// M5(a): "Restore from WACS" reuses the recorder app's shared string rather than duplicating it
+// in Orature's own resource namespace — aliased since both modules generate a `Res` symbol.
+import org.bibletranslationtools.shared.resources.Res as SharedRes
+import org.bibletranslationtools.shared.resources.wacs_pull_menu_item
 import org.bibletranslationtools.orature.resources.dialect
 import org.bibletranslationtools.orature.resources.`import`
 import org.bibletranslationtools.orature.resources.narration
@@ -206,6 +211,36 @@ fun OratureImportButton(
         Icon(imageVector = Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(24.dp))
         Text(
             text = stringResource(Res.string.`import`),
+            fontSize = 20.sp,
+            modifier = Modifier.padding(start = 10.dp)
+        )
+    }
+}
+
+/**
+ * M5(a): "Restore from WACS" — the project-import entry point for the WACS sync feature, styled
+ * to match [OratureImportButton] just above it in the projects pane. Reuses the recorder app's
+ * `wacs_pull_menu_item` string (`:shared`'s composeResources, not Orature's own resource
+ * namespace) since both apps' "Restore from WACS" affordance means the same thing.
+ */
+@Composable
+fun OratureRestoreFromWacsButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth().height(56.dp),
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(2.dp, OratureColors.Primary),
+        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+            containerColor = OratureColors.Foreground,
+            contentColor = OratureColors.Primary
+        )
+    ) {
+        Icon(imageVector = Icons.Filled.SettingsBackupRestore, contentDescription = null, modifier = Modifier.size(24.dp))
+        Text(
+            text = stringResource(SharedRes.string.wacs_pull_menu_item),
             fontSize = 20.sp,
             modifier = Modifier.padding(start = 10.dp)
         )
