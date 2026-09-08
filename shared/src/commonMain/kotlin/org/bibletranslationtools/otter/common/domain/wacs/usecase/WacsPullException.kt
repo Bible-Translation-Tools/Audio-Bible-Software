@@ -53,6 +53,15 @@ class WacsPullException(
         /** An LFS-downloaded object's hash didn't match its pointer's `oid` (see [LfsBatchClient][org.bibletranslationtools.otter.common.domain.wacs.lfs.LfsBatchClient]). */
         INTEGRITY,
 
+        /**
+         * M3.1: no local project's target language/edition/book matches this repo's name (see
+         * [org.bibletranslationtools.otter.common.domain.wacs.layout.WacsRepoLayout.repoNameOrNull]).
+         * v1 restores into an existing project only — creating one from a WACS repo needs a source
+         * *text* to pair it with, which this milestone does not resolve (see
+         * [org.bibletranslationtools.otter.common.domain.wacs.usecase.RestoreChapterFromWacs]'s KDoc).
+         */
+        NO_MATCHING_PROJECT,
+
         /** Anything else. */
         UNKNOWN,
     }

@@ -27,6 +27,17 @@ import java.io.File
  * M3: the bridge from a [PullChapter]-materialized WACS chapter to the app's EXISTING "source
  * audio" machinery, rather than a new WACS-specific source concept.
  *
+ * **Retained but UNWIRED as of M3.1.** The product owner corrected M3's premise (2026-09): pulling a
+ * WACS repo restores/continues the user's OWN recorded work, so the materialize step must add the
+ * pulled chapter as a **take** ([RestoreChapterFromWacs]), not as source audio — nothing in the app
+ * calls into this class anymore (the "Restore from WACS" flow uses [RestoreChapterFromWacs]
+ * exclusively). This class is kept, on purpose, for a *different*, later feature: reference source
+ * audio pulled from a public Catalog/data API (out of scope for WACS sync entirely — see the plan
+ * doc's §7 "deferred" list and M3.1's note in §8). Do not wire this back into the WACS restore path;
+ * if that future source-audio feature never needs a WACS-shaped bridge specifically, this class (and
+ * its KDoc's now-stale framing below, which still describes the M3 pull-as-source design it was
+ * built for) can be deleted instead.
+ *
  * **How "source" is modeled today (found while designing M3):** source audio is per-chapter loose
  * files (`.wav`/`.mp3`) named `<bookSlug>_c<NN>.<ext>`, dropped into a project's
  * `.apps/orature/source/audio/` directory (see [org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstants.SOURCE_AUDIO_DIR])

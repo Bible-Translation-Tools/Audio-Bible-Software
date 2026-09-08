@@ -1,15 +1,23 @@
 package org.bibletranslationtools.otter.integration
 
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ILanguageRepository
+import org.bibletranslationtools.otter.common.domain.audio.WriteTakeMarkers
 import org.bibletranslationtools.otter.common.domain.collections.CreateProject
+import org.bibletranslationtools.otter.common.domain.content.SaveAudioAsNewTake
 import org.bibletranslationtools.otter.common.domain.languages.ImportLanguages
 import org.bibletranslationtools.otter.common.domain.project.importer.RCImporterFactory
+import org.bibletranslationtools.otter.common.domain.wacs.auth.WacsSession
+import org.bibletranslationtools.otter.common.domain.wacs.git.IWacsGitClient
+import org.bibletranslationtools.otter.common.domain.wacs.usecase.CloneWacsRepo
+import org.bibletranslationtools.otter.common.domain.wacs.usecase.RestoreChapterFromWacs
 import io.reactivex.Observable
 import org.bibletranslationtools.otter.common.data.ProgressStatus
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
@@ -69,6 +77,33 @@ class IntegrationEnvironment private constructor(
 
     val db: DaoProvider = koin.get()
     val directoryProvider: IDirectoryProvider = koin.get()
+
+    /**
+     * The production repository that turns a source/target [Collection] pair into a live
+     * [org.bibletranslationtools.otter.common.data.workbook.Workbook] — takes, markers, everything
+     * a real recording/restore flow touches, not just what [db]'s raw DAOs expose. Needed by the
+     * WACS restore-as-take integration test (see `wacs/RestoreChapterFromWacsIntegrationTest`),
+     * which is the first thing in this tier to go through a live `Workbook` rather than the DAO
+     * layer directly.
+     */
+    val workbookRepository: IWorkbookRepository = koin.get()
+
+    /** Typed [org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor] listing — see [workbookRepository]. */
+    val workbookDescriptorRepository: IWorkbookDescriptorRepository = koin.get()
+
+    /** The same take-insertion path the recorder itself uses — see [workbookRepository]. */
+    val saveAudioAsNewTake: SaveAudioAsNewTake = koin.get()
+
+    /** Embeds verse/chapter/book markers into a take's WAV cue chunks — see [workbookRepository]. */
+    val writeTakeMarkers: WriteTakeMarkers = koin.get()
+
+    // WACS sync (`wacsModule`) is part of `sharedCommonModules`, so the exact same DI-wired
+    // instances the app uses are available here too — no separate manual wiring needed for a test
+    // that exercises both the WACS pull path and the real project database in one go.
+    val wacsSession: WacsSession = koin.get()
+    val wacsGitClient: IWacsGitClient = koin.get()
+    val cloneWacsRepo: CloneWacsRepo = koin.get()
+    val restoreChapterFromWacs: RestoreChapterFromWacs = koin.get()
 
     private val importerFactory: RCImporterFactory = koin.get()
 

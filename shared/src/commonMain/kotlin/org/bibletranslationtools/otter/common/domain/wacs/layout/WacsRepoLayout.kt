@@ -19,6 +19,7 @@
 package org.bibletranslationtools.otter.common.domain.wacs.layout
 
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
+import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import java.util.Locale
 
 /**
@@ -42,6 +43,22 @@ object WacsRepoLayout {
         val lang = workbook.target.language.slug.lowercase(Locale.US)
         val edition = workbook.target.resourceMetadata.identifier.lowercase(Locale.US)
         val book = workbook.target.slug.lowercase(Locale.US)
+        return "audio-$lang-$edition-$book"
+    }
+
+    /**
+     * The same naming rule as [repoName], but from a [WorkbookDescriptor] — the lightweight listing
+     * a project picker already has (no need to open a full [Workbook]) — used by
+     * [org.bibletranslationtools.otter.common.domain.wacs.usecase.RestoreChapterFromWacs] to find
+     * which local project (if any) a WACS repo restores into. Null if [descriptor]'s target
+     * collection has no resource-container metadata yet (shouldn't happen for a created project, but
+     * this is a read of someone else's data, not a guarantee this class controls).
+     */
+    fun repoNameOrNull(descriptor: WorkbookDescriptor): String? {
+        val targetMetadata = descriptor.targetCollection.resourceContainer ?: return null
+        val lang = targetMetadata.language.slug.lowercase(Locale.US)
+        val edition = targetMetadata.identifier.lowercase(Locale.US)
+        val book = descriptor.targetCollection.slug.lowercase(Locale.US)
         return "audio-$lang-$edition-$book"
     }
 

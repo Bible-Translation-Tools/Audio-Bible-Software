@@ -27,35 +27,36 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoRepo
 import org.bibletranslationtools.otter.common.domain.wacs.layout.WacsChapterIngredient
+import org.bibletranslationtools.otter.common.domain.wacs.layout.WacsRepoLayout
 import org.bibletranslationtools.otter.common.domain.wacs.usecase.CloneWacsRepo
-import org.bibletranslationtools.otter.common.domain.wacs.usecase.ImportPulledChapterAsSource
 import org.bibletranslationtools.otter.common.domain.wacs.usecase.ListWacsRepos
-import org.bibletranslationtools.otter.common.domain.wacs.usecase.PullChapter
+import org.bibletranslationtools.otter.common.domain.wacs.usecase.RestoreChapterFromWacs
 import org.bibletranslationtools.otter.common.domain.wacs.usecase.WacsPullException
 import org.jetbrains.compose.resources.getString
 import org.bibletranslationtools.shared.resources.Res
-import org.bibletranslationtools.shared.resources.wacs_pull_attach_error
-import org.bibletranslationtools.shared.resources.wacs_pull_attach_success
 import org.bibletranslationtools.shared.resources.wacs_pull_error_auth_rejected
 import org.bibletranslationtools.shared.resources.wacs_pull_error_chapter_not_found
 import org.bibletranslationtools.shared.resources.wacs_pull_error_generic
 import org.bibletranslationtools.shared.resources.wacs_pull_error_integrity
 import org.bibletranslationtools.shared.resources.wacs_pull_error_network
+import org.bibletranslationtools.shared.resources.wacs_pull_error_no_matching_project
 import org.bibletranslationtools.shared.resources.wacs_pull_error_no_scope
 import org.bibletranslationtools.shared.resources.wacs_pull_error_not_authenticated
 import org.bibletranslationtools.shared.resources.wacs_pull_error_repo_not_found
 
 /**
- * M3: drives the "pull as source" flow — list the `AudioTranslation` org's repos, open (clone +
- * read scope) the one the user picks, pull a single chapter's audio on demand, and (optionally)
- * attach it as source audio to one of the user's existing local projects via
- * [ImportPulledChapterAsSource] (see that class's KDoc for why this bridge, and the open UX
- * question it flags around project attachment/creation).
+ * M3.1: drives the "Restore from WACS" flow — list the `AudioTranslation` org's repos, open (clone +
+ * read scope) the one the user picks, resolve which (if any) local project matches that repo, and
+ * restore chapters into it one at a time as new **takes** via [RestoreChapterFromWacs] — see that
+ * class's KDoc for the take-model/checksum reconciliation this was built against.
+ *
+ * v1 restores into an EXISTING matching project only ([WacsRepoLayout.repoNameOrNull] vs each local
+ * project's own computed repo name) — there is deliberately no "create a project from this repo"
+ * path here (needs a source *text* to pair with, which this milestone does not resolve).
  *
  * Kept deliberately separate from [WacsPublishViewModel] (a different direction of the same sync
  * feature) but shares the same login gate: [org.bibletranslationtools.bttrecorder2.ui.screens.WacsPullScreen]
@@ -65,19 +66,15 @@ import org.bibletranslationtools.shared.resources.wacs_pull_error_repo_not_found
 class WacsPullViewModel(
     private val listWacsRepos: ListWacsRepos,
     private val cloneWacsRepo: CloneWacsRepo,
-    private val pullChapter: PullChapter,
-    private val importPulledChapterAsSource: ImportPulledChapterAsSource,
+    private val restoreChapterFromWacs: RestoreChapterFromWacs,
     private val workbookDescriptorRepository: IWorkbookDescriptorRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(WacsPullUiState())
     val state: StateFlow<WacsPullUiState> = _state.asStateFlow()
 
-    /** Set by [selectRepo], read by [pullSelectedChapter] — not part of the UI state (carries a [java.io.File]). */
+    /** Set by [selectRepo], read by [restoreChapter] — not part of the UI state (carries a [java.io.File]). */
     private var openedRepo: CloneWacsRepo.Result? = null
-
-    /** Set by [pullSelectedChapter], read by [attachToProject] — carries a [java.io.File]. */
-    private var pulledFile: java.io.File? = null
 
     fun loadRepos() {
         if (_state.value.isLoadingRepos) return
@@ -104,11 +101,9 @@ class WacsPullViewModel(
                 isOpeningRepo = true,
                 error = null,
                 scope = emptyMap(),
-                selectedBook = null,
-                selectedChapter = null,
-                pulledChapter = null,
-                matchingProjects = emptyList(),
-                attachSuccessMessage = null,
+                matchedProject = null,
+                projectResolved = false,
+                chapterResults = emptyMap(),
             )
         }
         viewModelScope.launch(Dispatchers.IO) {
@@ -116,7 +111,19 @@ class WacsPullViewModel(
                 val opened = cloneWacsRepo.open(repo.name)
                 openedRepo = opened
                 val scopeForUi = opened.scope.books.mapValues { (_, chapters) -> chapters.map { it.chapterNumber } }
-                _state.update { it.copy(isOpeningRepo = false, scope = scopeForUi) }
+
+                // v1: restore into an existing matching project only — no project creation here.
+                val matched = workbookDescriptorRepository.getAllSuspend(computeSourceAudio = false)
+                    .firstOrNull { WacsRepoLayout.repoNameOrNull(it) == repo.name }
+
+                _state.update {
+                    it.copy(
+                        isOpeningRepo = false,
+                        scope = scopeForUi,
+                        matchedProject = matched,
+                        projectResolved = true,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: WacsPullException) {
@@ -129,103 +136,75 @@ class WacsPullViewModel(
 
     fun backToRepoList() {
         openedRepo = null
-        pulledFile = null
         _state.update {
             it.copy(
                 selectedRepo = null,
                 scope = emptyMap(),
-                selectedBook = null,
-                selectedChapter = null,
-                pulledChapter = null,
-                matchingProjects = emptyList(),
-                attachSuccessMessage = null,
+                matchedProject = null,
+                projectResolved = false,
+                restoringChapter = null,
+                chapterResults = emptyMap(),
                 error = null,
             )
         }
     }
 
-    fun selectChapter(bookSlug: String, chapterNumber: Int) {
+    fun restoreChapter(bookSlug: String, chapterNumber: Int) {
+        val opened = openedRepo ?: return
+        val descriptor = _state.value.matchedProject ?: return
+        val key = bookSlug to chapterNumber
+        if (_state.value.restoringChapter != null) return
+
         _state.update {
             it.copy(
-                selectedBook = bookSlug,
-                selectedChapter = chapterNumber,
-                pulledChapter = null,
-                matchingProjects = emptyList(),
-                attachSuccessMessage = null,
+                restoringChapter = key,
+                error = null,
+                chapterResults = it.chapterResults - key,
             )
         }
-    }
-
-    fun pullSelectedChapter() {
-        val opened = openedRepo ?: return
-        val bookSlug = _state.value.selectedBook ?: return
-        val chapterNumber = _state.value.selectedChapter ?: return
-        if (_state.value.isPulling) return
-
-        _state.update { it.copy(isPulling = true, error = null) }
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val ingredient: WacsChapterIngredient = opened.scope.books[bookSlug]
                     ?.find { it.chapterNumber == chapterNumber }
                     ?: throw WacsPullException(WacsPullException.Reason.CHAPTER_NOT_FOUND)
 
-                val result = pullChapter.pull(opened.repo, opened.workDir, ingredient)
-                pulledFile = result.audioFile
-
-                // Offer local projects whose target book matches this chapter's book — the app
-                // has no automatic way to create a project from a WACS source (see
-                // ImportPulledChapterAsSource's KDoc), so this only ever lists EXISTING projects.
-                val matches = workbookDescriptorRepository.getAllSuspend(computeSourceAudio = false)
-                    .filter { it.targetCollection.slug.equals(bookSlug, ignoreCase = true) }
-
+                val outcome = restoreChapterFromWacs.restore(
+                    descriptor, opened.repo, opened.workDir, ingredient, _state.value.selectionPolicy,
+                )
+                val result = when (outcome) {
+                    is RestoreChapterFromWacs.Outcome.Restored -> ChapterRestoreResult.Restored
+                    RestoreChapterFromWacs.Outcome.AlreadyPresent -> ChapterRestoreResult.AlreadyPresent
+                }
                 _state.update {
-                    it.copy(isPulling = false, pulledChapter = chapterNumber, matchingProjects = matches)
+                    it.copy(restoringChapter = null, chapterResults = it.chapterResults + (key to result))
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: WacsPullException) {
-                _state.update { it.copy(isPulling = false, error = localize(e.reason)) }
+                val message = localize(e.reason)
+                _state.update {
+                    it.copy(
+                        restoringChapter = null,
+                        chapterResults = it.chapterResults + (key to ChapterRestoreResult.Failed(message)),
+                    )
+                }
             } catch (e: Exception) {
-                _state.update { it.copy(isPulling = false, error = getString(Res.string.wacs_pull_error_generic)) }
+                val message = getString(Res.string.wacs_pull_error_generic)
+                _state.update {
+                    it.copy(
+                        restoringChapter = null,
+                        chapterResults = it.chapterResults + (key to ChapterRestoreResult.Failed(message)),
+                    )
+                }
             }
         }
     }
 
-    fun attachToProject(descriptor: WorkbookDescriptor) {
-        openedRepo ?: return
-        val bookSlug = _state.value.selectedBook ?: return
-        val chapterNumber = _state.value.selectedChapter ?: return
-        val audioFile = pulledFile ?: return
-        if (_state.value.isAttaching) return
-
-        _state.update { it.copy(isAttaching = true, error = null) }
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val result = withContext(Dispatchers.IO) {
-                    importPulledChapterAsSource.import(descriptor, bookSlug, chapterNumber, audioFile)
-                }
-                if (result.imported.isNotEmpty()) {
-                    val message = getString(Res.string.wacs_pull_attach_success, descriptor.title)
-                    _state.update { it.copy(isAttaching = false, attachSuccessMessage = message) }
-                } else {
-                    val detail = (result.errors + result.skipped).firstOrNull().orEmpty()
-                    val message = getString(Res.string.wacs_pull_attach_error, detail)
-                    _state.update { it.copy(isAttaching = false, error = message) }
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                val message = getString(
-                    Res.string.wacs_pull_attach_error,
-                    e.message ?: e::class.simpleName.orEmpty()
-                )
-                _state.update { it.copy(isAttaching = false, error = message) }
-            }
-        }
-    }
+    /** How restoring should treat the selected take when a chapter already has takes (see [RestoreChapterFromWacs.SelectionPolicy]). */
+    fun setSelectionPolicy(policy: RestoreChapterFromWacs.SelectionPolicy) =
+        _state.update { it.copy(selectionPolicy = policy) }
 
     fun dismissError() = _state.update { it.copy(error = null) }
-    fun dismissAttachSuccess() = _state.update { it.copy(attachSuccessMessage = null) }
 
     private suspend fun localize(reason: WacsPullException.Reason): String = when (reason) {
         WacsPullException.Reason.NOT_AUTHENTICATED -> getString(Res.string.wacs_pull_error_not_authenticated)
@@ -235,8 +214,16 @@ class WacsPullViewModel(
         WacsPullException.Reason.NO_SCOPE -> getString(Res.string.wacs_pull_error_no_scope)
         WacsPullException.Reason.CHAPTER_NOT_FOUND -> getString(Res.string.wacs_pull_error_chapter_not_found)
         WacsPullException.Reason.INTEGRITY -> getString(Res.string.wacs_pull_error_integrity)
+        WacsPullException.Reason.NO_MATCHING_PROJECT -> getString(Res.string.wacs_pull_error_no_matching_project)
         WacsPullException.Reason.UNKNOWN -> getString(Res.string.wacs_pull_error_generic)
     }
+}
+
+/** Per-chapter outcome of a restore attempt, keyed by (bookSlug, chapterNumber) in the UI state. */
+sealed interface ChapterRestoreResult {
+    data object Restored : ChapterRestoreResult
+    data object AlreadyPresent : ChapterRestoreResult
+    data class Failed(val message: String) : ChapterRestoreResult
 }
 
 data class WacsPullUiState(
@@ -246,12 +233,14 @@ data class WacsPullUiState(
     val isOpeningRepo: Boolean = false,
     /** bookSlug -> available chapter numbers, for display only (the ViewModel keeps the full scope). */
     val scope: Map<String, List<Int>> = emptyMap(),
-    val selectedBook: String? = null,
-    val selectedChapter: Int? = null,
-    val isPulling: Boolean = false,
-    val pulledChapter: Int? = null,
-    val matchingProjects: List<WorkbookDescriptor> = emptyList(),
-    val isAttaching: Boolean = false,
-    val attachSuccessMessage: String? = null,
+    /** True once repo-opening has finished trying to resolve a matching project (whether found or not). */
+    val projectResolved: Boolean = false,
+    /** The local project this repo restores into, or null if none matches (see [projectResolved]). */
+    val matchedProject: WorkbookDescriptor? = null,
+    val restoringChapter: Pair<String, Int>? = null,
+    val chapterResults: Map<Pair<String, Int>, ChapterRestoreResult> = emptyMap(),
+    /** User choice: what restoring does to the selected take when a chapter already has takes. */
+    val selectionPolicy: RestoreChapterFromWacs.SelectionPolicy =
+        RestoreChapterFromWacs.SelectionPolicy.SELECT_RESTORED,
     val error: String? = null,
 )

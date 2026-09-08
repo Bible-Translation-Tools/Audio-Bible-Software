@@ -43,8 +43,8 @@ val recorderViewModelModule = module {
     factory { (sourceId: Int, targetId: Int, chapters: List<Int>) ->
         WacsPublishViewModel(get(), get(), sourceId, targetId, chapters)
     }
-    // M3: pull-as-source. No nav-arg parameters (unlike WacsPublishViewModel) — the flow starts
-    // from a repo picker, not an existing project.
+    // M3.1: restore from WACS (as takes). No nav-arg parameters (unlike WacsPublishViewModel) —
+    // the flow starts from a repo picker, not an existing project.
     factoryOf(::WacsPullViewModel)
     // Process-lifetime singleton so the ProjectManagement + Recorder routes share the
     // same export state (isCurrentlyExporting gates UI); auto-cleans temp dirs on init.

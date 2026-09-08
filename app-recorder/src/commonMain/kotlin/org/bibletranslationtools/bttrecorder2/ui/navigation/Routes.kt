@@ -32,9 +32,9 @@ data class WacsPublishRoute(
 )
 
 /**
- * M3 pull-as-source entry point — see WacsPullScreen. Reached from Project Management's overflow
- * menu; no nav args (unlike [WacsPublishRoute]) since the flow starts by picking a repo, not a
- * project.
+ * M3.1 "Restore from WACS" entry point — see WacsPullScreen. Reached from Project Management's
+ * overflow menu; no nav args (unlike [WacsPublishRoute]) since the flow starts by picking a repo,
+ * not a project.
  */
 @Serializable
 object WacsPullRoute

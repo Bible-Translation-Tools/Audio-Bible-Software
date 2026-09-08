@@ -42,6 +42,9 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.RadioButton
+import androidx.compose.foundation.clickable
+import org.bibletranslationtools.otter.common.domain.wacs.usecase.RestoreChapterFromWacs
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -50,10 +53,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterRestoreResult
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.WacsLoginViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.WacsPullUiState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.WacsPullViewModel
-import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.domain.wacs.WacsPlatform
 import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoRepo
 import org.jetbrains.compose.resources.stringResource
@@ -62,13 +65,13 @@ import org.bibletranslationtools.shared.resources.action_back
 import org.bibletranslationtools.shared.resources.action_dismiss
 import org.bibletranslationtools.shared.resources.wacs_logged_in_as
 import org.bibletranslationtools.shared.resources.wacs_logout
-import org.bibletranslationtools.shared.resources.wacs_pull_attach_button
-import org.bibletranslationtools.shared.resources.wacs_pull_attach_empty
-import org.bibletranslationtools.shared.resources.wacs_pull_attach_title
+import org.bibletranslationtools.shared.resources.wacs_pull_already_present
 import org.bibletranslationtools.shared.resources.wacs_pull_back_to_repos
 import org.bibletranslationtools.shared.resources.wacs_pull_book_chapters_label
 import org.bibletranslationtools.shared.resources.wacs_pull_chapter_button
 import org.bibletranslationtools.shared.resources.wacs_pull_chapter_label
+import org.bibletranslationtools.shared.resources.wacs_pull_matched_project
+import org.bibletranslationtools.shared.resources.wacs_pull_no_matching_project
 import org.bibletranslationtools.shared.resources.wacs_pull_no_scope
 import org.bibletranslationtools.shared.resources.wacs_pull_opening_repo
 import org.bibletranslationtools.shared.resources.wacs_pull_pulling
@@ -76,7 +79,11 @@ import org.bibletranslationtools.shared.resources.wacs_pull_repo_select_button
 import org.bibletranslationtools.shared.resources.wacs_pull_repos_empty
 import org.bibletranslationtools.shared.resources.wacs_pull_repos_loading
 import org.bibletranslationtools.shared.resources.wacs_pull_repos_refresh
+import org.bibletranslationtools.shared.resources.wacs_pull_restore_failed
 import org.bibletranslationtools.shared.resources.wacs_pull_scope_title
+import org.bibletranslationtools.shared.resources.wacs_pull_selection_policy_label
+import org.bibletranslationtools.shared.resources.wacs_pull_selection_select_restored
+import org.bibletranslationtools.shared.resources.wacs_pull_selection_keep_current
 import org.bibletranslationtools.shared.resources.wacs_pull_select_repo_title
 import org.bibletranslationtools.shared.resources.wacs_pull_success
 import org.bibletranslationtools.shared.resources.wacs_pull_title
@@ -84,18 +91,17 @@ import org.bibletranslationtools.shared.resources.wacs_pull_unsupported_message
 import org.bibletranslationtools.shared.resources.wacs_pull_unsupported_title
 
 /**
- * M3 entry point reached from Project Management's overflow menu ("Pull source from WACS" — see
+ * M3.1 entry point reached from Project Management's overflow menu ("Restore from WACS" — see
  * [ProjectManagementScreen]). Mirrors [WacsPublishScreen]'s three-state shape (unsupported / login /
- * logged-in), then adds its own repo -> scope -> chapter -> pull -> attach flow:
+ * logged-in), then adds its own repo -> scope+project -> restore flow:
  *
  *   1. Not logged in — the shared M1 login form ([WacsLoginForm]).
  *   2. Logged in, no repo chosen yet — the `AudioTranslation` org's repo list.
- *   3. A repo opened — its available book/chapter scope (read from `metadata.json`, no audio
- *      downloaded yet); picking a chapter and pressing "Pull" downloads + verifies just that one
- *      chapter (see [org.bibletranslationtools.otter.common.domain.wacs.usecase.PullChapter]).
- *   4. After a successful pull — local projects whose book matches, to attach the pulled audio to
- *      as source (see [org.bibletranslationtools.otter.common.domain.wacs.usecase.ImportPulledChapterAsSource]'s
- *      KDoc for why this only ever lists EXISTING projects, and the UX question that leaves open).
+ *   3. A repo opened — its available chapters (read from `metadata.json`, no audio downloaded yet)
+ *      alongside whichever local project matches this repo, if any (v1 restores into an EXISTING
+ *      project only — see [org.bibletranslationtools.otter.common.domain.wacs.usecase.RestoreChapterFromWacs]'s
+ *      KDoc). Pressing "Restore" on a chapter downloads + verifies it and adds it as a take of that
+ *      project directly — there is no separate "attach" step anymore.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -281,30 +287,97 @@ private fun RepoScopeSection(
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
-            state.scope.isEmpty() -> Text(
-                text = stringResource(Res.string.wacs_pull_no_scope),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                state.scope.forEach { (bookSlug, chapters) ->
+            else -> {
+                if (state.projectResolved) {
+                    val matched = state.matchedProject
+                    if (matched != null) {
+                        Text(
+                            text = stringResource(Res.string.wacs_pull_matched_project, matched.title),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        SelectionPolicyChooser(
+                            selected = state.selectionPolicy,
+                            onSelect = viewModel::setSelectionPolicy,
+                        )
+                    } else {
+                        Text(
+                            text = stringResource(Res.string.wacs_pull_no_matching_project),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                if (state.scope.isEmpty()) {
                     Text(
-                        text = stringResource(Res.string.wacs_pull_book_chapters_label, bookSlug, chapters.size),
-                        style = MaterialTheme.typography.labelLarge
+                        text = stringResource(Res.string.wacs_pull_no_scope),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        chapters.forEach { chapterNumber ->
-                            ChapterRow(
-                                bookSlug = bookSlug,
-                                chapterNumber = chapterNumber,
-                                state = state,
-                                viewModel = viewModel,
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        state.scope.forEach { (bookSlug, chapters) ->
+                            Text(
+                                text = stringResource(Res.string.wacs_pull_book_chapters_label, bookSlug, chapters.size),
+                                style = MaterialTheme.typography.labelLarge
                             )
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                chapters.forEach { chapterNumber ->
+                                    ChapterRow(
+                                        bookSlug = bookSlug,
+                                        chapterNumber = chapterNumber,
+                                        state = state,
+                                        viewModel = viewModel,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/**
+ * Lets the user choose what restoring does to the selected take when a chapter already has takes
+ * (see [RestoreChapterFromWacs.SelectionPolicy]). Shown only once a matching local project is
+ * resolved, since restore only targets an existing project.
+ */
+@Composable
+private fun SelectionPolicyChooser(
+    selected: RestoreChapterFromWacs.SelectionPolicy,
+    onSelect: (RestoreChapterFromWacs.SelectionPolicy) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = stringResource(Res.string.wacs_pull_selection_policy_label),
+            style = MaterialTheme.typography.labelLarge
+        )
+        SelectionPolicyOption(
+            text = stringResource(Res.string.wacs_pull_selection_select_restored),
+            selected = selected == RestoreChapterFromWacs.SelectionPolicy.SELECT_RESTORED,
+            onClick = { onSelect(RestoreChapterFromWacs.SelectionPolicy.SELECT_RESTORED) },
+        )
+        SelectionPolicyOption(
+            text = stringResource(Res.string.wacs_pull_selection_keep_current),
+            selected = selected == RestoreChapterFromWacs.SelectionPolicy.KEEP_CURRENT,
+            onClick = { onSelect(RestoreChapterFromWacs.SelectionPolicy.KEEP_CURRENT) },
+        )
+    }
+}
+
+@Composable
+private fun SelectionPolicyOption(text: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(selected = selected, onClick = onClick)
+        Text(text = text, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
@@ -315,7 +388,11 @@ private fun ChapterRow(
     state: WacsPullUiState,
     viewModel: WacsPullViewModel,
 ) {
-    val isSelected = state.selectedBook == bookSlug && state.selectedChapter == chapterNumber
+    val key = bookSlug to chapterNumber
+    val isRestoring = state.restoringChapter == key
+    val result = state.chapterResults[key]
+    val canRestore = state.matchedProject != null
+
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -327,25 +404,22 @@ private fun ChapterRow(
                 style = MaterialTheme.typography.bodyMedium
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (isSelected && state.isPulling) {
+                if (isRestoring) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(16.dp).padding(end = 8.dp),
                         strokeWidth = 2.dp
                     )
                 }
                 Button(
-                    onClick = {
-                        viewModel.selectChapter(bookSlug, chapterNumber)
-                        viewModel.pullSelectedChapter()
-                    },
-                    enabled = !(isSelected && state.isPulling)
+                    onClick = { viewModel.restoreChapter(bookSlug, chapterNumber) },
+                    enabled = canRestore && state.restoringChapter == null
                 ) {
                     Text(stringResource(Res.string.wacs_pull_chapter_button))
                 }
             }
         }
 
-        if (isSelected && state.isPulling) {
+        if (isRestoring) {
             Text(
                 text = stringResource(Res.string.wacs_pull_pulling, chapterNumber),
                 style = MaterialTheme.typography.bodySmall,
@@ -354,56 +428,26 @@ private fun ChapterRow(
             )
         }
 
-        if (isSelected && state.pulledChapter == chapterNumber) {
-            Text(
+        when (result) {
+            is ChapterRestoreResult.Restored -> Text(
                 text = stringResource(Res.string.wacs_pull_success, chapterNumber),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(top = 4.dp)
             )
-            AttachSection(state = state, viewModel = viewModel)
-        }
-    }
-}
-
-@Composable
-private fun AttachSection(
-    state: WacsPullUiState,
-    viewModel: WacsPullViewModel,
-) {
-    Column(modifier = Modifier.fillMaxWidth().padding(top = 4.dp, start = 8.dp)) {
-        Text(stringResource(Res.string.wacs_pull_attach_title), style = MaterialTheme.typography.labelLarge)
-
-        state.attachSuccessMessage?.let { message ->
-            Text(
-                text = message,
+            is ChapterRestoreResult.AlreadyPresent -> Text(
+                text = stringResource(Res.string.wacs_pull_already_present, chapterNumber),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp)
             )
-        }
-
-        if (state.matchingProjects.isEmpty()) {
-            Text(
-                text = stringResource(Res.string.wacs_pull_attach_empty),
+            is ChapterRestoreResult.Failed -> Text(
+                text = stringResource(Res.string.wacs_pull_restore_failed, chapterNumber, result.message),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(top = 4.dp)
             )
-        } else {
-            state.matchingProjects.forEach { descriptor: WorkbookDescriptor ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(descriptor.title, style = MaterialTheme.typography.bodySmall)
-                    TextButton(
-                        onClick = { viewModel.attachToProject(descriptor) },
-                        enabled = !state.isAttaching
-                    ) {
-                        Text(stringResource(Res.string.wacs_pull_attach_button))
-                    }
-                }
-            }
+            null -> Unit
         }
     }
 }
