@@ -12,7 +12,11 @@ import org.bibletranslationtools.otter.common.domain.wacs.auth.WacsSession
 import org.bibletranslationtools.otter.common.domain.wacs.git.IWacsGitClient
 import org.bibletranslationtools.otter.common.domain.wacs.git.JGitWacsGitClient
 import org.bibletranslationtools.otter.common.domain.wacs.lfs.LfsBatchClient
+import org.bibletranslationtools.otter.common.domain.wacs.usecase.CloneWacsRepo
+import org.bibletranslationtools.otter.common.domain.wacs.usecase.ImportPulledChapterAsSource
+import org.bibletranslationtools.otter.common.domain.wacs.usecase.ListWacsRepos
 import org.bibletranslationtools.otter.common.domain.wacs.usecase.PublishChapterToWacs
+import org.bibletranslationtools.otter.common.domain.wacs.usecase.PullChapter
 import org.koin.dsl.module
 
 /**
@@ -61,4 +65,14 @@ val wacsModule = module {
     // host WacsSession was logged into, which may differ from WacsConfig.baseUrl — see
     // WacsSession.host's KDoc.
     single { PublishChapterToWacs(get(), get(), get(), get(), get(), get()) }
+
+    // M3: pull-as-source. ListWacsRepos/CloneWacsRepo are read-only REST + clone (no fork, unlike
+    // M2's publish); PullChapter materializes one chapter's audio at a time via the same
+    // LfsBatchClient. ImportPulledChapterAsSource is the bridge into the app's existing per-chapter
+    // source-audio store (SourceAudioImporter, bound in KoinModules.kt) — see its KDoc for why that
+    // path was chosen over BurritoImporter.
+    single { ListWacsRepos(get(), get(), get()) }
+    single { CloneWacsRepo(get(), get(), get(), get(), get()) }
+    single { PullChapter(get(), get(), get(), get()) }
+    single { ImportPulledChapterAsSource(get()) }
 }

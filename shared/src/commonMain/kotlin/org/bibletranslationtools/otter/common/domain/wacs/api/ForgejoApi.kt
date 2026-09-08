@@ -88,6 +88,21 @@ interface ForgejoApi {
         @Query("state") state: String = "open",
     ): List<ForgejoPullRequest>
 
+    /**
+     * M3: page through the `AudioTranslation` org's repos for the pull-as-source repo picker —
+     * every published-audio repo lives here (see [WacsConfig.org][org.bibletranslationtools.otter.common.domain.wacs.WacsConfig.org]).
+     * Callers page with [page]/[limit] until a short page comes back (see
+     * [org.bibletranslationtools.otter.common.domain.wacs.usecase.ListWacsRepos]); reuses
+     * [ForgejoRepo] rather than a new DTO since the shape is identical to [getRepo].
+     */
+    @GET("api/v1/orgs/{org}/repos")
+    suspend fun listOrgRepos(
+        @Path("org") org: String,
+        @Header("Authorization") auth: String,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 50,
+    ): List<ForgejoRepo>
+
     companion object {
         /** WACS bot-blocks unknown clients (403); this header is on the allowlist (see build.gradle.kts). */
         const val WA_TOOL_HEADER = "X-Requested-With"

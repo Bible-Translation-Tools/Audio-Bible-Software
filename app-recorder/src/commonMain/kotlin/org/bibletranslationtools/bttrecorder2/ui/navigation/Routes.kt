@@ -31,6 +31,14 @@ data class WacsPublishRoute(
     val chapters: String = ""
 )
 
+/**
+ * M3 pull-as-source entry point — see WacsPullScreen. Reached from Project Management's overflow
+ * menu; no nav args (unlike [WacsPublishRoute]) since the flow starts by picking a repo, not a
+ * project.
+ */
+@Serializable
+object WacsPullRoute
+
 @Serializable
 object ChapterListRoute
 

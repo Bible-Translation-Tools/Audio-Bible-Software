@@ -67,6 +67,7 @@ import org.bibletranslationtools.shared.resources.action_expand
 import org.bibletranslationtools.shared.resources.action_import
 import org.bibletranslationtools.shared.resources.action_ok
 import org.bibletranslationtools.shared.resources.action_settings
+import org.bibletranslationtools.shared.resources.wacs_pull_menu_item
 import org.bibletranslationtools.shared.resources.cd_more_options
 import org.bibletranslationtools.shared.resources.import_in_progress
 import org.bibletranslationtools.shared.resources.import_success
@@ -110,7 +111,8 @@ fun ProjectManagementScreen(
     onProjectClick: (WorkbookDescriptor) -> Unit,
     onRecordClick: (WorkbookDescriptor) -> Unit = {},
     onSettingsClick: () -> Unit = {},
-    onPublishClick: (WorkbookDescriptor, List<Int>) -> Unit = { _, _ -> }
+    onPublishClick: (WorkbookDescriptor, List<Int>) -> Unit = { _, _ -> },
+    onPullFromWacsClick: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
@@ -134,7 +136,8 @@ fun ProjectManagementScreen(
         onBackupRequest = exportViewModel::openOptions,
         onSettingsClick = onSettingsClick,
         onImportProject = viewModel::importProject,
-        onSort = viewModel::toggleSort
+        onSort = viewModel::toggleSort,
+        onPullFromWacsClick = onPullFromWacsClick
     )
 
     ExportOptionsDialog(
@@ -223,7 +226,8 @@ fun ProjectManagementContent(
     onBackupRequest: (WorkbookDescriptor) -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onImportProject: (PlatformFile) -> Unit = {},
-    onSort: (SortField) -> Unit = {}
+    onSort: (SortField) -> Unit = {},
+    onPullFromWacsClick: () -> Unit = {}
 ) {
     var infoDialogTarget by remember { mutableStateOf<WorkbookDescriptor?>(null) }
     var menuExpanded by remember { mutableStateOf(false) }
@@ -280,6 +284,13 @@ fun ProjectManagementContent(
                             onClick = {
                                 menuExpanded = false
                                 importPicker.launch()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(Res.string.wacs_pull_menu_item)) },
+                            onClick = {
+                                menuExpanded = false
+                                onPullFromWacsClick()
                             }
                         )
                         DropdownMenuItem(

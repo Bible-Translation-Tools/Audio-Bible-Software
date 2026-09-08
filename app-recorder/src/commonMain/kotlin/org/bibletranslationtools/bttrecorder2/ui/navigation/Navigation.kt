@@ -20,6 +20,7 @@ import org.bibletranslationtools.bttrecorder2.ui.screens.ProjectWizardScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.SplashScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.UnitListScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.WacsPublishScreen
+import org.bibletranslationtools.bttrecorder2.ui.screens.WacsPullScreen
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportProjectViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.MainMenuViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.PlaybackViewModel
@@ -28,6 +29,7 @@ import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementVie
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SplashScreenViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.WacsLoginViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.WacsPublishViewModel
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.WacsPullViewModel
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.foundation.layout.Box
@@ -154,7 +156,8 @@ fun Navigation(
                             chapters = chapters.joinToString(",")
                         )
                     )
-                }
+                },
+                onPullFromWacsClick = { navController.navigate(WacsPullRoute) }
             )
         }
 
@@ -172,6 +175,17 @@ fun Navigation(
             WacsPublishScreen(
                 viewModel = loginViewModel,
                 publishViewModel = publishViewModel,
+                onBackClick = { navController.popBackStack() }
+            )
+        }
+
+        composable<WacsPullRoute> {
+            val koin = getKoin()
+            val loginViewModel: WacsLoginViewModel = viewModel { koin.get() }
+            val pullViewModel: WacsPullViewModel = viewModel { koin.get() }
+            WacsPullScreen(
+                loginViewModel = loginViewModel,
+                pullViewModel = pullViewModel,
                 onBackClick = { navController.popBackStack() }
             )
         }

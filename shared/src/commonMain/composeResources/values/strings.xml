@@ -274,4 +274,37 @@
     <string name="wacs_publish_pr_submitted_title">Contribution submitted</string>
     <string name="wacs_publish_pr_submitted_message">Your chapters were published. View the pull request:</string>
     <string name="wacs_publish_pr_error">Chapters were published to your fork, but submitting the pull request failed: %1$s</string>
+
+    <!-- M3: pull-as-source -->
+    <string name="wacs_pull_menu_item">Pull source from WACS</string>
+    <string name="wacs_pull_title">Pull from WACS</string>
+    <string name="wacs_pull_unsupported_title">Not available on this device</string>
+    <string name="wacs_pull_unsupported_message">Pulling from WACS requires Android 8.0 (Oreo) or newer. This device cannot use it.</string>
+    <string name="wacs_pull_repos_loading">Loading repositories…</string>
+    <string name="wacs_pull_repos_empty">No repositories found.</string>
+    <string name="wacs_pull_repos_refresh">Refresh</string>
+    <string name="wacs_pull_select_repo_title">Select a repository</string>
+    <string name="wacs_pull_repo_select_button">Select</string>
+    <string name="wacs_pull_opening_repo">Opening repository…</string>
+    <string name="wacs_pull_scope_title">%1$s — available chapters</string>
+    <string name="wacs_pull_back_to_repos">Choose a different repository</string>
+    <string name="wacs_pull_book_chapters_label">%1$s (%2$d chapter(s))</string>
+    <string name="wacs_pull_chapter_label">Chapter %1$d</string>
+    <string name="wacs_pull_chapter_button">Pull</string>
+    <string name="wacs_pull_pulling">Pulling chapter %1$d…</string>
+    <string name="wacs_pull_success">Downloaded chapter %1$d and verified its checksum.</string>
+    <string name="wacs_pull_no_scope">This repository has no chapters available yet.</string>
+    <string name="wacs_pull_attach_title">Add as source audio to a project</string>
+    <string name="wacs_pull_attach_empty">No local project matches this book yet. Create one first from the project wizard, then come back here to attach the pulled audio.</string>
+    <string name="wacs_pull_attach_button">Attach</string>
+    <string name="wacs_pull_attach_success">Added as source audio for %1$s.</string>
+    <string name="wacs_pull_attach_error">Couldn\'t attach the pulled audio: %1$s</string>
+    <string name="wacs_pull_error_not_authenticated">You\'re not logged in. Log in and try again.</string>
+    <string name="wacs_pull_error_auth_rejected">The server rejected your credentials. Log in again.</string>
+    <string name="wacs_pull_error_network">Couldn\'t reach the WACS server. Check your connection and try again.</string>
+    <string name="wacs_pull_error_repo_not_found">That repository no longer exists.</string>
+    <string name="wacs_pull_error_no_scope">Couldn\'t read this repository\'s manifest.</string>
+    <string name="wacs_pull_error_chapter_not_found">That chapter isn\'t available in this repository.</string>
+    <string name="wacs_pull_error_integrity">The downloaded audio didn\'t verify correctly. Try again.</string>
+    <string name="wacs_pull_error_generic">Couldn\'t pull from WACS. Try again.</string>
 </resources>

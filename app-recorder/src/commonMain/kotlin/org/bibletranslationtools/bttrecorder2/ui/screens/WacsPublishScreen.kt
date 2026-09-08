@@ -147,7 +147,10 @@ fun WacsPublishScreen(
                 .verticalScroll(rememberScrollState())
         ) {
             when {
-                !WacsPlatform.isGitSyncSupported -> UnsupportedNotice()
+                !WacsPlatform.isGitSyncSupported -> WacsUnsupportedNotice(
+                    title = stringResource(Res.string.wacs_publish_unsupported_title),
+                    message = stringResource(Res.string.wacs_publish_unsupported_message)
+                )
                 state.isLoggedIn -> LoggedInContent(
                     username = state.loggedInAs.orEmpty(),
                     onLogout = viewModel::logout,
@@ -156,7 +159,7 @@ fun WacsPublishScreen(
                     onDismissError = publishViewModel::dismissError,
                     onAcknowledgeSuccess = publishViewModel::acknowledgeSuccess
                 )
-                else -> LoginForm(
+                else -> WacsLoginForm(
                     host = state.host,
                     username = state.username,
                     password = state.password,
@@ -169,25 +172,6 @@ fun WacsPublishScreen(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun UnsupportedNotice() {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = stringResource(Res.string.wacs_publish_unsupported_title),
-            style = MaterialTheme.typography.titleMedium
-        )
-        Text(
-            text = stringResource(Res.string.wacs_publish_unsupported_message),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 8.dp)
-        )
     }
 }
 
@@ -361,77 +345,4 @@ private fun progressLabel(progress: PublishChapterToWacs.Progress): String = whe
     is PublishChapterToWacs.Progress.Pushing -> stringResource(Res.string.wacs_publish_progress_pushing)
     is PublishChapterToWacs.Progress.OpeningPullRequest -> stringResource(Res.string.wacs_publish_progress_opening_pr)
     is PublishChapterToWacs.Progress.Done -> ""
-}
-
-@Composable
-private fun LoginForm(
-    host: String,
-    username: String,
-    password: String,
-    isLoading: Boolean,
-    error: String?,
-    onHostChange: (String) -> Unit,
-    onUsernameChange: (String) -> Unit,
-    onPasswordChange: (String) -> Unit,
-    onTestConnection: () -> Unit
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        OutlinedTextField(
-            value = host,
-            onValueChange = onHostChange,
-            label = { Text(stringResource(Res.string.wacs_login_host_label)) },
-            singleLine = true,
-            enabled = !isLoading,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-            modifier = Modifier.fillMaxWidth()
-        )
-        OutlinedTextField(
-            value = username,
-            onValueChange = onUsernameChange,
-            label = { Text(stringResource(Res.string.wacs_login_username_label)) },
-            singleLine = true,
-            enabled = !isLoading,
-            modifier = Modifier.fillMaxWidth()
-        )
-        OutlinedTextField(
-            value = password,
-            onValueChange = onPasswordChange,
-            label = { Text(stringResource(Res.string.wacs_login_password_label)) },
-            singleLine = true,
-            enabled = !isLoading,
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            modifier = Modifier.fillMaxWidth()
-        )
-        Text(
-            text = stringResource(Res.string.wacs_login_password_hint),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-
-        error?.let {
-            Text(
-                text = it,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.error
-            )
-        }
-
-        Button(
-            onClick = onTestConnection,
-            enabled = !isLoading,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            if (isLoading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(16.dp).padding(end = 8.dp),
-                    strokeWidth = 2.dp
-                )
-            }
-            Text(stringResource(Res.string.wacs_login_test_connection))
-        }
-    }
 }
