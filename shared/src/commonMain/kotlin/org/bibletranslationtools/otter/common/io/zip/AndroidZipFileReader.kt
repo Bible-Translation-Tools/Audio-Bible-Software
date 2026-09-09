@@ -38,19 +38,25 @@ class AndroidZipFileReader(
                 zipFile.getEntry("$normalizedPath/") != null
     }
 
+    /**
+     * The immediate children of [directory], each as a path from the archive root so that it can be
+     * passed straight back to [stream], [bufferedReader] or [copyDirectory]. Callers rely on that:
+     * they list a directory and then read each result.
+     *
+     * A subdirectory appears once, as its own path, rather than once per entry beneath it.
+     */
     override fun list(directory: String): Sequence<String> {
-        val normalizedDir = normalizePath(directory).let { if (it.endsWith("/")) it else "$it/" }
+        val prefix = normalizePath(directory).let { if (it.isEmpty()) "" else "$it/" }
 
         return zipFile.entries().asSequence()
-            .map { it.name }
-            .filter { it.startsWith(normalizedDir) && it != normalizedDir }
-            .map { fullPath ->
-                // Remove the parent directory prefix
-                val relativePath = fullPath.removePrefix(normalizedDir)
-                // If there is still a slash, it's a subdirectory; strictly take the immediate child
-                relativePath.substringBefore("/")
+            .map { normalizePath(it.name) }
+            .filter { it.startsWith(prefix) && it != prefix.trimEnd('/') }
+            .map { path ->
+                // Only the first segment below the prefix, so entries deeper in the tree collapse
+                // onto the subdirectory that contains them.
+                prefix + path.removePrefix(prefix).substringBefore("/")
             }
-            .distinct() // Ensure we don't list the same subdirectory multiple times
+            .distinct()
     }
 
     /**
@@ -111,8 +117,13 @@ class AndroidZipFileReader(
             ?: throw java.io.FileNotFoundException("Entry '$filepath' not found in ${zipFileSource.absolutePath}")
     }
 
-    // Zip files always use forward slashes, regardless of OS
+    /**
+     * Zip entries always use forward slashes, and neither a leading nor a trailing one is
+     * significant: `.apps/orature/source`, `/.apps/orature/source/` and `.apps/orature/source/` all
+     * name the same directory. `.` names the archive root, as it does for the Nio reader.
+     */
     private fun normalizePath(path: String): String {
-        return path.replace("\\", "/").trim('/')
+        val normalized = path.replace("\\", "/").trim('/')
+        return if (normalized == ".") "" else normalized
     }
 }

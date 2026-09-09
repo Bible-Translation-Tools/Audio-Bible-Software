@@ -1,20 +1,35 @@
 package org.bibletranslationtools.bttrecorder2.ui.viewmodels
 
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import io.reactivex.Completable
+import io.reactivex.Observable
+import org.bibletranslationtools.bttrecorder2.migration.MigrateLegacyRecorderProjects
+import org.bibletranslationtools.otter.common.api.persistence.config.Installable
+import org.bibletranslationtools.otter.common.data.ProgressStatus
 import org.bibletranslationtools.otter.common.initialization.InitializeApp
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
+import org.koin.mp.KoinPlatform
 
 class SplashScreenViewModel(): ViewModel(), KoinComponent {
 
     //@Inject
     private val initApp: InitializeApp by inject()
+
+    /**
+     * The one-time migration of legacy Android BTT-Recorder projects, run after [initApp]. It
+     * imports the ULB mode sources itself, once it has found legacy data.
+     *
+     * Resolved optionally, since `recorderMigrationModule` is composed by the platform startKoin
+     * blocks but not by `RecorderUiTestHarness`, which cannot bind a platform `LegacyRecorderStore`.
+     * Its absence means this graph performs no migration, not that startup failed.
+     */
+    private val migrateLegacyProjects: MigrateLegacyRecorderProjects? by lazy {
+        KoinPlatform.getKoin().getOrNull()
+    }
 
     var progressTitle by mutableStateOf("")
     var progressBody by mutableStateOf("")
@@ -23,6 +38,9 @@ class SplashScreenViewModel(): ViewModel(), KoinComponent {
     fun initApp(): Completable {
         initApp.toString()
         return initApp.initApp()
+            // After initApp, since migration derives projects from imported source text and so
+            // needs the source and project tables to exist.
+            .concatWith(installable(migrateLegacyProjects))
             //.doOnError { logger.error("Error initializing app: ", it) }
             .doOnNext { status ->
                 status.titleKey?.let { title ->
@@ -35,5 +53,22 @@ class SplashScreenViewModel(): ViewModel(), KoinComponent {
                 status.percent?.let { progress = it }
             }
             .ignoreElements()
+    }
+
+    /**
+     * Runs an [Installable] as a progress stream, reusing the splash's existing plumbing.
+     *
+     * The outcome is deliberately not surfaced: migration is silent, and the log and its ledger are
+     * the record. Errors are swallowed so a failure cannot block startup, leaving the work for the
+     * next launch.
+     */
+    private fun installable(step: Installable?): Observable<ProgressStatus> {
+        if (step == null) return Observable.empty()
+        return Observable
+            .create { emitter ->
+                step.exec(emitter).blockingAwait()
+                emitter.onComplete()
+            }
+            .onErrorResumeNext(Observable.empty())
     }
 }

@@ -32,6 +32,19 @@ val desktopVersion = versionName
         nums.joinToString(".")
     }
 
+// :app-recorder ships the legacy Android BTT-Recorder's applicationId, so Android treats it as an
+// upgrade of that app and its versionCode has to exceed the last one the legacy app published (56,
+// per that project's build.gradle). :app-orature has no such history and keeps the plain value,
+// hence a separate derived number rather than a floor applied to both.
+//
+// An offset rather than a coerce: versionCode is derived as major*1e6 + minor*1e3 + patch, so a 1.x
+// release is already far above the legacy ceiling, while a 0.0.x tag or a local build yields 1.
+// Coercing those to 57 would give different releases the same versionCode, which Play rejects and
+// which breaks in-place upgrades. Adding the ceiling keeps the sequence monotonic in the tag.
+val legacyRecorderVersionCode = 56
+val recorderVersionCodeValue = versionCodeInt + legacyRecorderVersionCode
+
 extra["appVersionName"] = versionName
 extra["appVersionCode"] = versionCodeInt
+extra["recorderVersionCode"] = recorderVersionCodeValue
 extra["desktopPackageVersion"] = desktopVersion

@@ -39,10 +39,15 @@ interface IResourceContainerRepository {
      *
      * @param rc The resource container of the source being updated
      * @param rcTree The tree with the content to update
+     * @param version restricts the update to the source carrying this dublin_core version. Several
+     *   versions of one identifier can coexist, so without it the update targets the first source
+     *   row matching language and identifier alone. Null is what an in-place version upgrade needs,
+     *   since that overlays newer text onto the existing row before restamping its version.
      */
     fun updateContent(
         rc: ResourceContainer,
-        rcTree: OtterTree<CollectionOrContent>
+        rcTree: OtterTree<CollectionOrContent>,
+        version: String? = null
     ): Single<ImportResult>
 
     /**

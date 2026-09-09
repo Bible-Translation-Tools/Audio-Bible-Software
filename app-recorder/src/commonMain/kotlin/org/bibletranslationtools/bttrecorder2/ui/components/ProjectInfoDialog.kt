@@ -27,6 +27,7 @@ import org.bibletranslationtools.shared.domain.SourceAudioImporter
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.koin.mp.KoinPlatform.getKoin
 import org.jetbrains.compose.resources.stringResource
+import org.bibletranslationtools.bttrecorder2.migration.InitializeModeSources
 import org.bibletranslationtools.shared.resources.Res
 import org.bibletranslationtools.shared.resources.action_cancel
 import org.bibletranslationtools.shared.resources.action_close
@@ -180,7 +181,10 @@ fun ProjectInfoDialog(
 
                     InfoRow(
                         label = stringResource(Res.string.info_row_translation_type),
-                        value = formatTranslationType(workbook.targetCollection.resourceContainer?.identifier)
+                        value = formatTranslationType(
+                            workbook.targetCollection.resourceContainer?.identifier,
+                            workbook.targetCollection.resourceContainer?.title
+                        )
                     )
 
                     InfoRow(
@@ -426,13 +430,27 @@ private fun sourceAudioStatus(
     }
 }
 
+/**
+ * The name of the source text a project was derived from.
+ *
+ * A bundled identifier resolves to a localized string, because a resource container's `title` is a
+ * single untranslated value and `ulb` should not read "Unlocked Literal Bible" in a Spanish UI.
+ *
+ * Any other identifier is named by its container's [title], since source text can be imported under
+ * any identifier and the "Regular" fallback would mislabel it.
+ */
 @Composable
-private fun formatTranslationType(identifier: String?): String {
+private fun formatTranslationType(identifier: String?, title: String?): String {
     if (identifier == null) return stringResource(Res.string.info_value_unknown)
     return when (identifier.lowercase()) {
-        "ulb" -> stringResource(Res.string.info_translation_type_ulb, identifier)
+        InitializeModeSources.IDENTIFIER -> stringResource(Res.string.info_translation_type_ulb, identifier)
         "udb" -> stringResource(Res.string.info_translation_type_udb, identifier)
-        else -> stringResource(Res.string.info_translation_type_regular, identifier.uppercase(Locale.getDefault()))
+        else -> title?.takeIf { it.isNotBlank() }?.let {
+            stringResource(Res.string.value_name_with_code, it, identifier)
+        } ?: stringResource(
+            Res.string.info_translation_type_regular,
+            identifier.uppercase(Locale.getDefault())
+        )
     }
 }
 

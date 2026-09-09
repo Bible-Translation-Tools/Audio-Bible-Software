@@ -13,7 +13,9 @@ plugins {
     kotlin("plugin.serialization") version "2.1.10"
 }
 // Version comes from the release workflow (see .github/workflows/release.yml); falls back to 1.0 / 1
-// for local builds. Sets extra["appVersionName"], ["appVersionCode"], ["desktopPackageVersion"].
+// for local builds.
+// Sets extra["appVersionName"], ["appVersionCode"], ["recorderVersionCode"],
+// ["desktopPackageVersion"].
 apply(from = rootProject.file("gradle/release-version.gradle.kts"))
 
 
