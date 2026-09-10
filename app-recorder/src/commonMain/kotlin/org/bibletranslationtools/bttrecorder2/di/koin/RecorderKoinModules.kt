@@ -1,5 +1,7 @@
 package org.bibletranslationtools.bttrecorder2.di.koin
 
+import org.bibletranslationtools.bttrecorder2.exports.WriteNarrationForExport
+import org.bibletranslationtools.bttrecorder2.imports.ImportNarrationAsTakes
 import org.bibletranslationtools.bttrecorder2.migration.InitializeModeSources
 import org.bibletranslationtools.bttrecorder2.migration.MigrateLegacyRecorderProjects
 import org.bibletranslationtools.bttrecorder2.services.UnitTargetLoader
@@ -56,4 +58,18 @@ val recorderMigrationModule = module {
     // found legacy data, so a clean install does no work.
     singleOf(::InitializeModeSources)
     singleOf(::MigrateLegacyRecorderProjects)
+}
+
+/**
+ * Converts between the narration audio Orature reads and the per-unit takes this recorder records —
+ * [ImportNarrationAsTakes] on the way in, [WriteNarrationForExport] on the way out.
+ *
+ * Its own module because [recorderViewModelModule] binds ViewModels and [recorderMigrationModule]
+ * needs a platform `LegacyRecorderStore`. These two depend only on use cases :shared binds, so every
+ * graph composes this one — including `RecorderUiTestHarness`, which lets the ViewModels resolve
+ * them as required rather than optional dependencies.
+ */
+val recorderNarrationModule = module {
+    factoryOf(::ImportNarrationAsTakes)
+    factoryOf(::WriteNarrationForExport)
 }

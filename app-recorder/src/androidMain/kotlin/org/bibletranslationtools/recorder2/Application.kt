@@ -2,6 +2,7 @@ package org.bibletranslationtools.recorder2
 
 import android.app.Application
 import org.bibletranslationtools.bttrecorder2.di.koin.recorderMigrationModule
+import org.bibletranslationtools.bttrecorder2.di.koin.recorderNarrationModule
 import org.bibletranslationtools.bttrecorder2.di.koin.recorderViewModelModule
 import org.bibletranslationtools.di.koin.androidContextModule
 import org.bibletranslationtools.di.koin.directoryProviderModule
@@ -21,8 +22,9 @@ class Application: Application() {
             androidContext(this@Application)
             modules(
                 sharedCommonModules + sharedAndroidModules +
-                    androidContextModule + directoryProviderModule + recorderViewModelModule +
-                    legacyRecorderStoreModule + recorderMigrationModule
+                androidContextModule + directoryProviderModule +
+                recorderViewModelModule + recorderNarrationModule +
+                legacyRecorderStoreModule + recorderMigrationModule
             )
         }
     }

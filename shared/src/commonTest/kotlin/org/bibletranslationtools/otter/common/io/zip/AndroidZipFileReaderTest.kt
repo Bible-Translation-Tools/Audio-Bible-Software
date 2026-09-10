@@ -15,11 +15,10 @@ import kotlin.test.assertTrue
  * on desktop.
  *
  * The part that matters most here is that [AndroidZipFileReader.list] returns paths [stream] can
- * resolve. Every caller pairs the two — `OngoingProjectImporter.importSources` and
- * `ProjectFilesAccessor.copySourceFiles` both list a directory and then stream each result — so a
- * `list` that returned bare filenames would leave those callers unable to read what they just
- * enumerated. Measured against a zip file system, Nio returns `.apps/orature/source/en_ulb.zip` for
- * `list(".apps/orature/source")`, and that value streams.
+ * resolve — `.apps/orature/source/en_ulb.zip` rather than `en_ulb.zip`, matching what a zip file
+ * system yields. Every caller pairs the two: `OngoingProjectImporter.importSources` and
+ * `ProjectFilesAccessor.copySourceFiles` each list a directory and then stream every result, so a
+ * `list` returning bare filenames leaves them unable to read what they just enumerated.
  */
 class AndroidZipFileReaderTest {
 
@@ -158,6 +157,84 @@ class AndroidZipFileReaderTest {
                 listOf(".apps/orature/source/en_ulb.zip"),
                 reader.list(".apps/orature/source").toList()
             )
+        }
+    }
+
+    @Test
+    fun `a path with a leading dot-slash names the same entry`() {
+        // A resource container's manifest writes project paths that way: an exported project says
+        // `path: './content'`. `ProjectFilesAccessor.copyTakeFiles` tests that path with exists()
+        // BEFORE normalizing it, so a reader that does not accept the prefix reports the directory
+        // missing and its audio — the compiled chapter take — is never copied.
+        val zip = zipOf(
+            "content/" to "",
+            "content/c01/chapter.wav" to "chapter audio",
+            "manifest.yaml" to "dublin_core:"
+        )
+
+        AndroidZipFileReader(zip).use { reader ->
+            assertTrue(reader.exists("./content"), "directory, dot-slash")
+            assertTrue(reader.exists("./manifest.yaml"), "file, dot-slash")
+            assertContentEquals(
+                listOf("content/c01"),
+                reader.list("./content").toList()
+            )
+            assertEquals(
+                "chapter audio",
+                reader.stream("./content/c01/chapter.wav")
+                    .use { it.readBytes().decodeToString() }
+            )
+        }
+    }
+
+    @Test
+    fun `a dot-slash source copies the same entries as the bare path`() {
+        val zip = zipOf(
+            "content/c01/chapter.wav" to "chapter audio"
+        )
+
+        AndroidZipFileReader(zip).use { reader ->
+            val bare = File.createTempFile("bare", "").apply { delete(); mkdirs(); deleteOnExit() }
+            val dotted = File.createTempFile("dotted", "").apply { delete(); mkdirs(); deleteOnExit() }
+
+            reader.copyDirectory("content", bare)
+            reader.copyDirectory("./content", dotted)
+
+            assertEquals(
+                bare.walkTopDown().filter { it.isFile }.map { it.relativeTo(bare).path }.toList(),
+                dotted.walkTopDown().filter { it.isFile }.map { it.relativeTo(dotted).path }.toList()
+            )
+            assertTrue(File(dotted, "c01/chapter.wav").isFile, "the chapter take must be copied")
+        }
+    }
+
+    @Test
+    fun `a dot-dot segment names the parent directory`() {
+        // The zip file system backing this interface on desktop resolves `..`, so a path that reader
+        // accepts has to name the same entry here. Anything else is a directory that exists on one
+        // platform and not the other.
+        val zip = zipOf(
+            "top.txt" to "top",
+            "dir/" to "",
+            "dir/a.txt" to "a",
+            "dir/nested/b.txt" to "b"
+        )
+
+        AndroidZipFileReader(zip).use { reader ->
+            assertTrue(reader.exists("dir/../top.txt"))
+            assertEquals("a", reader.stream("dir/nested/../a.txt").use { it.readBytes().decodeToString() })
+            assertContentEquals(listOf("dir/a.txt", "dir/nested"), reader.list("dir/nested/..").toList())
+        }
+    }
+
+    @Test
+    fun `a dot-dot segment cannot climb past the archive root`() {
+        val zip = zipOf("top.txt" to "top")
+
+        AndroidZipFileReader(zip).use { reader ->
+            assertTrue(reader.exists("../top.txt"), "a leading dot-dot has nothing to remove")
+            assertContentEquals(listOf("top.txt"), reader.list("..").toList())
+            assertFalse(reader.exists("../../elsewhere.txt"))
         }
     }
 

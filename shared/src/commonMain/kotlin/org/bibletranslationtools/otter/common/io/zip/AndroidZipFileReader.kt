@@ -118,12 +118,28 @@ class AndroidZipFileReader(
     }
 
     /**
-     * Zip entries always use forward slashes, and neither a leading nor a trailing one is
-     * significant: `.apps/orature/source`, `/.apps/orature/source/` and `.apps/orature/source/` all
-     * name the same directory. `.` names the archive root, as it does for the Nio reader.
+     * Resolves [path] to the entry name it refers to: separators normalized to the forward slashes
+     * zip entries use, empty segments dropped so leading, trailing and doubled slashes carry no
+     * meaning, `.` dropped, and `..` removing the segment before it. An empty result is the archive
+     * root.
+     *
+     * `.apps` is an ordinary directory in an archive, so a segment is compared whole rather than by
+     * a leading dot.
+     *
+     * `..` is resolved for parity with the zip file system backing this interface on other
+     * platforms, which resolves it: a path that reader accepts must not be missing here. It cannot
+     * climb above the root — a leading `..` has nothing to remove and is dropped — so no path can
+     * name anything outside the archive.
      */
-    private fun normalizePath(path: String): String {
-        val normalized = path.replace("\\", "/").trim('/')
-        return if (normalized == ".") "" else normalized
-    }
+    private fun normalizePath(path: String): String =
+        path.replace("\\", "/")
+            .split("/")
+            .fold(mutableListOf<String>()) { segments, segment ->
+                when {
+                    segment.isEmpty() || segment == "." -> segments
+                    segment == ".." -> segments.apply { removeLastOrNull() }
+                    else -> segments.apply { add(segment) }
+                }
+            }
+            .joinToString("/")
 }

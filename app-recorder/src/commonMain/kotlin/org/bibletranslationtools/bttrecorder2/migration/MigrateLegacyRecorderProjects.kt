@@ -9,6 +9,7 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IColl
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IContentRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IInstalledEntityRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ILanguageRepository
+import org.bibletranslationtools.bttrecorder2.takes.WriteTakeFromAudio
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ITakeRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.data.ProgressStatus
@@ -66,7 +67,7 @@ class MigrateLegacyRecorderProjects(
 
     private val logger = LoggerFactory.getLogger(MigrateLegacyRecorderProjects::class.java)
 
-    private val takeMigrator = MigrateLegacyTake(takeRepository, writeTakeMarkers)
+    private val takeMigrator = WriteTakeFromAudio(takeRepository, writeTakeMarkers)
 
     override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable =
         Completable.fromAction {
@@ -288,7 +289,7 @@ class MigrateLegacyRecorderProjects(
      *
      * Several legacy projects can share a destination, since `ulb`, `udb` and `reg` for one book and
      * target language all migrate into one ULB project. Each numbers its own takes from 1, and
-     * [MigrateLegacyTake] walks past occupied slots, so a later project's takes continue after an
+     * [WriteTakeFromAudio] walks past occupied slots, so a later project's takes continue after an
      * earlier one's instead of overwriting them.
      */
     private fun copyTakes(
@@ -370,17 +371,17 @@ class MigrateLegacyRecorderProjects(
                             select = select
                         )
                     ) {
-                        is MigrateLegacyTake.Result.Copied -> {
+                        is WriteTakeFromAudio.Result.Copied -> {
                             copied++
                             if (select) selectedChanged = true
                         }
                         // Already migrated, but an interrupted run may have died between
                         // inserting the take and persisting the selection, so re-apply it.
-                        is MigrateLegacyTake.Result.AlreadyPresent -> if (select) {
+                        is WriteTakeFromAudio.Result.AlreadyPresent -> if (select) {
                             content.selectedTake = result.take
                             selectedChanged = true
                         }
-                        is MigrateLegacyTake.Result.Skipped ->
+                        is WriteTakeFromAudio.Result.Skipped ->
                             skipped += "c${legacyChapter.number} v${unit.startVerse}: ${result.reason}"
                     }
                 }

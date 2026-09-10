@@ -1,7 +1,8 @@
-package org.bibletranslationtools.bttrecorder2.migration
+package org.bibletranslationtools.bttrecorder2.takes
 
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ITakeRepository
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
+import org.bibletranslationtools.otter.common.data.audio.AudioMarker
 import org.bibletranslationtools.otter.common.data.audio.VerseMarker
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
 import org.bibletranslationtools.otter.common.data.primitives.Content
@@ -15,17 +16,19 @@ import java.security.MessageDigest
 import java.time.LocalDate
 
 /**
- * Copies one legacy take into a migrated project and registers it against its content row.
+ * Copies an audio file into a project as a take of one unit, and registers it against that unit's
+ * content row.
  *
- * Legacy WAVs are already 44.1 kHz mono 16-bit behind a canonical 44-byte header, which is what the
- * recorder itself writes, so the PCM is copied byte for byte and only the metadata is rewritten.
+ * The audio is copied byte for byte and only its metadata is rewritten, which suits both callers:
+ * legacy recorder WAVs are already 44.1 kHz mono 16-bit behind a canonical header, and audio
+ * extracted from a narration recording is written to the same spec.
  */
-class MigrateLegacyTake(
+class WriteTakeFromAudio(
     private val takeRepository: ITakeRepository,
     private val writeTakeMarkers: WriteTakeMarkers
 ) {
 
-    private val logger = LoggerFactory.getLogger(MigrateLegacyTake::class.java)
+    private val logger = LoggerFactory.getLogger(WriteTakeFromAudio::class.java)
 
     sealed interface Result {
         data class Copied(val take: Take, val frames: Int) : Result
@@ -41,11 +44,14 @@ class MigrateLegacyTake(
     }
 
     /**
-     * @param preferredNumber the take's position in legacy order, 1-based. Being deterministic, a
-     *   resumed run lands on the same filenames and recognises its own earlier work. It is bumped
-     *   only when the slot holds different audio, which is what renumbers takes when several legacy
-     *   projects merge into one migrated project.
-     * @param select whether this take was the legacy `units.chosen_take_fk`
+     * @param preferredNumber the take's intended number, 1-based. Being deterministic, a repeated
+     *   run lands on the same filenames and recognises its own earlier work. It is bumped only when
+     *   the slot holds different audio, which is also what renumbers takes when several source
+     *   projects merge into one.
+     * @param select whether this take should become the unit's selected one
+     * @param marker the marker to write into the take, or null for a verse marker spanning
+     *   [content]. Pass one when the unit is not a verse — a book or chapter title carries its own
+     *   kind of marker, and coercing it to a verse marker would mislabel it.
      */
     fun execute(
         source: File,
@@ -53,7 +59,8 @@ class MigrateLegacyTake(
         namer: FileNamer,
         content: Content,
         preferredNumber: Int,
-        select: Boolean
+        select: Boolean,
+        marker: AudioMarker? = null
     ): Result {
         val sourceFrames = framesOf(source)
             ?: return Result.Skipped("${source.name}: not a readable WAV")
@@ -103,7 +110,7 @@ class MigrateLegacyTake(
             // the legacy LIST/INFO/IART block and its bare-numbered cues fall away with it.
             writeTakeMarkers.execute(
                 destination,
-                listOf(VerseMarker(content.start, content.end, 0)),
+                listOf(marker ?: VerseMarker(content.start, content.end, 0)),
                 WriteTakeMarkers.ALL_CUE_TYPES
             )
 

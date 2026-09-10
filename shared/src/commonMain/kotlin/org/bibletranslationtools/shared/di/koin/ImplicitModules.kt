@@ -2,7 +2,6 @@ package org.bibletranslationtools.shared.di.koin
 
 import org.bibletranslationtools.otter.common.audio.wav.IWaveFileCreator
 import org.bibletranslationtools.otter.common.audio.wav.WaveFileCreator
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.domain.audio.AudioBouncer
 import org.bibletranslationtools.otter.common.domain.audio.AudioConverter
 import org.bibletranslationtools.otter.common.domain.audio.AudioExporter
@@ -22,6 +21,8 @@ import org.bibletranslationtools.otter.common.domain.content.TakeCreator
 import org.bibletranslationtools.otter.common.domain.narration.AudioFileUtils
 import org.bibletranslationtools.otter.common.domain.narration.LoadChapterSourceText
 import org.bibletranslationtools.otter.common.domain.narration.PcmTakeTransformer
+import org.bibletranslationtools.otter.common.domain.narration.ExtractNarrationVerses
+import org.bibletranslationtools.otter.common.domain.narration.WriteNarrationVerses
 import org.bibletranslationtools.otter.common.domain.narration.SplitAudioOnCues
 import org.bibletranslationtools.otter.common.domain.languages.ImportLanguages
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
@@ -34,7 +35,6 @@ import org.bibletranslationtools.otter.common.domain.project.exporter.resourceco
 import org.bibletranslationtools.otter.common.domain.project.importer.BurritoImporter
 import org.bibletranslationtools.otter.common.domain.project.importer.BurritoImporterFactory
 import org.bibletranslationtools.otter.common.domain.project.importer.ExistingSourceImporter
-import org.bibletranslationtools.otter.common.domain.project.importer.IProjectImporterFactory
 import org.bibletranslationtools.otter.common.domain.project.importer.NewSourceImporter
 import org.bibletranslationtools.otter.common.domain.project.importer.OngoingProjectImporter
 import org.bibletranslationtools.otter.common.domain.project.importer.RCImporterFactory
@@ -53,8 +53,6 @@ import org.bibletranslationtools.otter.common.initialization.InitializeTranslati
 import org.bibletranslationtools.otter.common.initialization.InitializeUlb
 import org.bibletranslationtools.otter.common.initialization.InitializeVersification
 import org.koin.core.module.dsl.factoryOf
-import org.koin.core.module.dsl.singleOf
-import org.koin.dsl.bind
 import org.koin.dsl.module
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.AudioPluginDataMapper
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.CollectionMapper
@@ -135,6 +133,8 @@ val implicitCommonModule = module {
     factoryOf(::PcmTakeTransformer)
     factoryOf(::AudioFileUtils)
     factoryOf(::SplitAudioOnCues)
+    factoryOf(::ExtractNarrationVerses)
+    factoryOf(::WriteNarrationVerses)
     // Explicit for the same reason as OpenWorkbook above: it takes a defaulted ioDispatcher.
     factory { LoadChapterSourceText() }
 

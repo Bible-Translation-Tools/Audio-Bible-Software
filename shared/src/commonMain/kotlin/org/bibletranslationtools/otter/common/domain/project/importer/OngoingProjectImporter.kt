@@ -236,7 +236,6 @@ class OngoingProjectImporter(
                     percent = 10.0
                 )
                 directoryProvider.newFileReader(resourceContainer).use { fileReader ->
-                    val existingSource = fetchExistingSource(manifestProject, manifestSources)
                     try {
                         callback?.onNotifyProgress(localizeKey = "importingSource", percent = 25.0)
                         // Import Sources even if existing source exists in order to potentially merge source audio
@@ -244,11 +243,13 @@ class OngoingProjectImporter(
                     } catch (e: ImportException) {
                         logger.error("Error importing source of resumable project", e)
                     }
-                    val sourceCollection = if (existingSource == null) {
-                        findSourceCollection(manifestSources, manifestProject)
-                    } else {
-                        existingSource
-                    }
+                    // Looked up AFTER importing the sources, because that import can change the
+                    // existing source's version in place. A lookup made before it returns the old
+                    // version, and deriving from a stale version produces a second derived project
+                    // alongside the one every later derivation resolves to.
+                    val existingSource = fetchExistingSource(manifestProject, manifestSources)
+                    val sourceCollection =
+                        existingSource ?: findSourceCollection(manifestSources, manifestProject)
                     syncProjectVersion(manifest, sourceCollection.resourceContainer!!.version)
 
                     val metadata = languageRepository

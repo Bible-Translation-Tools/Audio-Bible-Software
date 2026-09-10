@@ -15,14 +15,15 @@ import kotlin.test.assertTrue
  * its sources carry `identifier: 'ulb'` and the recording mode rides on the dublin_core version
  * (`12-verse` / `12-chunk`), alongside the plain `ulb` `12` that `InitializeUlb` installs.
  *
- * The database allows this — `UNIQUE (language_fk, identifier, version, creator, derivedFrom_fk)` —
- * but three places above it identify a source by language and identifier alone:
+ * The database allows it — `UNIQUE (language_fk, identifier, version, creator, derivedFrom_fk)` —
+ * but three places above it identify a source by language and identifier alone, and each has to be
+ * accounted for:
  *
- *  1. `ResourceContainerRepository.insertMetadataOrThrow` refused the insert with `ALREADY_EXISTS`,
- *     which is what these tests cover.
- *  2. `ExistingSourceImporter.findExistingResourceMetadata` treats a second version as an update of
- *     the first and rewrites it in place. Migration avoids it by importing through
- *     `NewSourceImporter` directly, as [IntegrationEnvironment.importAsNewSource] does.
+ *  1. `ResourceContainerRepository.insertMetadataOrThrow` decides whether a second row may be
+ *     inserted at all, so it compares the full identity. These tests cover that.
+ *  2. `ExistingSourceImporter.findExistingResourceMetadata` would take a second version as an update
+ *     of the first and rewrite it in place, so this route bypasses it via `NewSourceImporter` — what
+ *     [IntegrationEnvironment.importAsNewSource] does.
  *  3. `RCImporter.isAlreadyImported` matches the same way; its only consumer is `InitializeUlb`.
  */
 class SourceVersionCoexistenceTest {

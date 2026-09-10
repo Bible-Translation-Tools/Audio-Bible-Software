@@ -2,16 +2,19 @@ package org.bibletranslationtools.otter.integration
 
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.data.primitives.Collection
+import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ILanguageRepository
 import org.bibletranslationtools.otter.common.domain.collections.CreateProject
 import org.bibletranslationtools.otter.common.domain.languages.ImportLanguages
 import org.bibletranslationtools.otter.common.domain.project.importer.RCImporterFactory
 import io.reactivex.Observable
 import org.bibletranslationtools.otter.common.data.ProgressStatus
+import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.BackupProjectExporter
 import org.bibletranslationtools.otter.common.domain.project.importer.NewSourceImporter
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.VersificationTreeBuilder
@@ -75,6 +78,9 @@ class IntegrationEnvironment private constructor(
 
     /** A fresh importer chain (ongoing → existing source → new source), as the app builds it. */
     val importer get() = importerFactory.makeImporter()
+
+    /** The real backup exporter, for tests that assert what an export actually contains. */
+    val backupExporter: BackupProjectExporter get() = koin.get()
 
     // ── actions ──────────────────────────────────────────────────────────────────────────
 
@@ -252,6 +258,15 @@ class IntegrationEnvironment private constructor(
     ): Collection = koin.get<CreateProject>()
         .create(sourceProject, targetLanguage, mode, resourceId = null, deriveProjectFromVerses)
         .blockingGet()
+
+    /** The open workbook for a derived project, for tests that need the workbook model. */
+    fun workbook(derived: Collection): Workbook =
+        koin.get<IWorkbookRepository>().getWorkbook(derived).blockingGet()
+            ?: error("could not open a workbook for ${derived.slug}")
+
+    fun closeWorkbook(workbook: Workbook) {
+        koin.get<IWorkbookRepository>().closeWorkbook(workbook)
+    }
 
     /** An imported source book by slug, e.g. "jud". */
     fun sourceBook(slug: String): Collection {

@@ -6,13 +6,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
+import org.bibletranslationtools.bttrecorder2.imports.AcceptAllImportCallback
+import org.bibletranslationtools.bttrecorder2.imports.ImportNarrationAsTakes
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
 import io.github.vinceglb.filekit.PlatformFile
@@ -48,6 +49,8 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
     private val workbookRepository: IWorkbookRepository by inject()
     private val workbookDescriptorRepository: IWorkbookDescriptorRepository by inject()
     private val importProjectUseCase: ImportProjectUseCase by inject()
+
+    private val importNarrationAsTakes: ImportNarrationAsTakes by inject()
     private val directoryProvider: ITempFileProvider by inject()
 
     private val _rawWorkbooks = MutableStateFlow<List<WorkbookDescriptor>?>(null)
@@ -144,21 +147,33 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
         launchLogged {
             var staged: File? = null
             try {
+                // Supplied only to learn which project was imported, which the importer reports
+                // no other way. See AcceptAllImportCallback: its answers deliberately match what
+                // the importer does with no callback at all.
+                var imported: WorkbookDescriptor? = null
+                val callback = AcceptAllImportCallback { imported = it }
+
                 val result = withContext(Dispatchers.IO) {
                     val ext = platformFile.name.substringAfterLast('.', "").lowercase().ifEmpty { "zip" }
                     val tmp = File.createTempFile("import_", ".$ext", directoryProvider.tempDirectory)
                     tmp.writeBytes(platformFile.readBytes())
                     staged = tmp
-                    importProjectUseCase.import(tmp).await()
+                    importProjectUseCase.import(tmp, callback).await()
                 }
                 when (result) {
                     ImportResult.SUCCESS, ImportResult.ALREADY_EXISTS -> {
+                        imported?.let { convertNarrationAudio(it) }
                         loadWorkbooks()
                         _importState.value = ProjectImportState.Success
                     }
-                    else -> _importState.value = ProjectImportState.Error(
-                        getString(Res.string.import_failed)
-                    )
+                    else -> {
+                        // Logged with the result, since several outcomes reach here without the
+                        // importer having logged anything of their own.
+                        logFailure("importing the project", IllegalStateException("import returned $result"))
+                        _importState.value = ProjectImportState.Error(
+                            getString(Res.string.import_failed)
+                        )
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -170,6 +185,23 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
             } finally {
                 staged?.let { runCatching { it.delete() } }
             }
+        }
+    }
+
+    /**
+     * Converts an imported project's narration audio into per-unit takes, if it has any.
+     *
+     * A project exported by Orature keeps its chapter audio as one recording plus a map of which
+     * regions belong to which unit, which this recorder cannot read — so without this the project
+     * imports and reads as empty. Projects exported by this recorder already carry takes and are
+     * left untouched.
+     *
+     * Failure is reported to the log and does not fail the import: the project itself imported
+     * correctly, and the narration audio is left in place rather than discarded.
+     */
+    private suspend fun convertNarrationAudio(descriptor: WorkbookDescriptor) {
+        withContext(Dispatchers.IO) {
+            importNarrationAsTakes.execute(descriptor.targetCollection)
         }
     }
 
