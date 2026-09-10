@@ -37,16 +37,19 @@ import java.io.File
  *   audio directory, and they are what makes a take the selected one.
  * - `.apps/orature/project_mode.json`, without which import reads the container as an Orature 1
  *   project and takes a narration-migration path meant for a different layout.
- * - `.apps/orature/source/`, which has to exist even with nothing in it: import lists that
- *   directory, and listing an absent directory throws where an empty one yields nothing. It stays
- *   empty because the source is already in the database by the time this runs.
+ * - `.apps/orature/source/`, holding the source container. The manifest names the source, but the
+ *   importer's lookup ignores the version and so binds the project to whichever text shares the
+ *   identifier and language — the plain `ulb` every install already has. Import reads this directory
+ *   first, and the source it then resolves is the one it just imported, which is how an Orature
+ *   backup carries its own source. The directory has to exist either way: import lists it, and
+ *   listing an absent directory throws where an empty one yields nothing.
  * - Takes under `.apps/orature/takes/c<nn>/`, named so the chapter and verse can be read back out
  *   of the filename. That is the only thing tying a take to a unit — import matches a filename's
  *   verse number against the content rows of the project it derives.
  *
- * Merging happens here. Several legacy projects for one book and target language — `ulb`, `udb` and
- * `reg` — are staged together into one container, their takes numbered in one sequence, so import
- * sees a single project and no renumbering is needed afterwards.
+ * Merging happens here. Several legacy projects for one book, target language and mode — `ulb`,
+ * `udb` and `reg` — are staged together into one container, their takes numbered in one sequence, so
+ * import sees a single project and no renumbering is needed afterwards.
  */
 class StageLegacyBackup(
     private val store: LegacyRecorderStore,
@@ -57,21 +60,31 @@ class StageLegacyBackup(
     private val logger = LoggerFactory.getLogger(StageLegacyBackup::class.java)
 
     /**
-     * [projects] must share a target language and book, and must all be verse mode: they are staged
-     * as one project, so anything that would derive differently cannot be merged.
+     * [projects] must share a target language, book and recording mode: they are staged as one
+     * project, so anything that would derive differently cannot be merged.
      *
      * [sourceUnits] is the source's own units per chapter — the ranges its content rows span. A take
      * is named after the unit containing its legacy verse rather than after the verse itself,
-     * because import binds a take to a unit by the verse number in its filename and a bridged range
-     * like `\v 24-25` is one unit starting at 24. Naming such a take `v25` binds it to the filler
-     * row standing in for the bridged verse, where nothing shows it.
+     * because import binds a take to a unit by the verse number in its filename, and a unit spanning
+     * a range is named by its first verse.
+     *
+     * That is what chunk mode needs: every unit of the chunk-mode text is a bridged range, so a
+     * legacy chunk `4-5` is named `v04`. Naming it `v05` would bind it to the filler row standing in
+     * for the bridged verse, which no unit shows. It applies to verse mode too, wherever the text
+     * itself bridges verses.
      */
     data class Request(
         val projects: List<LegacyProject>,
         val targetLanguage: Language,
         val sourceMetadata: ResourceMetadata,
         val bookTitle: String,
-        val sourceUnits: Map<Int, List<IntRange>>
+        val sourceUnits: Map<Int, List<IntRange>>,
+        /**
+         * The source text as a container, carried into the backup so import binds the project to it
+         * rather than to whichever `ulb` it finds first. Null stages without one, which imports but
+         * derives from the wrong text whenever another `ulb` is present.
+         */
+        val sourceContainer: File?
     )
 
     data class Result(
@@ -104,7 +117,7 @@ class StageLegacyBackup(
             selected.joinToString(separator = "\n", postfix = if (selected.isEmpty()) "" else "\n")
         )
         File(dir, RcConstants.PROJECT_MODE_FILE).writeText("""{"mode":"${ProjectMode.DIALECT}"}""")
-        File(dir, RcConstants.SOURCE_DIR).mkdirs()
+        stageSourceContainer(dir, request, skipped)
 
         logger.info(
             "Staged ${request.projects.joinToString { it.key }} at ${dir.path}: " +
@@ -271,6 +284,29 @@ class StageLegacyBackup(
         request.sourceUnits[chapterNumber]?.firstOrNull { unit.startVerse in it }
 
     private fun chapterSlug(chapterNumber: Int) = "c%02d".format(chapterNumber)
+
+    /**
+     * Copies the source container into the backup, under a name whose extension import recognises.
+     *
+     * The directory is created even when there is no container: import lists it, and listing an
+     * absent directory throws where an empty one yields nothing.
+     */
+    private fun stageSourceContainer(dir: File, request: Request, skipped: MutableList<String>) {
+        val outDir = File(dir, RcConstants.SOURCE_DIR).apply { mkdirs() }
+        val container = request.sourceContainer
+        if (container == null || !container.isFile) {
+            skipped += "source container missing; the project will derive from whichever " +
+                    "'${request.sourceMetadata.identifier}' import resolves first"
+            logger.error("No source container to stage for ${request.projects.first().bookSlug}")
+            return
+        }
+        try {
+            container.copyTo(File(outDir, "${container.nameWithoutExtension}.zip"), overwrite = true)
+        } catch (e: Exception) {
+            logger.error("Could not stage the source container ${container.path}", e)
+            skipped += "source container ${container.name}: ${e.message ?: e::class.simpleName}"
+        }
+    }
 
     // ---------------------------------------------------------------------------------------------
     // Source audio

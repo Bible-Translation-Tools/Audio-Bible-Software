@@ -68,7 +68,7 @@ import kotlin.test.assertTrue
  */
 class IntegrationEnvironment private constructor(
     private val tempRoot: File,
-    private val koin: Koin
+    internal val koin: Koin
 ) : AutoCloseable {
 
     val db: DaoProvider = koin.get()

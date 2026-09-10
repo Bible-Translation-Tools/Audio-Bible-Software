@@ -68,6 +68,38 @@ class InitializeModeSources(
         return required.entries.fold(true) { ok, (mode, books) -> importIfNeeded(mode, books) && ok }
     }
 
+    /**
+     * A container holding [mode]'s text for [books], for a staged backup to carry as its source.
+     *
+     * A backup names its source in the manifest but the importer's lookup ignores the version, so a
+     * backup that only names a source is bound to whichever text shares its identifier and language
+     * — the plain `ulb` every install already has. Carrying the container makes the importer import
+     * it first, and the source it then resolves is that one. This is how an Orature backup works;
+     * without it a migrated chunk-mode project derives verse by verse.
+     *
+     * The caller owns the file and should delete it once the import is done.
+     *
+     * @return the container, or null when the bundled text has none of [books]
+     */
+    fun trimmedContainer(mode: LegacyMode, books: Set<String>): File? {
+        val destination = tempFiles.createTempFile(bundledNameFor(mode), ".zip").also(File::deleteOnExit)
+        return try {
+            val kept = trimToBooks(mode, books, destination)
+            if (kept.isEmpty()) {
+                logger.error("${bundledNameFor(mode)} has none of ${books.sorted()}")
+                destination.delete()
+                null
+            } else {
+                if (kept != books) logger.warn("${bundledNameFor(mode)} has no ${books - kept}")
+                destination
+            }
+        } catch (e: Exception) {
+            logger.error("Could not build a ${bundledNameFor(mode)} container for ${books.sorted()}", e)
+            runCatching { destination.delete() }
+            null
+        }
+    }
+
     private fun importIfNeeded(mode: LegacyMode, books: Set<String>): Boolean {
         val version = versionFor(mode)
         val have = importedBooks(version)

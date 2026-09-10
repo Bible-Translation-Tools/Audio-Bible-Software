@@ -72,7 +72,8 @@ class StageLegacyBackupTest {
     private fun legacyProject(
         versionSlug: String,
         units: List<LegacyUnit>,
-        contributors: String? = null
+        contributors: String? = null,
+        mode: LegacyMode = LegacyMode.VERSE
     ) = LegacyProject(
         id = 1,
         targetLanguageSlug = TARGET.slug,
@@ -80,7 +81,7 @@ class StageLegacyBackupTest {
         versionSlug = versionSlug,
         bookSlug = BOOK,
         bookNumber = 65,
-        mode = LegacyMode.VERSE,
+        mode = mode,
         contributors = contributors,
         sourceAudioPath = null,
         chapters = listOf(LegacyChapter(number = 1, units = units))
@@ -95,10 +96,25 @@ class StageLegacyBackupTest {
         }
     )
 
+    /** A chunk-mode unit, spanning a verse range as the legacy chunk definitions gave it. */
+    private fun chunk(verses: IntRange, takeIds: List<Int>, chosen: Int? = null) = LegacyUnit(
+        startVerse = verses.first,
+        endVerse = verses.last,
+        chosenTakeId = chosen,
+        takes = takeIds.mapIndexed { index, id ->
+            LegacyTake(id = id, number = index + 1, filename = "take-$id.wav")
+        }
+    )
+
+    /** Stands in for the trimmed mode-source container; only its presence and name matter here. */
+    private fun sourceContainer(): File =
+        File(root, "en_ulb_chunk.zip").apply { writeText("source container bytes") }
+
     private fun stage(
         projects: List<LegacyProject>,
         store: LegacyRecorderStore = FakeStore(),
-        sourceUnits: Map<Int, List<IntRange>> = mapOf(1 to (1..23).map { it..it } + listOf(24..25))
+        sourceUnits: Map<Int, List<IntRange>> = mapOf(1 to (1..23).map { it..it } + listOf(24..25)),
+        container: File? = sourceContainer()
     ): StageLegacyBackup.Result =
         StageLegacyBackup(store, WriteTakeMarkers(), WriteDerivedManifest()).execute(
             stageDir,
@@ -107,7 +123,8 @@ class StageLegacyBackupTest {
                 targetLanguage = TARGET,
                 sourceMetadata = sourceMetadata(),
                 bookTitle = "Jude",
-                sourceUnits = sourceUnits
+                sourceUnits = sourceUnits,
+                sourceContainer = container
             )
         )
 
@@ -194,8 +211,8 @@ class StageLegacyBackupTest {
 
     @Test
     fun `takes of a bridged verse are named after the unit that covers it`() {
-        // Jude's source bridges 24-25 into one unit. A take named v25 would bind to the filler row
-        // standing in for the bridged verse, where no unit shows it.
+        // A source that bridges its last two verses has one unit for them. A take named v25 would
+        // bind to the filler row standing in for the bridged verse, where no unit shows it.
         val result = stage(
             listOf(
                 legacyProject(
@@ -291,9 +308,32 @@ class StageLegacyBackupTest {
         assertTrue(File(stageDir, RcConstants.PROJECT_MODE_FILE).isFile, "project mode")
         assertTrue(File(stageDir, RcConstants.SOURCE_DIR).isDirectory, "source dir, listed by import")
         assertEquals(
+            "source container bytes",
+            File(stageDir, "${RcConstants.SOURCE_DIR}/en_ulb_chunk.zip").readText(),
+            "the source text import binds the project to"
+        )
+        assertEquals(
             """{"mode":"DIALECT"}""",
             File(stageDir, RcConstants.PROJECT_MODE_FILE).readText()
         )
+    }
+
+    @Test
+    fun `staging without a source container is reported`() {
+        // Without it the project is bound to whichever `ulb` import resolves first, which for a
+        // chunk-mode project means verse-by-verse units. Staging still succeeds, so the report is
+        // the only signal.
+        val result = stage(
+            listOf(legacyProject("ulb", listOf(unit(verse = 1, takeIds = listOf(1))))),
+            container = null
+        )
+
+        assertEquals(1, result.takesStaged)
+        assertTrue(
+            result.skipped.any { it.startsWith("source container missing") },
+            "expected a report, got ${result.skipped}"
+        )
+        assertTrue(File(stageDir, RcConstants.SOURCE_DIR).isDirectory, "the directory is still made")
     }
 
     @Test
@@ -323,6 +363,53 @@ class StageLegacyBackupTest {
 
         assertEquals(listOf("aa_reg_jud_c01_v01_t1.wav"), stagedTakeNames())
         assertEquals(listOf(3), stagedTakeNames().map(::firstSample))
+    }
+
+    @Test
+    fun `a chunk-mode take is named after its chunk, not its first verse alone`() {
+        // The chunk-mode source carries each legacy chunk as a bridged range, so `4..5` is one unit
+        // and the name has to be the one import can bind to it.
+        val result = stage(
+            listOf(
+                legacyProject(
+                    "ulb",
+                    listOf(chunk(1..3, takeIds = listOf(1)), chunk(4..5, takeIds = listOf(2))),
+                    mode = LegacyMode.CHUNK
+                )
+            ),
+            sourceUnits = mapOf(1 to listOf(1..3, 4..5, 6..25))
+        )
+
+        assertEquals(2, result.takesStaged)
+        assertEquals(
+            listOf("aa_reg_jud_c01_v01_t1.wav", "aa_reg_jud_c01_v04_t1.wav"),
+            stagedTakeNames()
+        )
+    }
+
+    @Test
+    fun `a chunk-mode take carries the marker of its whole range`() {
+        stage(
+            listOf(legacyProject("ulb", listOf(chunk(4..5, takeIds = listOf(1))), mode = LegacyMode.CHUNK)),
+            sourceUnits = mapOf(1 to listOf(1..3, 4..5, 6..25))
+        )
+
+        val file = File(stageDir, "${RcConstants.TAKE_DIR}/c01/aa_reg_jud_c01_v04_t1.wav")
+        val markers = OratureAudioFile(file).getMarker<VerseMarker>()
+        assertEquals(listOf("4-5"), markers.map { it.label })
+    }
+
+    @Test
+    fun `a legacy chunk the source does not divide the same way still resolves`() {
+        // Legacy chunk boundaries and the source's own can disagree. The take belongs to whichever
+        // source unit covers its first verse, so it lands somewhere rather than being dropped.
+        val result = stage(
+            listOf(legacyProject("ulb", listOf(chunk(2..4, takeIds = listOf(1))), mode = LegacyMode.CHUNK)),
+            sourceUnits = mapOf(1 to listOf(1..3, 4..5, 6..25))
+        )
+
+        assertEquals(1, result.takesStaged)
+        assertEquals(listOf("aa_reg_jud_c01_v01_t1.wav"), stagedTakeNames(), "1..3 covers verse 2")
     }
 
     private companion object {
