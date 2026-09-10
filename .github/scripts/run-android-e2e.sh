@@ -2,7 +2,7 @@
 # Install Maestro, install the debug APK, grant mic, run the smoke orchestrator.
 set -eu
 
-APP_ID="${APP_ID:-org.bibletranslationtools.recorder2}"
+APP_ID="${APP_ID:-bible.translationtools.recorder}"
 APK_PATH="${APK_PATH:-}"
 if [[ -z "${APK_PATH}" ]]; then
   APK_PATH="$(ls -1 app-recorder/build/outputs/apk/debug/*.apk | head -n 1)"
