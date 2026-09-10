@@ -12,7 +12,6 @@ import org.bibletranslationtools.otter.common.data.ProgressStatus
 import org.bibletranslationtools.otter.common.initialization.InitializeApp
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
-import org.koin.mp.KoinPlatform
 
 class SplashScreenViewModel(): ViewModel(), KoinComponent {
 
@@ -22,14 +21,8 @@ class SplashScreenViewModel(): ViewModel(), KoinComponent {
     /**
      * The one-time migration of legacy Android BTT-Recorder projects, run after [initApp]. It
      * imports the ULB mode sources itself, once it has found legacy data.
-     *
-     * Resolved optionally, since `recorderMigrationModule` is composed by the platform startKoin
-     * blocks but not by `RecorderUiTestHarness`, which cannot bind a platform `LegacyRecorderStore`.
-     * Its absence means this graph performs no migration, not that startup failed.
      */
-    private val migrateLegacyProjects: MigrateLegacyRecorderProjects? by lazy {
-        KoinPlatform.getKoin().getOrNull()
-    }
+    private val migrateLegacyProjects: MigrateLegacyRecorderProjects by inject()
 
     var progressTitle by mutableStateOf("")
     var progressBody by mutableStateOf("")

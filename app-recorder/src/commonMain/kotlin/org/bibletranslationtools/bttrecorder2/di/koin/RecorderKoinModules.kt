@@ -4,6 +4,7 @@ import org.bibletranslationtools.bttrecorder2.exports.WriteNarrationForExport
 import org.bibletranslationtools.bttrecorder2.imports.ImportNarrationAsTakes
 import org.bibletranslationtools.bttrecorder2.migration.InitializeModeSources
 import org.bibletranslationtools.bttrecorder2.migration.MigrateLegacyRecorderProjects
+import org.bibletranslationtools.bttrecorder2.migration.StageLegacyBackup
 import org.bibletranslationtools.bttrecorder2.services.UnitTargetLoader
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterListViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportProjectViewModel
@@ -57,6 +58,8 @@ val recorderMigrationModule = module {
     // Imports the mode-specific ULB sources. Not an initializer: migration invokes it once it has
     // found legacy data, so a clean install does no work.
     singleOf(::InitializeModeSources)
+    // Writes a legacy project out as a dialect backup for the app's own import to read.
+    singleOf(::StageLegacyBackup)
     singleOf(::MigrateLegacyRecorderProjects)
 }
 

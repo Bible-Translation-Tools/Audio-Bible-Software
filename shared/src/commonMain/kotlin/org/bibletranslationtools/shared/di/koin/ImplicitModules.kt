@@ -60,6 +60,7 @@ import org.bibletranslationtools.otter.common.persistence.repositories.mapping.L
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.MarkerMapper
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.ResourceMetadataMapper
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.TranslationMapper
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.WriteDerivedManifest
 
 val implicitCommonModule = module {
     single<IWaveFileCreator> { WaveFileCreator() }
@@ -135,6 +136,7 @@ val implicitCommonModule = module {
     factoryOf(::SplitAudioOnCues)
     factoryOf(::ExtractNarrationVerses)
     factoryOf(::WriteNarrationVerses)
+    factoryOf(::WriteDerivedManifest)
     // Explicit for the same reason as OpenWorkbook above: it takes a defaulted ioDispatcher.
     factory { LoadChapterSourceText() }
 
