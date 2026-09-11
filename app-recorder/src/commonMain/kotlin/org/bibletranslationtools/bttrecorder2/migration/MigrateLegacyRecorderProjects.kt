@@ -171,7 +171,9 @@ class MigrateLegacyRecorderProjects(
                             outstanding.joinToString { "${it.key}=${it.state}" }
                 )
             }
-        }.doOnError { logger.error("Error in $name", it) }
+        }
+            .doOnError { logger.error("Error in $name", it) }
+            .onErrorComplete()
 
     /**
      * The legacy projects grouped by what they migrate into, in a fixed order so a resumed run

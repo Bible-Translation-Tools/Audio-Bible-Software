@@ -13,8 +13,10 @@ import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectCreationViewM
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.RecorderViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.UnitListViewModel
+import org.bibletranslationtools.otter.common.api.persistence.config.Installable
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
+import org.koin.dsl.bind
 import org.koin.dsl.module
 
 /** App-context marker; the android app binds a concrete Context-backed impl. */
@@ -60,7 +62,7 @@ val recorderMigrationModule = module {
     singleOf(::InitializeModeSources)
     // Writes a legacy project out as a dialect backup for the app's own import to read.
     singleOf(::StageLegacyBackup)
-    singleOf(::MigrateLegacyRecorderProjects)
+    singleOf(::MigrateLegacyRecorderProjects).bind<Installable>()
 }
 
 /**
