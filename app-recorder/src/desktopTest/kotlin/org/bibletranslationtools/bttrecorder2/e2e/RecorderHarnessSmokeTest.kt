@@ -1,6 +1,9 @@
 package org.bibletranslationtools.bttrecorder2.e2e
 
 import org.bibletranslationtools.bttrecorder2.e2e.harness.RecorderUiTestHarness
+import org.bibletranslationtools.bttrecorder2.exports.WriteNarrationForExport
+import org.bibletranslationtools.bttrecorder2.imports.ImportNarrationAsTakes
+import org.bibletranslationtools.bttrecorder2.migration.MigrateLegacyRecorderProjects
 import org.bibletranslationtools.otter.common.initialization.InitializeApp
 import org.koin.mp.KoinPlatform.getKoin
 import kotlin.test.Test
@@ -13,6 +16,12 @@ class RecorderHarnessSmokeTest {
         try {
             assertNotNull(root)
             assertNotNull(getKoin().get<InitializeApp>())
+            // The ViewModels inject these lazily, so a graph missing them fails only once a test
+            // reaches an import, an export or a first launch with legacy data — on a device, in the
+            // last case. Resolving them here fails at the graph instead.
+            assertNotNull(getKoin().get<ImportNarrationAsTakes>())
+            assertNotNull(getKoin().get<WriteNarrationForExport>())
+            assertNotNull(getKoin().get<MigrateLegacyRecorderProjects>())
         } finally {
             RecorderUiTestHarness.stop()
         }

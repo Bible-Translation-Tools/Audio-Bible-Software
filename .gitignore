@@ -402,3 +402,12 @@ Makefile
 **/resources/github.properties
 **/resources/sentry.properties
 *.wav
+
+# Graphify
+/graphify-out
+/docs
+
+# Build-only input to :shared:generateModeSources, which derives the recorder's verse-mode and
+# chunk-mode ULB sources from it. Committed because nothing downloads it, and kept outside
+# composeResources so only the generated pair is packed into an app, never the template.
+!/shared/legacy-ulb/en_ulb_v12.zip

@@ -50,6 +50,7 @@ import java.io.File
 import java.lang.Exception
 import java.time.LocalDate
 import java.time.LocalDateTime
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.WriteDerivedManifest
 
 class CollectionRepository(
     private val database: DaoProvider,
@@ -61,7 +62,7 @@ class CollectionRepository(
 
     val log = LoggerFactory.getLogger(CollectionRepository::class.java)
 
-    private val dublinCoreCreator: String = "OratureInfo.SUITE_NAME"
+    private val dublinCoreCreator: String = WriteDerivedManifest.DERIVED_CREATOR
     private val collectionDao = database.collectionDao
     private val contentDao = database.contentDao
     private val metadataDao = database.resourceMetadataDao

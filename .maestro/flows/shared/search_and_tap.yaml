@@ -1,4 +1,4 @@
-appId: org.bibletranslationtools.recorder2
+appId: bible.translationtools.recorder
 ---
 # Env: QUERY (search string), RESULT (regex for row text / contentDescription).
 - repeat:

@@ -1,4 +1,4 @@
-appId: org.bibletranslationtools.recorder2
+appId: bible.translationtools.recorder
 ---
 # Retry tap — Compose clickables can miss on first gesture (API 34).
 - repeat:

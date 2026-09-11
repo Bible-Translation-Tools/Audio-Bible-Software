@@ -455,6 +455,9 @@ tasks.register<Test>("integrationTest") {
     testLogging { events("passed", "failed", "skipped") }
 }
 
+// Derives the recorder's verse-mode and chunk-mode ULB sources into files/legacy/ at build time.
+apply(from = rootProject.file("gradle/generate-mode-sources.gradle.kts"))
+
 // Guards against calling java.*/javax.* APIs newer than minSdk — the class of bug that
 // compiles and dexes cleanly and then throws NoSuchMethodError on an Android 7 device.
 apply(from = rootProject.file("gradle/android-api-level-check.gradle.kts"))
