@@ -103,7 +103,20 @@ val implicitCommonModule = module {
     factoryOf(::BurritoImporter)
     factoryOf(::TstudioImporter)
     factoryOf(::RCImporterFactory)
-    factoryOf(::InitializeApp)
+    factory {
+        InitializeApp(
+            initializeVersification = get(),
+            initializeSources = get(),
+            initializeLanguages = get(),
+            initializeUlb = get(),
+            initializeTakeRepository = get(),
+            initializeProjects = get(),
+            initializeTranslations = get(),
+            directoryProvider = get(),
+            daoProvider = get(),
+            initializeMigration = getOrNull()
+        )
+    }
 
     // Content
     factoryOf(::ChapterTranslationBuilder)
