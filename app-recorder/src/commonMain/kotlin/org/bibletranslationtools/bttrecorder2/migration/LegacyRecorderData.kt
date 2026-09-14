@@ -8,10 +8,10 @@ package org.bibletranslationtools.bttrecorder2.migration
  */
 data class LegacyProject(
     val id: Int,
-    /** `languages.slug` of the recording's target language. */
+    /** `languages.code` of the recording's target language. */
     val targetLanguageSlug: String,
     /**
-     * `languages.slug` of the source the recordist worked from. Nullable in the legacy schema;
+     * `languages.code` of the source the recordist worked from. Nullable in the legacy schema;
      * callers fall back to [DEFAULT_SOURCE_LANGUAGE].
      */
     val sourceLanguageSlug: String?,

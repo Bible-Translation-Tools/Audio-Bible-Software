@@ -69,7 +69,9 @@ class MigrationLedger(private val file: File) {
                 .entries.associateBy { it.key }.toMutableMap()
         } catch (e: Exception) {
             // A corrupt ledger must not block migration. At worst already-migrated projects are
-            // reconsidered, which the per-take audio comparison makes harmless.
+            // reconsidered: one whose legacy audio was deleted has no takes left to stage and is
+            // skipped, one whose audio remains is staged and imported again into the project it
+            // already created.
             logger.error("Unreadable migration ledger at ${file.path}; starting a fresh one", e)
             mutableMapOf()
         }

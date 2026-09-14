@@ -38,9 +38,10 @@ val desktopVersion = versionName
 // hence a separate derived number rather than a floor applied to both.
 //
 // An offset rather than a coerce: versionCode is derived as major*1e6 + minor*1e3 + patch, so a 1.x
-// release is already far above the legacy ceiling, while a 0.0.x tag or a local build yields 1.
-// Coercing those to 57 would give different releases the same versionCode, which Play rejects and
-// which breaks in-place upgrades. Adding the ceiling keeps the sequence monotonic in the tag.
+// release is already far above the legacy ceiling, while a 0.0.x tag yields a small number (x, or 1
+// for 0.0.0 and for a local build). Coercing those up to 57 would give different releases the same
+// versionCode, which Play rejects and which breaks in-place upgrades. Adding the ceiling keeps the
+// sequence monotonic in the tag.
 val legacyRecorderVersionCode = 56
 val recorderVersionCodeValue = versionCodeInt + legacyRecorderVersionCode
 

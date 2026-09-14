@@ -97,8 +97,13 @@ class WriteDerivedManifest {
 
     companion object {
         /**
-         * What Orature records as the creator of a project it derived, and so part of what the
+         * What this codebase records as the creator of a project it derives, and so part of what the
          * database matches a derived container on.
+         *
+         * The value is a historical accident: `CollectionRepository` quoted the constant's *name*
+         * rather than its value (Orature proper writes "Orature"), and every derived row and backup
+         * written since carries the literal string. It is kept as is because changing it would stop
+         * existing rows and backups from matching, so do not correct the spelling.
          */
         const val DERIVED_CREATOR = "OratureInfo.SUITE_NAME"
 

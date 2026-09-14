@@ -19,9 +19,11 @@ import java.time.LocalDate
  * Copies an audio file into a project as a take of one unit, and registers it against that unit's
  * content row.
  *
- * The audio is copied byte for byte and only its metadata is rewritten, which suits both callers:
- * legacy recorder WAVs are already 44.1 kHz mono 16-bit behind a canonical header, and audio
- * extracted from a narration recording is written to the same spec.
+ * Its one caller is `ImportNarrationAsTakes`: audio extracted from a narration recording is written
+ * at 44.1 kHz mono 16-bit behind a canonical header, so it is copied byte for byte and only its
+ * metadata is rewritten. The class was written for the legacy recorder migration, which now stages
+ * its takes for the project importer instead (see `StageLegacyBackup`), and it still accepts any WAV
+ * the recorder can read.
  */
 class WriteTakeFromAudio(
     private val takeRepository: ITakeRepository,
@@ -46,8 +48,7 @@ class WriteTakeFromAudio(
     /**
      * @param preferredNumber the take's intended number, 1-based. Being deterministic, a repeated
      *   run lands on the same filenames and recognises its own earlier work. It is bumped only when
-     *   the slot holds different audio, which is also what renumbers takes when several source
-     *   projects merge into one.
+     *   the slot holds different audio, such as a take recorded in between.
      * @param select whether this take should become the unit's selected one
      * @param marker the marker to write into the take, or null for a verse marker spanning
      *   [content]. Pass one when the unit is not a verse — a book or chapter title carries its own
@@ -72,13 +73,13 @@ class WriteTakeFromAudio(
         var number = preferredNumber
         var destination = File(destinationDir, namer.generateName(number, AudioFileFormat.WAV))
 
-        // Find a free slot. A slot holding this same audio is this take, already migrated; a slot
-        // holding anything else moves to the next number instead of being overwritten, whether that
-        // is a take recorded in between or one migrated from another legacy project.
+        // Find a free slot. A slot holding this same audio is this take, written by an earlier run; a
+        // slot holding anything else, such as a take recorded in between, moves to the next number
+        // instead of being overwritten.
         //
         // Sameness is decided on the PCM rather than the frame count, since only metadata is
         // rewritten on copy. Two different recordings of equal length would otherwise compare equal,
-        // dropping a take and, if it was the chosen one, selecting another project's audio.
+        // dropping a take and, if it was the selected one, selecting the wrong audio.
         val sourcePcm = lazy { pcmDigest(source) }
         while (true) {
             val occupant = existing.firstOrNull { it.filename == destination.name }
@@ -107,7 +108,8 @@ class WriteTakeFromAudio(
             //
             // ALL_CUE_TYPES clears every Orature cue type first, and the rewrite truncates at the
             // end of the audio section and re-emits only the chunks `WavMetadata` understands, so
-            // the legacy LIST/INFO/IART block and its bare-numbered cues fall away with it.
+            // any foreign chunk or bare-numbered cue in the source, such as the legacy recorder's
+            // LIST/INFO/IART block, falls away with it.
             writeTakeMarkers.execute(
                 destination,
                 listOf(marker ?: VerseMarker(content.start, content.end, 0)),
@@ -129,10 +131,9 @@ class WriteTakeFromAudio(
                 created = LocalDate.now(),
                 deleted = null,
                 played = false,
-                // The legacy `chapters.checking` value is a per-chapter Door43 level rather than
-                // per-take review progress, so there is nothing to map onto. Any other status would
-                // also need a full-file checksum, since `Chunk.checkingStatus` reverts a status
-                // whose checksum does not match.
+                // Nothing in the source audio says how far it has been reviewed, so a written take
+                // starts UNCHECKED. Any other status would also need a full-file checksum, since
+                // `Chunk.checkingStatus` reverts a status whose checksum does not match.
                 checkingStatus = CheckingStatus.UNCHECKED,
                 checksum = null,
                 markers = emptyList()
@@ -144,16 +145,16 @@ class WriteTakeFromAudio(
             }
             Result.Copied(take, copiedFrames)
         } catch (e: Exception) {
-            logger.error("Failed to migrate take ${source.path} -> ${destination.path}", e)
+            logger.error("Failed to write take ${source.path} -> ${destination.path}", e)
             runCatching { destination.delete() }
             Result.Skipped("${source.name}: ${e.message ?: e::class.simpleName}")
         }
     }
 
     /**
-     * Frame count from the WAV header, or null when the file will not parse. Legacy files can carry
-     * a malformed audio-length field, on which `WavFile`'s constructor throws, so an unreadable take
-     * is skipped and reported rather than fatal.
+     * Frame count from the WAV header, or null when the file will not parse. A malformed header,
+     * such as the bad audio-length field some legacy recorder files carry, makes `WavFile`'s
+     * constructor throw, so an unreadable file is skipped and reported rather than fatal.
      */
     private fun framesOf(file: File): Int? = runCatching {
         if (!file.isFile) return null
@@ -161,7 +162,7 @@ class WriteTakeFromAudio(
     }.getOrNull()
 
     /**
-     * Whether [candidate] holds the same audio as the take being migrated. The frame count is
+     * Whether [candidate] holds the same audio as the take being written. The frame count is
      * checked first as a header read, and the digest only when that already matches.
      */
     private fun isSameAudio(candidate: File, sourceFrames: Int, sourcePcm: Lazy<String?>): Boolean {
@@ -172,8 +173,8 @@ class WriteTakeFromAudio(
 
     /**
      * SHA-256 of the decoded PCM, or null when the file will not read. It covers no header or
-     * metadata, so a migrated copy hashes equal to the legacy original it came from despite the
-     * rewritten cues.
+     * metadata, so a written copy hashes equal to the source it came from despite the rewritten
+     * cues.
      */
     private fun pcmDigest(file: File): String? = runCatching {
         val digest = MessageDigest.getInstance("SHA-256")

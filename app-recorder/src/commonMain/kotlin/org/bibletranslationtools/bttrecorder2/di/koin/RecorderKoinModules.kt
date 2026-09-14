@@ -48,13 +48,14 @@ val recorderViewModelModule = module {
 }
 
 /**
- * One-time migration of the legacy Android BTT-Recorder's projects, chained after `InitializeApp`
- * by `SplashScreenViewModel`.
+ * One-time migration of the legacy Android BTT-Recorder's projects. It runs as the last of
+ * `InitializeApp`'s initializers: `:shared` resolves an optional `Installable` for that slot, and
+ * binding [MigrateLegacyRecorderProjects] to it here is what fills the slot.
  *
  * Separate from [recorderViewModelModule] because it depends on a `LegacyRecorderStore`, which only
- * the platform modules can bind, and `RecorderUiTestHarness` composes the ViewModel module without
- * them. `SplashScreenViewModel` resolves this module's migration optionally, so a Koin graph lacking
- * it skips migration rather than failing.
+ * the platform modules bind (`legacyRecorderStoreModule`). Every recorder graph, the test harness
+ * included, composes both; a graph without them leaves the slot empty and skips migration rather
+ * than failing.
  */
 val recorderMigrationModule = module {
     // Imports the mode-specific ULB sources. Not an initializer: migration invokes it once it has
