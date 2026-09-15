@@ -38,19 +38,25 @@ class AndroidZipFileReader(
                 zipFile.getEntry("$normalizedPath/") != null
     }
 
+    /**
+     * The immediate children of [directory], each as a path from the archive root so that it can be
+     * passed straight back to [stream], [bufferedReader] or [copyDirectory]. Callers rely on that:
+     * they list a directory and then read each result.
+     *
+     * A subdirectory appears once, as its own path, rather than once per entry beneath it.
+     */
     override fun list(directory: String): Sequence<String> {
-        val normalizedDir = normalizePath(directory).let { if (it.endsWith("/")) it else "$it/" }
+        val prefix = normalizePath(directory).let { if (it.isEmpty()) "" else "$it/" }
 
         return zipFile.entries().asSequence()
-            .map { it.name }
-            .filter { it.startsWith(normalizedDir) && it != normalizedDir }
-            .map { fullPath ->
-                // Remove the parent directory prefix
-                val relativePath = fullPath.removePrefix(normalizedDir)
-                // If there is still a slash, it's a subdirectory; strictly take the immediate child
-                relativePath.substringBefore("/")
+            .map { normalizePath(it.name) }
+            .filter { it.startsWith(prefix) && it != prefix.trimEnd('/') }
+            .map { path ->
+                // Only the first segment below the prefix, so entries deeper in the tree collapse
+                // onto the subdirectory that contains them.
+                prefix + path.removePrefix(prefix).substringBefore("/")
             }
-            .distinct() // Ensure we don't list the same subdirectory multiple times
+            .distinct()
     }
 
     /**
@@ -111,8 +117,29 @@ class AndroidZipFileReader(
             ?: throw java.io.FileNotFoundException("Entry '$filepath' not found in ${zipFileSource.absolutePath}")
     }
 
-    // Zip files always use forward slashes, regardless of OS
-    private fun normalizePath(path: String): String {
-        return path.replace("\\", "/").trim('/')
-    }
+    /**
+     * Resolves [path] to the entry name it refers to: separators normalized to the forward slashes
+     * zip entries use, empty segments dropped so leading, trailing and doubled slashes carry no
+     * meaning, `.` dropped, and `..` removing the segment before it. An empty result is the archive
+     * root.
+     *
+     * `.apps` is an ordinary directory in an archive, so a segment is compared whole rather than by
+     * a leading dot.
+     *
+     * `..` is resolved for parity with the zip file system backing this interface on other
+     * platforms, which resolves it: a path that reader accepts must not be missing here. It cannot
+     * climb above the root — a leading `..` has nothing to remove and is dropped — so no path can
+     * name anything outside the archive.
+     */
+    private fun normalizePath(path: String): String =
+        path.replace("\\", "/")
+            .split("/")
+            .fold(mutableListOf<String>()) { segments, segment ->
+                when {
+                    segment.isEmpty() || segment == "." -> segments
+                    segment == ".." -> segments.apply { removeLastOrNull() }
+                    else -> segments.apply { add(segment) }
+                }
+            }
+            .joinToString("/")
 }
