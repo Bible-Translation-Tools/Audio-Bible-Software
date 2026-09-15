@@ -1,0 +1,34 @@
+-- Mirrors sql/CreateAppDb.sql `marker_entity`.
+CREATE TABLE marker_entity (
+    id               INTEGER AS kotlin.Int PRIMARY KEY AUTOINCREMENT,
+    take_fk          INTEGER AS kotlin.Int NOT NULL REFERENCES take_entity(id) ON DELETE CASCADE,
+    number           INTEGER AS kotlin.Int NOT NULL,
+    position         INTEGER AS kotlin.Int NOT NULL,
+    label            TEXT NOT NULL
+);
+
+-- Queries for MarkerDao. ----------------------------------------------------------------------
+
+fetchByTakeId:
+SELECT * FROM marker_entity WHERE take_fk = ?;
+
+fetchById:
+SELECT * FROM marker_entity WHERE id = ?;
+
+fetchAll:
+SELECT * FROM marker_entity;
+
+insert:
+INSERT INTO marker_entity (take_fk, number, position, label)
+VALUES (:takeFk, :number, :position, :label);
+
+selectMaxId:
+SELECT max(id) FROM marker_entity;
+
+update:
+UPDATE marker_entity
+SET take_fk = :takeFk, number = :number, position = :position, label = :label
+WHERE id = :id;
+
+delete:
+DELETE FROM marker_entity WHERE id = ?;

@@ -1,0 +1,39 @@
+-- Mirrors sql/CreateAppDb.sql `translation_entity`.
+-- The original declares the rate columns `DOUBLE`; REAL is affinity-equivalent (both REAL affinity).
+CREATE TABLE translation_entity (
+    id               INTEGER AS kotlin.Int PRIMARY KEY AUTOINCREMENT,
+    source_fk        INTEGER AS kotlin.Int NOT NULL REFERENCES language_entity(id) ON DELETE CASCADE,
+    target_fk        INTEGER AS kotlin.Int NOT NULL REFERENCES language_entity(id) ON DELETE CASCADE,
+    modified_ts      TEXT DEFAULT NULL,
+    source_rate      REAL DEFAULT 1.0,
+    target_rate      REAL DEFAULT 1.0,
+    UNIQUE (source_fk, target_fk)
+);
+
+-- Queries for TranslationDao. `insert` deliberately writes only source/target/modified_ts (rates
+-- come from the schema defaults), matching jOOQ. `delete` matches on the source/target natural key.
+
+fetch:
+SELECT * FROM translation_entity WHERE source_fk = :sourceId AND target_fk = :targetId;
+
+fetchById:
+SELECT * FROM translation_entity WHERE id = ?;
+
+fetchAll:
+SELECT * FROM translation_entity;
+
+insert:
+INSERT INTO translation_entity (source_fk, target_fk, modified_ts)
+VALUES (:sourceFk, :targetFk, :modifiedTs);
+
+selectMaxId:
+SELECT max(id) FROM translation_entity;
+
+update:
+UPDATE translation_entity
+SET source_fk = :sourceFk, target_fk = :targetFk, modified_ts = :modifiedTs,
+    source_rate = :sourceRate, target_rate = :targetRate
+WHERE id = :id;
+
+deleteByNaturalKey:
+DELETE FROM translation_entity WHERE source_fk = :sourceFk AND target_fk = :targetFk;

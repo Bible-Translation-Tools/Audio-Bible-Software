@@ -1,0 +1,91 @@
+-- Mirrors sql/CreateAppDb.sql `resource_link` + its two indexes.
+CREATE TABLE resource_link (
+    id                  INTEGER AS kotlin.Int PRIMARY KEY AUTOINCREMENT,
+    resource_content_fk INTEGER AS kotlin.Int NOT NULL REFERENCES content_entity(id) ON DELETE CASCADE,
+    content_fk          INTEGER AS kotlin.Int REFERENCES content_entity(id) ON DELETE CASCADE,
+    collection_fk       INTEGER AS kotlin.Int REFERENCES collection_entity(id) ON DELETE CASCADE,
+    dublin_core_fk      INTEGER AS kotlin.Int NOT NULL REFERENCES dublin_core_entity(id),
+    UNIQUE (resource_content_fk, content_fk, collection_fk) ON CONFLICT IGNORE,
+    CONSTRAINT ensure_at_least_one_not_null
+        CHECK ((collection_fk IS NOT NULL) OR (content_fk IS NOT NULL)),
+    CONSTRAINT prevent_both_not_null
+        CHECK ((collection_fk IS NULL) OR (content_fk IS NULL))
+);
+
+CREATE INDEX idx_resource_link_collection ON resource_link (collection_fk);
+CREATE INDEX idx_resource_link_content ON resource_link (content_fk);
+
+-- Queries for ResourceLinkDao. ----------------------------------------------------------------
+
+fetchByContentId:
+SELECT * FROM resource_link WHERE content_fk = ?;
+
+fetchByCollectionId:
+SELECT * FROM resource_link WHERE collection_fk = ?;
+
+fetchById:
+SELECT * FROM resource_link WHERE id = ?;
+
+fetchAll:
+SELECT * FROM resource_link;
+
+insert:
+INSERT INTO resource_link (resource_content_fk, content_fk, collection_fk, dublin_core_fk)
+VALUES (:resourceContentFk, :contentFk, :collectionFk, :dublinCoreFk);
+
+selectMaxId:
+SELECT max(id) FROM resource_link;
+
+update:
+UPDATE resource_link
+SET resource_content_fk = :resourceContentFk, content_fk = :contentFk,
+    collection_fk = :collectionFk, dublin_core_fk = :dublinCoreFk
+WHERE id = :id;
+
+delete:
+DELETE FROM resource_link WHERE id = ?;
+
+-- Replaces ContentDao.selectLinkableVerses + ResourceLinkDao.insertContentResourceNoReturn:
+-- link each help/resource verse to the primary verse at the same start in the collection, skipping
+-- resources already linked. The injected DSL.val(metadata.id) is now the :dublinCoreId bind param.
+insertLinkableVerses:
+INSERT INTO resource_link (content_fk, resource_content_fk, dublin_core_fk)
+SELECT main.id, help.id, :dublinCoreId
+FROM content_entity main
+JOIN content_entity help ON main.collection_fk = help.collection_fk AND main.start = help.start
+WHERE main.collection_fk = :parentCollectionId
+  AND main.type_fk IN :mainTypeIds
+  AND help.type_fk IN :helpTypeIds
+  AND help.id NOT IN (SELECT resource_content_fk FROM resource_link);
+
+-- Replaces ContentDao.selectLinkableChapters + ResourceLinkDao.insertCollectionResourceNoReturn.
+insertLinkableChapters:
+INSERT INTO resource_link (collection_fk, resource_content_fk, dublin_core_fk)
+SELECT main.id, help.id, :dublinCoreId
+FROM collection_entity main
+JOIN content_entity help ON help.collection_fk = main.id
+WHERE main.id = :collectionId
+  AND help.type_fk IN :helpTypeIds
+  AND help.start = 0
+  AND help.id NOT IN (SELECT resource_content_fk FROM resource_link);
+
+-- CollectionRepository.copyResourceLinks (called once per source→derived metadata pair). Re-points a
+-- source RC's links (verse links via content_derivative, chapter links via matching derived collection)
+-- at the derived project. :projectDublinCoreFk is `project.dublinCoreFk ?: -1`.
+copyResourceLinks:
+INSERT INTO resource_link (resource_content_fk, dublin_core_fk, collection_fk, content_fk)
+SELECT derivedResourceCont.id, :derivedMetadataId, derivedColl.id, content_derivative.content_fk
+FROM resource_link
+JOIN content_entity sourceResourceCont ON resource_link.resource_content_fk = sourceResourceCont.id
+JOIN content_entity derivedResourceCont
+     ON derivedResourceCont.type_fk = sourceResourceCont.type_fk
+    AND derivedResourceCont.start = sourceResourceCont.start
+    AND derivedResourceCont.collection_fk = :projectId
+LEFT JOIN content_derivative ON resource_link.content_fk = content_derivative.source_fk
+LEFT JOIN collection_entity sourceColl ON resource_link.collection_fk = sourceColl.id
+LEFT JOIN collection_entity derivedColl
+     ON derivedColl.slug = sourceColl.slug
+    AND derivedColl.label = sourceColl.label
+    AND derivedColl.dublin_core_fk = :projectDublinCoreFk
+WHERE (content_derivative.content_fk IS NOT NULL OR derivedColl.id IS NOT NULL)
+  AND resource_link.dublin_core_fk = :sourceMetadataId;

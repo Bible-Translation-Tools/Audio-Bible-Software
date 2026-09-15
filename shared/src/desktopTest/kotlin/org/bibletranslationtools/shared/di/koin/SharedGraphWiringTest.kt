@@ -25,7 +25,7 @@ import org.bibletranslationtools.otter.common.domain.project.OpenWorkbook
 import org.bibletranslationtools.otter.common.initialization.InitializeLanguages
 import org.bibletranslationtools.otter.common.initialization.InitializeUlb
 import org.bibletranslationtools.otter.common.initialization.InitializeVersification
-import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
 import org.koin.dsl.module
@@ -47,13 +47,13 @@ import kotlin.test.assertTrue
  * binding fails here instead of at first launch.
  *
  * Only the two genuinely platform-provided ports are stubbed ([IDirectoryProvider],
- * [IAppDatabase]); everything else must come from the shared modules under test.
+ * [DaoProvider]); everything else must come from the shared modules under test.
  */
 class SharedGraphWiringTest : KoinTest {
 
     private val platformStubs = module {
         single<IDirectoryProvider> { mockk(relaxed = true) }
-        single<IAppDatabase> { mockk(relaxed = true) }
+        single<DaoProvider> { mockk(relaxed = true) }
     }
 
     private fun start() = startKoin { modules(sharedCommonModules + platformStubs) }.koin

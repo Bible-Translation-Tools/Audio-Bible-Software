@@ -24,22 +24,6 @@ import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.rx2.awaitSingleOrNull
-import org.bibletranslationtools.otter_db.jooq.Tables.DUBLIN_CORE_ENTITY
-import org.bibletranslationtools.otter_db.jooq.Tables.RC_LINK_ENTITY
-import org.bibletranslationtools.otter_db.jooq.Tables.RESOURCE_LINK
-import org.bibletranslationtools.otter_db.jooq.Tables.TAKE_ENTITY
-import org.bibletranslationtools.otter_db.jooq.tables.CollectionEntity.COLLECTION_ENTITY
-import org.bibletranslationtools.otter_db.jooq.tables.ContentDerivative.CONTENT_DERIVATIVE
-import org.bibletranslationtools.otter_db.jooq.tables.ContentEntity.CONTENT_ENTITY
-import org.jooq.DSLContext
-import org.jooq.Record
-import org.jooq.SelectConditionStep
-import org.jooq.exception.DataAccessException
-import org.jooq.impl.DSL.`val`
-import org.jooq.impl.DSL.and
-import org.jooq.impl.DSL.field
-import org.jooq.impl.DSL.or
-import org.jooq.impl.DSL.value
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.ContainerType
@@ -50,7 +34,7 @@ import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.domain.mapper.mapToMetadata
 import org.bibletranslationtools.otter.common.api.persistence.IResourceContainerDirectories
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
-import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.bibletranslationtools.otter.common.persistence.entities.WorkbookDescriptorEntity
 import org.bibletranslationtools.otter.common.persistence.entities.CollectionEntity
 import org.bibletranslationtools.otter.common.persistence.entities.ResourceMetadataEntity
@@ -68,7 +52,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 
 class CollectionRepository(
-    private val database: IAppDatabase,
+    private val database: DaoProvider,
     private val directoryProvider: IResourceContainerDirectories,
     private val collectionMapper: CollectionMapper,
     private val metadataMapper: ResourceMetadataMapper,
@@ -83,6 +67,8 @@ class CollectionRepository(
     private val metadataDao = database.resourceMetadataDao
     private val languageDao = database.languageDao
     private val resourceMetadataDao = database.resourceMetadataDao
+    private val takeDao = database.takeDao
+    private val resourceLinkDao = database.resourceLinkDao
     private val workbookTypeDao = database.workbookTypeDao
 
 
@@ -137,65 +123,14 @@ class CollectionRepository(
     override fun deleteResources(project: Collection, deleteAudio: Boolean): Completable {
         return Completable
             .fromAction {
-                database.transaction { dsl ->
-                    // Get resource content entries related to the project (content of tn/tq)
-                    val resourceContent = dsl.select(RESOURCE_LINK.RESOURCE_CONTENT_FK)
-                        .from(RESOURCE_LINK)
-                        .where(
-                            RESOURCE_LINK.DUBLIN_CORE_FK.`in`(
-                                // get resources linked to source dublin core
-                                getSourceLinkedRCs(project.id, dsl)
-                                    .fetch {
-                                        it.getValue(RC_LINK_ENTITY.RC2_FK)
-                                    }
-                            ).and(
-                                // Filter Resource Content to just what's in the project being deleted
-                                RESOURCE_LINK.RESOURCE_CONTENT_FK.`in`(
-                                    contentDao.fetchContentByProjectSlug(project.slug, dsl)
-                                        .fetch {
-                                            it.getValue(CONTENT_ENTITY.ID)
-                                        }
-                                )
-                            )
-                        )
-
-                    // delete the take entries of resource content from the database
-                    dsl.deleteFrom(TAKE_ENTITY)
-                        .where(TAKE_ENTITY.CONTENT_FK.`in`(resourceContent))
-                        .execute()
+                database.transaction {
+                    takeDao.deleteResourceTakesForProject(project.id, project.slug)
                 }
             }
             .doOnError { e ->
                 log.error("Error in deleteResources for collection: $project, deleteAudio: $deleteAudio", e)
             }
             .subscribeOn(Schedulers.io())
-    }
-
-    private fun getSourceLinkedRCs(
-        projectId: Int,
-        dsl: DSLContext
-    ): SelectConditionStep<Record> {
-        return dsl.select(RC_LINK_ENTITY.asterisk())
-            .from(RC_LINK_ENTITY)
-            .where(
-                RC_LINK_ENTITY.RC1_FK.`in`(
-                    // get source dublin core of derived project
-                    dsl.select(DUBLIN_CORE_ENTITY.DERIVEDFROM_FK)
-                        .from(DUBLIN_CORE_ENTITY)
-                        .where(
-                            DUBLIN_CORE_ENTITY.ID.`in`(
-                                // get dublin core of project
-                                dsl.select(COLLECTION_ENTITY.DUBLIN_CORE_FK)
-                                    .from(COLLECTION_ENTITY)
-                                    .where(
-                                        COLLECTION_ENTITY.ID.eq(
-                                            projectId
-                                        )
-                                    )
-                            )
-                        )
-                )
-            )
     }
 
     override fun collectionsWithoutTakes(project: Collection): Single<List<Collection>> {
@@ -496,14 +431,14 @@ class CollectionRepository(
     ): Single<Collection> {
         return Single
             .fromCallable {
-                database.transactionResult { dsl ->
+                database.transactionResult {
 
-                    val derivedMetadata = deriveAndLinkMetadata(sourceMetadatas, language, dsl)
+                    val derivedMetadata = deriveAndLinkMetadata(sourceMetadatas, language)
                     val mainDerivedMetadata = derivedMetadata.first()
 
-                    val sourceCollectionEntity = collectionDao.fetchById(sourceCollection.id, dsl)
+                    val sourceCollectionEntity = collectionDao.fetchById(sourceCollection.id)
                     // Try to find existent project
-                    var projectEntity = findProjectCollection(sourceCollectionEntity, mainDerivedMetadata, dsl)
+                    var projectEntity = findProjectCollection(sourceCollectionEntity, mainDerivedMetadata)
                     projectEntity?.let {
                         it.modifiedTs = LocalDateTime.now().toString()
                         collectionDao.update(it)
@@ -511,13 +446,13 @@ class CollectionRepository(
 
                     if (projectEntity == null) {
                         // Insert the derived project
-                        projectEntity = deriveProjectCollection(sourceCollectionEntity, mainDerivedMetadata, dsl)
+                        projectEntity = deriveProjectCollection(sourceCollectionEntity, mainDerivedMetadata)
 
                         // Copy the chapters
-                        copyChapters(dsl, sourceCollectionEntity.id, projectEntity.id, mainDerivedMetadata.id)
+                        copyChapters(sourceCollectionEntity.id, projectEntity.id, mainDerivedMetadata.id)
 
                         val metadataSourceToDerivedMap = sourceMetadatas.zip(derivedMetadata).associate { it }
-                        copyResourceLinks(dsl, projectEntity, metadataSourceToDerivedMap)
+                        copyResourceLinks(projectEntity, metadataSourceToDerivedMap)
 
                         // Add a project to the container if necessary
                         // Load the existing resource container and see if we need to add another project
@@ -554,10 +489,10 @@ class CollectionRepository(
                     if (workbookDescriptor == null) {
                         // copy the content under chapter-level
                         if (verseByVerse) {
-                            copyContent(dsl, sourceCollectionEntity.id, mainDerivedMetadata.id)
-                            linkDerivativeContent(dsl, sourceCollectionEntity.id, projectEntity.id)
+                            copyContent(sourceCollectionEntity.id, mainDerivedMetadata.id)
+                            linkDerivativeContent(sourceCollectionEntity.id, projectEntity.id)
                         } else {
-                            copyMetaContent(dsl, sourceCollectionEntity.id, mainDerivedMetadata.id)
+                            copyMetaContent(sourceCollectionEntity.id, mainDerivedMetadata.id)
                         }
                         insertWorkbookDescriptor(sourceCollection.id, projectEntity.id, mode)
                     }
@@ -582,20 +517,17 @@ class CollectionRepository(
 
     private fun findProjectCollection(
         sourceEntity: CollectionEntity,
-        derivedMetadata: ResourceMetadataEntity,
-        dsl: DSLContext
+        derivedMetadata: ResourceMetadataEntity
     ): CollectionEntity? {
         return collectionDao.fetch(
             slug = sourceEntity.slug,
-            containerId = derivedMetadata.id,
-            dsl = dsl
+            containerId = derivedMetadata.id
         )
     }
 
     private fun deriveProjectCollection(
         sourceEntity: CollectionEntity,
-        derivedMetadata: ResourceMetadataEntity,
-        dsl: DSLContext
+        derivedMetadata: ResourceMetadataEntity
     ): CollectionEntity {
         return sourceEntity
             .copy(
@@ -606,35 +538,33 @@ class CollectionRepository(
             )
             .let { derivedProject ->
                 derivedProject.modifiedTs = LocalDateTime.now().toString()
-                val id = collectionDao.insert(derivedProject, dsl)
+                val id = collectionDao.insert(derivedProject)
                 derivedProject.copy(id = id)
             }
     }
 
     private fun deriveAndLinkMetadata(
         sourceMetadatas: List<ResourceMetadata>,
-        newLanguage: Language,
-        dsl: DSLContext
+        newLanguage: Language
     ): List<ResourceMetadataEntity> {
         val derivedMetadata = sourceMetadatas.map {
-            findOrInsertMetadataEntity(dsl, it, newLanguage)
+            findOrInsertMetadataEntity(it, newLanguage)
         }
 
         val mainDerived = derivedMetadata.first()
         val linkDerived = derivedMetadata.drop(1)
         linkDerived.forEach {
-            resourceMetadataDao.addLink(mainDerived.id, it.id, dsl)
+            resourceMetadataDao.addLink(mainDerived.id, it.id)
         }
         return derivedMetadata
     }
 
     private fun findOrInsertMetadataEntity(
-        dsl: DSLContext,
         source: ResourceMetadata,
         language: Language
     ): ResourceMetadataEntity {
         // Check for existing resource containers
-        val existingMetadata = metadataDao.fetchAll(dsl)
+        val existingMetadata = metadataDao.fetchAll()
         val matches = existingMetadata.filter {
             it.identifier == source.identifier &&
                     it.languageFk == language.id &&
@@ -653,7 +583,7 @@ class CollectionRepository(
                 // Insert ResourceMetadata into database
                 val entity = metadataMapper.mapToEntity(metadata)
                 entity.derivedFromFk = source.id
-                entity.id = metadataDao.insert(entity, dsl)
+                entity.id = metadataDao.insert(entity)
                 entity
             }
         } else {
@@ -705,276 +635,34 @@ class CollectionRepository(
         return container
     }
 
-    private fun copyChapters(dsl: DSLContext, sourceId: Int, projectId: Int, metadataId: Int) {
-        // Copy all the chapter collections
-        dsl.insertInto(
-            COLLECTION_ENTITY,
-            COLLECTION_ENTITY.PARENT_FK,
-            COLLECTION_ENTITY.SOURCE_FK,
-            COLLECTION_ENTITY.LABEL,
-            COLLECTION_ENTITY.TITLE,
-            COLLECTION_ENTITY.SLUG,
-            COLLECTION_ENTITY.SORT,
-            COLLECTION_ENTITY.DUBLIN_CORE_FK
-        ).select(
-            dsl.select(
-                value(projectId),
-                COLLECTION_ENTITY.ID,
-                COLLECTION_ENTITY.LABEL,
-                COLLECTION_ENTITY.TITLE,
-                COLLECTION_ENTITY.SLUG,
-                COLLECTION_ENTITY.SORT,
-                value(metadataId)
-            )
-                .from(COLLECTION_ENTITY)
-                .where(COLLECTION_ENTITY.PARENT_FK.eq(sourceId))
-        ).execute()
+    private fun copyChapters(sourceId: Int, projectId: Int, metadataId: Int) {
+        collectionDao.copyChapters(sourceId, projectId, metadataId)
     }
 
-    private fun copyContent(dsl: DSLContext, sourceId: Int, metadataId: Int) {
-        dsl.insertInto(
-            CONTENT_ENTITY,
-            CONTENT_ENTITY.COLLECTION_FK,
-            CONTENT_ENTITY.LABEL,
-            CONTENT_ENTITY.START,
-            CONTENT_ENTITY.V_END,
-            CONTENT_ENTITY.SORT,
-            CONTENT_ENTITY.TYPE_FK,
-            CONTENT_ENTITY.DRAFT_NUMBER,
-            CONTENT_ENTITY.BRIDGED
-        )
-            .select(
-                dsl.select(
-                    COLLECTION_ENTITY.ID,
-                    field("verselabel", String::class.java),
-                    field("versestart", Int::class.java),
-                    field("verseend", Int::class.java),
-                    field("versesort", Int::class.java),
-                    field("typefk", Int::class.java),
-                    field("draftnumber", Int::class.java),
-                    field("bridged", Int::class.java)
-                )
-                    .from(
-                        dsl.select(
-                            CONTENT_ENTITY.ID.`as`("verseid"),
-                            CONTENT_ENTITY.COLLECTION_FK.`as`("chapterid"),
-                            CONTENT_ENTITY.LABEL.`as`("verselabel"),
-                            CONTENT_ENTITY.START.`as`("versestart"),
-                            CONTENT_ENTITY.V_END.`as`("verseend"),
-                            CONTENT_ENTITY.SORT.`as`("versesort"),
-                            CONTENT_ENTITY.TYPE_FK.`as`("typefk"),
-                            CONTENT_ENTITY.DRAFT_NUMBER.`as`("draftnumber"),
-                            CONTENT_ENTITY.BRIDGED.`as`("bridged")
-                        )
-                            .from(CONTENT_ENTITY)
-                            .where(
-                                CONTENT_ENTITY.COLLECTION_FK.`in`(
-                                    dsl
-                                        .select(COLLECTION_ENTITY.ID)
-                                        .from(COLLECTION_ENTITY)
-                                        .where(COLLECTION_ENTITY.PARENT_FK.eq(sourceId))
-                                )
-                            )
-                    )
-                    .leftJoin(COLLECTION_ENTITY)
-                    .on(
-                        COLLECTION_ENTITY.SOURCE_FK.eq(field("chapterid", Int::class.java))
-                            .and(COLLECTION_ENTITY.DUBLIN_CORE_FK.eq(metadataId))
-                    )
-            ).execute()
+    private fun copyContent(sourceId: Int, metadataId: Int) {
+        contentDao.copyContent(sourceId, metadataId)
     }
 
-    private fun copyMetaContent(dsl: DSLContext, sourceId: Int, metadataId: Int) {
-        dsl.insertInto(
-            CONTENT_ENTITY,
-            CONTENT_ENTITY.COLLECTION_FK,
-            CONTENT_ENTITY.LABEL,
-            CONTENT_ENTITY.START,
-            CONTENT_ENTITY.V_END,
-            CONTENT_ENTITY.SORT,
-            CONTENT_ENTITY.TYPE_FK,
-            CONTENT_ENTITY.DRAFT_NUMBER
-        )
-            .select(
-                dsl.select(
-                    COLLECTION_ENTITY.ID,
-                    field("verselabel", String::class.java),
-                    field("versestart", Int::class.java),
-                    field("verseend", Int::class.java),
-                    field("versesort", Int::class.java),
-                    field("typefk", Int::class.java),
-                    field("draftnumber", Int::class.java)
-                )
-                    .from(
-                        dsl.select(
-                            CONTENT_ENTITY.ID.`as`("verseid"),
-                            CONTENT_ENTITY.COLLECTION_FK.`as`("chapterid"),
-                            CONTENT_ENTITY.LABEL.`as`("verselabel"),
-                            CONTENT_ENTITY.START.`as`("versestart"),
-                            CONTENT_ENTITY.V_END.`as`("verseend"),
-                            CONTENT_ENTITY.SORT.`as`("versesort"),
-                            CONTENT_ENTITY.TYPE_FK.`as`("typefk"),
-                            CONTENT_ENTITY.DRAFT_NUMBER.`as`("draftnumber")
-                        )
-                            .from(CONTENT_ENTITY)
-                            .where(
-                                CONTENT_ENTITY.COLLECTION_FK.`in`(
-                                    dsl
-                                        .select(COLLECTION_ENTITY.ID)
-                                        .from(COLLECTION_ENTITY)
-                                        .where(COLLECTION_ENTITY.PARENT_FK.eq(sourceId))
-                                ).and(
-                                    CONTENT_ENTITY.LABEL.eq("chapter")
-                                )
-                            )
-                    )
-                    .leftJoin(COLLECTION_ENTITY)
-                    .on(
-                        COLLECTION_ENTITY.SOURCE_FK.eq(field("chapterid", Int::class.java))
-                            .and(COLLECTION_ENTITY.DUBLIN_CORE_FK.eq(metadataId))
-                    )
-            ).execute()
+    private fun copyMetaContent(sourceId: Int, metadataId: Int) {
+        contentDao.copyMetaContent(sourceId, metadataId)
     }
 
     private fun copyResourceLinks(
-        dsl: DSLContext,
         project: CollectionEntity,
         metadataSourceToDerived: Map<ResourceMetadata, ResourceMetadataEntity>
     ) {
-        val sourceResourceCont = CONTENT_ENTITY.`as`("sourceResourceContent")
-        val derivedResourceCont = CONTENT_ENTITY.`as`("derivedResourceContent")
-        val sourceColl = COLLECTION_ENTITY.`as`("sourceCollectionTable")
-        val derivedColl = COLLECTION_ENTITY.`as`("derivedCollectionTable")
-
-        val derivedContentColumn = CONTENT_DERIVATIVE.CONTENT_FK
-        val derivedCollectionColumn = derivedColl.ID
-        val derivedResourceColumn = derivedResourceCont.ID
-
-        metadataSourceToDerived.forEach { sourceMetadata, derivedMetadata ->
-            dsl
-                .insertInto(
-                    RESOURCE_LINK,
-                    RESOURCE_LINK.RESOURCE_CONTENT_FK,
-                    RESOURCE_LINK.DUBLIN_CORE_FK,
-                    RESOURCE_LINK.COLLECTION_FK,
-                    RESOURCE_LINK.CONTENT_FK
-                )
-                .select(
-                    dsl
-                        .select(
-                            derivedResourceColumn,
-                            `val`(derivedMetadata.id),
-                            derivedCollectionColumn,
-                            derivedContentColumn
-                        )
-                        .from(RESOURCE_LINK)
-                        // Map RESOURCE_CONTENT_FK to new resource fk, by joining two CONTENT_ENTITY tables on details.
-                        .join(sourceResourceCont).on(RESOURCE_LINK.RESOURCE_CONTENT_FK.eq(sourceResourceCont.ID))
-                        .join(derivedResourceCont).on(
-                            and(
-                                derivedResourceCont.TYPE_FK.eq(sourceResourceCont.TYPE_FK),
-                                derivedResourceCont.START.eq(sourceResourceCont.START),
-                                derivedResourceCont.COLLECTION_FK.eq(project.id)
-                            )
-                        )
-                        // Map CONTENT_FK to new book content using CONTENT_DERIVATIVE table
-                        .leftJoin(CONTENT_DERIVATIVE).on(RESOURCE_LINK.CONTENT_FK.eq(CONTENT_DERIVATIVE.SOURCE_FK))
-                        // Map COLLECTION_FK to derived collection. Join two COLLECTION_ENTITY tables on details.
-                        .leftJoin(sourceColl).on(RESOURCE_LINK.COLLECTION_FK.eq(sourceColl.ID))
-                        .leftJoin(derivedColl).on(
-                            and(
-                                derivedColl.SLUG.eq(sourceColl.SLUG),
-                                derivedColl.LABEL.eq(sourceColl.LABEL),
-                                derivedColl.DUBLIN_CORE_FK.eq(project.dublinCoreFk ?: -1)
-                            )
-                        )
-                        .where(
-                            and(
-                                or(derivedContentColumn.isNotNull, derivedCollectionColumn.isNotNull),
-                                RESOURCE_LINK.DUBLIN_CORE_FK.eq(sourceMetadata.id)
-                            )
-                        )
-                ).execute()
+        metadataSourceToDerived.forEach { (sourceMetadata, derivedMetadata) ->
+            resourceLinkDao.copyResourceLinks(
+                sourceMetadataId = sourceMetadata.id,
+                derivedMetadataId = derivedMetadata.id,
+                projectId = project.id,
+                projectDublinCoreFk = project.dublinCoreFk ?: -1
+            )
         }
     }
 
-    private fun linkDerivativeContent(dsl: DSLContext, sourceId: Int, projectId: Int) {
-        dsl.insertInto(
-            CONTENT_DERIVATIVE,
-            CONTENT_DERIVATIVE.CONTENT_FK,
-            CONTENT_DERIVATIVE.SOURCE_FK
-        ).select(
-            dsl.select(
-                field("derivedid", Int::class.java),
-                field("sourceid", Int::class.java)
-            )
-                .from(
-                    dsl.select(
-                        field("sourceid", Int::class.java),
-                        field("sourcesort", Int::class.java),
-                        field("sourcetype", Int::class.java),
-                        COLLECTION_ENTITY.SLUG.`as`("sourcechapter")
-                    )
-                        .from(
-                            dsl.select(
-                                CONTENT_ENTITY.ID.`as`("sourceid"),
-                                CONTENT_ENTITY.SORT.`as`("sourcesort"),
-                                CONTENT_ENTITY.TYPE_FK.`as`("sourcetype"),
-                                CONTENT_ENTITY.COLLECTION_FK.`as`("chapterid")
-                            ).from(CONTENT_ENTITY).where(
-                                CONTENT_ENTITY.COLLECTION_FK.`in`(
-                                    dsl
-                                        .select(COLLECTION_ENTITY.ID)
-                                        .from(COLLECTION_ENTITY)
-                                        .where(COLLECTION_ENTITY.PARENT_FK.eq(sourceId))
-                                )
-                            )
-                        )
-                        .leftJoin(COLLECTION_ENTITY)
-                        .on(COLLECTION_ENTITY.ID.eq(field("chapterid", Int::class.java)))
-                )
-                .leftJoin(
-                    dsl
-                        .select(
-                            field("derivedid", Int::class.java),
-                            field("derivedsort", Int::class.java),
-                            field("derivedtype", Int::class.java),
-                            COLLECTION_ENTITY.SLUG.`as`("derivedchapter")
-                        )
-                        .from(
-                            dsl
-                                .select(
-                                    CONTENT_ENTITY.ID.`as`("derivedid"),
-                                    CONTENT_ENTITY.SORT.`as`("derivedsort"),
-                                    CONTENT_ENTITY.TYPE_FK.`as`("derivedtype"),
-                                    CONTENT_ENTITY.COLLECTION_FK.`as`("chapterid")
-                                )
-                                .from(CONTENT_ENTITY)
-                                .where(
-                                    CONTENT_ENTITY.COLLECTION_FK.`in`(
-                                        dsl
-                                            .select(COLLECTION_ENTITY.ID)
-                                            .from(COLLECTION_ENTITY)
-                                            .where(COLLECTION_ENTITY.PARENT_FK.eq(projectId))
-                                    )
-                                )
-                        )
-                        .leftJoin(COLLECTION_ENTITY)
-                        .on(COLLECTION_ENTITY.ID.eq(field("chapterid", Int::class.java)))
-                )
-                .on(
-                    field("sourcesort", Int::class.java)
-                        .eq(field("derivedsort", Int::class.java))
-                        .and(
-                            field("sourcechapter", Int::class.java)
-                                .eq(field("derivedchapter", Int::class.java))
-                        )
-                        .and(
-                            field("sourcetype", Int::class.java)
-                                .eq(field("derivedtype", Int::class.java))
-                        )
-                )
-        ).execute()
+    private fun linkDerivativeContent(sourceId: Int, projectId: Int) {
+        contentDao.linkDerivativeContent(sourceId, projectId)
     }
 
     private fun insertWorkbookDescriptor(
@@ -991,7 +679,7 @@ class CollectionRepository(
                     workbookTypeDao.fetchId(mode)
                 )
             )
-        } catch (_: DataAccessException) { /* ignore duplicate */ }
+        } catch (_: Exception) { /* ignore duplicate */ }
     }
 
     private fun buildCollection(entity: CollectionEntity): Collection {

@@ -4,29 +4,29 @@ import io.mockk.*
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.test.runTest
-import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IContentRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceRepository
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
-import org.bibletranslationtools.otter.common.persistence.database.daos.ContentTypeDao
-import org.bibletranslationtools.otter.common.persistence.database.daos.CollectionDao
-import org.bibletranslationtools.otter.common.persistence.database.daos.ContentDao
-import org.bibletranslationtools.otter.common.persistence.database.daos.ResourceMetadataDao
-import org.bibletranslationtools.otter.common.persistence.database.daos.ResourceLinkDao
-import org.bibletranslationtools.otter.common.persistence.database.daos.LanguageDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.ContentTypeDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.CollectionDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.ContentDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.ResourceMetadataDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.ResourceLinkDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.LanguageDao
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import org.bibletranslationtools.otter.common.collections.OtterTree
 import org.bibletranslationtools.otter.common.data.primitives.CollectionOrContent
-import org.bibletranslationtools.otter.common.persistence.database.daos.CheckingStatusDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.CheckingStatusDao
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class ResourceContainerRepositoryTest {
 
-    private val db = mockk<IAppDatabase>()
+    private val db = mockk<DaoProvider>()
     private val collectionRepository = mockk<ICollectionRepository>()
     private val contentRepository = mockk<IContentRepository>()
     private val resourceRepository = mockk<IResourceRepository>()

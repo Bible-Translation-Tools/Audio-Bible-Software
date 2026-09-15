@@ -1,0 +1,18 @@
+-- Mirrors sql/CreateAppDb.sql `versification_entity`.
+CREATE TABLE versification_entity (
+    id              INTEGER AS kotlin.Int PRIMARY KEY AUTOINCREMENT,
+    slug            TEXT NOT NULL UNIQUE,
+    path            TEXT NOT NULL
+);
+
+-- Queries for VersificationDao. `upsert` is the DAO's insert-then-(on-conflict)-update, replicated
+-- in Kotlin via these two statements.
+
+fetchVersificationFile:
+SELECT path FROM versification_entity WHERE slug = ?;
+
+insert:
+INSERT INTO versification_entity (slug, path) VALUES (:slug, :path);
+
+updateBySlug:
+UPDATE versification_entity SET path = :path WHERE slug = :slug;

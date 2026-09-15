@@ -1,0 +1,19 @@
+-- Mirrors sql/CreateAppDb.sql `installed_entity`.
+CREATE TABLE installed_entity (
+    name                TEXT PRIMARY KEY NOT NULL,
+    version             INTEGER AS kotlin.Int NOT NULL
+);
+
+-- Queries for InstalledEntityDao. Hand-rolled upsert (Android-7-safe: no ON CONFLICT DO UPDATE):
+-- the DAO runs upsertUpdate then upsertInsertIfUnchanged inside one transaction.
+
+fetchVersion:
+SELECT version FROM installed_entity WHERE name = ?;
+
+upsertUpdate:
+UPDATE installed_entity SET version = :version WHERE name = :name;
+
+upsertInsertIfUnchanged:
+INSERT INTO installed_entity (name, version)
+SELECT :name, :version
+WHERE (SELECT changes()) = 0;

@@ -28,7 +28,7 @@ import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.primitives.Take
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ITakeRepository
-import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.bibletranslationtools.otter.common.persistence.entities.TakeEntity
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.CollectionMapper
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.MarkerMapper
@@ -37,7 +37,7 @@ import java.io.File
 import java.time.LocalDate
 
 class TakeRepository(
-    private val database: IAppDatabase,
+    private val database: DaoProvider,
     private val markerMapper: MarkerMapper,
     private val collectionMapper: CollectionMapper
 ) : ITakeRepository {
@@ -163,18 +163,18 @@ class TakeRepository(
     override fun removeNonExistentTakes(): Completable {
         return Completable
             .fromAction {
-                database.transaction { dsl ->
-                    val takes = takeDao.fetchAll(dsl)
+                database.transaction {
+                    val takes = takeDao.fetchAll()
                     for (take in takes) {
                         val takeFile = File(take.filepath)
                         if (!takeFile.exists()) {
                             // Take does not exist anymore
                             // Reset the selected take if necessary to satisfy foreign key constraints
-                            val content = contentDao.fetchById(take.contentFk, dsl)
+                            val content = contentDao.fetchById(take.contentFk)
                             if (content.selectedTakeFk == take.id) content.selectedTakeFk = null
-                            contentDao.update(content, dsl)
+                            contentDao.update(content)
                             // Remove the take from the database
-                            takeDao.delete(take, dsl)
+                            takeDao.delete(take)
                         }
                     }
                 }

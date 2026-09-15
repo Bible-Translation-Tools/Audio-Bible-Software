@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.bibletranslationtools.bttrecorder2.ui.App
 import org.bibletranslationtools.bttrecorder2.ui.components.ProgressPieView
@@ -21,7 +22,7 @@ import org.bibletranslationtools.bttrecorder2.ui.screens.ProjectManagementConten
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementUiState
 import org.bibletranslationtools.bttrecorder2.ui.screens.SplashScreen
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
-import org.bibletranslationtools.otter.database.AndroidAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.koin.android.ext.android.inject
 import android.Manifest
 import android.content.pm.PackageManager
@@ -38,11 +39,11 @@ import org.bibletranslationtools.otter.common.device.AudioSystemConfig
 import org.koin.android.ext.android.inject
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
-import java.io.File
 
 class MainActivity : ComponentActivity() {
 
     val koinDirectoryProvider: IDirectoryProvider by inject()
+    private val daoProvider: DaoProvider by inject()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Opt in to edge-to-edge so the system status bar + 3-button nav bar
@@ -54,13 +55,11 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
-        lifecycleScope.launch {
+        // Warm the Koin DaoProvider off the main thread so first-run schema creation /
+        // migration doesn't jank the UI thread.
+        lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val db = AndroidAppDatabase(
-                    applicationContext,
-                    File(koinDirectoryProvider.databaseDirectory, "tr.sqlite"),
-                    koinDirectoryProvider
-                )
+                daoProvider.languageDao.fetchAll() // touch it to force init
             } catch (e: Exception) {
                 e.printStackTrace()
             }

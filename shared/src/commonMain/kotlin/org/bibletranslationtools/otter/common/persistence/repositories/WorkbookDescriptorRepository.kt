@@ -34,11 +34,11 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IColl
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IContentRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
-import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.bibletranslationtools.otter.common.persistence.entities.WorkbookDescriptorEntity
 
 class WorkbookDescriptorRepository(
-    database: IAppDatabase,
+    database: DaoProvider,
     private val collectionRepository: ICollectionRepository,
     private val contentRepository: IContentRepository,
     private val workbookRepository: IWorkbookRepository,
@@ -199,18 +199,20 @@ class WorkbookDescriptorRepository(
         target: Collection
     ): Double {
         val workbook = workbookRepository.get(source, target)
-        return if (workbook.projectFilesAccessor.isInitialized()) {
-            val chapterProgress = workbook.target.chapters
-                .toList()
-                .blockingGet()
-                .map {
-                    projectCompletionStatus.getChapterNarrationProgress(workbook, it)
-                }
+        val chapters = workbook.target.chapters.toList().blockingGet()
+        // The per-book RC that isInitialized() checks is only written when a book is first OPENED
+        // (InitializeProjectFiles), so a freshly imported project fails it and every book would read 0%
+        // until opened. Recorded work is the real signal: a chapter with a selected take — restored on
+        // import — means there is completion to show. Un-worked books have no selected takes and still
+        // short-circuit to 0 here with no per-chapter file I/O.
+        val hasWork = workbook.projectFilesAccessor.isInitialized() ||
+            chapters.any { it.getSelectedTake() != null }
+        if (!hasWork) return 0.0
 
-            chapterProgress.count { it == 1.0 }.toDouble() / chapterProgress.size
-        } else {
-            0.0
+        val chapterProgress = chapters.map {
+            projectCompletionStatus.getChapterNarrationProgress(workbook, it)
         }
+        return chapterProgress.count { it == 1.0 }.toDouble() / chapterProgress.size
     }
 
     override suspend fun getByIdSuspend(id: Int): WorkbookDescriptor? = getById(id).awaitSingleOrNull()

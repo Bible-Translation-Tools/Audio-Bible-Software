@@ -26,26 +26,20 @@ import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.rx2.asFlow
 import kotlinx.coroutines.rx2.await
-import org.bibletranslationtools.otter_db.jooq.Tables.*
-import org.jooq.SelectConditionStep
-import org.jooq.Record
-import org.jooq.DSLContext
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.collections.MultiMap
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceRepository
-import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
-import org.bibletranslationtools.otter.common.persistence.database.daos.ContentEntityTable
-import org.bibletranslationtools.otter.common.persistence.database.daos.RecordMappers
+import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.bibletranslationtools.otter.common.persistence.entities.CollectionEntity
 import org.bibletranslationtools.otter.common.persistence.entities.ContentEntity
 import org.bibletranslationtools.otter.common.persistence.entities.ResourceLinkEntity
 import org.bibletranslationtools.otter.common.persistence.entities.ResourceMetadataEntity
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.*
 
-class ResourceRepository(private val database: IAppDatabase) : IResourceRepository {
+class ResourceRepository(private val database: DaoProvider) : IResourceRepository {
     private val logger = LoggerFactory.getLogger(ResourceRepository::class.java)
 
     private val contentDao = database.contentDao
@@ -55,6 +49,7 @@ class ResourceRepository(private val database: IAppDatabase) : IResourceReposito
     private val markerDao = database.markerDao
     private val resourceLinkDao = database.resourceLinkDao
     private val subtreeHasResourceDao = database.subtreeHasResourceDao
+    private val resourceMetadataDao = database.resourceMetadataDao
     private val languageDao = database.languageDao
     private val contentMapper: ContentMapper = ContentMapper(contentTypeDao)
     private val takeMapper: TakeMapper = TakeMapper(database.checkingStatusDao)
@@ -87,83 +82,43 @@ class ResourceRepository(private val database: IAppDatabase) : IResourceReposito
     }
 
     override fun getResourceMetadata(content: Content): List<ResourceMetadata> {
-        return database.dsl
-            .selectDistinct(DUBLIN_CORE_ENTITY.asterisk())
-            .from(RESOURCE_LINK)
-            .join(DUBLIN_CORE_ENTITY).on(DUBLIN_CORE_ENTITY.ID.eq(RESOURCE_LINK.DUBLIN_CORE_FK))
-            .where(RESOURCE_LINK.CONTENT_FK.eq(content.id))
-            .fetch(RecordMappers.Companion::mapToResourceMetadataEntity)
+        return resourceMetadataDao
+            .resourceMetadataByContent(content.id)
             .map(this::mapToResourceMetadata)
     }
 
     override fun getResourceMetadata(collection: Collection): List<ResourceMetadata> {
-        return database.dsl
-            .selectDistinct(DUBLIN_CORE_ENTITY.asterisk())
-            .from(RESOURCE_LINK)
-            .join(DUBLIN_CORE_ENTITY).on(DUBLIN_CORE_ENTITY.ID.eq(RESOURCE_LINK.DUBLIN_CORE_FK))
-            .where(RESOURCE_LINK.COLLECTION_FK.eq(collection.id))
-            .fetch(RecordMappers.Companion::mapToResourceMetadataEntity)
+        return resourceMetadataDao
+            .resourceMetadataByCollection(collection.id)
             .map(this::mapToResourceMetadata)
     }
 
     override fun getSubtreeResourceMetadata(collection: Collection): List<ResourceMetadata> {
-        return database.dsl
-            .select(DUBLIN_CORE_ENTITY.asterisk())
-            .from(SUBTREE_HAS_RESOURCE)
-            .join(DUBLIN_CORE_ENTITY).on(DUBLIN_CORE_ENTITY.ID.eq(SUBTREE_HAS_RESOURCE.DUBLIN_CORE_FK))
-            .where(SUBTREE_HAS_RESOURCE.COLLECTION_FK.eq(collection.id))
-            .fetch(RecordMappers.Companion::mapToResourceMetadataEntity)
+        return resourceMetadataDao
+            .subtreeResourceMetadata(collection.id)
             .map(this::mapToResourceMetadata)
     }
 
     override fun getResources(content: Content, resourceMetadata: ResourceMetadata): Observable<Content> {
-        val main = CONTENT_ENTITY.`as`("main")
-        val help = CONTENT_ENTITY.`as`("help")
-
-        val selectStatement = database.dsl
-            .selectDistinct(help.asterisk())
-            .from(RESOURCE_LINK)
-            .join(main).on(main.ID.eq(RESOURCE_LINK.CONTENT_FK))
-            .join(help).on(help.ID.eq(RESOURCE_LINK.RESOURCE_CONTENT_FK))
-            .where(RESOURCE_LINK.DUBLIN_CORE_FK.eq(resourceMetadata.id))
-            .and(main.ID.eq(content.id))
-
-        return getResources(help, selectStatement)
+        return getResources { contentDao.resourcesForContent(content.id, resourceMetadata.id) }
     }
 
     /**
      * Returns collection-specific resources (does not return resources about the collection's children.)
      */
     override fun getResources(collection: Collection, resourceMetadata: ResourceMetadata): Observable<Content> {
-        val help = CONTENT_ENTITY.`as`("help")
-
-        val selectStatement = database.dsl
-            .selectDistinct(help.asterisk())
-            .from(RESOURCE_LINK)
-            .join(COLLECTION_ENTITY).on(COLLECTION_ENTITY.ID.eq(RESOURCE_LINK.COLLECTION_FK))
-            .join(help).on(RESOURCE_LINK.RESOURCE_CONTENT_FK.eq(help.ID))
-            .where(RESOURCE_LINK.DUBLIN_CORE_FK.eq(resourceMetadata.id))
-            .and(COLLECTION_ENTITY.ID.eq(collection.id))
-
-        return getResources(help, selectStatement)
+        return getResources { contentDao.resourcesForCollection(collection.id, resourceMetadata.id) }
     }
 
-    private fun getResources(
-        help: ContentEntityTable,
-        selectStatement: SelectConditionStep<Record>
-    ): Observable<Content> {
+    private fun getResources(fetch: () -> List<ContentEntity>): Observable<Content> {
         val contentStreamObservable = Observable.fromCallable {
-            selectStatement
-                .orderBy(help.START, help.SORT)
-                .fetchStream()
-                .map { RecordMappers.mapToContentEntity(it, help) }
-                .map(this::buildResource)
+            fetch().map(this::buildResource)
         }
 
         return contentStreamObservable
             .flatMap { it.iterator().toObservable() }
             .doOnError { e ->
-                logger.error("Error in getResources for resource: $help, with select: $selectStatement", e)
+                logger.error("Error in getResources", e)
             }
             .subscribeOn(Schedulers.io())
     }
@@ -231,26 +186,25 @@ class ResourceRepository(private val database: IAppDatabase) : IResourceReposito
         linkToCollection(resource, collection, dublinCoreFk).await()
 
     override fun calculateAndSetSubtreeHasResources(collectionId: Int) {
-        database.transaction { dsl ->
-            val collectionEntity = collectionDao.fetchById(collectionId, dsl)
+        database.transaction {
+            val collectionEntity = collectionDao.fetchById(collectionId)
             val accumulator = MultiMap<Int, Int>()
-            calculateAndSetSubtreeHasResources(collectionEntity, accumulator, dsl)
-            subtreeHasResourceDao.insert(accumulator.kvSequence(), dsl)
+            calculateAndSetSubtreeHasResources(collectionEntity, accumulator)
+            subtreeHasResourceDao.insert(accumulator.kvSequence())
         }
     }
 
     private fun calculateAndSetSubtreeHasResources(
         collection: CollectionEntity,
-        mMapCollectionToDublinId: MultiMap<Int, Int>,
-        dsl: DSLContext
+        mMapCollectionToDublinId: MultiMap<Int, Int>
     ): Set<Int> {
         val childResources = collectionDao
-            .fetchChildren(collection, dsl)
-            .flatMap { calculateAndSetSubtreeHasResources(it, mMapCollectionToDublinId, dsl) }
+            .fetchChildren(collection)
+            .flatMap { calculateAndSetSubtreeHasResources(it, mMapCollectionToDublinId) }
         val myCollectionResources = resourceLinkDao
-            .fetchByCollectionId(collection.id, dsl)
+            .fetchByCollectionId(collection.id)
             .map { it.dublinCoreFk }
-        val myContentResources = getContentResourceFksByCollection(collection.id, dsl)
+        val myContentResources = getContentResourceFksByCollection(collection.id)
         val union = childResources
             .union(myCollectionResources)
             .union(myContentResources)
@@ -262,14 +216,8 @@ class ResourceRepository(private val database: IAppDatabase) : IResourceReposito
         return union
     }
 
-    private fun getContentResourceFksByCollection(collectionId: Int, dsl: DSLContext): List<Int> {
-        return dsl
-            .selectDistinct(RESOURCE_LINK.DUBLIN_CORE_FK)
-            .from(RESOURCE_LINK)
-            .join(CONTENT_ENTITY)
-            .on(RESOURCE_LINK.CONTENT_FK.eq(CONTENT_ENTITY.ID))
-            .where(CONTENT_ENTITY.COLLECTION_FK.eq(collectionId))
-            .fetch(RESOURCE_LINK.DUBLIN_CORE_FK)
+    private fun getContentResourceFksByCollection(collectionId: Int): List<Int> {
+        return resourceLinkDao.contentResourceMetadataFksByCollection(collectionId)
     }
 
     private fun buildResource(entity: ContentEntity): Content {

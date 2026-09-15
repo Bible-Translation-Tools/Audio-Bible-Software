@@ -6,6 +6,7 @@ import com.readystatesoftware.sqliteasset.SQLiteAssetHelper
 import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.persistence.database.DatabaseMigrator
+import org.bibletranslationtools.otter.common.persistence.database.sqldelight.DATABASE_FILE_NAME
 import org.bibletranslationtools.otter.common.persistence.database.daos.CheckingStatusDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.CollectionDao
 import org.bibletranslationtools.otter.common.persistence.database.daos.ContentDao
@@ -120,7 +121,7 @@ class AndroidAppDatabase(
     init {
         // SQLiteAssetHelper still owns seeding tr.sqlite out of assets and its schema version,
         // regardless of which driver ends up reading the file afterwards.
-        val databasePath = SQLiteAssetHelper(context, "tr.sqlite", null, 14).writableDatabase.path
+        val databasePath = SQLiteAssetHelper(context, DATABASE_FILE_NAME, null, 14).writableDatabase.path
 
         val opened = openConnection(databasePath)
         connection = opened.connection
