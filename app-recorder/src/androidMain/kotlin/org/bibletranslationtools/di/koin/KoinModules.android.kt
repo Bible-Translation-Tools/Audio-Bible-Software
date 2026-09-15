@@ -2,6 +2,8 @@ package org.bibletranslationtools.di.koin
 
 import android.content.Context
 import org.bibletranslationtools.bttrecorder2.di.koin.AppContext
+import org.bibletranslationtools.bttrecorder2.migration.AndroidLegacyRecorderStore
+import org.bibletranslationtools.bttrecorder2.migration.LegacyRecorderStore
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.persistence.AndroidDirectoryProvider
 import org.koin.android.ext.koin.androidContext
@@ -17,4 +19,10 @@ val androidContextModule = module {
 // sharedAndroidModules.
 val directoryProviderModule = module {
     single<IDirectoryProvider> { AndroidDirectoryProvider(get()) }
+}
+
+// Reads the legacy BTT-Recorder's database and takes in place, which is possible only because this
+// app ships the legacy applicationId and so is given the old app's data directories.
+val legacyRecorderStoreModule = module {
+    single<LegacyRecorderStore> { AndroidLegacyRecorderStore(androidContext()) }
 }

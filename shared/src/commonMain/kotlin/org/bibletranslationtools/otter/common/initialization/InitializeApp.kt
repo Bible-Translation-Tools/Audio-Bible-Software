@@ -21,6 +21,7 @@ package org.bibletranslationtools.otter.common.initialization
 import io.reactivex.Observable
 import io.reactivex.schedulers.Schedulers
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
+import org.bibletranslationtools.otter.common.api.persistence.config.Installable
 import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.ProgressStatus
@@ -34,7 +35,8 @@ class InitializeApp(
     private val initializeProjects: InitializeProjects,
     private val initializeTranslations: InitializeTranslations,
     private val directoryProvider: ITempFileProvider,
-    private val daoProvider: DaoProvider
+    private val daoProvider: DaoProvider,
+    private val initializeMigration: Installable? = null
 ) {
 
     private val logger = LoggerFactory.getLogger(InitializeApp::class.java)
@@ -42,14 +44,15 @@ class InitializeApp(
     fun initApp(): Observable<ProgressStatus> {
         val progressObservable = Observable
             .create { progressStatusEmitter ->
-                val initializers = listOf(
+                val initializers = listOfNotNull(
                     initializeVersification,
                     initializeLanguages,
                     initializeSources,
                     initializeUlb,
                     initializeTakeRepository,
                     initializeProjects,
-                    initializeTranslations
+                    initializeTranslations,
+                    initializeMigration
                 )
 
                 var total = 0.0

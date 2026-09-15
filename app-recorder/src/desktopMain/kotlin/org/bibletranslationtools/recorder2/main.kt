@@ -3,20 +3,22 @@ package org.bibletranslationtools.recorder2
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
-import java.awt.Taskbar
-import java.awt.Toolkit
+import org.bibletranslationtools.bttrecorder2.di.koin.recorderMigrationModule
+import org.bibletranslationtools.bttrecorder2.di.koin.recorderNarrationModule
 import org.bibletranslationtools.bttrecorder2.di.koin.recorderViewModelModule
 import org.bibletranslationtools.bttrecorder2.ui.App
 import org.bibletranslationtools.di.koin.directoryProviderModule
+import org.bibletranslationtools.di.koin.legacyRecorderStoreModule
 import org.bibletranslationtools.otter.common.device.AudioConfig
-import org.bibletranslationtools.shared.di.koin.sharedCommonModules
-import org.bibletranslationtools.shared.di.koin.sharedDesktopModules
 import org.bibletranslationtools.otter.common.device.AudioDeviceSelector
-import org.bibletranslationtools.otter.common.device.AudioSpec
 import org.bibletranslationtools.otter.common.device.AudioSystemConfig
 import org.bibletranslationtools.otter.common.device.JvmAudioLines
+import org.bibletranslationtools.shared.di.koin.sharedCommonModules
+import org.bibletranslationtools.shared.di.koin.sharedDesktopModules
 import org.bibletranslationtools.shared.logging.DesktopFileLogging
 import org.koin.core.context.startKoin
+import java.awt.Taskbar
+import java.awt.Toolkit
 
 fun main() {
     // FIRST: before anything obtains a logger. slf4j-simple defaults to stderr, which a packaged
@@ -52,7 +54,9 @@ fun main() {
         val koin = startKoin {
             modules(
                 sharedCommonModules + sharedDesktopModules +
-                    directoryProviderModule + recorderViewModelModule
+                directoryProviderModule + recorderViewModelModule +
+                recorderNarrationModule + legacyRecorderStoreModule +
+                recorderMigrationModule
             )
         }.koin
 

@@ -1,4 +1,4 @@
-appId: org.bibletranslationtools.recorder2
+appId: bible.translationtools.recorder
 ---
 # CreateProjectWizardFlowTest.createNewProjectViaWizard
 # Assumes main menu (or Project Management). Leaves Genesis on Project Management.

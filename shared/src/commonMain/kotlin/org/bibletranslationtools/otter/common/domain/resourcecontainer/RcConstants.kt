@@ -19,7 +19,16 @@
 package org.bibletranslationtools.otter.common.domain.resourcecontainer
 
 object RcConstants {
-    const val MEDIA_DIR = "composeResources/files/content"
+    /**
+     * Where a resource container keeps its media — a directory *inside* the container, which for a
+     * project backup is where the selected chapter takes go and what the manifest's project path
+     * points at.
+     *
+     * Not to be confused with `composeResources/files/content`, the path on the app's own Compose
+     * resource path where bundled source containers ship. The two are unrelated despite both
+     * mentioning "content", and conflating them puts an internal app path into a published backup.
+     */
+    const val MEDIA_DIR = "content"
     const val APP_SPECIFIC_DIR = ".apps/orature"
     const val TAKE_DIR = "$APP_SPECIFIC_DIR/takes"
     const val SOURCE_DIR = "$APP_SPECIFIC_DIR/source"
@@ -32,4 +41,19 @@ object RcConstants {
     const val SOURCE_MEDIA_DIR = "media"
     const val CHAPTER_NARRATION_FILE = "$TAKE_DIR/%s/chapter_narration.pcm"
     const val ACTIVE_VERSES_FILE = "$TAKE_DIR/%s/active_verses.json"
+
+    /**
+     * Extensions of opaque legacy source-audio containers that can sit in [SOURCE_AUDIO_DIR]
+     * alongside real audio.
+     *
+     * The legacy Android recorder stored source audio as an "Archive of Holding" (magic `aoh!` /
+     * `aoc!`), an archive keyed by language/version/book/chapter rather than playable audio. These
+     * are carried through import and export byte for byte so a decoder added later can read them in
+     * place. Membership here means "copy, never interpret", which is why they belong neither to
+     * `AudioFileFormat` nor to `AudioMetadataFileFormat`.
+     */
+    val LEGACY_SOURCE_AUDIO_EXTENSIONS = setOf("tr", "aoh", "aoc")
+
+    fun isLegacySourceAudio(extension: String) =
+        extension.lowercase() in LEGACY_SOURCE_AUDIO_EXTENSIONS
 }

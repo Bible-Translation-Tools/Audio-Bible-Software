@@ -1,5 +1,7 @@
 package org.bibletranslationtools.di.koin
 
+import org.bibletranslationtools.bttrecorder2.migration.LegacyRecorderStore
+import org.bibletranslationtools.bttrecorder2.migration.NoLegacyRecorderStore
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.persistence.DesktopDirectoryProvider
 import org.koin.dsl.module
@@ -17,4 +19,9 @@ val directoryProviderModule = module {
             osName = System.getProperty("os.name").uppercase()
         )
     }
+}
+
+// The legacy recorder was Android-only, so there is never anything to migrate here.
+val legacyRecorderStoreModule = module {
+    single<LegacyRecorderStore> { NoLegacyRecorderStore() }
 }

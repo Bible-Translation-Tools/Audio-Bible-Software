@@ -268,7 +268,11 @@ class NewSourceImporter(
         return resourceContainerRepository
             .updateContent(
                 container,
-                tree
+                tree,
+                // The row this import inserted, not merely the first sharing its identifier:
+                // otherwise a second version of an identifier has its text overlaid onto the
+                // first version's content rows.
+                container.manifest.dublinCore.version
             )
     }
 

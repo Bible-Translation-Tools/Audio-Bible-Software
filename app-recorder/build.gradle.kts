@@ -14,7 +14,9 @@ plugins {
     kotlin("plugin.serialization") version "2.1.10"
 }
 // Version comes from the release workflow (see .github/workflows/release.yml); falls back to 1.0 / 1
-// for local builds. Sets extra["appVersionName"], ["appVersionCode"], ["desktopPackageVersion"].
+// for local builds.
+// Sets extra["appVersionName"], ["appVersionCode"], ["recorderVersionCode"],
+// ["desktopPackageVersion"].
 apply(from = rootProject.file("gradle/release-version.gradle.kts"))
 
 
@@ -99,10 +101,19 @@ android {
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {
-        applicationId = "org.bibletranslationtools.recorder2"
+        // The legacy BTT-Recorder's applicationId rather than this module's namespace. Android
+        // scopes app-private storage by applicationId, so sharing it is what lets this app read the
+        // old Android-only recorder's database and takes in place and migrate them.
+        //
+        // As a result this build installs over the legacy app and must be signed with the legacy
+        // key, or the same Play App Signing key. Otherwise existing installs fail with
+        // INSTALL_FAILED_UPDATE_INCOMPATIBLE, and uninstalling to get past that deletes the very
+        // data being migrated.
+        applicationId = "bible.translationtools.recorder"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = (project.extra["appVersionCode"] as Int)
+        // Must outrank the legacy app's last published versionCode, since this installs over it.
+        versionCode = (project.extra["recorderVersionCode"] as Int)
         versionName = (project.extra["appVersionName"] as String)
     }
     packaging {

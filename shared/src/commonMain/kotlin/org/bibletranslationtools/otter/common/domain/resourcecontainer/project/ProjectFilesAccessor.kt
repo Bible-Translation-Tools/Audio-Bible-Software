@@ -177,9 +177,11 @@ class ProjectFilesAccessor(
                     val ext = it.substringAfterLast(".")
                     when (dir) {
                         RcConstants.SOURCE_DIR -> OratureFileFormat.isSupported(ext)
-                        RcConstants.SOURCE_AUDIO_DIR -> AudioFileFormat.isSupported(ext) || AudioMetadataFileFormat.isSupported(
-                            ext
-                        )
+                        // Export copies this directory unfiltered, so anything accepted here has
+                        // to include the opaque legacy containers or a round-trip drops them.
+                        RcConstants.SOURCE_AUDIO_DIR -> AudioFileFormat.isSupported(ext) ||
+                                AudioMetadataFileFormat.isSupported(ext) ||
+                                RcConstants.isLegacySourceAudio(ext)
 
                         else -> false
                     }

@@ -3,6 +3,9 @@ package org.bibletranslationtools.bttrecorder2.e2e.harness
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.bibletranslationtools.bttrecorder2.di.koin.recorderMigrationModule
+import org.bibletranslationtools.bttrecorder2.di.koin.recorderNarrationModule
+import org.bibletranslationtools.di.koin.legacyRecorderStoreModule
 import org.bibletranslationtools.bttrecorder2.di.koin.recorderViewModelModule
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.device.AudioDevice
@@ -50,7 +53,9 @@ object RecorderUiTestHarness {
 
         startKoin {
             modules(
-                sharedCommonModules + sharedDesktopModules + recorderViewModelModule + module {
+                sharedCommonModules + sharedDesktopModules + recorderViewModelModule +
+                    recorderNarrationModule + legacyRecorderStoreModule + recorderMigrationModule +
+                    module {
                     single<IDirectoryProvider> {
                         DesktopDirectoryProvider(
                             appName = "BTT Recorder",

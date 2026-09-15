@@ -1,4 +1,4 @@
-appId: org.bibletranslationtools.recorder2
+appId: bible.translationtools.recorder
 ---
 # MainMenuNavigationFlowTest.recordWithoutActiveProjectGoesToProjectManagement
 # Assumes main menu, no active project. Leaves app on main menu.

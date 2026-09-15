@@ -103,10 +103,11 @@ class ResourceContainerRepository(
 
     override fun updateContent(
         rc: ResourceContainer,
-        rcTree: OtterTree<CollectionOrContent>
+        rcTree: OtterTree<CollectionOrContent>,
+        version: String?
     ): Single<ImportResult> {
         return Single.fromCallable {
-            val rcMetadata = getMetadataForContainer(rc) ?: run {
+            val rcMetadata = getMetadataForContainer(rc, version) ?: run {
                 return@fromCallable ImportResult.IMPORT_ERROR
             }
             val projects = collectionRepository
@@ -321,7 +322,15 @@ class ResourceContainerRepository(
         return bigMap
     }
 
-    private fun getMetadataForContainer(rc: ResourceContainer): ResourceMetadata? {
+    /**
+     * @param version restricts the match to that dublin_core version. Null matches on language and
+     *   identifier alone and takes the first such row — see
+     *   [IResourceContainerRepository.updateContent].
+     */
+    private fun getMetadataForContainer(
+        rc: ResourceContainer,
+        version: String? = null
+    ): ResourceMetadata? {
         val language = languageDao.fetchBySlug(rc.manifest.dublinCore.language.identifier) ?: run {
             return null
         }
@@ -331,7 +340,8 @@ class ResourceContainerRepository(
                 val isSource = entity.derivedFromFk == null
                 val rcSlugMatches = entity.identifier == rc.manifest.dublinCore.identifier
                 val languagesMatch = entity.languageFk == language.id
-                isSource && rcSlugMatches && languagesMatch
+                val versionMatches = version == null || entity.version == version
+                isSource && rcSlugMatches && languagesMatch && versionMatches
             } ?: run { return null }
 
         return ResourceMetadataMapper()
@@ -343,13 +353,28 @@ class ResourceContainerRepository(
 
     /**
      * Insert metadata, return metadata modified to include row ID.
+     *
+     * A source is identified the way the database identifies it —
+     * `UNIQUE (language_fk, identifier, version, creator, derivedFrom_fk)` — so two versions of one
+     * identifier are distinct sources and may coexist.
+     *
+     * The match is on that exact identity rather than on the newest version of the identifier,
+     * because versions sort as strings: re-importing a version that is not the highest would
+     * otherwise pass this guard and fail later on the database constraint instead of reporting
+     * [ImportResult.ALREADY_EXISTS].
+     *
      * @throws [ImportException] if a matching row already exists.
      */
     private fun insertMetadataOrThrow(
         metadata: ResourceMetadata
     ): ResourceMetadata {
-        val existingRow = resourceMetadataDao.fetchLatestVersion(metadata.language.slug, metadata.identifier)
-        if (existingRow != null && existingRow.derivedFromFk == null) {
+        val existingRow = resourceMetadataDao.fetchAll().firstOrNull { entity ->
+            entity.derivedFromFk == null &&
+                    entity.identifier == metadata.identifier &&
+                    entity.version == metadata.version &&
+                    entity.languageFk == metadata.language.id
+        }
+        if (existingRow != null) {
             logger.error("Error in inserting metadata, row already exists!: $existingRow")
             throw ImportException(ImportResult.ALREADY_EXISTS)
         }
