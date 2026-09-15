@@ -8,19 +8,18 @@ import io.github.vinceglb.filekit.write
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
+import org.bibletranslationtools.bttrecorder2.exports.WriteNarrationForExport
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
-import org.bibletranslationtools.otter.common.data.primitives.Collection as OratureCollection
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstants
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.domain.project.ProjectCompletionStatus
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportOptions
@@ -30,20 +29,22 @@ import org.bibletranslationtools.otter.common.domain.project.exporter.IProjectEx
 import org.bibletranslationtools.otter.common.domain.project.exporter.ProjectExporterCallback
 import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.BackupProjectExporter
 import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.SourceProjectExporter
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstants
+import org.bibletranslationtools.shared.resources.Res
+import org.bibletranslationtools.shared.resources.export_error_generic
+import org.bibletranslationtools.shared.resources.export_error_load_chapters_failed
+import org.bibletranslationtools.shared.resources.export_error_no_audio
+import org.bibletranslationtools.shared.resources.export_error_no_file
+import org.bibletranslationtools.shared.resources.export_error_no_takes_selected
+import org.bibletranslationtools.shared.resources.export_error_not_initialized
+import org.bibletranslationtools.shared.resources.export_error_packaging
+import org.bibletranslationtools.shared.resources.export_error_project_not_found
+import org.jetbrains.compose.resources.getString
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
-import org.jetbrains.compose.resources.getString
-import org.bibletranslationtools.shared.resources.Res
-import org.bibletranslationtools.shared.resources.export_error_project_not_found
-import org.bibletranslationtools.shared.resources.export_error_load_chapters_failed
-import org.bibletranslationtools.shared.resources.export_error_no_file
-import org.bibletranslationtools.shared.resources.export_error_generic
-import org.bibletranslationtools.shared.resources.export_error_not_initialized
-import org.bibletranslationtools.shared.resources.export_error_no_audio
-import org.bibletranslationtools.shared.resources.export_error_no_takes_selected
-import org.bibletranslationtools.shared.resources.export_error_packaging
 import java.io.File
 import java.util.UUID
+import org.bibletranslationtools.otter.common.data.primitives.Collection as OratureCollection
 
 /**
  * Owns three phases of project export:
@@ -70,6 +71,7 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
     private val directoryProvider: ITempFileProvider by inject()
     private val workbookRepository: IWorkbookRepository by inject()
     private val completionStatus: ProjectCompletionStatus by inject()
+    private val writeNarrationForExport: WriteNarrationForExport by inject()
 
     private val _options = MutableStateFlow<ExportOptionsState>(ExportOptionsState.Closed)
     val options: StateFlow<ExportOptionsState> = _options.asStateFlow()
@@ -302,9 +304,27 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
                 val exporter: IProjectExporter = exporterFor(type)
                 val exportOptions = chapters?.let { ExportOptions(it) }
 
-                val result = exporter
-                    .export(tempDir, workbook, callback, exportOptions)
-                    .await()
+                // Orature reads a chapter's audio from its narration, or from a compiled chapter
+                // take, and never from per-unit takes — so a backup of a chapter with neither opens
+                // with no audio. Written into the project because that is where the exporter collects
+                // it from, and removed again below whatever happens.
+                val narrationChapters = if (type == ExportType.BACKUP) {
+                    withContext(Dispatchers.IO) {
+                        writeNarrationForExport.execute(workbook)
+                    }
+                } else {
+                    emptyList()
+                }
+
+                val result = try {
+                    exporter
+                        .export(tempDir, workbook, callback, exportOptions)
+                        .await()
+                } finally {
+                    withContext(NonCancellable + Dispatchers.IO) {
+                        writeNarrationForExport.cleanUp(workbook, narrationChapters)
+                    }
+                }
 
                 if (result != ExportResult.SUCCESS) {
                     // The Orature exporters swallow the underlying cause

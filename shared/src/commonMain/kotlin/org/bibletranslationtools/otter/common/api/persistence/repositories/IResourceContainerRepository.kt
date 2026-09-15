@@ -37,6 +37,11 @@ interface IResourceContainerRepository {
      *
      * The content could update the text in the content, or if a verse was bridged.
      *
+     * The source updated is the one matching [rc]'s language and identifier and, where several
+     * versions of that identifier coexist, its dublin_core version. A version not yet in the
+     * database falls back to the first row for the identifier, which is how an in-place version
+     * upgrade overlays the newer text before restamping the version.
+     *
      * @param rc The resource container of the source being updated
      * @param rcTree The tree with the content to update
      */
