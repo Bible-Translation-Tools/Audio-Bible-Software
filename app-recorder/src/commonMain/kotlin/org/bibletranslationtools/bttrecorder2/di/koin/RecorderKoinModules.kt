@@ -1,5 +1,7 @@
 package org.bibletranslationtools.bttrecorder2.di.koin
 
+import org.bibletranslationtools.bttrecorder2.exports.WriteNarrationForExport
+import org.bibletranslationtools.bttrecorder2.imports.ImportNarrationAsTakes
 import org.bibletranslationtools.bttrecorder2.services.UnitTargetLoader
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterListViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportProjectViewModel
@@ -37,4 +39,17 @@ val recorderViewModelModule = module {
     // Process-lifetime singleton so the ProjectManagement + Recorder routes share the
     // same export state (isCurrentlyExporting gates UI); auto-cleans temp dirs on init.
     single { ExportProjectViewModel() }
+}
+
+/**
+ * Converts between the narration audio Orature reads and the per-unit takes this recorder records —
+ * [ImportNarrationAsTakes] on the way in, [WriteNarrationForExport] on the way out.
+ *
+ * Its own module because [recorderViewModelModule] binds ViewModels. These two depend only on use
+ * cases :shared binds, so every graph composes this one — including `RecorderUiTestHarness`, which
+ * lets the ViewModels resolve them as required rather than optional dependencies.
+ */
+val recorderNarrationModule = module {
+    factoryOf(::ImportNarrationAsTakes)
+    factoryOf(::WriteNarrationForExport)
 }

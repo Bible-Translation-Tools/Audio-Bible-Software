@@ -18,32 +18,26 @@
  */
 package org.bibletranslationtools.otter.common.domain.narration
 
-import io.reactivex.rxkotlin.toObservable
 import io.reactivex.subjects.PublishSubject
-import org.slf4j.LoggerFactory
-import org.bibletranslationtools.otter.common.device.AudioFileReader
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
-import org.bibletranslationtools.otter.common.data.audio.BookMarker
-import org.bibletranslationtools.otter.common.data.audio.ChapterMarker
-import org.bibletranslationtools.otter.common.data.audio.VerseMarker
-import org.bibletranslationtools.otter.common.data.primitives.BOOK_TITLE_SORT
-import org.bibletranslationtools.otter.common.data.primitives.CHAPTER_TITLE_SORT
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
+import org.bibletranslationtools.otter.common.device.AudioFileReader
 import org.bibletranslationtools.otter.common.device.AudioFileReaderProvider
 import org.bibletranslationtools.otter.common.device.AudioSpec
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
+import org.slf4j.LoggerFactory
 import java.io.File
 import java.io.RandomAccessFile
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.max
 import kotlin.math.min
-import kotlinx.serialization.SerializationException
-import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.json.Json
 
-private const val ACTIVE_VERSES_FILE_NAME = "active_verses.json"
-private const val CHAPTER_NARRATION_FILE_NAME = "chapter_narration.pcm"
+internal const val ACTIVE_VERSES_FILE_NAME = "active_verses.json"
+internal const val CHAPTER_NARRATION_FILE_NAME = "chapter_narration.pcm"
 
 internal class ChapterRepresentation(
     private val workbook: Workbook,
@@ -110,14 +104,7 @@ internal class ChapterRepresentation(
             .observableChunks
             .filter { it.isNotEmpty() }
             .blockingFirst()
-            .map { chunk ->
-                val marker = when (chunk.sort) {
-                    BOOK_TITLE_SORT -> BookMarker(workbook.source.slug, 0)
-                    CHAPTER_TITLE_SORT -> ChapterMarker(chapter.sort, 0)
-                    else -> VerseMarker(chunk.start, chunk.end, 0)
-                }
-                VerseNode(false, marker)
-            }
+            .map { chunk -> VerseNode(false, narrationMarkerFor(chunk, workbook, chapter)) }
             .toMutableList()
     }
 
