@@ -2,7 +2,6 @@ package org.bibletranslationtools.shared.di.koin
 
 import org.bibletranslationtools.otter.common.audio.wav.IWaveFileCreator
 import org.bibletranslationtools.otter.common.audio.wav.WaveFileCreator
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.domain.audio.AudioBouncer
 import org.bibletranslationtools.otter.common.domain.audio.AudioConverter
 import org.bibletranslationtools.otter.common.domain.audio.AudioExporter
@@ -19,11 +18,11 @@ import org.bibletranslationtools.otter.common.domain.content.CreateChunks
 import org.bibletranslationtools.otter.common.domain.content.ResetChunks
 import org.bibletranslationtools.otter.common.domain.content.SaveAudioAsNewTake
 import org.bibletranslationtools.otter.common.domain.content.TakeCreator
+import org.bibletranslationtools.otter.common.domain.languages.ImportLanguages
 import org.bibletranslationtools.otter.common.domain.narration.AudioFileUtils
 import org.bibletranslationtools.otter.common.domain.narration.LoadChapterSourceText
 import org.bibletranslationtools.otter.common.domain.narration.PcmTakeTransformer
 import org.bibletranslationtools.otter.common.domain.narration.SplitAudioOnCues
-import org.bibletranslationtools.otter.common.domain.languages.ImportLanguages
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
 import org.bibletranslationtools.otter.common.domain.project.InitializeProjectFiles
 import org.bibletranslationtools.otter.common.domain.project.OpenWorkbook
@@ -34,7 +33,6 @@ import org.bibletranslationtools.otter.common.domain.project.exporter.resourceco
 import org.bibletranslationtools.otter.common.domain.project.importer.BurritoImporter
 import org.bibletranslationtools.otter.common.domain.project.importer.BurritoImporterFactory
 import org.bibletranslationtools.otter.common.domain.project.importer.ExistingSourceImporter
-import org.bibletranslationtools.otter.common.domain.project.importer.IProjectImporterFactory
 import org.bibletranslationtools.otter.common.domain.project.importer.NewSourceImporter
 import org.bibletranslationtools.otter.common.domain.project.importer.OngoingProjectImporter
 import org.bibletranslationtools.otter.common.domain.project.importer.RCImporterFactory
@@ -52,16 +50,14 @@ import org.bibletranslationtools.otter.common.initialization.InitializeTakeRepos
 import org.bibletranslationtools.otter.common.initialization.InitializeTranslations
 import org.bibletranslationtools.otter.common.initialization.InitializeUlb
 import org.bibletranslationtools.otter.common.initialization.InitializeVersification
-import org.koin.core.module.dsl.factoryOf
-import org.koin.core.module.dsl.singleOf
-import org.koin.dsl.bind
-import org.koin.dsl.module
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.AudioPluginDataMapper
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.CollectionMapper
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.LanguageMapper
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.MarkerMapper
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.ResourceMetadataMapper
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.TranslationMapper
+import org.koin.core.module.dsl.factoryOf
+import org.koin.dsl.module
 
 val implicitCommonModule = module {
     single<IWaveFileCreator> { WaveFileCreator() }

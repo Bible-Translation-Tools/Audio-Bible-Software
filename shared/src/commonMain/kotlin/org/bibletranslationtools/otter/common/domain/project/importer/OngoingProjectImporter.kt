@@ -236,7 +236,6 @@ class OngoingProjectImporter(
                     percent = 10.0
                 )
                 directoryProvider.newFileReader(resourceContainer).use { fileReader ->
-                    val existingSource = fetchExistingSource(manifestProject, manifestSources)
                     try {
                         callback?.onNotifyProgress(localizeKey = "importingSource", percent = 25.0)
                         // Import Sources even if existing source exists in order to potentially merge source audio
@@ -244,11 +243,13 @@ class OngoingProjectImporter(
                     } catch (e: ImportException) {
                         logger.error("Error importing source of resumable project", e)
                     }
-                    val sourceCollection = if (existingSource == null) {
-                        findSourceCollection(manifestSources, manifestProject)
-                    } else {
-                        existingSource
-                    }
+                    // Looked up AFTER importing the sources, because that import can change the
+                    // existing source's version in place. A lookup made before it returns the old
+                    // version, and deriving from a stale version produces a second derived project
+                    // alongside the one every later derivation resolves to.
+                    val existingSource = fetchExistingSource(manifestProject, manifestSources)
+                    val sourceCollection =
+                        existingSource ?: findSourceCollection(manifestSources, manifestProject)
                     syncProjectVersion(manifest, sourceCollection.resourceContainer!!.version)
 
                     val metadata = languageRepository
@@ -688,21 +689,30 @@ class OngoingProjectImporter(
     }
 
     /**
-     * Find the relevant source (if any) for the project, regardless of version
+     * Find the relevant source (if any) for the project.
+     *
+     * Prefers the source at the version the manifest names, since several versions of one
+     * identifier can be installed side by side and each derives its own project. A version that is
+     * not installed falls back to any source sharing the identifier and language, which is how a
+     * backup written against a version since upgraded in place still resolves.
      */
     private fun fetchExistingSource(
         manifestProject: Project,
         requestedSources: Set<Source>
     ): Collection? {
-        return collectionRepository.getSourceProjects().blockingGet()
-            .asSequence()
-            .firstOrNull { collection ->
-                requestedSources.any { source ->
-                    manifestProject.identifier == collection.slug &&
-                            source.identifier == collection.resourceContainer!!.identifier &&
-                            source.language == collection.resourceContainer!!.language.slug
-                }
-            }
+        fun matches(collection: Collection, withVersion: Boolean): Boolean {
+            val metadata = collection.resourceContainer!!
+            return manifestProject.identifier == collection.slug &&
+                    requestedSources.any { source ->
+                        source.identifier == metadata.identifier &&
+                                source.language == metadata.language.slug &&
+                                (!withVersion || source.version == metadata.version)
+                    }
+        }
+
+        val candidates = collectionRepository.getSourceProjects().blockingGet()
+        return candidates.firstOrNull { matches(it, withVersion = true) }
+            ?: candidates.firstOrNull { matches(it, withVersion = false) }
     }
 
     private fun importSources(fileReader: IFileReader) {

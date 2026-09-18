@@ -1,5 +1,9 @@
 package org.bibletranslationtools.bttrecorder2.di.koin
 
+import org.bibletranslationtools.bttrecorder2.exports.WriteNarrationForExport
+import org.bibletranslationtools.bttrecorder2.imports.ImportChapterRepresentationAsVerses
+import org.bibletranslationtools.bttrecorder2.narration.CreateChapterRepresentationFromVerses
+import org.bibletranslationtools.bttrecorder2.narration.ExtractVersesFromChapterRepresentation
 import org.bibletranslationtools.bttrecorder2.services.UnitTargetLoader
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterListViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportProjectViewModel
@@ -37,4 +41,21 @@ val recorderViewModelModule = module {
     // Process-lifetime singleton so the ProjectManagement + Recorder routes share the
     // same export state (isCurrentlyExporting gates UI); auto-cleans temp dirs on init.
     single { ExportProjectViewModel() }
+}
+
+/**
+ * Converts between the narration audio Orature reads and the per-unit takes this recorder records —
+ * [ImportChapterRepresentationAsVerses] on the way in, [WriteNarrationForExport] on the way out,
+ * over [ExtractVersesFromChapterRepresentation] and [CreateChapterRepresentationFromVerses], the two
+ * halves of the conversion.
+ *
+ * Its own module because [recorderViewModelModule] binds ViewModels. These two depend only on use
+ * cases :shared binds, so every graph composes this one — including `RecorderUiTestHarness`, which
+ * lets the ViewModels resolve them as required rather than optional dependencies.
+ */
+val recorderNarrationModule = module {
+    factoryOf(::ExtractVersesFromChapterRepresentation)
+    factoryOf(::CreateChapterRepresentationFromVerses)
+    factoryOf(::ImportChapterRepresentationAsVerses)
+    factoryOf(::WriteNarrationForExport)
 }

@@ -2,20 +2,32 @@ package org.bibletranslationtools.otter.integration
 
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.data.primitives.Collection
+import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
+import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ILanguageRepository
 import org.bibletranslationtools.otter.common.domain.collections.CreateProject
 import org.bibletranslationtools.otter.common.domain.languages.ImportLanguages
 import org.bibletranslationtools.otter.common.domain.project.importer.RCImporterFactory
 import io.reactivex.Observable
 import org.bibletranslationtools.otter.common.data.ProgressStatus
+import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.BackupProjectExporter
+import org.bibletranslationtools.otter.common.domain.project.importer.NewSourceImporter
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstants
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.VersificationTreeBuilder
 import org.bibletranslationtools.otter.common.initialization.InitializeVersification
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
+import org.wycliffeassociates.resourcecontainer.entity.Checking
+import org.wycliffeassociates.resourcecontainer.entity.DublinCore
+import org.wycliffeassociates.resourcecontainer.entity.Manifest
+import org.wycliffeassociates.resourcecontainer.entity.Project
+import org.wycliffeassociates.resourcecontainer.entity.Source
+import org.wycliffeassociates.resourcecontainer.entity.Language as RcLanguage
 import org.bibletranslationtools.otter.common.persistence.DesktopDirectoryProvider
 import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.bibletranslationtools.otter.common.persistence.entities.ContentEntity
@@ -27,6 +39,7 @@ import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
 import org.koin.dsl.module
 import java.io.File
+import java.time.LocalDate
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
@@ -64,7 +77,7 @@ import kotlin.test.assertTrue
  */
 class IntegrationEnvironment private constructor(
     private val tempRoot: File,
-    private val koin: Koin
+    internal val koin: Koin
 ) : AutoCloseable {
 
     val db: DaoProvider = koin.get()
@@ -74,6 +87,9 @@ class IntegrationEnvironment private constructor(
 
     /** A fresh importer chain (ongoing → existing source → new source), as the app builds it. */
     val importer get() = importerFactory.makeImporter()
+
+    /** The real backup exporter, for tests that assert what an export actually contains. */
+    val backupExporter: BackupProjectExporter get() = koin.get()
 
     // ── actions ──────────────────────────────────────────────────────────────────────────
 
@@ -135,6 +151,110 @@ class IntegrationEnvironment private constructor(
     }
 
     /**
+     * Derives a copy of [rcFile] stamped with [version] and trimmed to [books]: the shape
+     * `:app-recorder`'s legacy migration imports, one identifier with the recording mode carried by
+     * the dublin_core version.
+     *
+     * Trimmed because what is under test is the source's identity, and a single book keeps the
+     * import to hundreds of content rows rather than tens of thousands.
+     */
+    fun withVersion(
+        rcFile: String,
+        version: String,
+        books: Set<String>,
+        bridgeFirstTwoVerses: Boolean = false
+    ): File {
+        val source = rcResourceFile(rcFile)
+        val target = File(tempRoot, "en_ulb-$version${if (bridgeFirstTwoVerses) "-bridged" else ""}.zip")
+        val usfmName = Regex("""(?:^|/)\d+-(\w+)\.usfm$""")
+        val kept = mutableSetOf<String>()
+
+        ZipFile(source).use { zip ->
+            ZipOutputStream(target.outputStream().buffered()).use { out ->
+                zip.entries().asSequence().forEach { entry ->
+                    if (entry.isDirectory) return@forEach
+                    val slug = usfmName.find(entry.name)?.groupValues?.get(1)?.lowercase()
+                    if (slug != null && slug !in books) return@forEach
+                    if (slug != null) kept += slug
+
+                    val bytes = zip.getInputStream(entry).use { it.readBytes() }
+                    out.putNextEntry(ZipEntry(entry.name))
+                    when {
+                        entry.name.endsWith("manifest.yaml") ->
+                            out.write(stampVersion(bytes.decodeToString(), version, books).toByteArray())
+
+                        slug != null && bridgeFirstTwoVerses ->
+                            out.write(bridgeFirstTwo(bytes.decodeToString()).toByteArray())
+
+                        else -> out.write(bytes)
+                    }
+                    out.closeEntry()
+                }
+            }
+        }
+        assertEquals(books, kept, "not every requested book is in $rcFile")
+        return target
+    }
+
+    /**
+     * Merges verses 1 and 2 into `\v 1-2`, the shape the recorder's chunk-mode text carries.
+     *
+     * A bridge is what makes the content overlay observable at all: `updateBridges` runs during the
+     * content update that follows the structural import, so a source whose text has no bridges looks
+     * the same whether that update targeted it or another version of the same identifier.
+     */
+    private fun bridgeFirstTwo(usfm: String): String {
+        // Literal string operations rather than regex: the markers and the replacement both
+        // contain backslashes, which regex would read as escapes on either side.
+        val verse1 = "\\v 1 "
+        val verse2 = "\\v 2 "
+        assertTrue(usfm.contains(verse1), "no $verse1 marker to bridge")
+        assertTrue(usfm.contains(verse2), "no $verse2 marker to bridge")
+        return usfm
+            .replaceFirst(verse1, "\\v 1-2 ")
+            .replaceFirst(verse2, "")
+    }
+
+    /** Rewrites `dublin_core.version` and keeps only [books]' `projects:` entries. */
+    private fun stampVersion(manifest: String, version: String, books: Set<String>): String {
+        val projectId = Regex("""^\s*identifier:\s*'(\w+)'\s*$""")
+        val lines = Regex("""^  version:.*$""", RegexOption.MULTILINE)
+            .replaceFirst(manifest, "  version: '$version'")
+            .split("\n")
+        val header = lines.indexOfFirst { it.trimEnd() == "projects:" }
+        if (header < 0) return lines.joinToString("\n")
+
+        val keptBlocks = mutableListOf<String>()
+        var block = mutableListOf<String>()
+        fun flush() {
+            val slug = block.firstNotNullOfOrNull { projectId.find(it)?.groupValues?.get(1) }
+            if (slug != null && slug in books) keptBlocks += block
+            block = mutableListOf()
+        }
+        for (index in (header + 1) until lines.size) {
+            if (lines[index].trimEnd() == "  -") flush()
+            block += lines[index]
+        }
+        flush()
+        return (lines.take(header + 1) + keptBlocks).joinToString("\n")
+    }
+
+    /**
+     * Imports straight through [NewSourceImporter], bypassing the chain, as the legacy migration
+     * does: `ExistingSourceImporter` matches a source on language and identifier alone and would
+     * take a second version of an identifier as an update of the first.
+     */
+    fun importAsNewSource(rc: File): ImportResult =
+        koin.get<NewSourceImporter>().import(rc, null, null).blockingGet()
+
+    /** Every source row (`derivedFrom_fk IS NULL`) as `identifier` to `version`. */
+    fun sourceIdentities(): List<Pair<String, String>> =
+        db.resourceMetadataDao.fetchAll()
+            .filter { it.derivedFromFk == null }
+            .map { it.identifier to it.version }
+            .sortedBy { it.second }
+
+    /**
      * @param deriveProjectFromVerses whether verse rows are derived into the target. NOT inferred from
      *   [mode] — `CreateProject.create` takes the two independently, and only `createAllBooks` couples
      *   them (`isVerseByVerse = projectMode != TRANSLATION`). The recorder passes both explicitly.
@@ -147,6 +267,65 @@ class IntegrationEnvironment private constructor(
     ): Collection = koin.get<CreateProject>()
         .create(sourceProject, targetLanguage, mode, resourceId = null, deriveProjectFromVerses)
         .blockingGet()
+
+    /**
+     * Writes into [dir] the manifest of a project derived from [sourceMetadata] into
+     * [targetLanguage]: the target language import looks up, the source it matches a collection
+     * against, and the one book it derives. The same shape the recorder's `WriteDerivedManifest`
+     * writes for a container it assembles, kept here because `:shared` cannot depend on the app.
+     */
+    fun writeDerivedManifest(
+        dir: File,
+        targetLanguage: Language,
+        sourceMetadata: ResourceMetadata,
+        bookSlug: String,
+        bookTitle: String,
+        bookSort: Int
+    ) {
+        val today = LocalDate.now().toString()
+        val dublinCore = DublinCore(
+            type = "book",
+            format = "text/usfm",
+            identifier = sourceMetadata.identifier,
+            title = sourceMetadata.title,
+            subject = sourceMetadata.subject,
+            language = RcLanguage(
+                direction = targetLanguage.direction,
+                identifier = targetLanguage.slug,
+                title = targetLanguage.name
+            ),
+            source = mutableListOf(
+                Source(sourceMetadata.identifier, sourceMetadata.language.slug, sourceMetadata.version)
+            ),
+            rights = sourceMetadata.license,
+            creator = RcConstants.DERIVED_CREATOR,
+            contributor = mutableListOf(),
+            issued = today,
+            modified = today,
+            version = sourceMetadata.version
+        )
+        val project = Project(
+            title = bookTitle,
+            identifier = bookSlug,
+            sort = bookSort,
+            path = "./${RcConstants.MEDIA_DIR}"
+        )
+        dir.mkdirs()
+        // create() rather than load(), the directory holding no manifest yet; it fills in the
+        // conformsTo the importer checks once the init block has run, so write() comes after.
+        ResourceContainer.create(dir) {
+            manifest = Manifest(dublinCore, listOf(project), Checking())
+        }.use { it.write() }
+    }
+
+    /** The open workbook for a derived project, for tests that need the workbook model. */
+    fun workbook(derived: Collection): Workbook =
+        koin.get<IWorkbookRepository>().getWorkbook(derived).blockingGet()
+            ?: error("could not open a workbook for ${derived.slug}")
+
+    fun closeWorkbook(workbook: Workbook) {
+        koin.get<IWorkbookRepository>().closeWorkbook(workbook)
+    }
 
     /** An imported source book by slug, e.g. "jud". */
     fun sourceBook(slug: String): Collection {
