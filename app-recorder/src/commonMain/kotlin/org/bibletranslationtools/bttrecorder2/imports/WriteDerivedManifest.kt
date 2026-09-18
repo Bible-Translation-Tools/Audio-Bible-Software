@@ -1,4 +1,4 @@
-package org.bibletranslationtools.otter.common.domain.resourcecontainer.project
+package org.bibletranslationtools.bttrecorder2.imports
 
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
@@ -22,8 +22,8 @@ import org.wycliffeassociates.resourcecontainer.entity.Language as RcLanguage
  * builds a container to feed back into import therefore has to describe the project the same way
  * Orature's own derived containers do, which is what this centralizes.
  *
- * It exists because the resource-container library is `:shared`'s own dependency and not on the
- * apps' compile classpath, so an app assembling a container cannot write a manifest itself.
+ * It lives in the recorder because only the recorder assembles containers outside a workbook;
+ * `:shared` exposes the resource-container library (`api`) for it.
  */
 class WriteDerivedManifest {
 
@@ -67,7 +67,7 @@ class WriteDerivedManifest {
                 )
             ),
             rights = sourceMetadata.license,
-            creator = DERIVED_CREATOR,
+            creator = RcConstants.DERIVED_CREATOR,
             contributor = contributors.toMutableList(),
             issued = today,
             modified = today,
@@ -96,17 +96,6 @@ class WriteDerivedManifest {
     }
 
     companion object {
-        /**
-         * What this codebase records as the creator of a project it derives, and so part of what the
-         * database matches a derived container on.
-         *
-         * The value is a historical accident: `CollectionRepository` quoted the constant's *name*
-         * rather than its value (Orature proper writes "Orature"), and every derived row and backup
-         * written since carries the literal string. It is kept as is because changing it would stop
-         * existing rows and backups from matching, so do not correct the spelling.
-         */
-        const val DERIVED_CREATOR = "OratureInfo.SUITE_NAME"
-
         private const val TYPE = "book"
         private const val FORMAT = "text/usfm"
     }

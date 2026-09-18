@@ -19,7 +19,6 @@
 package org.bibletranslationtools.otter.common.domain.narration
 
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.Transient
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
 import org.bibletranslationtools.otter.common.data.audio.BookMarker
 import org.bibletranslationtools.otter.common.data.audio.ChapterMarker
@@ -29,7 +28,7 @@ import java.lang.UnsupportedOperationException
 import kotlin.math.min
 
 @Serializable
-internal data class VerseNode(
+data class VerseNode(
     var placed: Boolean = false,
     val marker: AudioMarker,
     var sectors: MutableList<@Serializable(with = IntRangeSerializer::class) IntRange> = mutableListOf()

@@ -1,11 +1,11 @@
-package org.bibletranslationtools.otter.integration
+package org.bibletranslationtools.bttrecorder2.narration
 
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.domain.audio.AudioBouncer
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
-import org.bibletranslationtools.otter.common.domain.narration.ExtractNarrationVerses
+import org.bibletranslationtools.bttrecorder2.integration.RecorderIntegrationEnvironment
 import java.io.File
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -27,10 +27,10 @@ import kotlin.test.assertTrue
  *    and those are stitched back together in region order. Slicing the scratch file on unit
  *    boundaries would silently return the wrong audio for such a unit.
  */
-class ExtractNarrationVersesTest {
+class ExtractVersesFromChapterRepresentationTest {
 
-    private var env: IntegrationEnvironment? = null
-    private lateinit var extract: ExtractNarrationVerses
+    private var env: RecorderIntegrationEnvironment? = null
+    private lateinit var extract: ExtractVersesFromChapterRepresentation
 
     @AfterTest
     fun tearDown() {
@@ -39,10 +39,10 @@ class ExtractNarrationVersesTest {
     }
 
     /** A verse-by-verse Jude project: 25 verse units plus the book and chapter titles. */
-    private fun judeProject(): Triple<IntegrationEnvironment, Workbook, Chapter> {
-        val e = IntegrationEnvironment.create().also { env = it }
-        extract = ExtractNarrationVerses(e.directoryProvider, AudioBouncer())
-        e.import("en_ulb.zip")
+    private fun judeProject(): Triple<RecorderIntegrationEnvironment, Workbook, Chapter> {
+        val e = RecorderIntegrationEnvironment.create().also { env = it }
+        extract = ExtractVersesFromChapterRepresentation(e.directoryProvider, AudioBouncer())
+        e.importUlb(BOOK)
         val derived = e.createProject(
             sourceProject = e.sourceBook(BOOK),
             targetLanguage = e.language("en"),

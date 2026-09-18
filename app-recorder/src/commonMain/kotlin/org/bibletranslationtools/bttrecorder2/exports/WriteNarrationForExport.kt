@@ -3,7 +3,7 @@ package org.bibletranslationtools.bttrecorder2.exports
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.domain.narration.WriteNarrationVerses
+import org.bibletranslationtools.bttrecorder2.narration.CreateChapterRepresentationFromVerses
 import org.bibletranslationtools.otter.common.domain.narration.narrationMarkerFor
 import org.slf4j.LoggerFactory
 
@@ -31,7 +31,7 @@ import org.slf4j.LoggerFactory
  * authoritative by anything that opens it, ahead of the takes it was derived from.
  */
 class WriteNarrationForExport(
-    private val writeNarrationVerses: WriteNarrationVerses
+    private val createChapterRepresentation: CreateChapterRepresentationFromVerses
 ) {
 
     private val logger = LoggerFactory.getLogger(WriteNarrationForExport::class.java)
@@ -48,7 +48,7 @@ class WriteNarrationForExport(
                 // A compiled chapter take is already there and outranks anything written here.
                 return@forEach
             }
-            if (writeNarrationVerses.hasNarration(workbook, chapter)) {
+            if (createChapterRepresentation.hasNarration(workbook, chapter)) {
                 // Not this recorder's to replace: narration already in the project outranks the
                 // takes, and rewriting it would discard audio nothing else holds. It is exported as
                 // it stands and, not having been written here, is not cleaned up either.
@@ -58,7 +58,9 @@ class WriteNarrationForExport(
             val units = recordedUnits(workbook, chapter)
             if (units.isEmpty()) return@forEach
 
-            if (writeNarrationVerses.execute(workbook, chapter, units)) {
+            val representation = createChapterRepresentation.execute(workbook, chapter, units)
+            if (representation != null) {
+                representation.closeConnections()
                 written += chapter
             } else {
                 logger.warn("Could not write narration for ${chapter.title}; exporting without it")
@@ -73,7 +75,7 @@ class WriteNarrationForExport(
     /** Removes the narration written by [execute]. Safe to call for chapters that were skipped. */
     fun cleanUp(workbook: Workbook, chapters: List<Chapter>) {
         chapters.forEach { chapter ->
-            if (!writeNarrationVerses.deleteNarration(workbook, chapter)) {
+            if (!createChapterRepresentation.deleteNarration(workbook, chapter)) {
                 logger.error("Narration written for export is still in ${chapter.title}")
             }
         }
@@ -86,7 +88,7 @@ class WriteNarrationForExport(
      * of its verses and the narration's regions follow one another in the order given. Bridged filler
      * rows are excluded by `chunks`, so a merged unit appears once.
      */
-    private fun recordedUnits(workbook: Workbook, chapter: Chapter): List<WriteNarrationVerses.Unit> =
+    private fun recordedUnits(workbook: Workbook, chapter: Chapter): List<CreateChapterRepresentationFromVerses.Unit> =
         chapter.chunks.blockingGet()
             .filter { it.contentType == ContentType.TEXT || it.contentType == ContentType.TITLE }
             .sortedBy { it.sort }
@@ -94,7 +96,7 @@ class WriteNarrationForExport(
                 chunk.audio.getSelectedTake()
                     ?.takeIf { !it.isDeleted() && it.file.isFile }
                     ?.let { take ->
-                        WriteNarrationVerses.Unit(
+                        CreateChapterRepresentationFromVerses.Unit(
                             marker = narrationMarkerFor(chunk, workbook, chapter),
                             audio = take.file
                         )

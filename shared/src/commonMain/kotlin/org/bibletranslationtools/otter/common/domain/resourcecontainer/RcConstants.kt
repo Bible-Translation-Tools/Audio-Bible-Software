@@ -41,4 +41,5 @@ object RcConstants {
     const val SOURCE_MEDIA_DIR = "media"
     const val CHAPTER_NARRATION_FILE = "$TAKE_DIR/%s/chapter_narration.pcm"
     const val ACTIVE_VERSES_FILE = "$TAKE_DIR/%s/active_verses.json"
+    const val DERIVED_CREATOR = "OratureInfo.SUITE_NAME"
 }

@@ -1,4 +1,4 @@
-package org.bibletranslationtools.otter.integration
+package org.bibletranslationtools.bttrecorder2.narration
 
 import org.bibletranslationtools.otter.common.audio.wav.WavFile
 import org.bibletranslationtools.otter.common.data.audio.VerseMarker
@@ -6,8 +6,8 @@ import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.domain.narration.AudioFileUtils
-import org.bibletranslationtools.otter.common.domain.narration.WriteNarrationVerses
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportResult
+import org.bibletranslationtools.bttrecorder2.integration.RecorderIntegrationEnvironment
 import java.io.File
 import java.util.zip.ZipFile
 import kotlin.test.AfterTest
@@ -27,7 +27,7 @@ import kotlin.test.assertTrue
  */
 class ExportCarriesNarrationTest {
 
-    private var env: IntegrationEnvironment? = null
+    private var env: RecorderIntegrationEnvironment? = null
 
     @AfterTest
     fun tearDown() {
@@ -35,9 +35,9 @@ class ExportCarriesNarrationTest {
         env = null
     }
 
-    private fun judeProject(): Triple<IntegrationEnvironment, Workbook, Chapter> {
-        val e = IntegrationEnvironment.create().also { env = it }
-        e.import("en_ulb.zip")
+    private fun judeProject(): Triple<RecorderIntegrationEnvironment, Workbook, Chapter> {
+        val e = RecorderIntegrationEnvironment.create().also { env = it }
+        e.importUlb(BOOK)
         val derived = e.createProject(
             sourceProject = e.sourceBook(BOOK),
             targetLanguage = e.language("en"),
@@ -61,7 +61,7 @@ class ExportCarriesNarrationTest {
     }
 
     /** Exports [workbook] and returns the entry names in the resulting backup. */
-    private fun exportedEntries(e: IntegrationEnvironment, workbook: Workbook): List<String> {
+    private fun exportedEntries(e: RecorderIntegrationEnvironment, workbook: Workbook): List<String> {
         val out = File(e.directoryProvider.tempDirectory, "export-${System.nanoTime()}")
             .apply { mkdirs() }
         assertEquals(
@@ -76,12 +76,12 @@ class ExportCarriesNarrationTest {
     @Test
     fun `narration written into the project is carried into the backup`() {
         val (e, workbook, chapter) = judeProject()
-        WriteNarrationVerses(AudioFileUtils(e.directoryProvider)).execute(
+        CreateChapterRepresentationFromVerses(AudioFileUtils(e.directoryProvider)).execute(
             workbook,
             chapter,
             listOf(
-                WriteNarrationVerses.Unit(VerseMarker(1, 1, 0), take(1, 500)),
-                WriteNarrationVerses.Unit(VerseMarker(2, 2, 0), take(2, 500))
+                CreateChapterRepresentationFromVerses.Unit(VerseMarker(1, 1, 0), take(1, 500)),
+                CreateChapterRepresentationFromVerses.Unit(VerseMarker(2, 2, 0), take(2, 500))
             )
         )
 

@@ -6,6 +6,7 @@ import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
+import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ILanguageRepository
@@ -17,9 +18,16 @@ import org.bibletranslationtools.otter.common.data.ProgressStatus
 import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.BackupProjectExporter
 import org.bibletranslationtools.otter.common.domain.project.importer.NewSourceImporter
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstants
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.VersificationTreeBuilder
 import org.bibletranslationtools.otter.common.initialization.InitializeVersification
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
+import org.wycliffeassociates.resourcecontainer.entity.Checking
+import org.wycliffeassociates.resourcecontainer.entity.DublinCore
+import org.wycliffeassociates.resourcecontainer.entity.Manifest
+import org.wycliffeassociates.resourcecontainer.entity.Project
+import org.wycliffeassociates.resourcecontainer.entity.Source
+import org.wycliffeassociates.resourcecontainer.entity.Language as RcLanguage
 import org.bibletranslationtools.otter.common.persistence.DesktopDirectoryProvider
 import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.bibletranslationtools.otter.common.persistence.entities.ContentEntity
@@ -31,6 +39,7 @@ import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
 import org.koin.dsl.module
 import java.io.File
+import java.time.LocalDate
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
@@ -258,6 +267,56 @@ class IntegrationEnvironment private constructor(
     ): Collection = koin.get<CreateProject>()
         .create(sourceProject, targetLanguage, mode, resourceId = null, deriveProjectFromVerses)
         .blockingGet()
+
+    /**
+     * Writes into [dir] the manifest of a project derived from [sourceMetadata] into
+     * [targetLanguage]: the target language import looks up, the source it matches a collection
+     * against, and the one book it derives. The same shape the recorder's `WriteDerivedManifest`
+     * writes for a container it assembles, kept here because `:shared` cannot depend on the app.
+     */
+    fun writeDerivedManifest(
+        dir: File,
+        targetLanguage: Language,
+        sourceMetadata: ResourceMetadata,
+        bookSlug: String,
+        bookTitle: String,
+        bookSort: Int
+    ) {
+        val today = LocalDate.now().toString()
+        val dublinCore = DublinCore(
+            type = "book",
+            format = "text/usfm",
+            identifier = sourceMetadata.identifier,
+            title = sourceMetadata.title,
+            subject = sourceMetadata.subject,
+            language = RcLanguage(
+                direction = targetLanguage.direction,
+                identifier = targetLanguage.slug,
+                title = targetLanguage.name
+            ),
+            source = mutableListOf(
+                Source(sourceMetadata.identifier, sourceMetadata.language.slug, sourceMetadata.version)
+            ),
+            rights = sourceMetadata.license,
+            creator = RcConstants.DERIVED_CREATOR,
+            contributor = mutableListOf(),
+            issued = today,
+            modified = today,
+            version = sourceMetadata.version
+        )
+        val project = Project(
+            title = bookTitle,
+            identifier = bookSlug,
+            sort = bookSort,
+            path = "./${RcConstants.MEDIA_DIR}"
+        )
+        dir.mkdirs()
+        // create() rather than load(), the directory holding no manifest yet; it fills in the
+        // conformsTo the importer checks once the init block has run, so write() comes after.
+        ResourceContainer.create(dir) {
+            manifest = Manifest(dublinCore, listOf(project), Checking())
+        }.use { it.write() }
+    }
 
     /** The open workbook for a derived project, for tests that need the workbook model. */
     fun workbook(derived: Collection): Workbook =

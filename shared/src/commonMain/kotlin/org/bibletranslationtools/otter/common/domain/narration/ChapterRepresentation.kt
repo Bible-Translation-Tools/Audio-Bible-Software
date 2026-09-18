@@ -36,10 +36,14 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.max
 import kotlin.math.min
 
-internal const val ACTIVE_VERSES_FILE_NAME = "active_verses.json"
-internal const val CHAPTER_NARRATION_FILE_NAME = "chapter_narration.pcm"
+const val ACTIVE_VERSES_FILE_NAME = "active_verses.json"
+const val CHAPTER_NARRATION_FILE_NAME = "chapter_narration.pcm"
 
-internal class ChapterRepresentation(
+/**
+ * A chapter's in-progress narration: one scratch recording plus a map of which regions of it belong
+ * to which unit.
+ */
+class ChapterRepresentation(
     private val workbook: Workbook,
     private val chapter: Chapter
 ) : AudioFileReaderProvider {
@@ -137,7 +141,7 @@ internal class ChapterRepresentation(
         }
     }
 
-    fun finalizeVerse(verseIndex: Int, history: NarrationHistory? = null): Int {
+    internal fun finalizeVerse(verseIndex: Int, history: NarrationHistory? = null): Int {
         val endIndex = frameToIndex(scratchAudio.totalFrames) - 1
 
         history?.finalizeVerse(endIndex, totalVerses)

@@ -1,4 +1,4 @@
-package org.bibletranslationtools.otter.integration
+package org.bibletranslationtools.bttrecorder2.narration
 
 import org.bibletranslationtools.otter.common.audio.wav.WavFile
 import org.bibletranslationtools.otter.common.data.audio.BookMarker
@@ -10,29 +10,30 @@ import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.domain.audio.AudioBouncer
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.narration.AudioFileUtils
-import org.bibletranslationtools.otter.common.domain.narration.ExtractNarrationVerses
-import org.bibletranslationtools.otter.common.domain.narration.WriteNarrationVerses
+import org.bibletranslationtools.bttrecorder2.integration.RecorderIntegrationEnvironment
 import java.io.File
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
  * Writing a chapter's narration from one audio file per unit.
  *
- * Most of these read the result back through [ExtractNarrationVerses] rather than inspecting the
+ * Most of these read the result back through [ExtractVersesFromChapterRepresentation] rather than inspecting the
  * files, which checks the two halves against each other rather than against a second transcription
  * of the format. Should the writer and the reader ever disagree — about region units, ordering, or
  * which marker identifies a unit — a round trip stops returning what went in.
  */
-class WriteNarrationVersesTest {
+class CreateChapterRepresentationFromVersesTest {
 
-    private var env: IntegrationEnvironment? = null
-    private lateinit var write: WriteNarrationVerses
-    private lateinit var extract: ExtractNarrationVerses
+    private var env: RecorderIntegrationEnvironment? = null
+    private lateinit var write: CreateChapterRepresentationFromVerses
+    private lateinit var extract: ExtractVersesFromChapterRepresentation
 
     @AfterTest
     fun tearDown() {
@@ -41,11 +42,11 @@ class WriteNarrationVersesTest {
     }
 
     /** A verse-by-verse Jude project: 25 verse units plus the book and chapter titles. */
-    private fun judeProject(): Triple<IntegrationEnvironment, Workbook, Chapter> {
-        val e = IntegrationEnvironment.create().also { env = it }
-        write = WriteNarrationVerses(AudioFileUtils(e.directoryProvider))
-        extract = ExtractNarrationVerses(e.directoryProvider, AudioBouncer())
-        e.import("en_ulb.zip")
+    private fun judeProject(): Triple<RecorderIntegrationEnvironment, Workbook, Chapter> {
+        val e = RecorderIntegrationEnvironment.create().also { env = it }
+        write = CreateChapterRepresentationFromVerses(AudioFileUtils(e.directoryProvider))
+        extract = ExtractVersesFromChapterRepresentation(e.directoryProvider, AudioBouncer())
+        e.importUlb(BOOK)
         val derived = e.createProject(
             sourceProject = e.sourceBook(BOOK),
             targetLanguage = e.language("en"),
@@ -70,7 +71,7 @@ class WriteNarrationVersesTest {
     }
 
     private fun verseUnit(verse: Int, frames: Int) =
-        WriteNarrationVerses.Unit(VerseMarker(verse, verse, 0), take(verse, frames))
+        CreateChapterRepresentationFromVerses.Unit(VerseMarker(verse, verse, 0), take(verse, frames))
 
     /** The first sample of a section's audio, which identifies the take it came from. */
     private fun firstSample(file: File): Int {
@@ -91,7 +92,13 @@ class WriteNarrationVersesTest {
         val (_, workbook, chapter) = judeProject()
         val units = listOf(verseUnit(1, 500), verseUnit(2, 700), verseUnit(3, 300))
 
-        assertTrue(write.execute(workbook, chapter, units))
+        val representation = assertNotNull(write.execute(workbook, chapter, units))
+        assertEquals(
+            listOf("1", "2", "3"),
+            representation.getActiveMarkers().map { it.label },
+            "the returned representation reads the pair just written"
+        )
+        representation.closeConnections()
 
         val sections = extract.execute(workbook, chapter)
         assertEquals(listOf("1", "2", "3"), sections.map { it.marker.label })
@@ -105,7 +112,7 @@ class WriteNarrationVersesTest {
         // The case a compiled chapter take cannot express, since compiling needs every unit.
         val (_, workbook, chapter) = judeProject()
 
-        assertTrue(write.execute(workbook, chapter, listOf(verseUnit(2, 400), verseUnit(7, 400))))
+        assertNotNull(write.execute(workbook, chapter, listOf(verseUnit(2, 400), verseUnit(7, 400))))
 
         val sections = extract.execute(workbook, chapter)
         assertEquals(listOf("2", "7"), sections.map { it.marker.label })
@@ -116,12 +123,12 @@ class WriteNarrationVersesTest {
     fun `titles are written ahead of the verses, in the order given`() {
         val (_, workbook, chapter) = judeProject()
         val units = listOf(
-            WriteNarrationVerses.Unit(BookMarker(BOOK, 0), take(9, 200)),
-            WriteNarrationVerses.Unit(ChapterMarker(1, 0), take(8, 200)),
+            CreateChapterRepresentationFromVerses.Unit(BookMarker(BOOK, 0), take(9, 200)),
+            CreateChapterRepresentationFromVerses.Unit(ChapterMarker(1, 0), take(8, 200)),
             verseUnit(1, 400)
         )
 
-        assertTrue(write.execute(workbook, chapter, units))
+        assertNotNull(write.execute(workbook, chapter, units))
 
         val sections = extract.execute(workbook, chapter)
         assertEquals(3, sections.size, "titles must not be dropped: ${sections.map { it.marker.label }}")
@@ -152,7 +159,7 @@ class WriteNarrationVersesTest {
         write.execute(workbook, chapter, listOf(verseUnit(1, 500), verseUnit(2, 500)))
         val first = File(chapterDir(workbook, chapter), "chapter_narration.pcm").length()
 
-        assertTrue(write.execute(workbook, chapter, listOf(verseUnit(3, 500)), overwrite = true))
+        assertNotNull(write.execute(workbook, chapter, listOf(verseUnit(3, 500)), overwrite = true))
 
         val scratch = File(chapterDir(workbook, chapter), "chapter_narration.pcm")
         assertEquals(1000, scratch.length(), "only the second write's audio; first was $first")
@@ -168,7 +175,7 @@ class WriteNarrationVersesTest {
         val (_, workbook, chapter) = judeProject()
         write.execute(workbook, chapter, listOf(verseUnit(1, 500)))
 
-        assertFalse(write.execute(workbook, chapter, listOf(verseUnit(3, 500))))
+        assertNull(write.execute(workbook, chapter, listOf(verseUnit(3, 500))))
 
         assertTrue(write.hasNarration(workbook, chapter))
         val sections = extract.execute(workbook, chapter)
@@ -184,7 +191,7 @@ class WriteNarrationVersesTest {
         write.execute(workbook, chapter, listOf(verseUnit(1, 500)))
         assertTrue(extract.hasNarration(workbook, chapter))
 
-        assertFalse(write.execute(workbook, chapter, emptyList(), overwrite = true))
+        assertNull(write.execute(workbook, chapter, emptyList(), overwrite = true))
 
         assertEquals(listOf("1"), extract.execute(workbook, chapter).map { it.marker.label })
     }
@@ -198,11 +205,11 @@ class WriteNarrationVersesTest {
             deleteOnExit()
         }
 
-        assertFalse(
+        assertNull(
             write.execute(
                 workbook,
                 chapter,
-                listOf(WriteNarrationVerses.Unit(VerseMarker(2, 2, 0), broken)),
+                listOf(CreateChapterRepresentationFromVerses.Unit(VerseMarker(2, 2, 0), broken)),
                 overwrite = true
             )
         )
@@ -225,11 +232,11 @@ class WriteNarrationVersesTest {
         }
         val units = listOf(
             verseUnit(1, 500),
-            WriteNarrationVerses.Unit(VerseMarker(2, 2, 0), broken),
+            CreateChapterRepresentationFromVerses.Unit(VerseMarker(2, 2, 0), broken),
             verseUnit(3, 500)
         )
 
-        assertTrue(write.execute(workbook, chapter, units))
+        assertNotNull(write.execute(workbook, chapter, units))
 
         val sections = extract.execute(workbook, chapter)
         assertEquals(listOf("1", "3"), sections.map { it.marker.label }, "verse 2 had no audio")

@@ -1,6 +1,7 @@
 package org.bibletranslationtools.bttrecorder2.imports
 
-import org.bibletranslationtools.bttrecorder2.takes.WriteTakeFromAudio
+import org.bibletranslationtools.bttrecorder2.narration.ExtractVersesFromChapterRepresentation
+import org.bibletranslationtools.bttrecorder2.takes.CreateTakeFromAudio
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IContentRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ITakeRepository
@@ -17,12 +18,13 @@ import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.domain.audio.WriteTakeMarkers
+import org.bibletranslationtools.otter.common.domain.narration.ChapterRepresentation
 import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
-import org.bibletranslationtools.otter.common.domain.narration.ExtractNarrationVerses
 import org.slf4j.LoggerFactory
 
 /**
- * Converts a just-imported project's narration audio into one take per unit.
+ * Converts a just-imported project's narration — its [ChapterRepresentation] per chapter — into one
+ * take per unit.
  *
  * Orature stores a chapter as a single scratch recording plus a map of which regions belong to which
  * unit. This recorder's audio model is one take per unit, so an imported project arrives with its
@@ -40,8 +42,8 @@ import org.slf4j.LoggerFactory
  * Deliberately not part of the shared importer: Orature reads narration natively and converting for
  * it would destroy the region map it edits through. Nothing here runs unless the recorder asks.
  */
-class ImportNarrationAsTakes(
-    private val extractNarrationVerses: ExtractNarrationVerses,
+class ImportChapterRepresentationAsVerses(
+    private val extractVerses: ExtractVersesFromChapterRepresentation,
     private val workbookRepository: IWorkbookRepository,
     private val collectionRepository: ICollectionRepository,
     private val contentRepository: IContentRepository,
@@ -49,9 +51,9 @@ class ImportNarrationAsTakes(
     writeTakeMarkers: WriteTakeMarkers
 ) {
 
-    private val logger = LoggerFactory.getLogger(ImportNarrationAsTakes::class.java)
+    private val logger = LoggerFactory.getLogger(ImportChapterRepresentationAsVerses::class.java)
 
-    private val takeWriter = WriteTakeFromAudio(takeRepository, writeTakeMarkers)
+    private val takeWriter = CreateTakeFromAudio(takeRepository, writeTakeMarkers)
 
     /**
      * @param converted units that gained a take
@@ -95,7 +97,7 @@ class ImportNarrationAsTakes(
         val problems = mutableListOf<String>()
 
         chapters.forEach { chapter ->
-            if (!extractNarrationVerses.hasNarration(workbook, chapter)) return@forEach
+            if (!extractVerses.hasNarration(workbook, chapter)) return@forEach
 
             val chapterCollection = chapterCollections.firstOrNull { it.sort == chapter.sort }
             if (chapterCollection == null) {
@@ -103,7 +105,7 @@ class ImportNarrationAsTakes(
                 return@forEach
             }
 
-            val sections = extractNarrationVerses.execute(workbook, chapter)
+            val sections = extractVerses.execute(workbook, chapter)
             if (sections.isEmpty()) {
                 // The narration is present but nothing placed, which means its units do not match
                 // this project's. Reporting it matters: treating it as "nothing recorded" and
@@ -118,7 +120,7 @@ class ImportNarrationAsTakes(
             problems += outcome.problems
 
             if (outcome.problems.isEmpty()) {
-                if (extractNarrationVerses.deleteNarration(workbook, chapter)) {
+                if (extractVerses.deleteNarration(workbook, chapter)) {
                     cleaned++
                 } else {
                     problems += "c${chapter.sort}: narration audio could not be deleted"
@@ -143,7 +145,7 @@ class ImportNarrationAsTakes(
         workbook: Workbook,
         chapter: Chapter,
         chapterCollection: Collection,
-        sections: List<ExtractNarrationVerses.Section>
+        sections: List<ExtractVersesFromChapterRepresentation.Section>
     ): Result {
         val contents = contentRepository.getByCollection(chapterCollection).blockingGet()
         val chunks = chapter.chunks.blockingGet()
@@ -183,19 +185,19 @@ class ImportNarrationAsTakes(
                     marker = section.marker
                 )
             ) {
-                is WriteTakeFromAudio.Result.Copied -> {
+                is CreateTakeFromAudio.Result.Copied -> {
                     converted++
                     contentRepository.update(content).blockingAwait()
                 }
 
-                is WriteTakeFromAudio.Result.AlreadyPresent -> {
+                is CreateTakeFromAudio.Result.AlreadyPresent -> {
                     // A repeated conversion of audio already imported. Re-apply the selection, since
                     // an interrupted run may have inserted the take without persisting it.
                     content.selectedTake = result.take
                     contentRepository.update(content).blockingAwait()
                 }
 
-                is WriteTakeFromAudio.Result.Skipped ->
+                is CreateTakeFromAudio.Result.Skipped ->
                     problems += "c${chapter.sort} $label: ${result.reason}"
             }
             runCatching { section.audio.delete() }

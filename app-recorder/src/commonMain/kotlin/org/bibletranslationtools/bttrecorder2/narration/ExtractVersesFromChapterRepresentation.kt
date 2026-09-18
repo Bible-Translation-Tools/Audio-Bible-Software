@@ -1,19 +1,24 @@
-package org.bibletranslationtools.otter.common.domain.narration
+package org.bibletranslationtools.bttrecorder2.narration
 
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.domain.audio.AudioBouncer
+import org.bibletranslationtools.otter.common.domain.narration.ACTIVE_VERSES_FILE_NAME
+import org.bibletranslationtools.otter.common.domain.narration.CHAPTER_NARRATION_FILE_NAME
+import org.bibletranslationtools.otter.common.domain.narration.ChapterRepresentation
 import org.slf4j.LoggerFactory
 import java.io.File
 
 /**
- * Reads a chapter's in-progress narration and hands back one audio file per recorded unit.
+ * Reads a chapter's [ChapterRepresentation] — its in-progress narration — and hands back one audio
+ * file per recorded unit.
  *
  * Narration keeps a chapter as a single growing scratch recording plus a map saying which regions of
- * it belong to which unit. An app whose audio model is one file per unit cannot read that pairing, so
- * this converts it: each unit's regions are read out in order and written as a standalone WAV.
+ * it belong to which unit. This recorder's audio model is one file per unit and cannot read that
+ * pairing, so this converts it: each unit's regions are read out in order and written as a
+ * standalone WAV. The inverse is [CreateChapterRepresentationFromVerses].
  *
  * Regions are read through the narration representation rather than by slicing the scratch file
  * directly, which matters because a re-recorded unit owns several regions that need not be adjacent
@@ -23,12 +28,12 @@ import java.io.File
  * Nothing here writes to the project. The caller decides what becomes of the files, and
  * [deleteNarration] is available for once it has committed them.
  */
-class ExtractNarrationVerses(
+class ExtractVersesFromChapterRepresentation(
     private val directoryProvider: ITempFileProvider,
     private val audioBouncer: AudioBouncer
 ) {
 
-    private val logger = LoggerFactory.getLogger(ExtractNarrationVerses::class.java)
+    private val logger = LoggerFactory.getLogger(ExtractVersesFromChapterRepresentation::class.java)
 
     /**
      * One unit's audio, extracted.

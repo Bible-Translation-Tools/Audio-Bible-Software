@@ -1,4 +1,4 @@
-package org.bibletranslationtools.otter.common.domain.narration
+package org.bibletranslationtools.bttrecorder2.narration
 
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
@@ -6,12 +6,18 @@ import org.bibletranslationtools.otter.common.audio.AudioFile
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
+import org.bibletranslationtools.otter.common.domain.narration.ACTIVE_VERSES_FILE_NAME
+import org.bibletranslationtools.otter.common.domain.narration.AudioFileUtils
+import org.bibletranslationtools.otter.common.domain.narration.CHAPTER_NARRATION_FILE_NAME
+import org.bibletranslationtools.otter.common.domain.narration.ChapterRepresentation
+import org.bibletranslationtools.otter.common.domain.narration.VerseNode
+import org.bibletranslationtools.otter.common.domain.narration.narrationMarkerFor
 import org.slf4j.LoggerFactory
 import java.io.File
 
 /**
- * Writes a chapter's in-progress narration from one audio file per unit — the inverse of
- * [ExtractNarrationVerses].
+ * Builds a chapter's [ChapterRepresentation] — its in-progress narration — from one audio file per
+ * unit; the inverse of [ExtractVersesFromChapterRepresentation].
  *
  * Narration keeps a chapter as a single scratch recording plus a map of which regions of it belong to
  * which unit, and that pairing is what it reads to show audio. An app whose audio model is one take
@@ -30,11 +36,11 @@ import java.io.File
  * swapped in only once it is complete, and a failed write leaves whatever was there untouched.
  * Removing narration is a separate, explicit call: [deleteNarration].
  */
-class WriteNarrationVerses(
+class CreateChapterRepresentationFromVerses(
     private val audioFileUtils: AudioFileUtils
 ) {
 
-    private val logger = LoggerFactory.getLogger(WriteNarrationVerses::class.java)
+    private val logger = LoggerFactory.getLogger(CreateChapterRepresentationFromVerses::class.java)
 
     /**
      * One unit's audio to write.
@@ -53,31 +59,32 @@ class WriteNarrationVerses(
     }
 
     /**
-     * Writes [units] as [chapter]'s narration.
+     * Writes [units] as [chapter]'s narration and returns the representation read back from it.
      *
      * @param overwrite whether narration already present may be replaced. With the default, a
-     *   chapter that has any is left alone and false is returned.
-     * @return true when a verse map was written. False means nothing on disk changed: no units were
-     *   given, the chapter already had narration and [overwrite] was not set, or none of the units'
-     *   audio could be read.
+     *   chapter that has any is left alone and null is returned.
+     * @return the chapter's [ChapterRepresentation], loaded from the pair just written, so the caller
+     *   can read it back the way narration will; call [ChapterRepresentation.closeConnections] once
+     *   done with it. Null means nothing on disk changed: no units were given, the chapter already had
+     *   narration and [overwrite] was not set, or none of the units' audio could be read.
      */
     fun execute(
         workbook: Workbook,
         chapter: Chapter,
         units: List<Unit>,
         overwrite: Boolean = false
-    ): Boolean {
+    ): ChapterRepresentation? {
         val chapterDir = workbook.projectFilesAccessor.getChapterAudioDir(workbook, chapter)
         val scratch = File(chapterDir, CHAPTER_NARRATION_FILE_NAME)
         val verses = File(chapterDir, ACTIVE_VERSES_FILE_NAME)
 
         if (units.isEmpty()) {
             logger.info("No recorded units in ${chapter.title}; writing no narration")
-            return false
+            return null
         }
         if (!overwrite && (scratch.exists() || verses.exists())) {
             logger.info("${chapter.title} already has narration; leaving it in place")
-            return false
+            return null
         }
 
         // Assembled under temporary names beside the real pair, so an existing pair stays intact
@@ -94,7 +101,7 @@ class WriteNarrationVerses(
             if (nodes.isEmpty()) {
                 logger.error("None of ${units.size} unit(s) in ${chapter.title} could be read")
                 discard(newScratch, newVerses)
-                return false
+                return null
             }
             newVerses.writeText(activeVersesJson.encodeToString(ListSerializer(VerseNode.serializer()), nodes))
 
@@ -103,11 +110,11 @@ class WriteNarrationVerses(
             moveInto(newScratch, scratch)
             moveInto(newVerses, verses)
             logger.info("Wrote narration for ${chapter.title}: ${nodes.size} unit(s), ${scratch.length()} bytes")
-            true
+            ChapterRepresentation(workbook, chapter).also { it.loadFromSerializedVerses() }
         } catch (e: Exception) {
             logger.error("Could not write narration for ${chapter.title}", e)
             discard(newScratch, newVerses)
-            false
+            null
         }
     }
 

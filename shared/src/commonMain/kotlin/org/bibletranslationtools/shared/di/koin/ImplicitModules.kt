@@ -20,11 +20,9 @@ import org.bibletranslationtools.otter.common.domain.content.SaveAudioAsNewTake
 import org.bibletranslationtools.otter.common.domain.content.TakeCreator
 import org.bibletranslationtools.otter.common.domain.languages.ImportLanguages
 import org.bibletranslationtools.otter.common.domain.narration.AudioFileUtils
-import org.bibletranslationtools.otter.common.domain.narration.ExtractNarrationVerses
 import org.bibletranslationtools.otter.common.domain.narration.LoadChapterSourceText
 import org.bibletranslationtools.otter.common.domain.narration.PcmTakeTransformer
 import org.bibletranslationtools.otter.common.domain.narration.SplitAudioOnCues
-import org.bibletranslationtools.otter.common.domain.narration.WriteNarrationVerses
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
 import org.bibletranslationtools.otter.common.domain.project.InitializeProjectFiles
 import org.bibletranslationtools.otter.common.domain.project.OpenWorkbook
@@ -44,7 +42,6 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.DeleteRes
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito.BurritoToResourceContainerConverter
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito.ScriptureBurritoUtils
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.VersificationTreeBuilder
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.WriteDerivedManifest
 import org.bibletranslationtools.otter.common.initialization.InitializeApp
 import org.bibletranslationtools.otter.common.initialization.InitializeLanguages
 import org.bibletranslationtools.otter.common.initialization.InitializeProjects
@@ -134,9 +131,6 @@ val implicitCommonModule = module {
     factoryOf(::PcmTakeTransformer)
     factoryOf(::AudioFileUtils)
     factoryOf(::SplitAudioOnCues)
-    factoryOf(::ExtractNarrationVerses)
-    factoryOf(::WriteNarrationVerses)
-    factoryOf(::WriteDerivedManifest)
     // Explicit for the same reason as OpenWorkbook above: it takes a defaulted ioDispatcher.
     factory { LoadChapterSourceText() }
 

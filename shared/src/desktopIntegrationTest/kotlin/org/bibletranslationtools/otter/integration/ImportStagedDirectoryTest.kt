@@ -14,7 +14,6 @@ import org.bibletranslationtools.otter.common.domain.project.importer.ImportOpti
 import org.bibletranslationtools.otter.common.domain.project.importer.ProjectImporterCallback
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstants
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.WriteDerivedManifest
 import java.io.File
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -89,7 +88,7 @@ class ImportStagedDirectoryTest {
 
         val source = env.sourceBook(BOOK)
         val metadata = sourceMetadata ?: source.resourceContainer!!
-        WriteDerivedManifest().execute(
+        env.writeDerivedManifest(
             dir = dir,
             targetLanguage = env.language(TARGET_LANGUAGE),
             sourceMetadata = metadata,

@@ -13,7 +13,7 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IWork
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.bttrecorder2.imports.AcceptAllImportCallback
-import org.bibletranslationtools.bttrecorder2.imports.ImportNarrationAsTakes
+import org.bibletranslationtools.bttrecorder2.imports.ImportChapterRepresentationAsVerses
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
 import io.github.vinceglb.filekit.PlatformFile
@@ -50,7 +50,7 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
     private val workbookDescriptorRepository: IWorkbookDescriptorRepository by inject()
     private val importProjectUseCase: ImportProjectUseCase by inject()
 
-    private val importNarrationAsTakes: ImportNarrationAsTakes by inject()
+    private val importChapterRepresentation: ImportChapterRepresentationAsVerses by inject()
     private val directoryProvider: ITempFileProvider by inject()
 
     private val _rawWorkbooks = MutableStateFlow<List<WorkbookDescriptor>?>(null)
@@ -201,7 +201,7 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
      */
     private suspend fun convertNarrationAudio(descriptor: WorkbookDescriptor) {
         withContext(Dispatchers.IO) {
-            importNarrationAsTakes.execute(descriptor.targetCollection)
+            importChapterRepresentation.execute(descriptor.targetCollection)
         }
     }
 

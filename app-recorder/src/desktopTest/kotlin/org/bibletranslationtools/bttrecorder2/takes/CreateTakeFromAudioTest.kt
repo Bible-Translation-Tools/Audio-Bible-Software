@@ -37,7 +37,7 @@ import kotlin.test.assertTrue
  *
  * WAVs are generated here rather than committed, `*.wav` being git-ignored repo-wide.
  */
-class WriteTakeFromAudioTest {
+class CreateTakeFromAudioTest {
 
     private val work = createTempDirectory("legacy-take-test").toFile()
     private val destinationDir = File(work, "takes/c01").apply { mkdirs() }
@@ -52,7 +52,7 @@ class WriteTakeFromAudioTest {
         }
     }
 
-    private val migrator = WriteTakeFromAudio(takeRepository, WriteTakeMarkers())
+    private val migrator = CreateTakeFromAudio(takeRepository, WriteTakeMarkers())
 
     /** A chunk-mode unit covering verses 1-3, the case the whole merge exists for. */
     private val content = Content(
@@ -92,7 +92,7 @@ class WriteTakeFromAudioTest {
 
         val result = migrator.execute(source, destinationDir, namer, content, 1, select = true)
 
-        assertTrue(result is WriteTakeFromAudio.Result.Copied, "expected a copy, got $result")
+        assertTrue(result is CreateTakeFromAudio.Result.Copied, "expected a copy, got $result")
         val cues = OratureAudioFile(File(destinationDir, "aaa_reg_jas_c01_v01_t1.wav")).getCues()
         assertEquals(1, cues.size, "one cue, matching markerSpecsForCurrentTake for a chunk take")
         assertEquals("orature-vm-1-3", cues.single().label)
@@ -150,7 +150,7 @@ class WriteTakeFromAudioTest {
 
         val copied = File(destinationDir, "aaa_reg_jas_c01_v01_t1.wav")
         assertEquals(expectedFrames, OratureAudioFile(copied).totalFrames)
-        assertEquals(expectedFrames, (result as WriteTakeFromAudio.Result.Copied).frames)
+        assertEquals(expectedFrames, (result as CreateTakeFromAudio.Result.Copied).frames)
         assertContentEqualsPcm(source, copied)
     }
 
@@ -181,8 +181,8 @@ class WriteTakeFromAudioTest {
 
         val result = migrator.execute(source, destinationDir, namer, content, 1, select = false)
 
-        assertTrue(result is WriteTakeFromAudio.Result.AlreadyPresent, "got $result")
-        assertEquals(alreadyThere.filename, (result as WriteTakeFromAudio.Result.AlreadyPresent).take.filename)
+        assertTrue(result is CreateTakeFromAudio.Result.AlreadyPresent, "got $result")
+        assertEquals(alreadyThere.filename, (result as CreateTakeFromAudio.Result.AlreadyPresent).take.filename)
         assertEquals(1, insertedTakes.size, "no second row for the same take")
     }
 
@@ -208,8 +208,8 @@ class WriteTakeFromAudioTest {
             legacyTake("legacy.wav", frames = 1000), destinationDir, namer, content, 1, select = false
         )
 
-        assertTrue(result is WriteTakeFromAudio.Result.Copied)
-        assertEquals(2, (result as WriteTakeFromAudio.Result.Copied).take.number)
+        assertTrue(result is CreateTakeFromAudio.Result.Copied)
+        assertEquals(2, (result as CreateTakeFromAudio.Result.Copied).take.number)
         assertTrue(File(destinationDir, "aaa_reg_jas_c01_v01_t2.wav").isFile)
         assertEquals(500, OratureAudioFile(usersTake).totalFrames, "the user's take is untouched")
     }
@@ -227,8 +227,8 @@ class WriteTakeFromAudioTest {
         val second = legacyTake("second.wav", frames = 1000, seed = 7)
         val result = migrator.execute(second, destinationDir, namer, content, 1, select = false)
 
-        assertTrue(result is WriteTakeFromAudio.Result.Copied, "got $result")
-        assertEquals(2, (result as WriteTakeFromAudio.Result.Copied).take.number)
+        assertTrue(result is CreateTakeFromAudio.Result.Copied, "got $result")
+        assertEquals(2, (result as CreateTakeFromAudio.Result.Copied).take.number)
         assertEquals(2, insertedTakes.size)
         assertContentEqualsPcm(second, result.take.path)
     }
@@ -249,16 +249,16 @@ class WriteTakeFromAudioTest {
             migrator.execute(it, destinationDir, namer, content, 1, select = false)
         }
 
-        assertTrue(results.all { it is WriteTakeFromAudio.Result.Copied }, results.toString())
+        assertTrue(results.all { it is CreateTakeFromAudio.Result.Copied }, results.toString())
         assertEquals(
             listOf(1, 2, 3),
-            results.map { (it as WriteTakeFromAudio.Result.Copied).take.number }
+            results.map { (it as CreateTakeFromAudio.Result.Copied).take.number }
         )
         assertEquals(3, insertedTakes.size, "no take may be dropped in a merge")
         // Distinct files, each holding its own project's audio.
         assertEquals(3, insertedTakes.map { it.filename }.distinct().size)
         sources.zip(results).forEach { (source, result) ->
-            assertContentEqualsPcm(source, (result as WriteTakeFromAudio.Result.Copied).take.path)
+            assertContentEqualsPcm(source, (result as CreateTakeFromAudio.Result.Copied).take.path)
         }
     }
 
@@ -274,10 +274,10 @@ class WriteTakeFromAudioTest {
         val retryUlb = migrator.execute(ulb, destinationDir, namer, content, 1, select = false)
         val retryReg = migrator.execute(reg, destinationDir, namer, content, 1, select = false)
 
-        assertTrue(retryUlb is WriteTakeFromAudio.Result.AlreadyPresent, "got $retryUlb")
-        assertTrue(retryReg is WriteTakeFromAudio.Result.AlreadyPresent, "got $retryReg")
-        assertEquals(1, (retryUlb as WriteTakeFromAudio.Result.AlreadyPresent).take.number)
-        assertEquals(2, (retryReg as WriteTakeFromAudio.Result.AlreadyPresent).take.number)
+        assertTrue(retryUlb is CreateTakeFromAudio.Result.AlreadyPresent, "got $retryUlb")
+        assertTrue(retryReg is CreateTakeFromAudio.Result.AlreadyPresent, "got $retryReg")
+        assertEquals(1, (retryUlb as CreateTakeFromAudio.Result.AlreadyPresent).take.number)
+        assertEquals(2, (retryReg as CreateTakeFromAudio.Result.AlreadyPresent).take.number)
         assertEquals(2, insertedTakes.size, "a resumed run must not duplicate rows")
     }
 
@@ -291,8 +291,8 @@ class WriteTakeFromAudioTest {
             marker = ChapterMarker(1, 0)
         )
 
-        assertTrue(result is WriteTakeFromAudio.Result.Copied, "got $result")
-        val cues = OratureAudioFile((result as WriteTakeFromAudio.Result.Copied).take.path).getCues()
+        assertTrue(result is CreateTakeFromAudio.Result.Copied, "got $result")
+        val cues = OratureAudioFile((result as CreateTakeFromAudio.Result.Copied).take.path).getCues()
         assertEquals(1, cues.size, "exactly one cue")
         assertEquals("orature-chapter-1", cues.single().label)
     }
@@ -303,7 +303,7 @@ class WriteTakeFromAudioTest {
             legacyTake("verses.wav"), destinationDir, namer, content, 1, select = false
         )
 
-        val cues = OratureAudioFile((result as WriteTakeFromAudio.Result.Copied).take.path).getCues()
+        val cues = OratureAudioFile((result as CreateTakeFromAudio.Result.Copied).take.path).getCues()
         assertEquals("orature-vm-1-3", cues.single().label, "the content row spans verses 1-3")
     }
 
@@ -313,7 +313,7 @@ class WriteTakeFromAudioTest {
 
         val result = migrator.execute(broken, destinationDir, namer, content, 1, select = false)
 
-        assertTrue(result is WriteTakeFromAudio.Result.Skipped)
+        assertTrue(result is CreateTakeFromAudio.Result.Skipped)
         assertTrue(insertedTakes.isEmpty())
     }
 
@@ -323,7 +323,7 @@ class WriteTakeFromAudioTest {
             File(work, "absent.wav"), destinationDir, namer, content, 1, select = false
         )
 
-        assertTrue(result is WriteTakeFromAudio.Result.Skipped)
+        assertTrue(result is CreateTakeFromAudio.Result.Skipped)
     }
 
     // ---------------------------------------------------------------------------------------------

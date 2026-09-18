@@ -19,17 +19,17 @@ import java.time.LocalDate
  * Copies an audio file into a project as a take of one unit, and registers it against that unit's
  * content row.
  *
- * Its one caller is `ImportNarrationAsTakes`: audio extracted from a narration recording is written
+ * Its one caller is `ImportChapterRepresentationAsVerses`: audio extracted from a narration recording is written
  * at 44.1 kHz mono 16-bit behind a canonical header, so it is copied byte for byte and only its
  * metadata is rewritten. It accepts any WAV the recorder can read, not only audio it extracted
  * itself, so other sources of per-unit audio can reuse it.
  */
-class WriteTakeFromAudio(
+class CreateTakeFromAudio(
     private val takeRepository: ITakeRepository,
     private val writeTakeMarkers: WriteTakeMarkers
 ) {
 
-    private val logger = LoggerFactory.getLogger(WriteTakeFromAudio::class.java)
+    private val logger = LoggerFactory.getLogger(CreateTakeFromAudio::class.java)
 
     sealed interface Result {
         data class Copied(val take: Take, val frames: Int) : Result

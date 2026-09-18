@@ -117,7 +117,10 @@ kotlin {
                 implementation("org.jooq:jooq:$jooqVer")
                 implementation("org.bibletranslationtools:otter-db:1.0")
 
-                implementation("org.wycliffeassociates:kotlin-resource-container:$kotlinresourcecontainerVer")
+                // api rather than implementation: the recorder assembles resource containers of its
+                // own (its WriteDerivedManifest), so the library has to be on the apps' compile
+                // classpath as well.
+                api("org.wycliffeassociates:kotlin-resource-container:$kotlinresourcecontainerVer")
                 implementation("org.wycliffeassociates:usfmtools:$usfmToolsVer")
                 implementation("org.wycliffeassociates:kotlin-tstudio2rc:$tstudio2rcVer")
 
