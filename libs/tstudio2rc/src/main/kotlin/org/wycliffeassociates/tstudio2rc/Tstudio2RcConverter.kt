@@ -4,6 +4,7 @@ import com.charleskorn.kaml.Yaml
 import com.charleskorn.kaml.YamlConfiguration
 import org.wycliffeassociates.resourcecontainer.entity.Manifest
 import org.wycliffeassociates.tstudio2rc.TextToUSFM.Companion.getVersification
+import org.wycliffeassociates.tstudio2rc.entity.ProjectManifest
 import java.io.File
 import java.util.zip.ZipFile
 import kotlin.io.path.createTempDirectory
@@ -135,16 +136,37 @@ object Tstudio2RcConverter {
     fun isValidFormat(file: File): Boolean {
         return when {
             file.isFile && TstudioFileFormat.isSupported(file.extension) -> {
-                ZipFile(file).use {
-                    it.entries().asSequence().any { entry ->
-                        entry.name.contains("manifest.json")
+                runCatching {
+                    ZipFile(file).use { zip ->
+                        zip.entries()
+                            .asSequence()
+                            .filter { !it.isDirectory && File(it.name).name == MANIFEST_JSON }
+                            .any { entry ->
+                                zip.getInputStream(entry).use { isTstudioManifest(it.readBytes().decodeToString()) }
+                            }
                     }
-                }
+                }.getOrDefault(false)
             }
 
-            file.isDirectory -> file.walk().any { it.name == "manifest.json" }
+            file.isDirectory -> file.walk()
+                .filter { it.isFile && it.name == MANIFEST_JSON }
+                .any { isTstudioManifest(it.readText()) }
 
             else -> false
         }
     }
+
+    /**
+     * A tstudio project is identified by a `manifest.json` that actually deserializes into a
+     * [ProjectManifest] — the same schema (and codec) the converter reads in [TstudioMetadata].
+     *
+     * Matching on the file name alone (the previous behavior) misclassified any archive that
+     * merely contained a file called `manifest.json`, e.g. a legacy BTT Recorder project or an
+     * unrelated zip. Reusing the converter's own decode keeps detection in lockstep with what
+     * [convertFileToRC] can actually convert: if this returns true, the manifest is one the
+     * converter can read; if the manifest is not tstudio-shaped, the decode fails and this
+     * returns false rather than claiming the file as tstudio.
+     */
+    private fun isTstudioManifest(text: String): Boolean =
+        runCatching { JSON.decodeFromString(ProjectManifest.serializer(), text) }.isSuccess
 }
