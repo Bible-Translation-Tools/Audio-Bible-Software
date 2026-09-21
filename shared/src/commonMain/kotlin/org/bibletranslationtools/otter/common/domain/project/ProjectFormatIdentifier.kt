@@ -125,11 +125,19 @@ private class BurritoWrapperIdentifier : IFormatIdentifier {
     override var next: IFormatIdentifier? = null
 
     override fun getFormat(file: File): ProjectFormat? {
+        // load() returns null when the file is not a Scripture Burrito wrapper (and never throws
+        // — it catches internally). The previous code ignored the return value and reported
+        // BURRITO_WRAPPER unconditionally, which made this link a catch-all: every non-RC,
+        // non-tstudio file was labelled a wrapper, the ScriptureBurrito link below was
+        // unreachable, and a truly unsupported file was never reported as unsupported.
         return try {
-            ScriptureBurritoWrapper.load(file)
-            ProjectFormat.BURRITO_WRAPPER
+            if (ScriptureBurritoWrapper.load(file) != null) {
+                ProjectFormat.BURRITO_WRAPPER
+            } else {
+                next?.getFormat(file)
+            }
         } catch (e: Exception) {
-            logger.info("${file.name} is not a valid Scripture Burrito: ", e)
+            logger.info("${file.name} is not a valid Scripture Burrito wrapper: ", e)
             next?.getFormat(file)
         }
     }
