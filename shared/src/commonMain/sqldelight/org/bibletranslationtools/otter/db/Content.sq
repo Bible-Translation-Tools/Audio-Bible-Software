@@ -1,0 +1,172 @@
+-- Mirrors sql/CreateAppDb.sql `content_entity` + its index.
+CREATE TABLE content_entity (
+    id               INTEGER AS kotlin.Int PRIMARY KEY AUTOINCREMENT,
+    collection_fk    INTEGER AS kotlin.Int NOT NULL REFERENCES collection_entity(id) ON DELETE CASCADE,
+    type_fk          INTEGER AS kotlin.Int NOT NULL REFERENCES content_type(id) ON DELETE RESTRICT,
+    label            TEXT NOT NULL,
+    selected_take_fk INTEGER AS kotlin.Int REFERENCES take_entity(id) ON DELETE SET NULL,
+    start            INTEGER AS kotlin.Int NOT NULL,
+    v_end            INTEGER AS kotlin.Int DEFAULT 0 NOT NULL,
+    sort             INTEGER AS kotlin.Int NOT NULL,
+    text             TEXT,
+    format           TEXT,
+    draft_number     INTEGER AS kotlin.Int DEFAULT 1 NOT NULL,
+    bridged          INTEGER AS kotlin.Boolean DEFAULT 0 NOT NULL
+);
+
+CREATE INDEX idx_content_entity_collection_start ON content_entity (collection_fk, start, type_fk);
+
+-- Queries for ContentDao. ---------------------------------------------------------------------
+
+fetchByCollectionId:
+SELECT * FROM content_entity WHERE collection_fk = ? ORDER BY sort;
+
+fetchByCollectionIdAndStart:
+SELECT * FROM content_entity
+WHERE collection_fk = :collectionId AND start = :start AND type_fk IN :typeIds
+ORDER BY sort;
+
+fetchByCollectionIdAndType:
+SELECT * FROM content_entity WHERE collection_fk = :collectionId AND type_fk = :typeId ORDER BY sort;
+
+fetchById:
+SELECT * FROM content_entity WHERE id = ?;
+
+fetchAll:
+SELECT * FROM content_entity;
+
+-- Content ids belonging to a project (by the project collection's slug). Replaces the raw-jOOQ
+-- ContentDao.fetchContentByProjectSlug (its only consumer read just the id).
+selectContentIdsByProjectSlug:
+SELECT id FROM content_entity
+WHERE collection_fk IN (
+    SELECT id FROM collection_entity WHERE parent_fk IN (
+        SELECT id FROM collection_entity WHERE slug = :projectSlug
+    )
+);
+
+insert:
+INSERT INTO content_entity
+    (collection_fk, sort, start, v_end, label, selected_take_fk, text, format, type_fk, draft_number, bridged)
+VALUES
+    (:collectionFk, :sort, :start, :vEnd, :label, :selectedTakeFk, :text, :format, :typeFk, :draftNumber, :bridged);
+
+selectMaxId:
+SELECT max(id) FROM content_entity;
+
+-- Single-row update: writes collection_fk, does NOT write type_fk (matches ContentDao.update).
+update:
+UPDATE content_entity
+SET sort = :sort, label = :label, start = :start, v_end = :vEnd, collection_fk = :collectionFk,
+    selected_take_fk = :selectedTakeFk, text = :text, format = :format,
+    draft_number = :draftNumber, bridged = :bridged
+WHERE id = :id;
+
+-- Bulk update row: writes type_fk, does NOT write collection_fk (matches ContentDao.updateAll).
+updateForBulk:
+UPDATE content_entity
+SET sort = :sort, label = :label, start = :start, v_end = :vEnd, selected_take_fk = :selectedTakeFk,
+    text = :text, format = :format, type_fk = :typeFk, draft_number = :draftNumber, bridged = :bridged
+WHERE id = :id;
+
+delete:
+DELETE FROM content_entity WHERE id = ?;
+
+deleteForCollection:
+DELETE FROM content_entity WHERE collection_fk = :collectionId AND type_fk = :typeId;
+
+-- content_derivative operations (ContentDao.fetchSources / updateSources / linkDerivative).
+fetchSources:
+SELECT * FROM content_entity
+WHERE id IN (SELECT source_fk FROM content_derivative WHERE content_fk = :contentId)
+ORDER BY sort;
+
+deleteDerivativesForContent:
+DELETE FROM content_derivative WHERE content_fk = ?;
+
+insertDerivative:
+INSERT INTO content_derivative (content_fk, source_fk) VALUES (:contentId, :sourceContentId);
+
+-- CollectionRepository.copyContent: copy each source verse's content into the matching derived
+-- chapter (the derived chapter is the collection whose source_fk = the source chapter and whose
+-- dublin_core_fk = the derived metadata). LEFT JOIN mirrors jOOQ exactly.
+copyContent:
+INSERT INTO content_entity (collection_fk, label, start, v_end, sort, type_fk, draft_number, bridged)
+SELECT dc.id, src.verselabel, src.versestart, src.verseend, src.versesort, src.typefk, src.draftnumber, src.bridged
+FROM (
+    SELECT content_entity.collection_fk AS chapterid,
+           content_entity.label         AS verselabel,
+           content_entity.start         AS versestart,
+           content_entity.v_end         AS verseend,
+           content_entity.sort          AS versesort,
+           content_entity.type_fk       AS typefk,
+           content_entity.draft_number  AS draftnumber,
+           content_entity.bridged       AS bridged
+    FROM content_entity
+    WHERE content_entity.collection_fk IN (SELECT id FROM collection_entity WHERE parent_fk = :sourceId)
+) src
+LEFT JOIN collection_entity dc ON dc.source_fk = src.chapterid AND dc.dublin_core_fk = :metadataId;
+
+-- CollectionRepository.copyMetaContent: same as copyContent but only chapter-meta rows and without bridged.
+copyMetaContent:
+INSERT INTO content_entity (collection_fk, label, start, v_end, sort, type_fk, draft_number)
+SELECT dc.id, src.verselabel, src.versestart, src.verseend, src.versesort, src.typefk, src.draftnumber
+FROM (
+    SELECT content_entity.collection_fk AS chapterid,
+           content_entity.label         AS verselabel,
+           content_entity.start         AS versestart,
+           content_entity.v_end         AS verseend,
+           content_entity.sort          AS versesort,
+           content_entity.type_fk       AS typefk,
+           content_entity.draft_number  AS draftnumber
+    FROM content_entity
+    WHERE content_entity.collection_fk IN (SELECT id FROM collection_entity WHERE parent_fk = :sourceId)
+      AND content_entity.label = 'chapter'
+) src
+LEFT JOIN collection_entity dc ON dc.source_fk = src.chapterid AND dc.dublin_core_fk = :metadataId;
+
+-- CollectionRepository.linkDerivativeContent: link each derived verse back to its source verse by
+-- matching (sort, chapter-slug, type) between source and derived content. content_derivative(content_fk=derived, source_fk=source).
+linkDerivativeContent:
+INSERT INTO content_derivative (content_fk, source_fk)
+SELECT derived.derivedid, src.sourceid
+FROM (
+    SELECT c.id AS sourceid, c.sort AS sourcesort, c.type_fk AS sourcetype, col.slug AS sourcechapter
+    FROM content_entity c
+    LEFT JOIN collection_entity col ON col.id = c.collection_fk
+    WHERE c.collection_fk IN (SELECT id FROM collection_entity WHERE parent_fk = :sourceId)
+) src
+LEFT JOIN (
+    SELECT c.id AS derivedid, c.sort AS derivedsort, c.type_fk AS derivedtype, col.slug AS derivedchapter
+    FROM content_entity c
+    LEFT JOIN collection_entity col ON col.id = c.collection_fk
+    WHERE c.collection_fk IN (SELECT id FROM collection_entity WHERE parent_fk = :projectId)
+) derived
+ON src.sourcesort = derived.derivedsort
+   AND src.sourcechapter = derived.derivedchapter
+   AND src.sourcetype = derived.derivedtype;
+
+-- ResourceRepository.getResources(content, meta): help content rows linked to a main content id
+-- under a metadata (dublin core) id.
+resourcesForContent:
+SELECT DISTINCT help.* FROM resource_link
+JOIN content_entity main ON main.id = resource_link.content_fk
+JOIN content_entity help ON help.id = resource_link.resource_content_fk
+WHERE resource_link.dublin_core_fk = :dublinCoreId AND main.id = :contentId
+ORDER BY help.start, help.sort;
+
+-- ResourceRepository.getResources(collection, meta): help content rows linked to a collection id
+-- under a metadata (dublin core) id.
+resourcesForCollection:
+SELECT DISTINCT help.* FROM resource_link
+JOIN collection_entity ON collection_entity.id = resource_link.collection_fk
+JOIN content_entity help ON resource_link.resource_content_fk = help.id
+WHERE resource_link.dublin_core_fk = :dublinCoreId AND collection_entity.id = :collectionId
+ORDER BY help.start, help.sort;
+
+-- ResourceRepository.getContentResourceFksByCollection: distinct metadata (dublin core) fks for
+-- resource links whose main content belongs to a collection.
+contentResourceMetadataFksByCollection:
+SELECT DISTINCT resource_link.dublin_core_fk FROM resource_link
+JOIN content_entity ON resource_link.content_fk = content_entity.id
+WHERE content_entity.collection_fk = :collectionId;

@@ -29,13 +29,13 @@ import org.bibletranslationtools.otter.common.domain.versification.ParatextVersi
 import org.bibletranslationtools.otter.common.domain.versification.Versification
 import org.bibletranslationtools.otter.common.api.persistence.IAppDirectories
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
-import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.bibletranslationtools.otter.common.persistence.repositories.LanguageRepository
 import java.io.File
 import org.bibletranslationtools.otter.common.OTTER_JSON
 
 class VersificationRepository(
-    database: IAppDatabase,
+    database: DaoProvider,
     private val directoryProvider: IAppDirectories
 ) : IVersificationRepository {
 

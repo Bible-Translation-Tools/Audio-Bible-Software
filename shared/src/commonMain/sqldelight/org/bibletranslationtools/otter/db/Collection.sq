@@ -1,0 +1,81 @@
+-- Mirrors sql/CreateAppDb.sql `collection_entity`.
+CREATE TABLE collection_entity (
+    id              INTEGER AS kotlin.Int PRIMARY KEY AUTOINCREMENT,
+    parent_fk       INTEGER AS kotlin.Int REFERENCES collection_entity(id) ON DELETE CASCADE,
+    source_fk       INTEGER AS kotlin.Int REFERENCES collection_entity(id),
+    label           TEXT NOT NULL,
+    title           TEXT NOT NULL,
+    slug            TEXT NOT NULL,
+    sort            INTEGER AS kotlin.Int NOT NULL,
+    dublin_core_fk  INTEGER AS kotlin.Int NOT NULL REFERENCES dublin_core_entity(id),
+    modified_ts     TEXT DEFAULT NULL,
+    UNIQUE (slug, dublin_core_fk, label)
+);
+
+-- Queries for CollectionDao. ------------------------------------------------------------------
+
+fetchChildren:
+SELECT * FROM collection_entity WHERE parent_fk = ? ORDER BY sort;
+
+-- Used for both fetchById and fetchSource (the DAO passes entity.sourceFk).
+fetchById:
+SELECT * FROM collection_entity WHERE id = ?;
+
+fetch:
+SELECT * FROM collection_entity WHERE slug = :slug AND dublin_core_fk = :containerId AND label = :label;
+
+fetchAll:
+SELECT * FROM collection_entity;
+
+fetchByIds:
+SELECT * FROM collection_entity WHERE id IN ?;
+
+fetchByLabel:
+SELECT * FROM collection_entity WHERE label = ?;
+
+insert:
+INSERT INTO collection_entity (parent_fk, source_fk, slug, title, label, sort, dublin_core_fk, modified_ts)
+VALUES (:parentFk, :sourceFk, :slug, :title, :label, :sort, :dublinCoreFk, :modifiedTs);
+
+selectMaxId:
+SELECT max(id) FROM collection_entity;
+
+update:
+UPDATE collection_entity
+SET parent_fk = :parentFk, source_fk = :sourceFk, slug = :slug, title = :title,
+    label = :label, sort = :sort, dublin_core_fk = :dublinCoreFk, modified_ts = :modifiedTs
+WHERE id = :id;
+
+delete:
+DELETE FROM collection_entity WHERE id = ?;
+
+-- Chapters (child collections of the project) that have no takes. Equivalent to jOOQ's nested
+-- count(take)>0 formulation: a chapter is excluded iff it has a type_fk=1 content row joined to a take.
+collectionsWithoutTakes:
+SELECT * FROM collection_entity
+WHERE parent_fk = :projectId
+  AND id NOT IN (
+      SELECT content_entity.collection_fk
+      FROM content_entity
+      JOIN take_entity ON take_entity.content_fk = content_entity.id
+      WHERE content_entity.type_fk = 1
+        AND content_entity.collection_fk IN (
+            SELECT id FROM collection_entity WHERE parent_fk = :projectId
+        )
+  );
+
+-- CollectionRepository.copyChapters: copy the source project's chapter collections under the derived
+-- project, pointing each derived chapter's source_fk back at the source chapter.
+copyChapters:
+INSERT INTO collection_entity (parent_fk, source_fk, label, title, slug, sort, dublin_core_fk)
+SELECT :projectId, id, label, title, slug, sort, :metadataId
+FROM collection_entity
+WHERE parent_fk = :sourceId;
+
+-- CollectionRepository.getSourceLinkedRCs + deleteResources read only rc2_fk from these links.
+selectSourceLinkedRc2Fks:
+SELECT rc2_fk FROM rc_link_entity
+WHERE rc1_fk IN (
+    SELECT derivedFrom_fk FROM dublin_core_entity
+    WHERE id IN (SELECT dublin_core_fk FROM collection_entity WHERE id = :projectId)
+);

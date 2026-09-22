@@ -4,11 +4,11 @@ import io.mockk.*
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.test.runTest
-import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.domain.project.GlSourceCatalog
-import org.bibletranslationtools.otter.common.persistence.database.daos.LanguageDao
-import org.bibletranslationtools.otter.common.persistence.database.daos.TranslationDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.LanguageDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.TranslationDao
 import org.bibletranslationtools.otter.common.persistence.repositories.LanguageRepository
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.LanguageMapper
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.TranslationMapper
@@ -19,7 +19,7 @@ import kotlin.test.assertEquals
 
 class LanguageRepositoryTest {
 
-    private val db = mockk<IAppDatabase>()
+    private val db = mockk<DaoProvider>()
     private val languageDao = mockk<LanguageDao>()
     private val translationDao = mockk<TranslationDao>()
     private val mapper = mockk<LanguageMapper>()

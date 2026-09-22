@@ -31,7 +31,7 @@ import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IContentRepository
-import org.bibletranslationtools.otter.common.persistence.database.IAppDatabase
+import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.bibletranslationtools.otter.common.persistence.entities.ContentEntity
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.ContentMapper
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.MarkerMapper
@@ -40,7 +40,7 @@ import java.lang.IllegalStateException
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.CollectionMapper
 
 class ContentRepository(
-    database: IAppDatabase
+    database: DaoProvider
 ) : IContentRepository {
     private val logger = LoggerFactory.getLogger(ContentRepository::class.java)
 

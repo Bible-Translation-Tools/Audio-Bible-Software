@@ -20,7 +20,7 @@ package org.bibletranslationtools.otter.common.persistence.repositories.mapping
 
 import org.bibletranslationtools.otter.common.data.primitives.Marker
 import org.bibletranslationtools.otter.common.data.primitives.Take
-import org.bibletranslationtools.otter.common.persistence.database.daos.CheckingStatusDao
+import org.bibletranslationtools.otter.common.persistence.database.dao.CheckingStatusDao
 import org.bibletranslationtools.otter.common.persistence.entities.TakeEntity
 import java.io.File
 import java.time.LocalDate

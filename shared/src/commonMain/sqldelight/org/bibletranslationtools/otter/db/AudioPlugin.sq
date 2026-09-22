@@ -1,0 +1,13 @@
+-- Mirrors sql/CreateAppDb.sql `audio_plugin_entity`.
+CREATE TABLE audio_plugin_entity (
+    id                  INTEGER AS kotlin.Int PRIMARY KEY AUTOINCREMENT,
+    name                TEXT NOT NULL,
+    version             TEXT NOT NULL,
+    bin                 TEXT NOT NULL,
+    args                TEXT NOT NULL,
+    record              INTEGER AS kotlin.Int DEFAULT 0 NOT NULL,
+    edit                INTEGER AS kotlin.Int DEFAULT 0 NOT NULL,
+    mark                INTEGER AS kotlin.Int DEFAULT 0 NOT NULL,
+    path                TEXT,
+    UNIQUE (name, version)
+);

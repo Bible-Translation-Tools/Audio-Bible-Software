@@ -22,11 +22,11 @@ class AndroidDirectoryProvider(val context: Context): IDirectoryProvider {
     private val pathSeparator = FileSystems.getDefault().separator
 
     override fun getUserDataDirectory(appendedPath: String): File {
-        return File(context.filesDir, appendedPath)
+        return File(context.filesDir, "user/$pathSeparator$appendedPath")
     }
 
     override fun getAppDataDirectory(appendedPath: String): File {
-        return File(context.filesDir, appendedPath)
+        return File(context.filesDir, "app/$pathSeparator$appendedPath")
     }
 
     override fun getProjectDirectory(

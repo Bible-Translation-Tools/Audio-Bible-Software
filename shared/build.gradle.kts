@@ -14,6 +14,7 @@ plugins {
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.sqldelight)
     kotlin("plugin.serialization") version "2.1.10"
     id("de.undercouch.download") version "5.6.0"
 }
@@ -147,6 +148,11 @@ kotlin {
 
                 // Behind IAppPreferences / DataStoreAppPreferences.
                 implementation(libs.datastore.preferences)
+
+                // SQLDelight KMP runtime for the generated query APIs (jOOQ replacement).
+                implementation(libs.sqldelight.runtime)
+                // IntColumnAdapter for the `INTEGER AS kotlin.Int` columns.
+                implementation(libs.sqldelight.primitive.adapters)
             }
         }
 
@@ -158,6 +164,9 @@ kotlin {
                 // SLF4J console binding so backend logger.error() is visible from a
                 // terminal (otherwise export/import/audio failures are silent).
                 implementation("org.slf4j:slf4j-simple:2.0.13")
+
+                // SQLDelight JVM driver (JdbcSqliteDriver) — desktop backend.
+                implementation(libs.sqldelight.sqlite.driver)
             }
         }
 
@@ -180,6 +189,11 @@ kotlin {
                 api(libs.koin.android)
                 // BackHandler for the android PlatformBackHandler actual.
                 implementation(libs.androidx.activity.compose)
+
+                // SQLDelight Android driver (AndroidSqliteDriver over the framework
+                // android.database.sqlite — the no-bundled-engine path validated against API 24 /
+                // SQLite 3.9.2 in Phase 0a; replaces the SQLDroid/xerial dual-driver setup).
+                implementation(libs.sqldelight.android.driver)
             }
         }
 
@@ -195,10 +209,33 @@ kotlin {
             }
         }
 
+        // On-device DB tests, run on a real Android 7 (API 24) emulator: the SQLDelight backend +
+        // hand-rolled upserts against the framework SQLite 3.9.2 (the no-bundled-engine path).
+        val androidInstrumentedTest by getting {
+            dependencies {
+                implementation("androidx.test:runner:1.6.2")
+                implementation("androidx.test.ext:junit:1.2.1")
+            }
+        }
+
         // langnames data (ivy artifact) consumed by the backend language init. A JSON data file,
         // not code — nothing imports it, so it has no business on the apps' compile classpath.
         dependencies {
             implementation("bibleineverylanguage:langnames@json")
+        }
+    }
+}
+
+// The SQLDelight replacement for jOOQ (migration in progress — see
+// docs/jooq-to-sqldelight-migration-plan.md). `.sq` sources live under
+// src/commonMain/sqldelight/org/bibletranslationtools/otter/db/. The 3.18 dialect is SQLDelight's
+// lowest SQLite dialect: pinning it makes the compiler reject any syntax newer than what Android 7
+// (SQLite 3.9.2, minSdk 24) can execute — validated on an API-24 emulator in Phase 0a.
+sqldelight {
+    databases {
+        create("OtterDatabase") {
+            packageName.set("org.bibletranslationtools.otter.db")
+            dialect("app.cash.sqldelight:sqlite-3-18-dialect:${libs.versions.sqldelight.get()}")
         }
     }
 }
@@ -215,6 +252,9 @@ android {
 
     defaultConfig {
         minSdk = libs.versions.android.minSdk.get().toInt()
+        // Runs the on-device DB tests (androidInstrumentedTest) — the only faithful way to
+        // exercise the framework SQLite 3.9.2 on Android 7.
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
