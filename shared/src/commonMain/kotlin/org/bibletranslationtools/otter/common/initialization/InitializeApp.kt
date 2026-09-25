@@ -33,6 +33,7 @@ class InitializeApp(
     private val initializeTakeRepository: InitializeTakeRepository,
     private val initializeProjects: InitializeProjects,
     private val initializeTranslations: InitializeTranslations,
+    private val auditSourceStructure: AuditSourceStructure,
     private val directoryProvider: ITempFileProvider,
     private val daoProvider: DaoProvider
 ) {
@@ -49,7 +50,8 @@ class InitializeApp(
                     initializeUlb,
                     initializeTakeRepository,
                     initializeProjects,
-                    initializeTranslations
+                    initializeTranslations,
+                    auditSourceStructure
                 )
 
                 var total = 0.0
