@@ -8,6 +8,8 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IInst
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ILanguageRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceContainerRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IEditionFingerprintRepository
+import org.bibletranslationtools.otter.common.persistence.repositories.EditionFingerprintRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ITakeRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
@@ -58,6 +60,7 @@ val appRepositoriesModule = module {
     singleOf(::ResourceRepository) { bind<IResourceRepository>() }
     singleOf(::ResourceContainerRepository) { bind<IResourceContainerRepository>() }
     singleOf(::ResourceMetadataRepository) { bind<IResourceMetadataRepository>() }
+    singleOf(::EditionFingerprintRepository) { bind<IEditionFingerprintRepository>() }
     singleOf(::TakeRepository) { bind<ITakeRepository>() }
     // Explicitly defined to disambiguate WorkbookRepository's constructors.
     single<IWorkbookRepository> {

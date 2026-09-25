@@ -29,6 +29,7 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.OtterReso
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.castOrFindImportException
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.IProjectReader
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.IZipEntryTreeBuilder
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionFingerprint
 import org.bibletranslationtools.otter.common.domain.versification.StandardVersifications
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceContainerRepository
@@ -44,6 +45,7 @@ class NewSourceImporter(
     private val resourceContainerRepository: IResourceContainerRepository,
     resourceMetadataRepository: IResourceMetadataRepository,
     private val structurePlanner: SourceStructurePlanner,
+    private val fingerprinter: EditionFingerprinter,
     // getVersification() below reads a versification directly to synthesize USFM for audio-only
     // containers.
     private val versificationRepository: IVersificationRepository,
@@ -131,16 +133,21 @@ class NewSourceImporter(
 
             // A versification problem must not fail the import. Importing the parsed text alone is
             // what the app did before gap-filling existed, so it is a known-good fallback.
-            val treeToImport = runCatching { structurePlanner.plan(container, tree).tree }
+            val plan = runCatching { structurePlanner.plan(container, tree) }
                 .getOrElse {
                     logger.error(
                         "Could not plan the structure for ${file.name}; importing the source text as parsed",
                         it
                     )
-                    tree
+                    SourceStructurePlan(tree, null)
                 }
+            // Taken from the parsed text, not the gap-filled tree: the fingerprint describes the
+            // edition's own content, independent of what the app adds to make it recordable.
+            val fingerprint = runCatching { fingerprinter.fingerprint(container, tree, plan.match?.code) }
+                .onFailure { logger.error("Could not fingerprint ${file.name}; importing without one", it) }
+                .getOrNull()
 
-            importTree(container, treeToImport, fileToImport)
+            importTree(container, plan.tree, fileToImport, fingerprint)
                 .subscribe { result ->
                     notifyCallback(result, callback, file)
                     emitter.onSuccess(result)
@@ -200,10 +207,11 @@ class NewSourceImporter(
     private fun importTree(
         container: ResourceContainer,
         tree: OtterTree<CollectionOrContent>,
-        fileToLoad: File
+        fileToLoad: File,
+        fingerprint: EditionFingerprint?
     ): Single<ImportResult> {
         return resourceContainerRepository
-            .importResourceContainer(container, tree, container.manifest.dublinCore.language.identifier)
+            .importResourceContainer(container, tree, container.manifest.dublinCore.language.identifier, fingerprint)
             .doOnEvent { result, err ->
                 if (err != null) {
                     logger.error("Error in importFromInternalDirectory importing rc, file: $fileToLoad", err)

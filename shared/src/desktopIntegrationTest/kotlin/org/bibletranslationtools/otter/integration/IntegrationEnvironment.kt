@@ -16,6 +16,11 @@ import io.reactivex.Observable
 import org.bibletranslationtools.otter.common.data.ProgressStatus
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
 import org.bibletranslationtools.otter.common.initialization.AuditSourceStructure
+import org.bibletranslationtools.otter.common.initialization.BackfillEditionFingerprints
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IEditionFingerprintRepository
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionFingerprint
+import org.bibletranslationtools.otter.common.persistence.entities.EditionFingerprintEntity
+import kotlinx.coroutines.runBlocking
 import org.bibletranslationtools.otter.common.initialization.InitializeVersification
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.SourceStructureFindings
 import org.bibletranslationtools.otter.common.persistence.DesktopDirectoryProvider
@@ -161,6 +166,28 @@ class IntegrationEnvironment private constructor(
     /** A versification as source import reads it, or null if it isn't installed. */
     fun versification(code: String): Versification? =
         koin.get<IVersificationRepository>().getVersification(code).blockingGet()
+
+    /** The single installed source's stored fingerprint, or null if it has none. */
+    fun storedFingerprint(): EditionFingerprint? = runBlocking {
+        koin.get<IEditionFingerprintRepository>().get(installedSource().id)
+    }
+
+    /** Removes the installed source's fingerprint, as a database from before schema v15 has none. */
+    fun clearFingerprint() {
+        val id = installedSource().id
+        db.resourceMetadataDao.setEditionFingerprint(id, EditionFingerprintEntity(null, null, null))
+        db.editionChapterDao.replaceForEdition(id, emptyList())
+    }
+
+    /** Runs the startup fingerprint backfill. */
+    fun backfillFingerprints() {
+        Observable.create<ProgressStatus> { emitter ->
+            koin.get<BackfillEditionFingerprints>().exec(emitter).blockingAwait()
+            emitter.onComplete()
+        }.blockingSubscribe()
+    }
+
+    private fun installedSource() = db.resourceMetadataDao.fetchAll().single { it.derivedFromFk == null }
 
     /** What the one-time source structure report would say about every installed source. */
     fun auditSources(): List<SourceStructureFindings> = koin.get<AuditSourceStructure>().audit()

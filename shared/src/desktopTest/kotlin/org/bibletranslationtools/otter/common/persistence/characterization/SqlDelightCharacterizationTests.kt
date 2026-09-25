@@ -78,3 +78,7 @@ class SqlDelightSubtreeHasResourceDaoCharacterizationTest : SubtreeHasResourceDa
 class SqlDelightResourceMetadataDaoCharacterizationTest : ResourceMetadataDaoCharacterization() {
     override val backend = SqlDelightBackend
 }
+
+class SqlDelightEditionFingerprintDaoCharacterizationTest : EditionFingerprintDaoCharacterization() {
+    override val backend = SqlDelightBackend
+}

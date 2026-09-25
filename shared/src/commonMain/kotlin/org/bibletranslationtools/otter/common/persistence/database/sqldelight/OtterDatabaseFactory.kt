@@ -28,6 +28,7 @@ import org.bibletranslationtools.otter.db.Content_derivative
 import org.bibletranslationtools.otter.db.Content_entity
 import org.bibletranslationtools.otter.db.Content_type
 import org.bibletranslationtools.otter.db.Dublin_core_entity
+import org.bibletranslationtools.otter.db.Edition_chapter
 import org.bibletranslationtools.otter.db.Installed_entity
 import org.bibletranslationtools.otter.db.Language_entity
 import org.bibletranslationtools.otter.db.Marker_entity
@@ -55,6 +56,7 @@ internal fun buildOtterDatabase(driver: SqlDriver): OtterDatabase {
         content_entityAdapter = Content_entity.Adapter(i, i, i, i, i, i, i, i),
         content_typeAdapter = Content_type.Adapter(i),
         dublin_core_entityAdapter = Dublin_core_entity.Adapter(i, i, i),
+        edition_chapterAdapter = Edition_chapter.Adapter(i),
         installed_entityAdapter = Installed_entity.Adapter(i),
         language_entityAdapter = Language_entity.Adapter(i, i),
         marker_entityAdapter = Marker_entity.Adapter(i, i, i, i),

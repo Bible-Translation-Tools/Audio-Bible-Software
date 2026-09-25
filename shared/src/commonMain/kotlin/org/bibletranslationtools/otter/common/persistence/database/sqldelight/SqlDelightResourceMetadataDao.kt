@@ -20,6 +20,7 @@ package org.bibletranslationtools.otter.common.persistence.database.sqldelight
 
 import org.bibletranslationtools.otter.common.persistence.database.InsertionException
 import org.bibletranslationtools.otter.common.persistence.database.dao.ResourceMetadataDao
+import org.bibletranslationtools.otter.common.persistence.entities.EditionFingerprintEntity
 import org.bibletranslationtools.otter.common.persistence.entities.ResourceMetadataEntity
 import org.bibletranslationtools.otter.db.OtterDatabase
 
@@ -144,4 +145,21 @@ internal class SqlDelightResourceMetadataDao(private val db: OtterDatabase) : Re
 
     override fun subtreeResourceMetadata(collectionId: Int): List<ResourceMetadataEntity> =
         queries.subtreeResourceMetadata(collectionId).executeAsList().map { it.toEntity() }
+
+    override fun setEditionFingerprint(id: Int, fingerprint: EditionFingerprintEntity) {
+        queries.setEditionFingerprint(
+            detectedVersification = fingerprint.detectedVersification,
+            structureFingerprint = fingerprint.structureFingerprint,
+            textFingerprint = fingerprint.textFingerprint,
+            id = id
+        )
+    }
+
+    override fun fetchEditionFingerprint(id: Int): EditionFingerprintEntity? =
+        queries.fetchEditionFingerprint(id).executeAsOneOrNull()?.let {
+            EditionFingerprintEntity(it.detected_versification, it.structure_fingerprint, it.text_fingerprint)
+        }
+
+    override fun fetchSourceIdsWithoutFingerprint(): List<Int> =
+        queries.fetchSourceIdsWithoutFingerprint().executeAsList()
 }

@@ -32,7 +32,7 @@ import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus as 
 
 /**
  * Raw-SQL port of the jOOQ `DatabaseMigrator` it replaced (removed with jOOQ), running the
- * identical v0->14 upgrade path through a SQLDelight [SqlDriver].
+ * identical v0->14 upgrade path through a SQLDelight [SqlDriver], then the steps added since.
  *
  * This mirrors the jOOQ migrator's control flow AND its quirks exactly (see
  * docs/phase5a-handoff.md), including the two deliberate ones in the 12->13 take rebuild (the
@@ -67,6 +67,7 @@ class SqlDelightDatabaseMigrator(
             current = migrate11to12(driver, current)
             current = migrate12to13(driver, current)
             current = migrate13to14(driver, current)
+            current = migrate14to15(driver, current)
             exec(driver, "UPDATE installed_entity SET version = $current WHERE name = '$DATABASE_INSTALLABLE_NAME'")
         }
     }
@@ -96,6 +97,25 @@ class SqlDelightDatabaseMigrator(
             { cursor ->
                 val value = if (cursor.next().value) cursor.getLong(0)?.toInt() else null
                 QueryResult.Value(value)
+            },
+            0
+        ).value
+    }
+
+    /**
+     * The column names of [table]. Reads `PRAGMA table_info` directly: the `pragma_table_info()`
+     * table function needs SQLite 3.16, and Android 7 ships 3.9.2.
+     */
+    private fun columnNames(driver: SqlDriver, table: String): Set<String> {
+        return driver.executeQuery(
+            null,
+            "PRAGMA table_info($table);",
+            { cursor ->
+                val names = mutableSetOf<String>()
+                while (cursor.next().value) {
+                    cursor.getString(1)?.let(names::add)
+                }
+                QueryResult.Value(names)
             },
             0
         ).value
@@ -434,6 +454,41 @@ class SqlDelightDatabaseMigrator(
             }
             logger.info("Updated database from version 13 to 14")
             14
+        } else current
+    }
+
+    /**
+     * Version 15
+     * Edition fingerprints: three nullable columns on `dublin_core_entity` and the `edition_chapter`
+     * table. Existing sources get their fingerprints from the startup backfill, not here: computing
+     * them needs each source's text.
+     */
+    private fun migrate14to15(driver: SqlDriver, current: Int): Int {
+        return if (current < 15) {
+            try {
+                // A step that failed partway is retried next launch, so skip columns already added.
+                val existing = columnNames(driver, "dublin_core_entity")
+                listOf("detected_versification", "structure_fingerprint", "text_fingerprint")
+                    .filter { it !in existing }
+                    .forEach { exec(driver, "ALTER TABLE dublin_core_entity ADD COLUMN $it TEXT;") }
+                exec(
+                    driver,
+                    """
+                    CREATE TABLE IF NOT EXISTS edition_chapter (
+                        dublin_core_fk  INTEGER NOT NULL REFERENCES dublin_core_entity(id) ON DELETE CASCADE,
+                        chapter_slug    TEXT NOT NULL,
+                        structure_hash  TEXT NOT NULL,
+                        text_hash       TEXT NOT NULL,
+                        PRIMARY KEY (dublin_core_fk, chapter_slug)
+                    );
+                    """.trimIndent()
+                )
+            } catch (e: Exception) {
+                logger.error("Error in while migrating database from version 14 to 15", e)
+                return 14
+            }
+            logger.info("Updated database from version 14 to 15")
+            15
         } else current
     }
 

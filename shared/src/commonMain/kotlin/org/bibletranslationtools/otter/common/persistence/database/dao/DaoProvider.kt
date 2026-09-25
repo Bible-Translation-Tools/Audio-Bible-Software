@@ -39,6 +39,7 @@ interface DaoProvider {
     val workbookTypeDao: WorkbookTypeDao
     val workbookDescriptorDao: WorkbookDescriptorDao
     val checkingStatusDao: CheckingStatusDao
+    val editionChapterDao: EditionChapterDao
 
     fun transaction(block: () -> Unit)
     fun <T> transactionResult(block: () -> T): T

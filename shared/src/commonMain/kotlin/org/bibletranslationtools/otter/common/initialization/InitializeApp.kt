@@ -33,6 +33,7 @@ class InitializeApp(
     private val initializeTakeRepository: InitializeTakeRepository,
     private val initializeProjects: InitializeProjects,
     private val initializeTranslations: InitializeTranslations,
+    private val backfillEditionFingerprints: BackfillEditionFingerprints,
     private val auditSourceStructure: AuditSourceStructure,
     private val directoryProvider: ITempFileProvider,
     private val daoProvider: DaoProvider
@@ -51,6 +52,7 @@ class InitializeApp(
                     initializeTakeRepository,
                     initializeProjects,
                     initializeTranslations,
+                    backfillEditionFingerprints,
                     auditSourceStructure
                 )
 

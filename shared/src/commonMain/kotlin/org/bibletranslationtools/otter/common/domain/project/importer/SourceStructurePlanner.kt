@@ -61,24 +61,34 @@ class SourceStructurePlanner(
     private val logger = LoggerFactory.getLogger(SourceStructurePlanner::class.java)
 
     fun plan(container: ResourceContainer, parsedTree: OtterTree<CollectionOrContent>): SourceStructurePlan {
-        val declared = container.manifest.projects.firstOrNull()?.versification
-        if (declared.isNullOrBlank()) return SourceStructurePlan(parsedTree, null)
-
-        val candidates = StandardVersifications.all.mapNotNull { code -> read(code)?.let { code to it } }
-        val match = VersificationDetector.detect(textStructureOf(parsedTree), candidates)
-            ?: return SourceStructurePlan(parsedTree, null).also {
-                logger.warn("No standard versification could be read; importing the source text as parsed")
-            }
-        logger.info(
-            "Source text follows '${match.code}' (declared '$declared'); " +
-                "${match.differingChapters.size} chapter(s) differ: ${match.differingChapters.take(20)}"
-        )
+        val match = detect(container, parsedTree) ?: return SourceStructurePlan(parsedTree, null)
 
         val templateBooks = read(TEMPLATE_BOOKS_VERSIFICATION)?.getBookSlugs().orEmpty()
         val tree = fillStructureGaps(parsedTree, match.versification, templateBooks) { book ->
             treeBuilder.bookTree(match.versification, container, book, match.code)
         }
         return SourceStructurePlan(tree, match)
+    }
+
+    /**
+     * The standard versification [parsedTree]'s text best fits, or null when [container] names no
+     * versification (so isn't versified Bible text) or none could be read.
+     */
+    fun detect(container: ResourceContainer, parsedTree: OtterTree<CollectionOrContent>): VersificationMatch? {
+        val declared = container.manifest.projects.firstOrNull()?.versification
+        if (declared.isNullOrBlank()) return null
+
+        val candidates = StandardVersifications.all.mapNotNull { code -> read(code)?.let { code to it } }
+        val match = VersificationDetector.detect(textStructureOf(parsedTree), candidates)
+        if (match == null) {
+            logger.warn("No standard versification could be read; importing the source text as parsed")
+        } else {
+            logger.info(
+                "Source text follows '${match.code}' (declared '$declared'); " +
+                    "${match.differingChapters.size} chapter(s) differ: ${match.differingChapters.take(20)}"
+            )
+        }
+        return match
     }
 
     private fun read(code: String): Versification? =

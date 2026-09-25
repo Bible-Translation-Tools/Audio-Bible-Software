@@ -37,6 +37,9 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.projectim
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceContainerRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IEditionFingerprintRepository
+import io.reactivex.Completable
+import kotlinx.coroutines.rx2.rxCompletable
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import java.io.File
 import java.io.IOException
@@ -46,7 +49,9 @@ class ExistingSourceImporter(
     private val resourceMetadataRepository: IResourceMetadataRepository,
     private val resourceContainerRepository: IResourceContainerRepository,
     private val zipEntryTreeBuilder: IZipEntryTreeBuilder,
-    private val deleteUseCase: DeleteResourceContainer
+    private val deleteUseCase: DeleteResourceContainer,
+    private val fingerprinter: EditionFingerprinter,
+    private val fingerprintRepository: IEditionFingerprintRepository
 ) : RCImporter(directoryProvider, resourceMetadataRepository), KoinComponent {
 
     private val importUseCase: ImportProjectUseCase by inject()
@@ -96,6 +101,10 @@ class ExistingSourceImporter(
                         Single.just(it)
                     }
                 }
+                .flatMap { result ->
+                    if (result == ImportResult.SUCCESS) refreshFingerprint(existingSource).toSingleDefault(result)
+                    else Single.just(result)
+                }
         } else {
             // existing resource has a different version, confirms overwrite/delete
             callback?.onNotifyProgress(localizeKey = "overridingSource", percent = 15.0)
@@ -141,6 +150,19 @@ class ExistingSourceImporter(
             callback?.onError(file.name)
         }
     }
+
+    /**
+     * Re-fingerprints [metadata]'s source from its files after they were updated in place. Failing
+     * to only logs: the startup backfill can't repair a stale fingerprint, but an in-place update
+     * that succeeded must not be reported as failed because of it.
+     */
+    private fun refreshFingerprint(metadata: ResourceMetadata): Completable =
+        rxCompletable {
+            fingerprintRepository.save(metadata.id, fingerprinter.fingerprint(metadata.path))
+        }.onErrorComplete {
+            logger.error("Could not refresh the fingerprint of ${metadata.path}", it)
+            true
+        }
 
     private fun updateSource(metadata: ResourceMetadata, file: File): Single<ImportResult> {
         return Single

@@ -22,14 +22,19 @@ import io.reactivex.Single
 import org.bibletranslationtools.otter.common.collections.OtterTree
 import org.bibletranslationtools.otter.common.data.primitives.CollectionOrContent
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.DeleteResult
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionFingerprint
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 
 interface IResourceContainerRepository {
+    /**
+     * @param fingerprint stored with the new source row in the same transaction, when given.
+     */
     fun importResourceContainer(
         rc: ResourceContainer,
         rcTree: OtterTree<CollectionOrContent>,
-        languageSlug: String
+        languageSlug: String,
+        fingerprint: EditionFingerprint? = null
     ): Single<ImportResult>
 
     /**
@@ -69,7 +74,8 @@ interface IResourceContainerRepository {
     suspend fun importResourceContainerSuspend(
         rc: ResourceContainer,
         rcTree: OtterTree<CollectionOrContent>,
-        languageSlug: String
+        languageSlug: String,
+        fingerprint: EditionFingerprint? = null
     ): ImportResult
 
     suspend fun updateContentSuspend(

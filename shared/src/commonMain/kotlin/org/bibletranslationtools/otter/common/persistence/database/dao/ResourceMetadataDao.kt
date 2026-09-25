@@ -18,6 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.persistence.database.dao
 
+import org.bibletranslationtools.otter.common.persistence.entities.EditionFingerprintEntity
 import org.bibletranslationtools.otter.common.persistence.entities.ResourceMetadataEntity
 
 /**
@@ -49,4 +50,10 @@ interface ResourceMetadataDao {
     fun resourceMetadataByContent(contentId: Int): List<ResourceMetadataEntity>
     fun resourceMetadataByCollection(collectionId: Int): List<ResourceMetadataEntity>
     fun subtreeResourceMetadata(collectionId: Int): List<ResourceMetadataEntity>
+
+    /** Sets the edition fingerprint columns of row [id]; [insert] and [update] never touch them. */
+    fun setEditionFingerprint(id: Int, fingerprint: EditionFingerprintEntity)
+    fun fetchEditionFingerprint(id: Int): EditionFingerprintEntity?
+    /** Ids of source rows (not derived ones) that have no edition fingerprint yet. */
+    fun fetchSourceIdsWithoutFingerprint(): List<Int>
 }

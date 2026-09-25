@@ -18,6 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.persistence.repositories
 
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionFingerprint
 import io.reactivex.Completable
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
@@ -60,7 +61,8 @@ class ResourceContainerRepository(
     override fun importResourceContainer(
         rc: ResourceContainer,
         rcTree: OtterTree<CollectionOrContent>,
-        languageSlug: String
+        languageSlug: String,
+        fingerprint: EditionFingerprint?
     ): Single<ImportResult> {
         val dublinCore = rc.manifest.dublinCore
         return Completable
@@ -73,6 +75,7 @@ class ResourceContainerRepository(
                         .let {
                             insertMetadataOrThrow(it)
                         }
+                    fingerprint?.let { database.storeEditionFingerprint(metadata.id, it) }
 
                     val relatedDublinCoreIds: List<Int> =
                         linkRelatedResourceContainers(metadata, dublinCore.relation, dublinCore.creator)
@@ -435,8 +438,9 @@ class ResourceContainerRepository(
     override suspend fun importResourceContainerSuspend(
         rc: ResourceContainer,
         rcTree: OtterTree<CollectionOrContent>,
-        languageSlug: String
-    ): ImportResult = importResourceContainer(rc, rcTree, languageSlug).await()
+        languageSlug: String,
+        fingerprint: EditionFingerprint?
+    ): ImportResult = importResourceContainer(rc, rcTree, languageSlug, fingerprint).await()
 
     override suspend fun updateContentSuspend(
         rc: ResourceContainer,

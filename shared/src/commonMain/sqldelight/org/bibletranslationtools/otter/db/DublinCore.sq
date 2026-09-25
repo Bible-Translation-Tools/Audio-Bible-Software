@@ -17,6 +17,11 @@ CREATE TABLE dublin_core_entity (
     license     TEXT NOT NULL DEFAULT '',
     path        TEXT NOT NULL,
     derivedFrom_fk INTEGER AS kotlin.Int REFERENCES dublin_core_entity(id),
+    -- Edition fingerprint (schema v15), set for sources at import or by the startup backfill; NULL
+    -- until then and for derived rows. See EditionFingerprint.
+    detected_versification TEXT,
+    structure_fingerprint  TEXT,
+    text_fingerprint       TEXT,
     UNIQUE (language_fk, identifier, version, creator, derivedFrom_fk)
 );
 
@@ -120,3 +125,21 @@ subtreeResourceMetadata:
 SELECT dublin_core_entity.* FROM subtree_has_resource
 JOIN dublin_core_entity ON dublin_core_entity.id = subtree_has_resource.dublin_core_fk
 WHERE subtree_has_resource.collection_fk = :collectionId;
+
+-- Edition fingerprint. Kept out of insert/update so re-mapping metadata from a manifest never
+-- clears it.
+setEditionFingerprint:
+UPDATE dublin_core_entity
+SET detected_versification = :detectedVersification,
+    structure_fingerprint = :structureFingerprint,
+    text_fingerprint = :textFingerprint
+WHERE id = :id;
+
+fetchEditionFingerprint:
+SELECT detected_versification, structure_fingerprint, text_fingerprint
+FROM dublin_core_entity WHERE id = ?;
+
+-- Sources (not derived rows) that have no fingerprint yet.
+fetchSourceIdsWithoutFingerprint:
+SELECT id FROM dublin_core_entity
+WHERE derivedFrom_fk IS NULL AND structure_fingerprint IS NULL;
