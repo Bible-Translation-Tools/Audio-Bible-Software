@@ -4,7 +4,7 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <!-- Android 7 clamps the per-app heap to dalvik.vm.heapgrowthlimit — 48MB on the API 24
-         emulator. The backend is jOOQ + RxJava + a native SQLite over a source import that
+         emulator. The backend is RxJava + SQLite over a source import that
          pre-allocates ~34k content rows from versification, and reading those back through
          ContentDao.fetchByCollectionId (select(), no limit) exhausted it. largeHeap asks for
          dalvik.vm.heapsize instead; it raises the ceiling rather than reducing demand. -->

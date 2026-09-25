@@ -1,4 +1,4 @@
--- Mirrors sql/CreateAppDb.sql `collection_entity`.
+-- Ported from the legacy (jOOQ) CreateAppDb.sql `collection_entity`.
 CREATE TABLE collection_entity (
     id              INTEGER AS kotlin.Int PRIMARY KEY AUTOINCREMENT,
     parent_fk       INTEGER AS kotlin.Int REFERENCES collection_entity(id) ON DELETE CASCADE,

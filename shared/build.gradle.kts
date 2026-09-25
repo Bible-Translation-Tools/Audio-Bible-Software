@@ -51,7 +51,6 @@ kotlin {
     // Backend library versions (moved verbatim from the recorder app during the split).
     val rxkotlinVer = "2.4.0"
     val rxrelayVer = "2.1.0"
-    val jooqVer = "3.14.16"
     val kotlinVer = "1.9.23"
     val retrofitVer = "2.9.0"
     val retrofitRxJava2Ver = "2.9.0"
@@ -111,11 +110,8 @@ kotlin {
 
                 // ── implementation: :shared's own business ──────────────────────────────
                 // None of these appears in an app source file. Keeping them off the apps'
-                // compile classpath is what stops a screen importing org.jooq: until now
-                // `api(projects.shared)` made the database library, the HTTP stack and five audio
-                // codecs visible from every @Composable in both apps.
-                implementation("org.jooq:jooq:$jooqVer")
-                implementation("org.bibletranslationtools:otter-db:1.0")
+                // compile classpath stops a screen reaching the HTTP stack or the audio codecs
+                // directly.
 
                 implementation("org.wycliffeassociates:kotlin-resource-container:$kotlinresourcecontainerVer")
                 implementation("org.wycliffeassociates:usfmtools:$usfmToolsVer")
@@ -158,8 +154,8 @@ kotlin {
 
         val desktopMain by getting {
             dependencies {
-                // Both are runtime-only: a JDBC driver and a logging binding, neither named in any
-                // app source. They stay on the runtime classpath as `implementation` deps.
+                // Both are runtime-only: the JDBC SQLite driver JdbcSqliteDriver runs on, and a
+                // logging binding. Neither is named in any app source.
                 implementation("org.xerial:sqlite-jdbc:3.49.0.0")
                 // SLF4J console binding so backend logger.error() is visible from a
                 // terminal (otherwise export/import/audio failures are silent).
@@ -172,18 +168,10 @@ kotlin {
 
         val androidMain by getting {
             dependencies {
-                // Runtime-only sqlite plumbing for the android AppDatabase actual.
-                // Two SQLite drivers on purpose — AppDatabase.android.kt picks between them by
-                // asking the device what SQLite it has. SQLDroid wraps the platform engine and
-                // stays the default; sqlite-jdbc carries its own (see jniLibs/) for devices whose
-                // SQLite predates upsert, i.e. Android 7. Version must match those .so files.
-                implementation(libs.sqldroid)
-                implementation("org.xerial:sqlite-jdbc:3.53.2.0")
                 // Without a binding, every backend logger.error() on Android goes to slf4j's NOP
                 // logger — an import failing during first-run init reports nothing at all. simple
                 // writes to System.err, which logcat captures, matching the desktop setup.
                 implementation("org.slf4j:slf4j-simple:2.0.13")
-                implementation("com.readystatesoftware.sqliteasset:sqliteassethelper:2.0.1")
                 // api: the android apps call org.koin.android.ext.koin.androidContext in their
                 // Application classes.
                 api(libs.koin.android)
@@ -192,7 +180,7 @@ kotlin {
 
                 // SQLDelight Android driver (AndroidSqliteDriver over the framework
                 // android.database.sqlite — the no-bundled-engine path validated against API 24 /
-                // SQLite 3.9.2 in Phase 0a; replaces the SQLDroid/xerial dual-driver setup).
+                // SQLite 3.9.2).
                 implementation(libs.sqldelight.android.driver)
             }
         }
@@ -226,8 +214,7 @@ kotlin {
     }
 }
 
-// The SQLDelight replacement for jOOQ (migration in progress — see
-// docs/jooq-to-sqldelight-migration-plan.md). `.sq` sources live under
+// The database schema and queries. `.sq` sources live under
 // src/commonMain/sqldelight/org/bibletranslationtools/otter/db/. The 3.18 dialect is SQLDelight's
 // lowest SQLite dialect: pinning it makes the compiler reject any syntax newer than what Android 7
 // (SQLite 3.9.2, minSdk 24) can execute — validated on an API-24 emulator in Phase 0a.

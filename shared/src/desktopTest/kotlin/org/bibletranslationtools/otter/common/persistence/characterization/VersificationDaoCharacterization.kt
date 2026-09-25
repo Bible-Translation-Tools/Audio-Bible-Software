@@ -23,7 +23,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 /**
- * Characterizes [org.bibletranslationtools.otter.common.persistence.database.daos.VersificationDao].
+ * Characterizes [org.bibletranslationtools.otter.common.persistence.database.dao.VersificationDao].
  *
  * The `versification_entity` table maps a unique `slug` to a file `path`. `upsert` is
  * exception-driven: it tries `insert` and, on the duplicate-slug failure, falls back to `update`
@@ -75,6 +75,3 @@ abstract class VersificationDaoCharacterization : AbstractDatabaseCharacterizati
 }
 
 /** jOOQ backend binding for [VersificationDaoCharacterization]. */
-class JooqVersificationDaoCharacterizationTest : VersificationDaoCharacterization() {
-    override val backend = JooqBackend
-}

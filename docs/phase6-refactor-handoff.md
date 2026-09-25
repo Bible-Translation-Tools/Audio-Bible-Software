@@ -1,3 +1,5 @@
+> **Historical.** This brief describes the jOOQ → SQLDelight migration while both backends existed. jOOQ has since been removed; SQLDelight is the only database layer.
+
 # Phase 6 (refactor) handoff — hoist DB construction out of DI, make the backend switchable
 
 **Audience:** the implementing agent. **Reviewer:** Opus. **Read first:** `docs/jooq-to-sqldelight-migration-plan.md`.

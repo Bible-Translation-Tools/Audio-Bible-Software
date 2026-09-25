@@ -1,4 +1,4 @@
--- Mirrors sql/CreateAppDb.sql `language_entity`. Column order, types (by affinity), nullability,
+-- Ported from the legacy (jOOQ) CreateAppDb.sql `language_entity`. Column order, types (by affinity), nullability,
 -- defaults and constraints must match — schema parity is enforced by SchemaParityTest.
 CREATE TABLE language_entity (
   id            INTEGER AS kotlin.Int PRIMARY KEY AUTOINCREMENT,

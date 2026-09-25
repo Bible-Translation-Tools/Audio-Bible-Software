@@ -24,7 +24,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Characterizes [org.bibletranslationtools.otter.common.persistence.database.daos.TranslationDao].
+ * Characterizes [org.bibletranslationtools.otter.common.persistence.database.dao.TranslationDao].
  * source_fk/target_fk are LANGUAGE ids.
  */
 abstract class TranslationDaoCharacterization : AbstractDatabaseCharacterizationTest() {
@@ -89,8 +89,4 @@ abstract class TranslationDaoCharacterization : AbstractDatabaseCharacterization
         db.translationDao.delete(translation(source, target))
         assertTrue(db.translationDao.fetchAll().isEmpty())
     }
-}
-
-class JooqTranslationDaoCharacterizationTest : TranslationDaoCharacterization() {
-    override val backend = JooqBackend
 }

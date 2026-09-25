@@ -25,7 +25,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Characterizes [org.bibletranslationtools.otter.common.persistence.database.daos.WorkbookTypeDao].
+ * Characterizes [org.bibletranslationtools.otter.common.persistence.database.dao.WorkbookTypeDao].
  *
  * Same enum-cache pattern as the other enum DAOs, over the `workbook_type` table keyed by
  * [ProjectMode]: empty on a fresh v14 database and lazily seeded on first access. Backend-agnostic;
@@ -69,6 +69,3 @@ abstract class WorkbookTypeDaoCharacterization : AbstractDatabaseCharacterizatio
 }
 
 /** jOOQ backend binding for [WorkbookTypeDaoCharacterization]. */
-class JooqWorkbookTypeDaoCharacterizationTest : WorkbookTypeDaoCharacterization() {
-    override val backend = JooqBackend
-}

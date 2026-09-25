@@ -1,4 +1,4 @@
--- Mirrors sql/CreateAppDb.sql `content_entity` + its index.
+-- Ported from the legacy (jOOQ) CreateAppDb.sql `content_entity` + its index.
 CREATE TABLE content_entity (
     id               INTEGER AS kotlin.Int PRIMARY KEY AUTOINCREMENT,
     collection_fk    INTEGER AS kotlin.Int NOT NULL REFERENCES collection_entity(id) ON DELETE CASCADE,

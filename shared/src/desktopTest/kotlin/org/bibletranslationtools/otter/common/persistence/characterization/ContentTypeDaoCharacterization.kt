@@ -25,7 +25,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Characterizes [org.bibletranslationtools.otter.common.persistence.database.daos.ContentTypeDao].
+ * Characterizes [org.bibletranslationtools.otter.common.persistence.database.dao.ContentTypeDao].
  *
  * This DAO is an in-memory enum cache over the `content_type` table. On a fresh v14 database the
  * table starts EMPTY and is lazily seeded on the first `fetchId`/`fetchForId` access, which inserts
@@ -76,6 +76,3 @@ abstract class ContentTypeDaoCharacterization : AbstractDatabaseCharacterization
 }
 
 /** jOOQ backend binding for [ContentTypeDaoCharacterization]. */
-class JooqContentTypeDaoCharacterizationTest : ContentTypeDaoCharacterization() {
-    override val backend = JooqBackend
-}

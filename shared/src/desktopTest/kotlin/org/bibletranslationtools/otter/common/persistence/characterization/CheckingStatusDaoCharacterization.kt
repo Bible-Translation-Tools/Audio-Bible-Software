@@ -25,7 +25,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Characterizes [org.bibletranslationtools.otter.common.persistence.database.daos.CheckingStatusDao].
+ * Characterizes [org.bibletranslationtools.otter.common.persistence.database.dao.CheckingStatusDao].
  *
  * Same enum-cache pattern as `ContentTypeDao`, over the `checking_status` table: empty on a fresh
  * v14 database and lazily seeded on first access. Backend-agnostic; a concrete subclass supplies the
@@ -70,6 +70,3 @@ abstract class CheckingStatusDaoCharacterization : AbstractDatabaseCharacterizat
 }
 
 /** jOOQ backend binding for [CheckingStatusDaoCharacterization]. */
-class JooqCheckingStatusDaoCharacterizationTest : CheckingStatusDaoCharacterization() {
-    override val backend = JooqBackend
-}

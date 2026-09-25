@@ -31,8 +31,8 @@ import java.io.File
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus as CheckingStatusEnum
 
 /**
- * Raw-SQL port of [org.bibletranslationtools.otter.common.persistence.database.DatabaseMigrator],
- * running the identical v0->14 upgrade path through a SQLDelight [SqlDriver] instead of jOOQ.
+ * Raw-SQL port of the jOOQ `DatabaseMigrator` it replaced (removed with jOOQ), running the
+ * identical v0->14 upgrade path through a SQLDelight [SqlDriver].
  *
  * This mirrors the jOOQ migrator's control flow AND its quirks exactly (see
  * docs/phase5a-handoff.md), including the two deliberate ones in the 12->13 take rebuild (the

@@ -18,12 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.persistence.characterization
 
-/**
- * The SQLDelight half of the differential: each class reuses the identical `<Dao>Characterization`
- * assertions the jOOQ tests run, bound to [SqlDelightBackend]. When every one of these passes
- * alongside its `Jooq<Dao>CharacterizationTest` twin, the two backends are proven equivalent for
- * everything the suite pins.
- */
+/** Each `<Dao>Characterization` suite, bound to [SqlDelightBackend]. */
 class SqlDelightLanguageDaoCharacterizationTest : LanguageDaoCharacterization() {
     override val backend = SqlDelightBackend
 }

@@ -1,4 +1,4 @@
--- Mirrors sql/CreateAppDb.sql `dublin_core_entity` (resource metadata).
+-- Ported from the legacy (jOOQ) CreateAppDb.sql `dublin_core_entity` (resource metadata).
 CREATE TABLE dublin_core_entity (
     id          INTEGER AS kotlin.Int PRIMARY KEY AUTOINCREMENT,
     conformsTo  TEXT NOT NULL,

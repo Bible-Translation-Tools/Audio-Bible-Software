@@ -19,12 +19,9 @@
 package org.bibletranslationtools.otter.common.persistence.database.dao
 
 /**
- * The clean, jOOQ-free counterpart of [org.bibletranslationtools.otter.common.persistence.database.IAppDatabase]:
- * the set of DAOs, exposed as the interfaces in this package. The SQLDelight backend implements this
- * directly; during coexistence a test adapter presents the jOOQ backend through the same interfaces,
- * so the shared characterization suite can run — and prove equivalence — against both.
- *
- * Repositories migrate onto this in Phase 4; it replaces IAppDatabase's DAO surface in Phase 6.
+ * The set of DAOs, exposed as the interfaces in this package, that repositories use. The SQLDelight
+ * backend ([org.bibletranslationtools.otter.common.persistence.database.sqldelight.SqlDelightAppDatabase])
+ * implements it.
  */
 interface DaoProvider {
     val languageDao: LanguageDao

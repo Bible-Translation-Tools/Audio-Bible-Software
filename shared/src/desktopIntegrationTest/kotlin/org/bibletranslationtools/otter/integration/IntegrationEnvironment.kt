@@ -302,8 +302,8 @@ class IntegrationEnvironment private constructor(
     companion object {
         /**
          * Builds an environment over a fresh temp directory. The database bootstraps itself:
-         * `AppDatabase` runs `sql/CreateAppDb.sql` (shipped in the otter-db artifact) when the file
-         * does not exist, then applies migrations.
+         * SQLDelight creates the schema from the `.sq` files when the file does not exist, then
+         * applies migrations.
          */
         fun create(): IntegrationEnvironment {
             val tempRoot = File.createTempFile("orature-integration", "").let {

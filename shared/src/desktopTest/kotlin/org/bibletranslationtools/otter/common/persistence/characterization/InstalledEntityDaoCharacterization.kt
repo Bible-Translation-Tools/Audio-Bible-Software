@@ -25,7 +25,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 /**
- * Characterizes [org.bibletranslationtools.otter.common.persistence.database.daos.InstalledEntityDao].
+ * Characterizes [org.bibletranslationtools.otter.common.persistence.database.dao.InstalledEntityDao].
  *
  * A fresh v14 database already contains one `installed_entity` row, name "DATABASE" version
  * [SCHEMA_VERSION] (14), stamped during bootstrap. `upsert` inserts when the name is absent and
@@ -69,6 +69,3 @@ abstract class InstalledEntityDaoCharacterization : AbstractDatabaseCharacteriza
 }
 
 /** jOOQ backend binding for [InstalledEntityDaoCharacterization]. */
-class JooqInstalledEntityDaoCharacterizationTest : InstalledEntityDaoCharacterization() {
-    override val backend = JooqBackend
-}

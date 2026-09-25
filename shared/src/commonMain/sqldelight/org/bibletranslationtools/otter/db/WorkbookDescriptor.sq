@@ -1,4 +1,4 @@
--- Mirrors sql/CreateAppDb.sql `workbook_descriptor_entity`.
+-- Ported from the legacy (jOOQ) CreateAppDb.sql `workbook_descriptor_entity`.
 -- NOTE the column names source_FK / target_FK are upper-cased in the original schema; keep them
 -- verbatim so PRAGMA table_info reports identical column names.
 CREATE TABLE workbook_descriptor_entity (

@@ -1,4 +1,4 @@
--- Mirrors sql/CreateAppDb.sql `resource_link` + its two indexes.
+-- Ported from the legacy (jOOQ) CreateAppDb.sql `resource_link` + its two indexes.
 CREATE TABLE resource_link (
     id                  INTEGER AS kotlin.Int PRIMARY KEY AUTOINCREMENT,
     resource_content_fk INTEGER AS kotlin.Int NOT NULL REFERENCES content_entity(id) ON DELETE CASCADE,

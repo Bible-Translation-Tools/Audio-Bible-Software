@@ -25,7 +25,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Characterizes [org.bibletranslationtools.otter.common.persistence.database.daos.ResourceMetadataDao].
+ * Characterizes [org.bibletranslationtools.otter.common.persistence.database.dao.ResourceMetadataDao].
  * Backend-agnostic; a concrete subclass supplies the backend.
  */
 abstract class ResourceMetadataDaoCharacterization : AbstractDatabaseCharacterizationTest() {
@@ -223,6 +223,3 @@ abstract class ResourceMetadataDaoCharacterization : AbstractDatabaseCharacteriz
 }
 
 /** jOOQ backend binding for [ResourceMetadataDaoCharacterization]. */
-class JooqResourceMetadataDaoCharacterizationTest : ResourceMetadataDaoCharacterization() {
-    override val backend = JooqBackend
-}
