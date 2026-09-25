@@ -29,8 +29,7 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.OtterReso
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.castOrFindImportException
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.IProjectReader
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.IZipEntryTreeBuilder
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.VersificationTreeBuilder
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.toCollection
+import org.bibletranslationtools.otter.common.domain.versification.StandardVersifications
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceContainerRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
@@ -40,48 +39,13 @@ import java.io.IOException
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
 import org.bibletranslationtools.otter.common.OTTER_JSON
 
-/**
- * Which tree a source import writes, and whether the parsed text still has to be applied on top.
- *
- * @param treeToImport what [IResourceContainerRepository.importResourceContainer] receives
- * @param applyParsedTextAfter whether the imported structure still needs the source text filled in
- */
-internal data class ImportPlan(
-    val treeToImport: OtterTree<CollectionOrContent>,
-    val applyParsedTextAfter: Boolean
-)
-
-/**
- * Decides what a source resource container import should write.
- *
- * With a versification available, the structure comes from the *versification* — every chapter and
- * verse it declares, seeded onto [containerCollection] — and the source text is applied afterwards.
- * That is what makes a verse the source text happens to omit still recordable. Without one, the only
- * structure available is what the text itself contains.
- *
- * Split out from [NewSourceImporter.importContainer] because reaching this decision through the
- * importer requires a real resource container on disk, and the decision is the part worth pinning.
- */
-internal fun planImport(
-    containerCollection: CollectionOrContent,
-    parsedTree: OtterTree<CollectionOrContent>,
-    versificationTrees: List<OtterTree<CollectionOrContent>>?
-): ImportPlan {
-    if (versificationTrees.isNullOrEmpty()) {
-        return ImportPlan(treeToImport = parsedTree, applyParsedTextAfter = false)
-    }
-    val preallocation = OtterTree<CollectionOrContent>(containerCollection)
-    versificationTrees.forEach { preallocation.addChild(it) }
-    return ImportPlan(treeToImport = preallocation, applyParsedTextAfter = true)
-}
-
 class NewSourceImporter(
     private val directoryProvider: IDirectoryProvider,
     private val resourceContainerRepository: IResourceContainerRepository,
     resourceMetadataRepository: IResourceMetadataRepository,
-    private val versificationTreeBuilder: VersificationTreeBuilder,
-    // Kept alongside the tree builder: getVersification() below reads "ulb" directly to synthesize
-    // USFM for audio-only containers, which the tree builder has no entry point for.
+    private val structurePlanner: SourceStructurePlanner,
+    // getVersification() below reads a versification directly to synthesize USFM for audio-only
+    // containers.
     private val versificationRepository: IVersificationRepository,
     private val zipEntryTreeBuilder: IZipEntryTreeBuilder
 ) : RCImporter(directoryProvider, resourceMetadataRepository) {
@@ -129,7 +93,9 @@ class NewSourceImporter(
                                 (rc.manifest.projects as MutableList).add(
                                     org.wycliffeassociates.resourcecontainer.entity.Project(
                                         title = bookSlug,
-                                        versification = "ulb",
+                                        // A code the versification table knows, so later lookups by
+                                        // the manifest's versification resolve.
+                                        versification = StandardVersifications.DEFAULT,
                                         identifier = bookSlug,
                                         sort = 0,
                                         path = "./${usfmFile.name}",
@@ -163,33 +129,18 @@ class NewSourceImporter(
                 localizeKey = "importingSource", percent = 50.0
             )
 
-            // A versification problem must not fail the import: the tree builder reaches the
-            // bundled file through a blockingGet() that throws rather than returning empty when it
-            // is missing or malformed. Degrading to a text-only import is what the app did for the
-            // whole period this path was disabled, so it is a known-good fallback.
-            val versificationTrees = runCatching { versificationTreeBuilder.build(container) }
+            // A versification problem must not fail the import. Importing the parsed text alone is
+            // what the app did before gap-filling existed, so it is a known-good fallback.
+            val treeToImport = runCatching { structurePlanner.plan(container, tree).tree }
                 .getOrElse {
                     logger.error(
-                        "Could not build the versification tree for ${file.name}; " +
-                            "importing from the source text only",
+                        "Could not plan the structure for ${file.name}; importing the source text as parsed",
                         it
                     )
-                    null
+                    tree
                 }
 
-            val plan = planImport(container.toCollection(), tree, versificationTrees)
-
-            importTree(container, plan.treeToImport, fileToImport)
-                .flatMap { result ->
-                    // Only backfill text into a structure that actually imported. Chaining this
-                    // unconditionally lets a failed import fall through into updateContent, where a
-                    // second failure replaces the first and hides what actually went wrong.
-                    if (plan.applyParsedTextAfter && result == ImportResult.SUCCESS) {
-                        updateContentFromTextContent(container, tree)
-                    } else {
-                        Single.just(result)
-                    }
-                }
+            importTree(container, treeToImport, fileToImport)
                 .subscribe { result ->
                     notifyCallback(result, callback, file)
                     emitter.onSuccess(result)
@@ -259,17 +210,6 @@ class NewSourceImporter(
                 }
                 if (result != ImportResult.SUCCESS || err != null) fileToLoad.deleteRecursively()
             }
-    }
-
-    private fun updateContentFromTextContent(
-        container: ResourceContainer,
-        tree: OtterTree<CollectionOrContent>
-    ): Single<ImportResult> {
-        return resourceContainerRepository
-            .updateContent(
-                container,
-                tree
-            )
     }
 
     private fun copyToInternalDirectory(file: File, destinationDirectory: File): File {
@@ -346,7 +286,7 @@ class NewSourceImporter(
             }
         }
         // Fallback to default
-        return versificationRepository.getVersification("ulb").blockingGet()
+        return versificationRepository.getVersification(StandardVersifications.DEFAULT).blockingGet()
     }
 
     private fun generateUsfmContent(bookSlug: String, versification: org.bibletranslationtools.otter.common.domain.versification.Versification): String {

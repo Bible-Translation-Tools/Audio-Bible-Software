@@ -7,15 +7,17 @@ import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ILanguageRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
+import org.bibletranslationtools.otter.common.domain.versification.Versification
 import org.bibletranslationtools.otter.common.domain.collections.CreateProject
 import org.bibletranslationtools.otter.common.domain.languages.ImportLanguages
 import org.bibletranslationtools.otter.common.domain.project.importer.RCImporterFactory
 import io.reactivex.Observable
 import org.bibletranslationtools.otter.common.data.ProgressStatus
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.VersificationTreeBuilder
+import org.bibletranslationtools.otter.common.initialization.AuditSourceStructure
 import org.bibletranslationtools.otter.common.initialization.InitializeVersification
-import org.wycliffeassociates.resourcecontainer.ResourceContainer
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.SourceStructureFindings
 import org.bibletranslationtools.otter.common.persistence.DesktopDirectoryProvider
 import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.bibletranslationtools.otter.common.persistence.entities.ContentEntity
@@ -40,8 +42,8 @@ import kotlin.test.assertTrue
  * This is the port of the JavaFX app's `integrationtest.projects.DatabaseEnvironment`, which is how
  * Orature verified that importing a resource container produced the right rows. Its absence is why a
  * change to the import path could pass 15 unit tests and still be wrong: `VersificationTreeBuilderTest`
- * pins the tree that gets built and `PlanImportTest` pins which tree is chosen, but nothing exercised
- * the join — `importResourceContainer` and `updateContent` against an actual database.
+ * pins the tree that gets built and `SourceStructurePlannerTest` pins what fills its gaps, but nothing
+ * exercised the join — `importResourceContainer` and `updateContent` against an actual database.
  *
  * Differences from the original, all forced by this codebase rather than chosen:
  *
@@ -103,27 +105,42 @@ class IntegrationEnvironment private constructor(
      * Derived at test time rather than committed as a second fixture, so there is one binary in the
      * repo and the difference between the two inputs is stated in code rather than hidden in a zip.
      */
-    fun withBookTruncated(rcFile: String, usfmEntry: String, keepVerses: Int): File {
+    fun withBookTruncated(rcFile: String, usfmEntry: String, keepVerses: Int): File =
+        withUsfmEdited(rcFile, usfmEntry, "truncated-$keepVerses") { usfm ->
+            // Cut at the first verse marker beyond the keep count. USFM is read forward, so dropping
+            // the tail simply means those verses are not in the text.
+            val cutAt = usfm.indexOf("\\v ${keepVerses + 1} ")
+            assertTrue(cutAt > 0, "no verse ${keepVerses + 1} marker in '$usfmEntry' to truncate at")
+            usfm.substring(0, cutAt)
+        }
+
+    /**
+     * [rcFile] with one verse, marker and text, removed from a single-chapter book: the gap an
+     * omitted textual variant leaves inside a chapter.
+     */
+    fun withVerseRemoved(rcFile: String, usfmEntry: String, verse: Int): File =
+        withUsfmEdited(rcFile, usfmEntry, "without-v$verse") { usfm ->
+            val from = usfm.indexOf("\\v $verse ")
+            val to = usfm.indexOf("\\v ${verse + 1} ")
+            assertTrue(from > 0 && to > from, "no verse $verse to remove in '$usfmEntry'")
+            usfm.removeRange(from, to)
+        }
+
+    private fun withUsfmEdited(rcFile: String, usfmEntry: String, label: String, edit: (String) -> String): File {
         val source = rcResourceFile(rcFile)
-        val target = File(tempRoot, "truncated-${usfmEntry.substringBefore('.')}-$keepVerses.zip")
+        val target = File(tempRoot, "${usfmEntry.substringBefore('.')}-$label.zip")
 
         ZipFile(source).use { zip ->
             val entry = zip.getEntry(usfmEntry)
             assertNotNull(entry, "'$usfmEntry' is not in $rcFile")
-            val usfm = zip.getInputStream(entry).bufferedReader().readText()
-
-            // Cut at the first verse marker beyond the keep count. USFM is read forward, so dropping
-            // the tail simply means those verses are not in the text.
-            val cutAt = usfm.indexOf("\\v ${keepVerses + 1}")
-            assertTrue(cutAt > 0, "no verse ${keepVerses + 1} marker in '$usfmEntry' to truncate at")
-            val truncated = usfm.substring(0, cutAt)
+            val edited = edit(zip.getInputStream(entry).bufferedReader().readText())
 
             ZipOutputStream(target.outputStream().buffered()).use { out ->
                 zip.entries().asSequence().forEach { source ->
                     if (source.isDirectory) return@forEach
                     out.putNextEntry(ZipEntry(source.name))
                     if (source.name == usfmEntry) {
-                        out.write(truncated.toByteArray())
+                        out.write(edited.toByteArray())
                     } else {
                         zip.getInputStream(source).use { it.copyTo(out) }
                     }
@@ -133,6 +150,20 @@ class IntegrationEnvironment private constructor(
         }
         return target
     }
+
+    /** A source the app bundles, read from the repo rather than the test classpath. */
+    fun bundledSource(fileName: String): File {
+        val file = File(repoRoot(), "shared/src/commonMain/composeResources/files/content/$fileName")
+        assertTrue(file.isFile, "bundled source not found at ${file.absolutePath}")
+        return file
+    }
+
+    /** A versification as source import reads it, or null if it isn't installed. */
+    fun versification(code: String): Versification? =
+        koin.get<IVersificationRepository>().getVersification(code).blockingGet()
+
+    /** What the one-time source structure report would say about every installed source. */
+    fun auditSources(): List<SourceStructureFindings> = koin.get<AuditSourceStructure>().audit()
 
     /**
      * @param deriveProjectFromVerses whether verse rows are derived into the target. NOT inferred from
@@ -239,16 +270,6 @@ class IntegrationEnvironment private constructor(
         val textType = db.contentTypeDao.fetchId(ContentType.TEXT)
         return db.contentDao.fetchAll().filter { it.type_fk == textType && it.text == null }
     }
-
-    /**
-     * The versification trees the source importer would pre-allocate from, for [rcFile].
-     *
-     * Exposed so a test can assert the path is REACHABLE. `NewSourceImporter` degrades to a text-only
-     * import when the versification cannot be read, and does it silently by design — so without this,
-     * a broken versification looks exactly like a working one for any source whose text is complete.
-     */
-    fun versificationTreesFor(rcFile: String): List<*>? =
-        VersificationTreeBuilder(koin.get()).build(ResourceContainer.load(rcResourceFile(rcFile)))
 
     /**
      * Verse rows for one chapter, split by whether they carry text.

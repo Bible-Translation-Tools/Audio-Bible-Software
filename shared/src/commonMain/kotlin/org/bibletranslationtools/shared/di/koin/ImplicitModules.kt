@@ -44,6 +44,8 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.DeleteRes
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito.BurritoToResourceContainerConverter
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito.ScriptureBurritoUtils
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.VersificationTreeBuilder
+import org.bibletranslationtools.otter.common.domain.project.importer.SourceStructurePlanner
+import org.bibletranslationtools.otter.common.initialization.AuditSourceStructure
 import org.bibletranslationtools.otter.common.initialization.InitializeApp
 import org.bibletranslationtools.otter.common.initialization.InitializeLanguages
 import org.bibletranslationtools.otter.common.initialization.InitializeProjects
@@ -117,6 +119,7 @@ val implicitCommonModule = module {
     // Resource Container
     factoryOf(::DeleteResourceContainer)
     factoryOf(::VersificationTreeBuilder)
+    factoryOf(::SourceStructurePlanner)
     factoryOf(::BurritoToResourceContainerConverter)
     factoryOf(::ScriptureBurritoUtils)
 
@@ -145,6 +148,7 @@ val implicitCommonModule = module {
     factoryOf(::InitializeTakeRepository)
     factoryOf(::InitializeProjects)
     factoryOf(::InitializeTranslations)
+    factoryOf(::AuditSourceStructure)
 }
 
 // implicitViewModelModule (recorder ViewModels) lives in :app-recorder — each app owns
