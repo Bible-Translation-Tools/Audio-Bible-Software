@@ -5,11 +5,16 @@ import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IEditionUpgradeRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.DescribeSourceEditions
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionLifecycle
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionOrder
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.InstalledSourceEditions
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.structure.ChapterDiff
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.structure.ChapterText
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.structure.EditionText
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.structure.StructuralDiff
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.structure.VerseChange
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.structure.VerseGroup
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.structure.VerseRange
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.structure.VerseText
 
@@ -40,6 +45,10 @@ data class ChapterUpgradePlan(
     val chunksReset: Boolean = false
 ) {
     val textChangedVerses: List<VerseRange> get() = diff?.textChangedVerses.orEmpty()
+
+    /** The changes to the chapter's verse structure: merges, splits, renumbering and the like. */
+    val structuralChanges: List<VerseGroup>
+        get() = diff?.groups.orEmpty().filter { it.change != VerseChange.IDENTICAL && it.change != VerseChange.TEXT_CHANGED }
 }
 
 data class BookUpgradePlan(
@@ -51,6 +60,34 @@ data class BookUpgradePlan(
     internal val rebase: BookRebase
 ) {
     val heldBack: List<ChapterUpgradePlan> get() = chapters.filter { it.outcome == ChapterOutcome.HELD_BACK }
+
+    /** The source book the project book refers to once the plan is applied. */
+    val toSourceBookId: Int get() = rebase.toSourceBookId
+}
+
+/**
+ * An installed edition a book can move to.
+ *
+ * @property newer it is newer than the book's current edition (an upgrade); otherwise a downgrade
+ *   or a sibling edition.
+ * @property distinguishingCode as in [org.bibletranslationtools.otter.common.domain.resourcecontainer.SourceEditionSummary].
+ */
+data class EditionChoice(val edition: ResourceMetadata, val newer: Boolean, val distinguishingCode: String?)
+
+/**
+ * A project book's source edition and where it can move.
+ *
+ * @property choices the other installed editions of its source, newest first.
+ * @property heldBackChapters numbers of the chapters that keep an earlier edition's verse structure.
+ */
+data class BookEditionState(
+    val projectBookId: Int,
+    val current: ResourceMetadata,
+    val currentCode: String?,
+    val choices: List<EditionChoice>,
+    val heldBackChapters: List<Int>
+) {
+    val updateAvailable: Boolean get() = choices.any { it.newer }
 }
 
 /** A book can't move to that edition. */
@@ -71,8 +108,26 @@ class UpgradeNotPossibleException(message: String) : IllegalStateException(messa
 class UpgradeBookEdition(
     private val repository: IEditionUpgradeRepository,
     private val metadataRepository: IResourceMetadataRepository,
-    private val editionLifecycle: EditionLifecycle
+    private val editionLifecycle: EditionLifecycle,
+    private val installedEditions: InstalledSourceEditions,
+    private val describeSourceEditions: DescribeSourceEditions
 ) {
+    /** Where project book [projectBookId] stands, or null if there is no such book. */
+    suspend fun editionState(projectBookId: Int): BookEditionState? {
+        val book = withContext(Dispatchers.IO) { repository.projectBook(projectBookId) } ?: return null
+        val current = book.sourceEdition
+        val others = installedEditions.editionsOf(current.language.slug, current.identifier)
+            .filter { it.creator == current.creator && it.id != current.id }
+        val summaries = describeSourceEditions.describeAll(others + current)
+        return BookEditionState(
+            projectBookId = book.bookId,
+            current = current,
+            currentCode = summaries[current.id]?.distinguishingCode,
+            choices = others.map { EditionChoice(it, EditionOrder.isNewer(it, current), summaries[it.id]?.distinguishingCode) },
+            heldBackChapters = book.chapters.filter { it.structureEditionId != current.id }.map { it.sort }.sorted()
+        )
+    }
+
     suspend fun plan(projectBookId: Int, to: ResourceMetadata): BookUpgradePlan = withContext(Dispatchers.IO) {
         val book = repository.projectBook(projectBookId)
             ?: throw UpgradeNotPossibleException("No project book $projectBookId")

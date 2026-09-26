@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -98,6 +99,7 @@ import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SortDirection
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SortField
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SortState
 import org.bibletranslationtools.bttrecorder2.ui.components.ProjectInfoDialog
+import org.bibletranslationtools.bttrecorder2.ui.components.EditionChangeDialog
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.koin.mp.KoinPlatform.getKoin
@@ -133,7 +135,8 @@ fun ProjectManagementScreen(
         onBackupRequest = exportViewModel::openOptions,
         onSettingsClick = onSettingsClick,
         onImportProject = viewModel::importProject,
-        onSort = viewModel::toggleSort
+        onSort = viewModel::toggleSort,
+        onEditionChanged = viewModel::loadWorkbooks
     )
 
     ExportOptionsDialog(
@@ -212,11 +215,13 @@ fun ProjectManagementContent(
     onDeleteWorkbook: (WorkbookDescriptor) -> Unit = {},
     exportingWorkbookId: Int? = null,
     onBackupRequest: (WorkbookDescriptor) -> Unit = {},
+    onEditionChanged: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onImportProject: (PlatformFile) -> Unit = {},
     onSort: (SortField) -> Unit = {}
 ) {
     var infoDialogTarget by remember { mutableStateOf<WorkbookDescriptor?>(null) }
+    var editionDialogTarget by remember { mutableStateOf<WorkbookDescriptor?>(null) }
     var menuExpanded by remember { mutableStateOf(false) }
     // Set of group IDs that are currently collapsed.
     var collapsedGroups by remember { mutableStateOf(emptySet<String>()) }
@@ -239,7 +244,19 @@ fun ProjectManagementContent(
                 onBackupRequest(target)
                 infoDialogTarget = null
             },
-            isExportingThisWorkbook = exportingWorkbookId == target.id
+            isExportingThisWorkbook = exportingWorkbookId == target.id,
+            onChangeEdition = {
+                infoDialogTarget = null
+                editionDialogTarget = target
+            }
+        )
+    }
+
+    editionDialogTarget?.let { target ->
+        EditionChangeDialog(
+            projectBookId = target.targetCollection.id,
+            onDismiss = { editionDialogTarget = null },
+            onChanged = onEditionChanged
         )
     }
 
@@ -347,7 +364,8 @@ fun ProjectManagementContent(
                                                 updateAvailable = workbook.id in state.updatesAvailable,
                                                 onClick = { onProjectClick(workbook) },
                                                 onInfoClick = { infoDialogTarget = workbook },
-                                                onRecordClick = { onRecordClick(workbook) }
+                                                onRecordClick = { onRecordClick(workbook) },
+                                                onUpdateClick = { editionDialogTarget = workbook }
                                             )
                                             if (index < group.books.lastIndex) {
                                                 HorizontalDivider(
@@ -511,7 +529,8 @@ private fun BookRow(
     updateAvailable: Boolean,
     onClick: () -> Unit,
     onInfoClick: () -> Unit,
-    onRecordClick: () -> Unit
+    onRecordClick: () -> Unit,
+    onUpdateClick: () -> Unit = {}
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
     val disabledColor = MaterialTheme.colorScheme.outlineVariant
@@ -535,7 +554,10 @@ private fun BookRow(
                 Text(
                     text = stringResource(Res.string.label_update_available),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .clickable(enabled = !isExporting, role = Role.Button, onClick = onUpdateClick)
+                        .padding(vertical = 2.dp)
                 )
             }
         }

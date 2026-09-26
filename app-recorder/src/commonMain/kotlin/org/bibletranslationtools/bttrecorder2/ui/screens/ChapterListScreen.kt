@@ -24,6 +24,13 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import org.bibletranslationtools.bttrecorder2.ui.components.LazyColumnWithScrollbar
 import org.bibletranslationtools.bttrecorder2.ui.components.ProgressPieView
+import org.bibletranslationtools.bttrecorder2.ui.components.EditionChangeDialog
+import org.bibletranslationtools.bttrecorder2.ui.components.sourceEditionText
+import org.bibletranslationtools.otter.common.domain.collections.BookEditionState
+import org.bibletranslationtools.shared.resources.edition_banner_review
+import org.bibletranslationtools.shared.resources.edition_banner_update
+import org.bibletranslationtools.shared.resources.edition_held_back_message
+import org.bibletranslationtools.shared.resources.label_earlier_structure
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterListViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterUiModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterListUiState
@@ -73,9 +80,11 @@ fun ChapterListScreen(
     // destructive / heavy actions can't be triggered with a single tap.
     var pendingCompileChapter by remember { mutableStateOf<Chapter?>(null) }
     var pendingDeleteChapter by remember { mutableStateOf<Chapter?>(null) }
+    var showEditionChange by remember { mutableStateOf(false) }
 
     ChapterListContent(
         uiState = uiState,
+        onReviewEdition = { showEditionChange = true },
         onBackClick = onBackClick,
         onChapterClick = onChapterClick,
         onRecordChapter = onRecordChapter,
@@ -85,6 +94,16 @@ fun ChapterListScreen(
         onChapterDeleteRequest = { chapter -> pendingDeleteChapter = chapter },
         onOpenChapterPlayback = onOpenChapterPlayback
     )
+
+    if (showEditionChange) {
+        uiState.editionState?.let { editions ->
+            EditionChangeDialog(
+                projectBookId = editions.projectBookId,
+                onDismiss = { showEditionChange = false },
+                onChanged = viewModel::reload
+            )
+        }
+    }
 
     pendingCompileChapter?.let { chapter ->
         AlertDialog(
@@ -132,7 +151,8 @@ fun ChapterListContent(
     onChapterExpand: (Chapter) -> Unit = {},
     onChapterPlayPause: (Chapter) -> Unit = {},
     onChapterDeleteRequest: (Chapter) -> Unit = {},
-    onOpenChapterPlayback: (chapterSort: Int, takeNumber: Int) -> Unit = { _, _ -> }
+    onOpenChapterPlayback: (chapterSort: Int, takeNumber: Int) -> Unit = { _, _ -> },
+    onReviewEdition: () -> Unit = {}
 ) {
     // The row a user taps to expand. Only one expanded at a time, mirroring
     // the original Recorder behaviour.
@@ -181,6 +201,13 @@ fun ChapterListContent(
                         state = listState,
                         modifier = Modifier.fillMaxSize()
                     ) {
+                        uiState.editionState?.let { editions ->
+                            if (editions.updateAvailable || editions.heldBackChapters.isNotEmpty()) {
+                                item(key = "edition-banner") {
+                                    EditionBanner(editions, onReviewEdition)
+                                }
+                            }
+                        }
                         items(uiState.chapters, key = { it.chapter.sort }) { uiModel ->
                             val isLoadedHere =
                                 uiState.loadedChapterSort == uiModel.chapter.sort
@@ -193,6 +220,7 @@ fun ChapterListContent(
 
                             ChapterItem(
                                 uiModel = uiModel,
+                                heldBack = uiState.editionState?.heldBackChapters?.contains(uiModel.chapter.sort) == true,
                                 isExpanded = isExpanded,
                                 isCompiling = isCompilingThis,
                                 isPlaying = isPlayingThis,
@@ -245,9 +273,44 @@ fun ChapterListContent(
     }
 }
 
+/**
+ * Above the chapters: a newer edition of the book's source is installed, or some chapters keep the
+ * verse structure they were recorded with. [onReview] opens the edition change flow.
+ */
+@Composable
+private fun EditionBanner(editions: BookEditionState, onReview: () -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                editions.choices.firstOrNull { it.newer }?.let { newest ->
+                    Text(
+                        stringResource(Res.string.edition_banner_update, sourceEditionText(newest.edition, newest.distinguishingCode)),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+                if (editions.heldBackChapters.isNotEmpty()) {
+                    Text(
+                        stringResource(Res.string.edition_held_back_message, editions.heldBackChapters.joinToString(", ")),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+            }
+            TextButton(onClick = onReview) { Text(stringResource(Res.string.edition_banner_review)) }
+        }
+    }
+    HorizontalDivider()
+}
+
 @Composable
 fun ChapterItem(
     uiModel: ChapterUiModel,
+    /** The chapter keeps an earlier edition's verse structure (held back on an upgrade). */
+    heldBack: Boolean = false,
     isExpanded: Boolean,
     isCompiling: Boolean,
     isPlaying: Boolean,
@@ -286,13 +349,21 @@ fun ChapterItem(
                 .clickable { onChapterClick() }
                 .padding(start = 16.dp, end = 4.dp, top = 10.dp, bottom = 10.dp)
         ) {
-            Text(
-                text = stringResource(Res.string.main_chapter_label, uiModel.chapter.title),
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = if (hasAnyTake) FontWeight.Bold else FontWeight.Normal,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = rowAlpha),
-                modifier = Modifier.weight(1f)
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(Res.string.main_chapter_label, uiModel.chapter.title),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (hasAnyTake) FontWeight.Bold else FontWeight.Normal,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = rowAlpha)
+                )
+                if (heldBack) {
+                    Text(
+                        text = stringResource(Res.string.label_earlier_structure),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary
+                    )
+                }
+            }
 
             ProgressPieView(
                 progress = (uiModel.progress * 100).toInt(),

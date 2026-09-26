@@ -174,4 +174,41 @@ class UpgradeBookEditionTest {
         assertTrue(File(java.net.URI("file:" + take.filepath)).isFile, "the take file moved with the folder")
         assertFalse(legacy.exists(), "the legacy folder is gone")
     }
+
+    @Test
+    fun `before upgrading the book offers the newer edition`() {
+        val setup = setup()
+
+        val state = runBlocking { setup.environment.upgradeBookEdition.editionState(setup.project.id) }!!
+
+        assertEquals(setup.older.id, state.current.id)
+        assertEquals(listOf(setup.newer.id to true), state.choices.map { it.edition.id to it.newer })
+        assertTrue(state.updateAvailable)
+        assertTrue(state.heldBackChapters.isEmpty())
+    }
+
+    @Test
+    fun `after a held-back upgrade the book offers a downgrade, which lifts the hold`() {
+        val setup = setup()
+        setup.environment.addTake(setup.project, sort = 19, verse = 41)
+        val older = setup.older
+        setup.upgrade()
+
+        val env = setup.environment
+        val state = runBlocking { env.upgradeBookEdition.editionState(setup.project.id) }!!
+        assertEquals(setup.newer.id, state.current.id)
+        assertEquals(listOf(older.id to false), state.choices.map { it.edition.id to it.newer })
+        assertFalse(state.updateAvailable)
+        assertEquals(listOf(19), state.heldBackChapters)
+
+        val back = runBlocking { env.upgradeBookEdition.plan(setup.project.id, env.editionMetadata(older.id)) }
+        assertEquals(ChapterOutcome.UNCHANGED, back.chapter(19).outcome, "it already has the older structure")
+        runBlocking { env.upgradeBookEdition.apply(back) }
+
+        val after = runBlocking { env.upgradeBookEdition.editionState(setup.project.id) }!!
+        assertEquals(older.id, after.current.id)
+        assertTrue(after.heldBackChapters.isEmpty())
+        assertTrue(after.updateAvailable)
+        assertEquals((1..41).map { it to it }, env.projectVerses(setup.project, 19))
+    }
 }

@@ -29,6 +29,8 @@ import org.koin.mp.KoinPlatform.getKoin
 import org.jetbrains.compose.resources.stringResource
 import org.bibletranslationtools.shared.resources.info_row_source_edition
 import org.bibletranslationtools.shared.resources.info_row_newer_edition
+import org.bibletranslationtools.shared.resources.edition_change_action
+import org.bibletranslationtools.shared.resources.edition_update_action
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.DescribeSourceEditions
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.SourceEditionSummary
 import androidx.compose.runtime.produceState
@@ -79,7 +81,9 @@ fun ProjectInfoDialog(
     onDismiss: () -> Unit,
     onDelete: () -> Unit,
     onBackup: () -> Unit = {},
-    isExportingThisWorkbook: Boolean = false
+    isExportingThisWorkbook: Boolean = false,
+    /** Opens the flow that moves the book to another installed edition of its source. */
+    onChangeEdition: () -> Unit = {}
 ) {
     val importer = remember { getKoin().get<SourceAudioImporter>() }
     val scope = rememberCoroutineScope()
@@ -204,6 +208,19 @@ fun ProjectInfoDialog(
                             InfoRow(
                                 label = stringResource(Res.string.info_row_newer_edition),
                                 value = sourceEditionText(newer)
+                            )
+                        }
+                        TextButton(
+                            onClick = onChangeEdition,
+                            enabled = !isExportingThisWorkbook,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                            modifier = Modifier.align(Alignment.End)
+                        ) {
+                            Text(
+                                stringResource(
+                                    if (summary.updateAvailable) Res.string.edition_update_action
+                                    else Res.string.edition_change_action
+                                )
                             )
                         }
                     }
