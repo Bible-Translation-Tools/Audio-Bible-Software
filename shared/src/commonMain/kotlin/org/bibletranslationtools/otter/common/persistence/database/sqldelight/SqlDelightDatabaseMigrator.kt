@@ -69,6 +69,8 @@ class SqlDelightDatabaseMigrator(
             current = migrate13to14(driver, current)
             current = migrate14to15(driver, current)
             current = migrate15to16(driver, current)
+            current = migrate16to17(driver, current)
+            current = migrate17to18(driver, current)
             exec(driver, "UPDATE installed_entity SET version = $current WHERE name = '$DATABASE_INSTALLABLE_NAME'")
         }
     }
@@ -515,6 +517,69 @@ class SqlDelightDatabaseMigrator(
             }
             logger.info("Updated database from version 15 to 16")
             16
+        } else current
+    }
+
+    /**
+     * Version 17
+     * `collection_entity.structure_edition_fk`: which source edition a project chapter's verse
+     * structure came from. NULL, as every existing chapter gets, means the book's current source.
+     */
+    private fun migrate16to17(driver: SqlDriver, current: Int): Int {
+        return if (current < 17) {
+            try {
+                if ("structure_edition_fk" !in columnNames(driver, "collection_entity")) {
+                    exec(
+                        driver,
+                        "ALTER TABLE collection_entity ADD COLUMN structure_edition_fk INTEGER REFERENCES dublin_core_entity(id);"
+                    )
+                }
+            } catch (e: Exception) {
+                logger.error("Error in while migrating database from version 16 to 17", e)
+                return 16
+            }
+            logger.info("Updated database from version 16 to 17")
+            17
+        } else current
+    }
+
+    /**
+     * Version 18
+     * Removes rows left behind by deleted projects. Desktop enabled foreign keys on one connection
+     * only, so a project deleted on another thread lost its book row but kept its chapters, verses,
+     * takes and markers; their files were already deleted. Each table is cleared explicitly, children
+     * after parents, so this doesn't depend on the connection's foreign key setting.
+     */
+    private fun migrate17to18(driver: SqlDriver, current: Int): Int {
+        return if (current < 18) {
+            try {
+                val collections = "(SELECT id FROM collection_entity)"
+                val contents = "(SELECT id FROM content_entity)"
+                // Chapters of a deleted book, then anything nested under them.
+                repeat(3) {
+                    exec(driver, "DELETE FROM collection_entity WHERE parent_fk IS NOT NULL AND parent_fk NOT IN $collections;")
+                }
+                exec(driver, "DELETE FROM content_entity WHERE collection_fk NOT IN $collections;")
+                exec(driver, "DELETE FROM content_derivative WHERE content_fk NOT IN $contents OR source_fk NOT IN $contents;")
+                exec(
+                    driver,
+                    "DELETE FROM resource_link WHERE resource_content_fk NOT IN $contents " +
+                        "OR (content_fk IS NOT NULL AND content_fk NOT IN $contents) " +
+                        "OR (collection_fk IS NOT NULL AND collection_fk NOT IN $collections);"
+                )
+                exec(driver, "DELETE FROM subtree_has_resource WHERE collection_fk NOT IN $collections;")
+                exec(driver, "DELETE FROM take_entity WHERE content_fk NOT IN $contents;")
+                exec(driver, "DELETE FROM marker_entity WHERE take_fk NOT IN (SELECT id FROM take_entity);")
+                exec(
+                    driver,
+                    "DELETE FROM workbook_descriptor_entity WHERE target_FK NOT IN $collections OR source_FK NOT IN $collections;"
+                )
+            } catch (e: Exception) {
+                logger.error("Error in while migrating database from version 17 to 18", e)
+                return 17
+            }
+            logger.info("Updated database from version 17 to 18")
+            18
         } else current
     }
 

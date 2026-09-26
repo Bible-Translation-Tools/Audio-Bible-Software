@@ -1,5 +1,8 @@
 package org.bibletranslationtools.shared.di.koin
 
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.structure.ReferenceAlignment
+import org.bibletranslationtools.otter.common.persistence.repositories.EditionUpgradeRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IEditionUpgradeRepository
 import org.bibletranslationtools.otter.common.api.io.IBundledContentSource
 import org.bibletranslationtools.otter.common.api.persistence.ILanguageDataSource
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
@@ -61,6 +64,9 @@ val appRepositoriesModule = module {
     singleOf(::ResourceContainerRepository) { bind<IResourceContainerRepository>() }
     singleOf(::ResourceMetadataRepository) { bind<IResourceMetadataRepository>() }
     singleOf(::EditionFingerprintRepository) { bind<IEditionFingerprintRepository>() }
+    singleOf(::EditionUpgradeRepository) { bind<IEditionUpgradeRepository>() }
+    // A single: it caches each held-back chapter's alignment.
+    singleOf(::ReferenceAlignment)
     singleOf(::TakeRepository) { bind<ITakeRepository>() }
     // Explicitly defined to disambiguate WorkbookRepository's constructors.
     single<IWorkbookRepository> {

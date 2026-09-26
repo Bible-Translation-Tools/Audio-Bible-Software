@@ -1,5 +1,6 @@
 package org.bibletranslationtools.otter.common.domain.resourcecontainer
 
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IEditionUpgradeRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
@@ -12,8 +13,9 @@ import org.slf4j.LoggerFactory
  * An edition is superseded when an edition of the same source (same language, identifier and
  * creator) is strictly newer (see [EditionOrder.isNewer]); siblings with the same dates never
  * supersede each other, and the newest is never removed. An edition is used while any project was
- * derived from it, or while a help (translation notes, questions) is linked to it: removing it
- * would take the help's content with it.
+ * derived from it, while a project chapter keeps its verse structure (a chapter held back on an
+ * upgrade), or while a help (translation notes, questions) is linked to it: removing it would take
+ * the help's content with it.
  *
  * Removal only happens at two moments: when a newer edition is installed, and when a project stops
  * using an edition. So an older edition imported on purpose, for example to downgrade a project to,
@@ -22,7 +24,8 @@ import org.slf4j.LoggerFactory
 class EditionLifecycle(
     private val installedEditions: InstalledSourceEditions,
     private val metadataRepository: IResourceMetadataRepository,
-    private val deleteResourceContainer: DeleteResourceContainer
+    private val deleteResourceContainer: DeleteResourceContainer,
+    private val upgradeRepository: IEditionUpgradeRepository
 ) {
     private val logger = LoggerFactory.getLogger(EditionLifecycle::class.java)
 
@@ -45,6 +48,7 @@ class EditionLifecycle(
 
     private suspend fun isInUse(edition: ResourceMetadata): Boolean =
         metadataRepository.getAllDerivativesSuspend(edition).isNotEmpty() ||
+            withContext(Dispatchers.IO) { upgradeRepository.chapterUsage(edition.id) } > 0 ||
             metadataRepository.getLinkedSuspend(edition).isNotEmpty()
 
     private suspend fun remove(edition: ResourceMetadata): Boolean {

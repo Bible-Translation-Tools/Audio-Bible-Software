@@ -21,14 +21,23 @@ package org.bibletranslationtools.otter.common.persistence.database.sqldelight
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import java.io.File
+import java.util.Properties
 
-/** Desktop's [DatabaseDriverFactory]: a JDBC SQLite driver, foreign keys forced ON to match jOOQ's
- *  cascades/restricts. */
+/**
+ * Desktop's [DatabaseDriverFactory]: a JDBC SQLite driver, foreign keys ON to match jOOQ's
+ * cascades/restricts.
+ *
+ * The driver opens a connection per thread, and `PRAGMA foreign_keys` only applies to the
+ * connection it runs on, so it is set as a connection property: sqlite-jdbc applies it to every
+ * connection it opens. A one-off PRAGMA after opening left every other thread's connection without
+ * foreign keys, so, for example, deleting a project on the IO scheduler left its chapters behind.
+ */
 class JdbcDatabaseDriverFactory : DatabaseDriverFactory {
     override fun create(databaseFile: File): SqlDriver =
-        JdbcSqliteDriver("jdbc:sqlite:${databaseFile.absolutePath}").also {
-            it.execute(null, "PRAGMA foreign_keys=ON;", 0)   // match jOOQ's cascades/restricts
-        }
+        JdbcSqliteDriver(
+            "jdbc:sqlite:${databaseFile.absolutePath}",
+            Properties().apply { put("foreign_keys", "true") }
+        )
 }
 
 /**

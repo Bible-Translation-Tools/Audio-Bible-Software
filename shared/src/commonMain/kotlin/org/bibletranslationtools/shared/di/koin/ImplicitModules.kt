@@ -1,5 +1,6 @@
 package org.bibletranslationtools.shared.di.koin
 
+import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
 import org.bibletranslationtools.otter.common.initialization.RefreshBundledSources
 import org.bibletranslationtools.otter.common.domain.project.BundledSourceStamps
 import org.bibletranslationtools.otter.common.audio.wav.IWaveFileCreator
@@ -131,6 +132,7 @@ val implicitCommonModule = module {
     factoryOf(::InstalledSourceEditions)
     factoryOf(::EditionLifecycle)
     factoryOf(::DescribeSourceEditions)
+    factoryOf(::UpgradeBookEdition)
     factoryOf(::BurritoToResourceContainerConverter)
     factoryOf(::ScriptureBurritoUtils)
 

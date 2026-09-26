@@ -9,6 +9,10 @@ CREATE TABLE collection_entity (
     sort            INTEGER AS kotlin.Int NOT NULL,
     dublin_core_fk  INTEGER AS kotlin.Int NOT NULL REFERENCES dublin_core_entity(id),
     modified_ts     TEXT DEFAULT NULL,
+    -- Schema v17: for a project's chapter, the source edition its verse structure came from.
+    -- NULL means the book's current source edition. It differs after a book moves to a new edition
+    -- while a recorded chapter keeps its old structure (see UpgradeBookEdition).
+    structure_edition_fk INTEGER AS kotlin.Int REFERENCES dublin_core_entity(id),
     UNIQUE (slug, dublin_core_fk, label)
 );
 
@@ -79,3 +83,23 @@ WHERE rc1_fk IN (
     SELECT derivedFrom_fk FROM dublin_core_entity
     WHERE id IN (SELECT dublin_core_fk FROM collection_entity WHERE id = :projectId)
 );
+
+-- Moving a project book to another source edition. -----------------------------------------------
+
+setStructureEdition:
+UPDATE collection_entity SET structure_edition_fk = :editionId WHERE id = :id;
+
+fetchStructureEdition:
+SELECT structure_edition_fk FROM collection_entity WHERE id = ?;
+
+-- Re-point a project collection (book or chapter) at another source collection and derived row.
+rebase:
+UPDATE collection_entity SET source_fk = :sourceFk, dublin_core_fk = :dublinCoreFk WHERE id = :id;
+
+-- Project collections that still depend on source edition :editionId other than through their
+-- derived row: chapters whose structure came from it, or that still point at one of its collections.
+countEditionUsage:
+SELECT count(*) FROM collection_entity
+WHERE dublin_core_fk != :editionId
+  AND (structure_edition_fk = :editionId
+       OR source_fk IN (SELECT id FROM collection_entity WHERE dublin_core_fk = :editionId));

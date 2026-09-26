@@ -30,6 +30,8 @@ interface WorkbookDescriptorDao {
     fun fetch(sourceId: Int, targetId: Int, typeId: Int): WorkbookDescriptorEntity?
     fun fetchById(id: Int): WorkbookDescriptorEntity?
     fun fetchAll(): List<WorkbookDescriptorEntity>
+    /** Points every descriptor of project book [targetId] at source book [sourceId]. */
+    fun rebaseSource(targetId: Int, sourceId: Int)
     fun insert(entity: WorkbookDescriptorEntity): Int
     fun update(entity: WorkbookDescriptorEntity)
     fun delete(entity: WorkbookDescriptorEntity)

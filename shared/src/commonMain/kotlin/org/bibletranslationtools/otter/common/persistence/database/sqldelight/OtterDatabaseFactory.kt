@@ -51,7 +51,7 @@ internal fun buildOtterDatabase(driver: SqlDriver): OtterDatabase {
     return OtterDatabase(
         driver = driver,
         checking_statusAdapter = Checking_status.Adapter(i),
-        collection_entityAdapter = Collection_entity.Adapter(i, i, i, i, i),
+        collection_entityAdapter = Collection_entity.Adapter(i, i, i, i, i, i),
         content_derivativeAdapter = Content_derivative.Adapter(i, i, i),
         content_entityAdapter = Content_entity.Adapter(i, i, i, i, i, i, i, i),
         content_typeAdapter = Content_type.Adapter(i),

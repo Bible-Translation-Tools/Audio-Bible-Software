@@ -99,4 +99,16 @@ internal class SqlDelightTakeDao(private val db: OtterDatabase) : TakeDao {
     override fun deleteResourceTakesForProject(projectId: Int, projectSlug: String) {
         queries.deleteResourceTakesForProject(projectId = projectId, projectSlug = projectSlug)
     }
+
+    override fun moveToContent(id: Int, contentId: Int) {
+        queries.moveToContent(contentFk = contentId, id = id)
+    }
+
+    override fun rewritePathPrefix(projectId: Int, oldPrefix: String, newPrefix: String) {
+        db.transaction {
+            queries.fetchPathsForProject(projectId).executeAsList()
+                .filter { it.path.startsWith(oldPrefix) }
+                .forEach { queries.updatePath(path = newPrefix + it.path.removePrefix(oldPrefix), id = it.id) }
+        }
+    }
 }

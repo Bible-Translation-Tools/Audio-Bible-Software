@@ -63,4 +63,8 @@ internal class SqlDelightWorkbookDescriptorDao(private val db: OtterDatabase) : 
     override fun delete(entity: WorkbookDescriptorEntity) {
         queries.delete(entity.id)
     }
+
+    override fun rebaseSource(targetId: Int, sourceId: Int) {
+        queries.rebaseSource(sourceFk = sourceId, targetFk = targetId)
+    }
 }

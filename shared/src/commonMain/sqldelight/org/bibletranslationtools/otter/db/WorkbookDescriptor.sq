@@ -35,3 +35,7 @@ WHERE id = :id;
 
 delete:
 DELETE FROM workbook_descriptor_entity WHERE id = ?;
+
+-- Moving a project book to another source edition: its descriptors follow it.
+rebaseSource:
+UPDATE workbook_descriptor_entity SET source_FK = :sourceFk WHERE target_FK = :targetFk;

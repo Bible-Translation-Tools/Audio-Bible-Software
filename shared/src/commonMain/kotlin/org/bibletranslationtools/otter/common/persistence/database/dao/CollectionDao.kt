@@ -33,6 +33,13 @@ interface CollectionDao {
     fun insert(entity: CollectionEntity): Int
     fun fetchById(id: Int): CollectionEntity
     fun fetchAll(): List<CollectionEntity>
+    /** The source edition a project chapter's structure came from; null means the book's source. */
+    fun fetchStructureEdition(id: Int): Int?
+    fun setStructureEdition(id: Int, editionId: Int?)
+    /** Points project collection [id] at source collection [sourceFk] under derived row [dublinCoreFk]. */
+    fun rebase(id: Int, sourceFk: Int?, dublinCoreFk: Int)
+    /** How many project collections depend on source edition [editionId] other than through a derived row. */
+    fun countEditionUsage(editionId: Int): Int
     fun fetchByIds(ids: List<Int>): List<CollectionEntity>
     fun fetchByLabel(label: String): List<CollectionEntity>
     fun update(entity: CollectionEntity)

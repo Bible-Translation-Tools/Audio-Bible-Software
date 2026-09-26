@@ -86,3 +86,17 @@ WHERE content_fk IN (
         )
     )
 );
+
+-- Moving a take to another content row (a verse that merged, split or was renumbered).
+moveToContent:
+UPDATE take_entity SET content_fk = :contentFk WHERE id = :id;
+
+-- Moving a project folder: the stored absolute paths of a project's takes, and rewriting one.
+fetchPathsForProject:
+SELECT take_entity.id, take_entity.path FROM take_entity
+JOIN content_entity ON content_entity.id = take_entity.content_fk
+JOIN collection_entity ON collection_entity.id = content_entity.collection_fk
+WHERE collection_entity.parent_fk = :projectId;
+
+updatePath:
+UPDATE take_entity SET path = :path WHERE id = :id;

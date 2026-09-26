@@ -1,5 +1,10 @@
 package org.bibletranslationtools.otter.integration
 
+import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.structure.ReferenceAlignment
+import org.bibletranslationtools.otter.common.persistence.entities.TakeEntity
+import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
+import org.bibletranslationtools.otter.common.persistence.ProjectDirectoryLayout
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.OtterResourceContainerConfig
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.IProjectReader
@@ -166,8 +171,24 @@ class IntegrationEnvironment private constructor(
             )
         )
 
-    private fun withEntriesEdited(rcFile: String, label: String, edits: Map<String, (String) -> String>): File {
-        val source = rcResourceFile(rcFile)
+    private fun withEntriesEdited(rcFile: String, label: String, edits: Map<String, (String) -> String>): File =
+        withEntriesEdited(rcResourceFile(rcFile), label, edits)
+
+    /**
+     * [rc] made strictly newer: issued and modified on 2024-07-12, relabelled [version] when given. Used on the
+     * bundled English ULB, whose Acts 19 has 40 verses where the fixture's has 41.
+     */
+    fun newerDatesOf(rc: File, version: String? = null): File {
+        val manifest = ZipFile(rc).use { zip -> zip.entries().asSequence().first { it.name.endsWith("manifest.yaml") }.name }
+        return withEntriesEdited(rc, "newer-dates-${rc.nameWithoutExtension}-${version ?: "same"}", mapOf(manifest to { text ->
+            text.replace(Regex("issued: '[0-9-]+'"), "issued: '2024-07-12'")
+                .replace(Regex("modified: '[0-9-]+'"), "modified: '2024-07-12'")
+                .let { if (version == null) it else it.replace(Regex("(?m)^  version: '[^']*'"), "  version: '$version'") }
+        }))
+    }
+
+    private fun withEntriesEdited(source: File, label: String, edits: Map<String, (String) -> String>): File {
+        val rcFile = source.name
         val target = File(tempRoot, "$label.zip")
 
         ZipFile(source).use { zip ->
@@ -269,6 +290,92 @@ class IntegrationEnvironment private constructor(
         ResourceContainer.load(rc, OtterResourceContainerConfig()).use { container ->
             editionTextOf(IProjectReader.constructContainerTree(container, koin.get<IZipEntryTreeBuilder>()))
         }
+
+    /** A source edition as the app's domain sees it. */
+    fun editionMetadata(sourceId: Int) =
+        koin.get<IResourceMetadataRepository>().getAllSources().blockingGet().single { it.id == sourceId }
+
+    fun projectBookRow(project: Collection): CollectionEntity = db.collectionDao.fetchById(project.id)
+
+    /** The source edition a source collection belongs to. */
+    fun sourceCollectionEdition(collectionId: Int): Int? = db.collectionDao.fetchById(collectionId).dublinCoreFk
+
+    fun structureEdition(project: Collection, sort: Int): Int? =
+        db.collectionDao.fetchStructureEdition(projectChapter(project, sort).id)
+
+    /** The source edition [project]'s workbook descriptor points at. */
+    fun descriptorSourceEdition(project: Collection): Int? =
+        db.workbookDescriptorDao.fetchAll().single { it.targetFk == project.id }.sourceFk.let(::sourceCollectionEdition)
+
+    /** The upgrade use case, as the app would use it. */
+    val upgradeBookEdition: UpgradeBookEdition get() = koin.get()
+
+    val referenceAlignment: ReferenceAlignment get() = koin.get()
+
+    /** A project chapter's rows, by chapter sort. */
+    fun projectChapter(project: Collection, sort: Int): CollectionEntity =
+        db.collectionDao.fetchChildren(db.collectionDao.fetchById(project.id)).single { it.sort == sort }
+
+    /** A project chapter's verse rows' ranges, in order. */
+    fun projectVerses(project: Collection, sort: Int): List<Pair<Int, Int>> {
+        val textType = db.contentTypeDao.fetchId(ContentType.TEXT)
+        return db.contentDao.fetchByCollectionId(projectChapter(project, sort).id)
+            .filter { it.type_fk == textType && it.labelKey == "verse" }
+            .sortedBy { it.start }
+            .map { it.start to it.end }
+    }
+
+    /**
+     * Records a take on verse [verse] of chapter [sort] of [project], with a real file in the
+     * project's takes folder. [deleted] makes it a soft-deleted take.
+     */
+    fun addTake(project: Collection, sort: Int, verse: Int, deleted: Boolean = false): Int {
+        val textType = db.contentTypeDao.fetchId(ContentType.TEXT)
+        val row = db.contentDao.fetchByCollectionId(projectChapter(project, sort).id)
+            .single { it.type_fk == textType && it.labelKey == "verse" && it.start == verse }
+        val file = projectDirectory(project).resolve(".apps/orature/takes/c$sort/v${verse}_t1.wav")
+        file.parentFile.mkdirs()
+        file.writeText("audio")
+        return db.takeDao.insert(
+            TakeEntity(
+                id = 0, contentFk = row.id, filename = file.name, filepath = file.toURI().path, number = 1,
+                createdTs = "2026-01-01", deletedTs = if (deleted) "2026-01-02" else null, played = 0,
+                checkingFk = db.checkingStatusDao.fetchId(CheckingStatus.UNCHECKED), checksum = null
+            )
+        )
+    }
+
+    /** Adds a chunk row (chunked translation mode) covering verses [start]..[end] of chapter [sort]. */
+    fun addChunk(project: Collection, sort: Int, start: Int, end: Int) {
+        db.contentDao.insert(
+            ContentEntity(
+                id = 0, sort = start, labelKey = "chunk", start = start, end = end,
+                collectionFk = projectChapter(project, sort).id, selectedTakeFk = null, text = null, format = null,
+                type_fk = db.contentTypeDao.fetchId(ContentType.TEXT), draftNumber = 2, bridged = false
+            )
+        )
+    }
+
+    /** How many chunk rows chapter [sort] of [project] has. */
+    fun chunkCount(project: Collection, sort: Int): Int =
+        db.contentDao.fetchByCollectionId(projectChapter(project, sort).id).count { it.labelKey == "chunk" }
+
+    /** The content row take [takeId] is on, and its stored path. */
+    fun take(takeId: Int): TakeEntity = db.takeDao.fetchById(takeId)
+
+    fun content(contentId: Int) = db.contentDao.fetchById(contentId)
+
+    /** Moves [project]'s folder to where a project created before per-book pinning would have it. */
+    fun moveProjectToLegacyFolder(project: Collection): File {
+        val current = projectDirectory(project)
+        val target = project.resourceContainer!!
+        val source = koin.get<IResourceMetadataRepository>().getAllSources().blockingGet().single { it.id == derivedFromOf(target.id) }
+        val legacy = ProjectDirectoryLayout.legacyPath(source, target, project.slug)
+            .fold(directoryProvider.getUserDataDirectory(), File::resolve)
+        legacy.parentFile.mkdirs()
+        check(current.renameTo(legacy))
+        return legacy
+    }
 
     /** Deletes every project, as the app's project management does. */
     fun deleteAllProjects() {
