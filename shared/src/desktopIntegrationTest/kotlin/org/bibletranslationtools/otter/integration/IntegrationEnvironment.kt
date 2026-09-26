@@ -1,6 +1,10 @@
 package org.bibletranslationtools.otter.integration
 
 import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
+import org.bibletranslationtools.otter.common.domain.project.exporter.ExportResult
+import org.bibletranslationtools.otter.common.domain.project.exporter.ProjectExporterCallback
+import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.BackupProjectExporter
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.structure.ReferenceAlignment
 import org.bibletranslationtools.otter.common.persistence.entities.TakeEntity
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
@@ -343,6 +347,82 @@ class IntegrationEnvironment private constructor(
                 checkingFk = db.checkingStatusDao.fetchId(CheckingStatus.UNCHECKED), checksum = null
             )
         )
+    }
+
+    /**
+     * Records a selected take on verse [verse] of chapter [sort] of [project], named as the app
+     * names takes so a backup carries it and a restore places it.
+     */
+    fun recordTake(project: Collection, sort: Int, verse: Int): Int {
+        val textType = db.contentTypeDao.fetchId(ContentType.TEXT)
+        val row = db.contentDao.fetchByCollectionId(projectChapter(project, sort).id)
+            .single { it.type_fk == textType && it.labelKey == "verse" && it.start == verse }
+        val target = project.resourceContainer!!
+        val name = "${target.language.slug}_${target.identifier}_${project.slug}_c${"%02d".format(sort)}_v${"%02d".format(verse)}_t1.wav"
+        val file = projectDirectory(project).resolve(".apps/orature/takes/c${"%02d".format(sort)}/$name")
+        file.parentFile.mkdirs()
+        file.writeBytes(ByteArray(0))
+        val id = db.takeDao.insert(
+            TakeEntity(
+                id = 0, contentFk = row.id, filename = file.name, filepath = file.toURI().path, number = 1,
+                createdTs = "2026-01-01", deletedTs = null, played = 0,
+                checkingFk = db.checkingStatusDao.fetchId(CheckingStatus.UNCHECKED), checksum = null
+            )
+        )
+        db.contentDao.update(row.copy(selectedTakeFk = id))
+        return id
+    }
+
+    /** The content rows of chapter [sort] of [project] that have a live take, by verse start. */
+    fun versesWithTakes(project: Collection, sort: Int): List<Int> =
+        db.contentDao.fetchByCollectionId(projectChapter(project, sort).id)
+            .filter { row -> db.takeDao.fetchByContentId(row.id, includeDeleted = false).isNotEmpty() }
+            .map { it.start }
+            .sorted()
+
+    /** Backs [project] up as the app's export does, into a file in this environment's temp directory. */
+    fun backup(project: Collection): File {
+        val descriptor = koin.get<IWorkbookDescriptorRepository>().getAll().blockingGet().single { it.targetCollection.id == project.id }
+        val workbook = koin.get<IWorkbookRepository>().get(descriptor.sourceCollection, descriptor.targetCollection)!!
+        val accessor = workbook.projectFilesAccessor
+        if (!accessor.isInitialized()) {
+            accessor.initializeResourceContainerInDir(overwrite = false)
+            accessor.copySourceFiles(null)
+            accessor.writeSelectedTakesFile(workbook, isBook = true)
+        }
+        accessor.setProjectMode(descriptor.mode)
+        val outDir = File(tempRoot, "backups-${System.nanoTime()}").apply { mkdirs() }
+        var produced: File? = null
+        val result = koin.get<BackupProjectExporter>().export(
+            outDir, workbook,
+            object : ProjectExporterCallback {
+                override fun onNotifyProgress(percent: Double, messageKey: String?) = Unit
+                override fun onNotifySuccess(project: Collection, file: File) { produced = file }
+                override fun onError(project: Collection) = Unit
+            },
+            null
+        ).blockingGet()
+        assertEquals(ExportResult.SUCCESS, result, "backing up ${project.slug}")
+        koin.get<IWorkbookRepository>().closeWorkbook(workbook)
+        return produced!!
+    }
+
+    /** The entry names in zip [file]. */
+    fun zipEntries(file: File): List<String> = ZipFile(file).use { zip -> zip.entries().asSequence().map { it.name }.toList() }
+
+    /** A copy of zip [file] without the entries under [prefix]: a backup made without them. */
+    fun withoutEntries(file: File, prefix: String): File {
+        val target = File(tempRoot, "${file.nameWithoutExtension}-without-${prefix.replace('/', '_')}.${file.extension}")
+        ZipFile(file).use { zip ->
+            ZipOutputStream(target.outputStream().buffered()).use { out ->
+                zip.entries().asSequence().filterNot { it.name.startsWith(prefix) }.forEach { entry ->
+                    out.putNextEntry(ZipEntry(entry.name))
+                    if (!entry.isDirectory) zip.getInputStream(entry).use { it.copyTo(out) }
+                    out.closeEntry()
+                }
+            }
+        }
+        return target
     }
 
     /** Adds a chunk row (chunked translation mode) covering verses [start]..[end] of chapter [sort]. */

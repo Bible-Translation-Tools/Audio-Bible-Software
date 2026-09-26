@@ -3,6 +3,7 @@ package org.bibletranslationtools.shared.di.koin
 import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
 import org.bibletranslationtools.otter.common.initialization.RefreshBundledSources
 import org.bibletranslationtools.otter.common.domain.project.BundledSourceStamps
+import org.bibletranslationtools.otter.common.domain.project.BackupEditions
 import org.bibletranslationtools.otter.common.audio.wav.IWaveFileCreator
 import org.bibletranslationtools.otter.common.audio.wav.WaveFileCreator
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
@@ -133,6 +134,7 @@ val implicitCommonModule = module {
     factoryOf(::EditionLifecycle)
     factoryOf(::DescribeSourceEditions)
     factoryOf(::UpgradeBookEdition)
+    factoryOf(::BackupEditions)
     factoryOf(::BurritoToResourceContainerConverter)
     factoryOf(::ScriptureBurritoUtils)
 

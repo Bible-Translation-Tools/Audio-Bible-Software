@@ -142,6 +142,7 @@
     <string name="edition_banner_update">A newer edition of this book\'s source is installed: %1$s.</string>
     <string name="edition_banner_review">Review</string>
     <string name="label_earlier_structure">Earlier verses</string>
+    <string name="export_mixed_editions_warning">Chapters %1$s keep an earlier source edition\'s verses, so this export mixes verse structures.</string>
     <string name="wizard_select_edition">Choose Edition</string>
     <string name="wizard_select_edition_hint">More than one edition of this source is installed. The newest is listed first.</string>
     <string name="label_newest_edition">Newest</string>

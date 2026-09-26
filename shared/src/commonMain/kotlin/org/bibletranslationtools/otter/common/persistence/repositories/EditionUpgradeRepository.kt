@@ -119,7 +119,9 @@ class EditionUpgradeRepository(
                         chapter.chapterId,
                         chapter.structureEditionId.takeIf { it != rebase.toEdition.id }
                     )
-                    chapter.rewrite?.let { rewrite(chapter.chapterId, chapter.toSourceChapterId!!, it) }
+                    chapter.rewrite?.let {
+                        rewrite(chapter.chapterId, it.rowsFromSourceChapterId ?: chapter.toSourceChapterId!!, it)
+                    }
                 }
                 val versesPerVerse = rebase.chapters.any { contentDao.fetchByCollectionId(it.chapterId).any { row -> row.isVerse() } }
                 rebase.newChapterSourceIds.forEach { addChapter(book, it, newDerived, versesPerVerse) }

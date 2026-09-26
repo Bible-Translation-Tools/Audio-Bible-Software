@@ -52,6 +52,7 @@ import org.bibletranslationtools.shared.resources.export_chapters_count
 import org.jetbrains.compose.resources.stringResource
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportChapter
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportOptionsState
+import org.bibletranslationtools.shared.resources.export_mixed_editions_warning
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportType
 
 /**
@@ -174,6 +175,18 @@ private fun ReadyDialog(
                         subtitle = stringResource(Res.string.export_type_source_audio_subtitle),
                         selected = state.type == ExportType.SOURCE_AUDIO,
                         onClick = { onSetType(ExportType.SOURCE_AUDIO) }
+                    )
+                }
+
+                // A published export of a book whose chapters follow different editions (A13's
+                // fallback: allowed, with a warning). A backup restores them as they are.
+                val mixed = state.heldBackChapters.filter { it in state.selectedChapterSorts }
+                if (state.type != ExportType.BACKUP && mixed.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = stringResource(Res.string.export_mixed_editions_warning, mixed.joinToString(", ")),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
                     )
                 }
 

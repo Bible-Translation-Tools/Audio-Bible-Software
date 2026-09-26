@@ -32,4 +32,14 @@ object RcConstants {
     const val SOURCE_MEDIA_DIR = "media"
     const val CHAPTER_NARRATION_FILE = "$TAKE_DIR/%s/chapter_narration.pcm"
     const val ACTIVE_VERSES_FILE = "$TAKE_DIR/%s/active_verses.json"
+
+    /**
+     * This app family's own folder in a backup, beside Orature's: what Orature doesn't know about
+     * goes here, so a backup still restores in Orature (S11-Q2).
+     */
+    const val OWN_APP_DIR = ".apps/bibletranslationtools"
+    /** Which source edition a backed-up book and each of its held-back chapters use. */
+    const val SOURCE_EDITIONS_FILE = "$OWN_APP_DIR/source_editions.json"
+    /** Editions a backup needs beyond its book's own, which goes in [SOURCE_DIR] as Orature expects. */
+    const val OWN_SOURCE_DIR = "$OWN_APP_DIR/source"
 }

@@ -204,6 +204,37 @@ class UpgradeBookEdition(
             .forEach { editionLifecycle.retireIfSuperseded(it) }
     }
 
+    /**
+     * Gives chapters of project book [projectBookId] the verse structure of the edition [held] names
+     * for them, while the book keeps its own edition: restoring a backup whose chapters were held
+     * back on an upgrade. Chapters with takes are left alone; a book being restored has none yet.
+     *
+     * @param held editions by chapter number.
+     * @return the numbers of the chapters that took on their edition's structure.
+     */
+    suspend fun holdChapters(projectBookId: Int, held: Map<Int, ResourceMetadata>): List<Int> = withContext(Dispatchers.IO) {
+        val book = repository.projectBook(projectBookId) ?: return@withContext emptyList()
+        val bookText = repository.sourceBookText(book.sourceEdition.id, book.slug) ?: return@withContext emptyList()
+        val texts = mutableMapOf<Int, SourceBookText?>()
+        val rebases = book.chapters.mapNotNull { chapter ->
+            val edition = held[chapter.sort]?.takeIf { it.id != chapter.structureEditionId } ?: return@mapNotNull null
+            if (chapter.hasLiveTakes) return@mapNotNull null
+            val from = texts.getOrPut(edition.id) { repository.sourceBookText(edition.id, book.slug) }
+                ?.chapters?.get(chapter.sort)
+                ?: return@mapNotNull null
+            chapter.sort to ChapterRebase(
+                chapterId = chapter.chapterId,
+                toSourceChapterId = null,
+                structureEditionId = edition.id,
+                rewrite = ChapterRewrite(emptyList(), resetChunks = false, rowsFromSourceChapterId = from.chapterId)
+            )
+        }
+        if (rebases.isNotEmpty()) {
+            repository.apply(BookRebase(book.bookId, book.sourceEdition, bookText.bookId, rebases.map { it.second }, emptyList()))
+        }
+        rebases.map { it.first }
+    }
+
     /** A chapter whose structure edition is no longer installed: its own verse numbers, no text. */
     private fun ProjectChapterState.numbersOnly(bookSlug: String) =
         ChapterText(slug, bookSlug, sort, verses.map { VerseText(it, null) })

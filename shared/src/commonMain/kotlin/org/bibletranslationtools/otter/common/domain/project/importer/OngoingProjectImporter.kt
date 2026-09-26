@@ -42,6 +42,11 @@ import org.bibletranslationtools.otter.common.data.primitives.Take
 import org.bibletranslationtools.otter.common.data.workbook.TakeCheckingState
 import org.bibletranslationtools.otter.common.data.workbook.Translation
 import org.bibletranslationtools.otter.common.domain.collections.CreateProject
+import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
+import org.bibletranslationtools.otter.common.domain.project.BackupEditionRecord
+import org.bibletranslationtools.otter.common.domain.project.BackupEditions
+import org.bibletranslationtools.otter.common.domain.project.BackupHeldChapter
+import kotlinx.coroutines.runBlocking
 import org.bibletranslationtools.otter.common.domain.content.ConcatenateAudio
 import org.bibletranslationtools.otter.common.domain.content.FileNamer
 import org.bibletranslationtools.otter.common.domain.content.FileNamer.Companion.takeFilenamePattern
@@ -87,7 +92,10 @@ class OngoingProjectImporter(
     private val languageRepository: ILanguageRepository,
     private val resourceRepository: IResourceRepository,
     private val createProjectUseCase: CreateProject,
-    private val concatAudioUseCase: ConcatenateAudio
+    private val concatAudioUseCase: ConcatenateAudio,
+    private val backupEditions: BackupEditions,
+    private val upgradeBookEdition: UpgradeBookEdition,
+    private val editionFingerprinter: EditionFingerprinter
 ) : RCImporter(directoryProvider, resourceMetadataRepository) {
     private val logger = LoggerFactory.getLogger(this.javaClass)
 
@@ -101,6 +109,8 @@ class OngoingProjectImporter(
     private var completedChapters = listOf<Int>() // for Ot1 projects
     private var takesToCompile = mutableMapOf<Int, List<File>>() // for compiling verses of incomplete chapter in Ot1
     private var migratedSelectedTakes = listOf<String>() // list of all selected take paths extracted from Ot1 database
+    /** The source book of the project already here that the backup is merged into, if there is one. */
+    private var existingProjectSource: Collection? = null
 
     override fun import(
         file: File,
@@ -118,6 +128,7 @@ class OngoingProjectImporter(
         completedChapters = listOf()
         takesToCompile = mutableMapOf()
         migratedSelectedTakes = listOf()
+        existingProjectSource = null
         contentCache.clear()
 
         return Single
@@ -176,7 +187,9 @@ class OngoingProjectImporter(
                         projectSlug == existingProject.target.slug
                 }?.let {
                     workbookRepository.closeWorkbook(it)
-                    it.projectFilesAccessor.isInitialized()
+                    it.projectFilesAccessor.isInitialized().also { initialized ->
+                        if (initialized) existingProjectSource = it.source.toCollection()
+                    }
                 } ?: false
             }
         }
@@ -243,20 +256,21 @@ class OngoingProjectImporter(
                     percent = 10.0
                 )
                 directoryProvider.newFileReader(resourceContainer).use { fileReader ->
-                    val existingSource = fetchExistingSource(manifestProject, manifestSources)
+                    val editionRecord = backupEditions.read(fileReader)
+                        ?.takeIf { it.book == manifestProject.identifier }
                     try {
                         callback?.onNotifyProgress(localizeKey = "importingSource", percent = 25.0)
-                        // Import Sources even if existing source exists in order to potentially merge source audio
+                        // Import Sources even if existing source exists in order to potentially merge source audio.
+                        // Each is its own edition, beside any other edition of it already here.
                         importSources(fileReader)
+                        importSources(fileReader, RcConstants.OWN_SOURCE_DIR)
                     } catch (e: ImportException) {
                         logger.error("Error importing source of resumable project", e)
                     }
-                    val sourceCollection = if (existingSource == null) {
-                        findSourceCollection(manifestSources, manifestProject)
-                    } else {
-                        existingSource
-                    }
-                    syncProjectVersion(manifest, sourceCollection.resourceContainer!!.version)
+                    // Merging into a project already here keeps it on its edition. Otherwise the
+                    // project attaches to the edition it was backed up from (S11-Q3).
+                    val sourceCollection = existingProjectSource
+                        ?: backedUpSourceCollection(editionRecord, manifestSources, manifestProject, fileReader)
 
                     val metadata = languageRepository
                         .getBySlug(manifest.dublinCore.language.identifier)
@@ -265,7 +279,10 @@ class OngoingProjectImporter(
                         }
                         .blockingGet()
 
-                    val derived = importResumableProject(fileReader, metadata, manifestProject, sourceCollection, callback)
+                    val derived = importResumableProject(
+                        fileReader, metadata, manifestProject, sourceCollection, callback,
+                        heldBack = editionRecord.takeIf { existingProjectSource == null }?.heldBack.orEmpty()
+                    )
                     val workbookDescriptor = workbookDescriptorRepository.getAll().blockingGet().firstOrNull {
                         it.targetCollection.id == derived.id && it.sourceCollection.id == sourceCollection.id
                     }
@@ -291,7 +308,8 @@ class OngoingProjectImporter(
         metadata: ResourceMetadata,
         manifestProject: Project,
         sourceCollection: Collection,
-        callback: ProjectImporterCallback?
+        callback: ProjectImporterCallback?,
+        heldBack: List<BackupHeldChapter> = emptyList()
     ): Collection {
         val sourceMetadata = sourceCollection.resourceContainer!!
         projectMode = getProjectMode(fileReader, metadata.language, sourceCollection.resourceContainer!!.language)
@@ -305,12 +323,16 @@ class OngoingProjectImporter(
             isVerseByVerse
         )
 
+        restoreHeldChapters(derivedProject, heldBack)
+
         val translation = createTranslation(sourceMetadata.language, metadata.language)
 
+        // The project's folder is found from its own row, as the rest of the app finds it; the
+        // backup's manifest may carry another version (it isn't overwritten to match any more).
         val projectFilesAccessor = ProjectFilesAccessor(
             directoryProvider,
             sourceMetadata,
-            metadata,
+            derivedProject.resourceContainer ?: metadata,
             derivedProject
         )
 
@@ -637,7 +659,12 @@ class OngoingProjectImporter(
                         takesToCompile[sig.chapter] = existingFiles.plus(file)
                     }
                 }
-            }
+            } ?: logger.warn(
+                // Restored onto an edition without this verse: the file is kept in the project's
+                // folder, but nothing in the project refers to it.
+                "Restoring ${project.slug}: take $filepath has no place in the project " +
+                    "(chapter ${sig.chapter}, verse ${sig.verse}), so it isn't listed"
+            )
         }
     }
 
@@ -656,11 +683,12 @@ class OngoingProjectImporter(
             logger.error("Error while deriving project(s) during import", it)
         }.blockingGet()
 
-        // populate all books when importing a project
+        // populate all books when importing a project, from the edition the project is on
         createProjectUseCase.createAllBooks(
             sourceCollection.resourceContainer!!.language,
             language,
-            mode
+            mode,
+            edition = sourceCollection.resourceContainer
         ).blockingAwait()
 
         return project
@@ -696,27 +724,93 @@ class OngoingProjectImporter(
     }
 
     /**
-     * Find the relevant source (if any) for the project, regardless of version. When several
-     * editions of it are installed, the newest.
+     * The source book a backup's project attaches to: the edition its record names, found by
+     * fingerprint; for a backup without a record (made by Orature, or before the record existed),
+     * the edition embedded in it; and failing both, the installed edition with the version label its
+     * manifest names, or the newest, which is logged (S11-Q4).
      */
-    private fun fetchExistingSource(
+    private fun backedUpSourceCollection(
+        record: BackupEditionRecord?,
+        manifestSources: Set<Source>,
         manifestProject: Project,
-        requestedSources: Set<Source>
-    ): Collection? {
-        return collectionRepository.getSourceProjects().blockingGet()
-            .sortedWith(EditionOrder.newestFirstBy { it.resourceContainer })
-            .firstOrNull { collection ->
-                requestedSources.any { source ->
-                    manifestProject.identifier == collection.slug &&
-                            source.identifier == collection.resourceContainer!!.identifier &&
-                            source.language == collection.resourceContainer!!.language.slug
+        fileReader: IFileReader
+    ): Collection {
+        val edition = runBlocking {
+            record?.let { backupEditions.findInstalled(it.edition) }
+                ?: embeddedEdition(fileReader, manifestSources)
+                ?: manifestSources.firstNotNullOfOrNull { source ->
+                    backupEditions.closestInstalled(source.language, source.identifier, source.version)?.also {
+                        logger.warn(
+                            "Restoring ${manifestProject.identifier}: the backup doesn't say which edition of " +
+                                "${source.language}_${source.identifier} it used (its manifest says version " +
+                                "${source.version}), so it is attached to v${it.version}, issued ${it.issued}"
+                        )
+                    }
                 }
-            }
+        }
+        val sourceCollection = edition?.let { found ->
+            collectionRepository.getSourceProjects().blockingGet()
+                .firstOrNull { it.resourceContainer?.id == found.id && it.slug == manifestProject.identifier }
+        }
+        if (sourceCollection == null) {
+            logger.error("Failed to find source that matches requested import.")
+            throw ImportException(ImportResult.FAILED)
+        }
+        return sourceCollection
     }
 
-    private fun importSources(fileReader: IFileReader) {
+    /** The installed edition that is the source embedded in the backup, matched by content. */
+    private suspend fun embeddedEdition(fileReader: IFileReader, manifestSources: Set<Source>): ResourceMetadata? {
+        val embedded = fileReader.list(RcConstants.SOURCE_DIR)
+            .filter { OratureFileFormat.isSupported(it.substringAfterLast(".")) }
+            .toList()
+        for (path in embedded) {
+            val file = directoryProvider.createTempFile(File(path).nameWithoutExtension, ".zip")
+            try {
+                fileReader.stream(path).use { input -> file.outputStream().use { input.copyTo(it) } }
+                val dublinCore = ResourceContainer.load(file).use { it.manifest.dublinCore }
+                val isProjectSource = manifestSources.any {
+                    it.identifier == dublinCore.identifier && it.language == dublinCore.language.identifier
+                }
+                if (!isProjectSource) continue
+                val fingerprint = editionFingerprinter.fingerprint(file)
+                backupEditions.findInstalled(dublinCore.language.identifier, dublinCore.identifier, fingerprint)
+                    ?.let { return it }
+            } catch (e: Exception) {
+                logger.error("Could not identify the embedded source $path", e)
+            } finally {
+                file.delete()
+            }
+        }
+        return null
+    }
+
+    /**
+     * Gives the chapters that were held back on an upgrade their earlier edition's verses again,
+     * before their takes are imported onto them. A chapter whose edition can't be found keeps the
+     * book's edition, and its takes are matched to that edition's verses by number.
+     */
+    private fun restoreHeldChapters(project: Collection, heldBack: List<BackupHeldChapter>) {
+        if (heldBack.isEmpty()) return
+        runBlocking {
+            val editions = heldBack.mapNotNull { held ->
+                backupEditions.findInstalled(held.edition)?.let { held.chapter to it }
+                    ?: null.also {
+                        logger.warn(
+                            "Restoring ${project.slug} chapter ${held.chapter}: its edition " +
+                                "${held.edition.language}_${held.edition.identifier} v${held.edition.version} " +
+                                "isn't installed, so it takes the book's edition"
+                        )
+                    }
+            }.toMap()
+            upgradeBookEdition.holdChapters(project.id, editions)
+        }
+    }
+
+    private fun importSources(fileReader: IFileReader, directory: String = RcConstants.SOURCE_DIR) {
+        if (directory != RcConstants.SOURCE_DIR && !fileReader.exists(directory)) return
         val sourceFiles: Sequence<String> = fileReader
-            .list(RcConstants.SOURCE_DIR)
+            .list(directory)
             .filter {
                 val ext = it.substringAfterLast(".")
                 OratureFileFormat.isSupported(ext)
@@ -875,11 +969,6 @@ class OngoingProjectImporter(
         } else {
             null
         }
-    }
-
-    /** Applies source version to target version before importing. */
-    private fun syncProjectVersion(projectManifest: Manifest, version: String) {
-        projectManifest.dublinCore.version = version
     }
 
     data class ContentSignature(val chapter: Int, val verse: Int?, val sort: Int?, val type: ContentType?)

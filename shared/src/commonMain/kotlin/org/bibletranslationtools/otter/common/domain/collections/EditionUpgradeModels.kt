@@ -67,8 +67,16 @@ data class ChapterRebase(
 /**
  * Replacing a chapter's verse rows with the new edition's. [groups] say where each old verse went,
  * so its takes (all deleted ones: a chapter with live takes is never rewritten) can follow it.
+ *
+ * @property rowsFromSourceChapterId the source chapter whose verse rows it takes, when that isn't
+ *   the chapter it refers to: a restored chapter that was held back takes its old edition's verses
+ *   while referring to the book's edition.
  */
-data class ChapterRewrite(val groups: List<VerseGroup>, val resetChunks: Boolean)
+data class ChapterRewrite(
+    val groups: List<VerseGroup>,
+    val resetChunks: Boolean,
+    val rowsFromSourceChapterId: Int? = null
+)
 
 /**
  * Which editions a project chapter's structure and reference come from. They differ for a chapter
