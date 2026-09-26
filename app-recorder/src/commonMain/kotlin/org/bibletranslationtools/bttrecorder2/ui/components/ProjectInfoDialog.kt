@@ -27,6 +27,11 @@ import org.bibletranslationtools.shared.domain.SourceAudioImporter
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.koin.mp.KoinPlatform.getKoin
 import org.jetbrains.compose.resources.stringResource
+import org.bibletranslationtools.shared.resources.info_row_source_edition
+import org.bibletranslationtools.shared.resources.info_row_newer_edition
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.DescribeSourceEditions
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.SourceEditionSummary
+import androidx.compose.runtime.produceState
 import org.bibletranslationtools.shared.resources.Res
 import org.bibletranslationtools.shared.resources.action_cancel
 import org.bibletranslationtools.shared.resources.action_close
@@ -86,6 +91,13 @@ fun ProjectInfoDialog(
         mutableStateOf(importer.hasUserImportedSourceAudio(workbook))
     }
     var importStatus by remember { mutableStateOf<ImportStatus?>(null) }
+    // Which source edition this book uses, and whether a newer one is installed.
+    val sourceEdition by produceState<SourceEditionSummary?>(null, workbook.id) {
+        val edition = workbook.sourceCollection.resourceContainer ?: return@produceState
+        value = withContext(Dispatchers.IO) {
+            runCatching { getKoin().get<DescribeSourceEditions>().describe(edition) }.getOrNull()
+        }
+    }
     var isImporting by remember { mutableStateOf(false) }
 
     val picker = rememberFilePickerLauncher(
@@ -182,6 +194,19 @@ fun ProjectInfoDialog(
                         label = stringResource(Res.string.info_row_translation_type),
                         value = formatTranslationType(workbook.targetCollection.resourceContainer?.identifier)
                     )
+
+                    sourceEdition?.let { summary ->
+                        InfoRow(
+                            label = stringResource(Res.string.info_row_source_edition),
+                            value = sourceEditionText(summary.edition, summary.distinguishingCode)
+                        )
+                        summary.newerEdition?.let { newer ->
+                            InfoRow(
+                                label = stringResource(Res.string.info_row_newer_edition),
+                                value = sourceEditionText(newer)
+                            )
+                        }
+                    }
 
                     InfoRow(
                         label = stringResource(Res.string.info_row_mode),

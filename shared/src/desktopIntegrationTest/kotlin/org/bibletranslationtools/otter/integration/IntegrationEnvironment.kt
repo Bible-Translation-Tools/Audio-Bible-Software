@@ -24,6 +24,8 @@ import org.bibletranslationtools.otter.common.domain.project.BundledSourceStamps
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.DeleteResourceContainer
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.DeleteResult
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.DescribeSourceEditions
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.SourceEditionSummary
 import org.bibletranslationtools.otter.common.initialization.BackfillEditionFingerprints
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IEditionFingerprintRepository
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionFingerprint
@@ -248,6 +250,12 @@ class IntegrationEnvironment private constructor(
         val sourceId = derivedFromOf(target.id)!!
         val source = koin.get<IResourceMetadataRepository>().getAllSources().blockingGet().single { it.id == sourceId }
         return directoryProvider.getProjectDirectory(source, target, project.slug)
+    }
+
+    /** How the app would describe the installed source edition [sourceId]. */
+    fun describeEdition(sourceId: Int): SourceEditionSummary = runBlocking {
+        val edition = koin.get<IResourceMetadataRepository>().getAllSourcesSuspend().single { it.id == sourceId }
+        koin.get<DescribeSourceEditions>().describe(edition)
     }
 
     /** Deletes every project, as the app's project management does. */

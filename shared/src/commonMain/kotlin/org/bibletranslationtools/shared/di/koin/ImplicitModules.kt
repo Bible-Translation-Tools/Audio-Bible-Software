@@ -50,6 +50,7 @@ import org.bibletranslationtools.otter.common.domain.project.importer.SourceStru
 import org.bibletranslationtools.otter.common.domain.project.importer.EditionFingerprinter
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.InstalledSourceEditions
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionLifecycle
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.DescribeSourceEditions
 import org.bibletranslationtools.otter.common.initialization.AuditSourceStructure
 import org.bibletranslationtools.otter.common.initialization.BackfillEditionFingerprints
 import org.bibletranslationtools.otter.common.initialization.InitializeApp
@@ -129,6 +130,7 @@ val implicitCommonModule = module {
     factoryOf(::EditionFingerprinter)
     factoryOf(::InstalledSourceEditions)
     factoryOf(::EditionLifecycle)
+    factoryOf(::DescribeSourceEditions)
     factoryOf(::BurritoToResourceContainerConverter)
     factoryOf(::ScriptureBurritoUtils)
 

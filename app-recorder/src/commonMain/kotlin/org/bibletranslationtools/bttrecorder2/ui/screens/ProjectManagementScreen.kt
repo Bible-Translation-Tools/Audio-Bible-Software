@@ -51,6 +51,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import org.bibletranslationtools.shared.resources.label_update_available
 import org.bibletranslationtools.shared.resources.Res
 import org.bibletranslationtools.shared.resources.cd_book_sort
 import org.bibletranslationtools.shared.resources.cd_info
@@ -343,6 +344,7 @@ fun ProjectManagementContent(
                                             BookRow(
                                                 workbook = workbook,
                                                 isExporting = exportingWorkbookId == workbook.id,
+                                                updateAvailable = workbook.id in state.updatesAvailable,
                                                 onClick = { onProjectClick(workbook) },
                                                 onInfoClick = { infoDialogTarget = workbook },
                                                 onRecordClick = { onRecordClick(workbook) }
@@ -506,6 +508,7 @@ private fun ProjectGroupHeader(
 private fun BookRow(
     workbook: WorkbookDescriptor,
     isExporting: Boolean,
+    updateAvailable: Boolean,
     onClick: () -> Unit,
     onInfoClick: () -> Unit,
     onRecordClick: () -> Unit
@@ -521,12 +524,21 @@ private fun BookRow(
             .padding(start = 32.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = workbook.title,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = workbook.title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            if (updateAvailable) {
+                // A newer edition of this book's source is installed.
+                Text(
+                    text = stringResource(Res.string.label_update_available),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
         ProgressPieView(
             progress = 0,
             modifier = Modifier.size(36.dp),

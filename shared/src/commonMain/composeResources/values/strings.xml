@@ -99,6 +99,13 @@
     <string name="info_row_mode">Mode</string>
     <string name="info_row_source_audio_language">Source Audio Language</string>
     <string name="info_row_source_audio">Source Audio</string>
+    <string name="info_row_source_edition">Source Edition</string>
+    <string name="info_row_newer_edition">Newer Edition Installed</string>
+    <!-- A source edition: identifier, version label, issue month and year. For example "ULB 12 · Nov 2017". -->
+    <string name="value_source_edition">%1$s %2$s · %3$s</string>
+    <!-- As value_source_edition, plus a short content code when two installed editions share label and date. -->
+    <string name="value_source_edition_with_code">%1$s %2$s · %3$s · %4$s</string>
+    <string name="label_update_available">Update available</string>
     <string name="cd_delete_project">Delete project</string>
     <string name="cd_back_up_project">Back up project</string>
     <string name="cd_edit_label">Edit %1$s</string>
