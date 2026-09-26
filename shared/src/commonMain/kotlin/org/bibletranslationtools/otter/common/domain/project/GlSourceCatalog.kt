@@ -20,6 +20,7 @@ package org.bibletranslationtools.otter.common.domain.project
 
 import org.bibletranslationtools.otter.common.api.io.IBundledContentSource
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import org.bibletranslationtools.otter.common.OTTER_JSON
 
@@ -68,4 +69,15 @@ class GlSourceCatalog(
             .getOrDefault(emptySet())
     }
 
+    /**
+     * SHA-256 of each bundled zip, by source name, per the build-generated
+     * [EMBEDDED_SOURCE_CHECKSUMS_FILE]. Empty if it is absent or unreadable.
+     */
+    val embeddedSourceChecksums: Map<String, String> by lazy {
+        val bytes = runCatching { bundledContent.readBlocking(EMBEDDED_SOURCE_CHECKSUMS_FILE) }
+            .getOrNull() ?: return@lazy emptyMap()
+        runCatching {
+            OTTER_JSON.decodeFromString(MapSerializer(String.serializer(), String.serializer()), bytes.decodeToString())
+        }.getOrDefault(emptyMap())
+    }
 }

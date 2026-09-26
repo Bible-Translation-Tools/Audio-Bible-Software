@@ -18,6 +18,8 @@
  */
 package org.bibletranslationtools.otter.common.domain.collections
 
+import kotlinx.coroutines.rx2.rxCompletable
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionLifecycle
 import io.reactivex.Completable
 import io.reactivex.Observable
 import io.reactivex.schedulers.Schedulers
@@ -35,7 +37,8 @@ class DeleteProject(
     private val collectionRepository: ICollectionRepository,
     private val directoryProvider: IProjectDirectories,
     private val workbookRepository: IWorkbookRepository,
-    private val workbookDescriptorRepo: IWorkbookDescriptorRepository
+    private val workbookDescriptorRepo: IWorkbookDescriptorRepository,
+    private val editionLifecycle: EditionLifecycle
 ) {
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -75,7 +78,9 @@ class DeleteProject(
     }
 
     /**
-     * Deletes all the projects/workbooks including the derived collections & content.
+     * Deletes all the projects/workbooks including the derived collections & content. A source
+     * edition these projects were the last users of is then removed if a newer edition of it is
+     * installed (see [EditionLifecycle]).
      */
     fun deleteProjects(list: List<WorkbookDescriptor>): Completable {
         return Completable
@@ -86,6 +91,7 @@ class DeleteProject(
                     }
             }
             .andThen(workbookDescriptorRepo.delete(list))
+            .andThen(retireSourceEditions(list))
             .subscribeOn(Schedulers.single()) // sequential execution of delete to avoid db transaction error
     }
 
@@ -102,6 +108,16 @@ class DeleteProject(
             }
             .andThen(deleteProjects(books))
     }
+
+    private fun retireSourceEditions(list: List<WorkbookDescriptor>): Completable =
+        rxCompletable {
+            list.mapNotNull { it.sourceCollection.resourceContainer }
+                .distinctBy { it.id }
+                .forEach { editionLifecycle.retireIfSuperseded(it) }
+        }.onErrorComplete {
+            logger.error("Could not retire source editions after deleting projects", it)
+            true
+        }
 
     private fun recreateWorkbookDescriptor(workbookDescriptor: WorkbookDescriptor): Completable {
         val sourceMetadata = workbookDescriptor.sourceCollection.resourceContainer!!

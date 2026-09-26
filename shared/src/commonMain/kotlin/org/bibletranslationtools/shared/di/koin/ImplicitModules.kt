@@ -1,5 +1,7 @@
 package org.bibletranslationtools.shared.di.koin
 
+import org.bibletranslationtools.otter.common.initialization.RefreshBundledSources
+import org.bibletranslationtools.otter.common.domain.project.BundledSourceStamps
 import org.bibletranslationtools.otter.common.audio.wav.IWaveFileCreator
 import org.bibletranslationtools.otter.common.audio.wav.WaveFileCreator
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
@@ -47,6 +49,7 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.V
 import org.bibletranslationtools.otter.common.domain.project.importer.SourceStructurePlanner
 import org.bibletranslationtools.otter.common.domain.project.importer.EditionFingerprinter
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.InstalledSourceEditions
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionLifecycle
 import org.bibletranslationtools.otter.common.initialization.AuditSourceStructure
 import org.bibletranslationtools.otter.common.initialization.BackfillEditionFingerprints
 import org.bibletranslationtools.otter.common.initialization.InitializeApp
@@ -125,6 +128,7 @@ val implicitCommonModule = module {
     factoryOf(::SourceStructurePlanner)
     factoryOf(::EditionFingerprinter)
     factoryOf(::InstalledSourceEditions)
+    factoryOf(::EditionLifecycle)
     factoryOf(::BurritoToResourceContainerConverter)
     factoryOf(::ScriptureBurritoUtils)
 
@@ -155,6 +159,8 @@ val implicitCommonModule = module {
     factoryOf(::InitializeTranslations)
     factoryOf(::AuditSourceStructure)
     factoryOf(::BackfillEditionFingerprints)
+    factoryOf(::RefreshBundledSources)
+    factoryOf(::BundledSourceStamps)
 }
 
 // implicitViewModelModule (recorder ViewModels) lives in :app-recorder — each app owns

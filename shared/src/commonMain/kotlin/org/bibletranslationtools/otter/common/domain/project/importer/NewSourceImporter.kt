@@ -38,6 +38,9 @@ import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import java.io.File
 import java.io.IOException
 import java.util.UUID
+import io.reactivex.Completable
+import kotlinx.coroutines.rx2.rxCompletable
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionLifecycle
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
 import org.bibletranslationtools.otter.common.OTTER_JSON
 
@@ -47,6 +50,7 @@ class NewSourceImporter(
     private val metadataRepository: IResourceMetadataRepository,
     private val structurePlanner: SourceStructurePlanner,
     private val fingerprinter: EditionFingerprinter,
+    private val editionLifecycle: EditionLifecycle,
     // getVersification() below reads a versification directly to synthesize USFM for audio-only
     // containers.
     private val versificationRepository: IVersificationRepository,
@@ -165,6 +169,10 @@ class NewSourceImporter(
             }
 
             importTree(placed, plan.tree, fingerprint)
+                .flatMap { result ->
+                    if (result == ImportResult.SUCCESS) retireSuperseded(placed).toSingleDefault(result)
+                    else Single.just(result)
+                }
                 .subscribe { result ->
                     notifyCallback(result, callback, file)
                     emitter.onSuccess(result)
@@ -232,6 +240,20 @@ class NewSourceImporter(
         val rcFile = editionDir.resolve(staged.rcFile.relativeTo(root))
         return Placed(ResourceContainer.load(rcFile, OtterResourceContainerConfig()), rcFile, editionDir)
     }
+
+    /**
+     * Removes older editions of the same source that the one just installed supersedes and that
+     * nothing uses. A failure here is logged: the new edition is installed either way.
+     */
+    private fun retireSuperseded(placed: Placed): Completable =
+        rxCompletable {
+            val target = placed.rcFile.canonicalFile
+            val installed = metadataRepository.getAllSourcesSuspend().firstOrNull { it.path.canonicalFile == target }
+            if (installed != null) editionLifecycle.retireSupersededBy(installed)
+        }.onErrorComplete {
+            logger.error("Could not retire editions superseded by ${placed.rcFile}", it)
+            true
+        }
 
     private fun isStoredSourcePath(dir: File): Boolean =
         metadataRepository.getAllSources().blockingGet().any { it.path.isInside(dir) }

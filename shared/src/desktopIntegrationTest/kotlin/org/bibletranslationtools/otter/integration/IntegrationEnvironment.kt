@@ -10,12 +10,16 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.ILang
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
 import org.bibletranslationtools.otter.common.domain.versification.Versification
 import org.bibletranslationtools.otter.common.domain.collections.CreateProject
+import org.bibletranslationtools.otter.common.domain.collections.DeleteProject
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.domain.languages.ImportLanguages
 import org.bibletranslationtools.otter.common.domain.project.importer.RCImporterFactory
 import io.reactivex.Observable
 import org.bibletranslationtools.otter.common.data.ProgressStatus
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
 import org.bibletranslationtools.otter.common.initialization.AuditSourceStructure
+import org.bibletranslationtools.otter.common.initialization.RefreshBundledSources
+import org.bibletranslationtools.otter.common.domain.project.BundledSourceStamps
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.DeleteResourceContainer
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.DeleteResult
@@ -134,20 +138,38 @@ class IntegrationEnvironment private constructor(
             usfm.removeRange(from, to)
         }
 
-    private fun withUsfmEdited(rcFile: String, usfmEntry: String, label: String, edit: (String) -> String): File {
+    private fun withUsfmEdited(rcFile: String, usfmEntry: String, label: String, edit: (String) -> String): File =
+        withEntriesEdited(rcFile, "${usfmEntry.substringBefore('.')}-$label", mapOf(usfmEntry to edit))
+
+    /**
+     * A strictly newer edition of [rcFile]: issued and modified on 2024-07-12, and with Jude 1:1
+     * reworded, so its fingerprint differs too.
+     */
+    fun newerEdition(rcFile: String): File =
+        withEntriesEdited(
+            rcFile, "newer-edition",
+            mapOf(
+                "manifest.yaml" to { manifest ->
+                    manifest.replace("issued: '2017-11-29'", "issued: '2024-07-12'")
+                        .replace("modified: '2017-11-29'", "modified: '2024-07-12'")
+                },
+                "66-JUD.usfm" to { usfm -> usfm.replaceFirst("\\v 1 ", "\\v 1 (revised) ") }
+            )
+        )
+
+    private fun withEntriesEdited(rcFile: String, label: String, edits: Map<String, (String) -> String>): File {
         val source = rcResourceFile(rcFile)
-        val target = File(tempRoot, "${usfmEntry.substringBefore('.')}-$label.zip")
+        val target = File(tempRoot, "$label.zip")
 
         ZipFile(source).use { zip ->
-            val entry = zip.getEntry(usfmEntry)
-            assertNotNull(entry, "'$usfmEntry' is not in $rcFile")
-            val edited = edit(zip.getInputStream(entry).bufferedReader().readText())
-
+            edits.keys.forEach { assertNotNull(zip.getEntry(it), "'$it' is not in $rcFile") }
             ZipOutputStream(target.outputStream().buffered()).use { out ->
                 zip.entries().asSequence().forEach { source ->
                     if (source.isDirectory) return@forEach
                     out.putNextEntry(ZipEntry(source.name))
-                    if (source.name == usfmEntry) {
+                    val edit = edits[source.name]
+                    if (edit != null) {
+                        val edited = edit(zip.getInputStream(source).bufferedReader().readText())
                         out.write(edited.toByteArray())
                     } else {
                         zip.getInputStream(source).use { it.copyTo(out) }
@@ -205,6 +227,23 @@ class IntegrationEnvironment private constructor(
     fun deleteSource(path: String): DeleteResult =
         koin.get<DeleteResourceContainer>().deleteSync(File(path))
 
+    /** Runs the startup step that re-imports bundled sources whose zip changed. */
+    fun refreshBundledSources() {
+        Observable.create<ProgressStatus> { emitter ->
+            koin.get<RefreshBundledSources>().exec(emitter).blockingAwait()
+            emitter.onComplete()
+        }.blockingSubscribe()
+    }
+
+    /** Whether bundled source [name]'s current zip is recorded as imported. */
+    fun bundledSourceIsCurrent(name: String): Boolean = koin.get<BundledSourceStamps>().isCurrent(name)
+
+    /** Deletes every project, as the app's project management does. */
+    fun deleteAllProjects() {
+        val descriptors = koin.get<IWorkbookDescriptorRepository>().getAll(computeSourceAudio = false).blockingGet()
+        koin.get<DeleteProject>().deleteProjects(descriptors).blockingAwait()
+    }
+
     /** The internal directory source editions live under. */
     val sourceRoot: File get() = directoryProvider.internalSourceRCDirectory
 
@@ -225,10 +264,10 @@ class IntegrationEnvironment private constructor(
         .create(sourceProject, targetLanguage, mode, resourceId = null, deriveProjectFromVerses)
         .blockingGet()
 
-    /** An imported source book by slug, e.g. "jud". */
-    fun sourceBook(slug: String): Collection {
+    /** An imported source book by slug, e.g. "jud"; of edition [sourceId] when several are installed. */
+    fun sourceBook(slug: String, sourceId: Int? = null): Collection {
         val projects = koin.get<ICollectionRepository>().getSourceProjects().blockingGet()
-        return projects.firstOrNull { it.slug == slug }
+        return projects.firstOrNull { it.slug == slug && (sourceId == null || it.resourceContainer?.id == sourceId) }
             ?: error("no source project '$slug'; imported: ${projects.map { it.slug }.sorted().take(10)}…")
     }
 

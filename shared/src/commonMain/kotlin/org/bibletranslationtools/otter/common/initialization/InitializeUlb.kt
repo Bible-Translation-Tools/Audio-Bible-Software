@@ -18,6 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.initialization
 
+import org.bibletranslationtools.otter.common.domain.project.BundledSourceStamps
 import io.reactivex.Completable
 import io.reactivex.ObservableEmitter
 import org.bibletranslationtools.otter.common.api.io.IBundledContentSource
@@ -38,7 +39,8 @@ class InitializeUlb(
     private val directoryProvider: ITempFileProvider,
     private val installedEntityRepo: IInstalledEntityRepository,
     private val importer: ImportProjectUseCase,
-    private val bundledContent: IBundledContentSource
+    private val bundledContent: IBundledContentSource,
+    private val bundledStamps: BundledSourceStamps
 ) : Installable {
 
     override val name = "EN_ULB"
@@ -53,6 +55,7 @@ class InitializeUlb(
                 if (installedVersion != version) {
                     val enUlbFile = prepareImportFile()
                     if (importer.isAlreadyImported(enUlbFile)) {
+                        bundledStamps.markImported(EN_ULB_FILENAME)
                         log.info("$EN_ULB_FILENAME already exists, skipped.")
                         return@fromCallable Completable.complete()
                     }
@@ -75,6 +78,7 @@ class InitializeUlb(
                         .blockingSubscribe { result ->
                             if (result == ImportResult.SUCCESS) {
                                 installedEntityRepo.install(this)
+                                bundledStamps.markImported(EN_ULB_FILENAME)
                                 log.info("$name version: $version installed!")
                             } else {
                                 log.error(result.toString())

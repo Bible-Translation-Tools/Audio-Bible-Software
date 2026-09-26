@@ -58,6 +58,7 @@ const val SOURCE_PATH_TEMPLATE = "files/content/%s.zip"
 // Build-generated manifest (generateEmbeddedSourcesManifest) of the source names whose zip
 // actually got bundled — the wa-catalog manifest is partly stale, so this reflects reality.
 const val EMBEDDED_SOURCES_FILE = "files/embedded_gl_sources.json"
+const val EMBEDDED_SOURCE_CHECKSUMS_FILE = "files/embedded_gl_source_checksums.json"
 
 class ImportProjectUseCase(
     val burritoFactoryProvider: BurritoImporterFactory,
@@ -70,6 +71,7 @@ class ImportProjectUseCase(
     private val glSourceCatalog: GlSourceCatalog,
     private val installedEditions: InstalledSourceEditions,
     private val fingerprinter: EditionFingerprinter,
+    private val bundledStamps: BundledSourceStamps,
 ) {
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -115,6 +117,12 @@ class ImportProjectUseCase(
             }
             .flatMap { sourceFile ->
                 import(sourceFile, null, null)
+            }
+            .doOnSuccess { result ->
+                // So RefreshBundledSources doesn't import this same zip again at the next launch.
+                if (result == ImportResult.SUCCESS || result == ImportResult.ALREADY_EXISTS) {
+                    glSources.find { it.languageCode == language.slug }?.name?.let(bundledStamps::markImported)
+                }
             }
             .ignoreElement()
     }

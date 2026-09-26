@@ -2,6 +2,7 @@ import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.net.HttpURLConnection
 import java.net.URI
+import java.security.MessageDigest
 
 // :shared — the cross-app module: Orature backend (org.bibletranslationtools.otter.*) +
 // shared Compose resources (+ reusable render/UI primitives arriving in a later step).
@@ -276,6 +277,10 @@ dependencies {
 // are not (see generateEmbeddedSourcesManifest). Worth fixing at the catalogue, not here.
 val glContentDir = file("src/commonMain/composeResources/files/content")
 val embeddedManifest = file("src/commonMain/composeResources/files/embedded_gl_sources.json")
+// SHA-256 of each bundled zip, by name. The zips aren't committed (downloadGLSources fetches the
+// current release), so a new build can bundle a newer edition of a source a device already has;
+// RefreshBundledSources compares these to what it last imported. Generated, and git-ignored.
+val embeddedChecksums = file("src/commonMain/composeResources/files/embedded_gl_source_checksums.json")
 val glSourcesManifest = file("src/commonMain/composeResources/files/gl_sources.json")
 
 // Which sources were unavailable last time, as {name: the url that failed}. Deliberately NOT under
@@ -399,12 +404,26 @@ tasks.register("downloadGLSources") {
 tasks.register("generateEmbeddedSourcesManifest") {
     dependsOn("downloadGLSources")
     outputs.file(embeddedManifest)
+    outputs.file(embeddedChecksums)
     doLast {
-        val names = (glContentDir.listFiles() ?: emptyArray())
+        val zips = (glContentDir.listFiles() ?: emptyArray())
             .filter { it.isFile && it.extension == "zip" }
-            .map { it.nameWithoutExtension }
-            .sorted()
+            .sortedBy { it.nameWithoutExtension }
+        val names = zips.map { it.nameWithoutExtension }
         embeddedManifest.writeText(groovy.json.JsonBuilder(names).toPrettyString())
+        val checksums: Map<String, String> = zips.associate { zip ->
+            val digest = MessageDigest.getInstance("SHA-256")
+            zip.inputStream().use { input ->
+                val buffer = ByteArray(1 shl 16)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    digest.update(buffer, 0, read)
+                }
+            }
+            zip.nameWithoutExtension to digest.digest().joinToString("") { "%02x".format(it) }
+        }
+        embeddedChecksums.writeText(groovy.json.JsonBuilder(checksums).toPrettyString())
         println("Embedded GL sources manifest: ${names.size} sources bundled.")
     }
 }
