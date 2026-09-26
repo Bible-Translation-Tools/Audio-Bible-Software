@@ -29,11 +29,14 @@ class BackfillEditionFingerprints(
     override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable = rxCompletable {
         for (id in fingerprintRepository.sourcesWithoutFingerprint()) {
             val source = daoProvider.resourceMetadataDao.fetchById(id) ?: continue
-            runCatching { fingerprinter.fingerprint(File(source.path)) }
-                .onSuccess {
-                    fingerprintRepository.save(id, it)
-                    logger.info("Fingerprinted source ${source.identifier} v${source.version} (${it.detectedVersification})")
-                }
+            // Saving is inside too: two rows holding the same content (a source merged in place and
+            // imported again) share a fingerprint, which the edition index refuses for the second.
+            runCatching {
+                val fingerprint = fingerprinter.fingerprint(File(source.path))
+                fingerprintRepository.save(id, fingerprint)
+                fingerprint
+            }
+                .onSuccess { logger.info("Fingerprinted source ${source.identifier} v${source.version} (${it.detectedVersification})") }
                 .onFailure { logger.error("Could not fingerprint source ${source.identifier} at ${source.path}", it) }
         }
     }

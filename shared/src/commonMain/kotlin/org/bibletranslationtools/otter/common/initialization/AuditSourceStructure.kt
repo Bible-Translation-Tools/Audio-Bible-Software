@@ -43,7 +43,8 @@ class AuditSourceStructure(
 ) : Installable {
 
     override val name = "SOURCE_STRUCTURE_AUDIT"
-    override val version = 1
+    /** 2 added [SourceStructureReport.projects]; installs that wrote version 1 write it again. */
+    override val version = 2
 
     private val logger = LoggerFactory.getLogger(AuditSourceStructure::class.java)
 
@@ -51,8 +52,8 @@ class AuditSourceStructure(
         return Completable.fromAction {
             if (installedEntityRepo.getInstalledVersion(this) == version) return@fromAction
             try {
-                val findings = audit()
-                writeReport(findings)
+                val audited = auditById()
+                writeReport(audited.values.toList(), auditProjects(audited))
                 installedEntityRepo.install(this)
             } catch (e: Exception) {
                 logger.error("Source structure audit failed; it will run again next launch", e)
@@ -61,7 +62,54 @@ class AuditSourceStructure(
     }
 
     /** Every installed source whose text could be read. */
-    fun audit(): List<SourceStructureFindings> {
+    fun audit(): List<SourceStructureFindings> = auditById().values.toList()
+
+    /**
+     * Project books with verse rows that came from a source's empty verses after a chapter's text
+     * (like English ULB Acts 19:41 imported between 31 July and the import fix), whether recorded or
+     * not. Reported only (S13-Q2): an upgrade can remove the unrecorded ones.
+     */
+    fun auditProjects(): List<ProjectPhantomVerses> = auditProjects(auditById())
+
+    private fun auditProjects(sources: Map<Int, SourceStructureFindings>): List<ProjectPhantomVerses> {
+        val phantomsBySource = sources.mapValues { it.value.emptyAfterTextEnd.toSet() }.filterValues { it.isNotEmpty() }
+        if (phantomsBySource.isEmpty()) return emptyList()
+        val metadata = daoProvider.resourceMetadataDao.fetchAll().associateBy { it.id }
+        val collectionDao = daoProvider.collectionDao
+        val textType = daoProvider.contentTypeDao.fetchId(ContentType.TEXT)
+        return collectionDao.fetchAll()
+            .filter { it.parentFk == null }
+            .mapNotNull { book ->
+                val derived = metadata[book.dublinCoreFk] ?: return@mapNotNull null
+                val sourceId = derived.derivedFromFk ?: return@mapNotNull null
+                val phantom = mutableListOf<String>()
+                val recorded = mutableListOf<String>()
+                collectionDao.fetchChildren(book).forEach { chapter ->
+                    val structure = collectionDao.fetchStructureEdition(chapter.id) ?: sourceId
+                    val empty = phantomsBySource[structure] ?: return@forEach
+                    daoProvider.contentDao.fetchByCollectionId(chapter.id)
+                        .filter { it.type_fk == textType && it.labelKey == "verse" && "${chapter.slug}:${it.start}" in empty }
+                        .forEach { row ->
+                            val verse = "${chapter.slug}:${row.start}"
+                            phantom += verse
+                            if (daoProvider.takeDao.fetchByContentId(row.id, includeDeleted = false).isNotEmpty()) recorded += verse
+                        }
+                }
+                if (phantom.isEmpty()) return@mapNotNull null
+                val source = metadata.getValue(sourceId)
+                ProjectPhantomVerses(
+                    book = book.slug,
+                    targetLanguage = daoProvider.languageDao.fetchById(derived.languageFk)?.slug.orEmpty(),
+                    sourceLanguage = daoProvider.languageDao.fetchById(source.languageFk)?.slug.orEmpty(),
+                    sourceIdentifier = source.identifier,
+                    sourceVersion = source.version,
+                    phantomVerses = phantom,
+                    recordedVerses = recorded
+                )
+            }
+    }
+
+    private fun auditById(): Map<Int, SourceStructureFindings> {
         val sources = daoProvider.resourceMetadataDao.fetchAll().filter { it.derivedFromFk == null }
         val collections = daoProvider.collectionDao.fetchAll()
         val textType = daoProvider.contentTypeDao.fetchId(ContentType.TEXT)
@@ -75,7 +123,7 @@ class AuditSourceStructure(
                             .map { StoredVerseRow(it.start, it.end) }
                     }
                     .filterValues { it.isNotEmpty() }
-                auditSourceStructure(
+                source.id to auditSourceStructure(
                     identifier = source.identifier,
                     language = daoProvider.languageDao.fetchById(source.languageFk)?.slug.orEmpty(),
                     version = source.version,
@@ -86,7 +134,7 @@ class AuditSourceStructure(
             }.onFailure {
                 logger.error("Could not audit source ${source.identifier} at ${source.path}", it)
             }.getOrNull()
-        }
+        }.toMap()
     }
 
     private fun readText(source: ResourceMetadataEntity): Map<String, Set<Int>> =
@@ -94,7 +142,7 @@ class AuditSourceStructure(
             textVersesByChapter(IProjectReader.constructContainerTree(rc, zipEntryTreeBuilder))
         }
 
-    private fun writeReport(findings: List<SourceStructureFindings>) {
+    private fun writeReport(findings: List<SourceStructureFindings>, projects: List<ProjectPhantomVerses>) {
         findings.forEach {
             logger.info(
                 "Source structure ${it.language}_${it.identifier} v${it.version}: " +
@@ -104,10 +152,17 @@ class AuditSourceStructure(
                     "${it.templateChapters} template chapter(s)"
             )
         }
+        projects.forEach {
+            logger.info(
+                "Project ${it.targetLanguage}/${it.book} from ${it.sourceLanguage}_${it.sourceIdentifier} v${it.sourceVersion}: " +
+                    "${it.phantomVerses.size} verse(s) with no source text, ${it.recordedVerses.size} of them recorded"
+            )
+        }
         val report = SourceStructureReport(
             reportVersion = version,
             sourcesNeedingRepair = findings.count { it.needsRepair },
-            sources = findings
+            sources = findings,
+            projects = projects
         )
         directories.logsDirectory.mkdirs()
         File(directories.logsDirectory, SOURCE_STRUCTURE_REPORT_FILE)
@@ -119,7 +174,24 @@ class AuditSourceStructure(
 data class SourceStructureReport(
     val reportVersion: Int,
     val sourcesNeedingRepair: Int,
-    val sources: List<SourceStructureFindings>
+    val sources: List<SourceStructureFindings>,
+    /** Project books holding verses their source has no text for; see [AuditSourceStructure.auditProjects]. */
+    val projects: List<ProjectPhantomVerses> = emptyList()
+)
+
+/**
+ * A project book's verse rows copied from its source's empty verses after a chapter's text, as
+ * `<chapter slug>:<verse>`, and which of them are recorded.
+ */
+@Serializable
+data class ProjectPhantomVerses(
+    val book: String,
+    val targetLanguage: String,
+    val sourceLanguage: String,
+    val sourceIdentifier: String,
+    val sourceVersion: String,
+    val phantomVerses: List<String>,
+    val recordedVerses: List<String>
 )
 
 private val reportJson = Json { prettyPrint = true }

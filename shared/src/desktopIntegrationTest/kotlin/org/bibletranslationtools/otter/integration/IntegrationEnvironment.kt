@@ -1,6 +1,8 @@
 package org.bibletranslationtools.otter.integration
 
 import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
+import org.bibletranslationtools.otter.common.initialization.ReconcileEditionLabels
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.MatchEditionToRecordings
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportResult
 import org.bibletranslationtools.otter.common.domain.project.exporter.ProjectExporterCallback
@@ -455,6 +457,29 @@ class IntegrationEnvironment private constructor(
         legacy.parentFile.mkdirs()
         check(current.renameTo(legacy))
         return legacy
+    }
+
+    /** Step 13's one-time jobs and the recording matcher, as the app builds them. */
+    val reconcileEditionLabels: ReconcileEditionLabels get() = koin.get()
+    val auditSourceStructure: AuditSourceStructure get() = koin.get()
+    val matchEditionToRecordings: MatchEditionToRecordings get() = koin.get()
+
+    /**
+     * Adds an empty verse [verse] at the end of chapter [sort] of source edition [sourceId], and the
+     * same verse to [project]'s chapter: what a source imported from a versification file between
+     * 31 July and the import fix gave its projects (such as English ULB Acts 19:41).
+     */
+    fun addPhantomVerse(sourceId: Int, project: Collection, sort: Int, verse: Int) {
+        val textType = db.contentTypeDao.fetchId(ContentType.TEXT)
+        val sourceChapter = db.collectionDao.fetchAll()
+            .single { it.dublinCoreFk == sourceId && it.parentFk != null && it.sort == sort && it.slug == projectChapter(project, sort).slug }
+        fun row(chapterId: Int) = ContentEntity(
+            id = 0, sort = verse, labelKey = "verse", start = verse, end = verse, collectionFk = chapterId,
+            selectedTakeFk = null, text = null, format = null, type_fk = textType, draftNumber = 1, bridged = false
+        )
+        val sourceRow = db.contentDao.insert(row(sourceChapter.id))
+        val projectRow = db.contentDao.insert(row(projectChapter(project, sort).id))
+        db.contentDao.linkDerivative(projectRow, sourceRow)
     }
 
     /** Deletes every project, as the app's project management does. */

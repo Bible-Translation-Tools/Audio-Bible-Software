@@ -34,6 +34,7 @@ class InitializeApp(
     private val initializeProjects: InitializeProjects,
     private val initializeTranslations: InitializeTranslations,
     private val backfillEditionFingerprints: BackfillEditionFingerprints,
+    private val reconcileEditionLabels: ReconcileEditionLabels,
     private val refreshBundledSources: RefreshBundledSources,
     private val auditSourceStructure: AuditSourceStructure,
     private val directoryProvider: ITempFileProvider,
@@ -54,6 +55,7 @@ class InitializeApp(
                     initializeProjects,
                     initializeTranslations,
                     backfillEditionFingerprints,
+                    reconcileEditionLabels,
                     refreshBundledSources,
                     auditSourceStructure
                 )
