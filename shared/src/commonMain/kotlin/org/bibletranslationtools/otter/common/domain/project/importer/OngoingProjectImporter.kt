@@ -151,11 +151,16 @@ class OngoingProjectImporter(
         }
     }
 
+    /**
+     * Whether the project in [file] already exists here: same book and target language, translated
+     * from the same source (language and identifier). The source edition may differ, since an
+     * edition change doesn't make it a different project.
+     */
     private fun projectExists(file: File): Boolean {
         ResourceContainer.load(file).use { rc ->
             rc.manifest.dublinCore.let {
-                val sourceLanguageSlug = it.source.firstOrNull()?.language
-                    ?: return false
+                val source = it.source.firstOrNull() ?: return false
+                val sourceLanguageSlug = source.language
 
                 val languageSlug = it.language.identifier
                 val projectSlug = rc.manifest.projects.first().let { p ->
@@ -166,6 +171,7 @@ class OngoingProjectImporter(
                 val projects = workbookRepository.getProjects().blockingGet()
                 return projects.firstOrNull { existingProject ->
                     sourceLanguageSlug == existingProject.source.language.slug &&
+                        source.identifier == existingProject.source.resourceMetadata.identifier &&
                         languageSlug == existingProject.target.language.slug &&
                         projectSlug == existingProject.target.slug
                 }?.let {

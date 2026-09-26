@@ -39,25 +39,7 @@ class AndroidDirectoryProvider(val context: Context): IDirectoryProvider {
         source: ResourceMetadata,
         target: ResourceMetadata?,
         bookSlug: String
-    ): File {
-        // Audio is being stored in the source creator directory for resources
-        val targetCreator = when {
-            target?.type == ContainerType.Help -> source.creator
-            target?.creator != null -> target.creator
-            else -> "."
-        }
-        val appendedPath = listOf(
-            targetCreator,
-            source.creator,
-            "${source.language.slug}_${source.identifier}",
-            "v${target?.version ?: "-none"}",
-            target?.language?.slug ?: "no_language",
-            bookSlug
-        ).joinToString(pathSeparator)
-        val path = getUserDataDirectory(appendedPath)
-        path.mkdirs()
-        return path
-    }
+    ): File = ProjectDirectoryLayout.resolve(getUserDataDirectory(), source, target, bookSlug)
 
     override fun getProjectAudioDirectory(
         source: ResourceMetadata,
@@ -104,20 +86,6 @@ class AndroidDirectoryProvider(val context: Context): IDirectoryProvider {
     ): File {
         val path = getProjectSourceDirectory(source, target, bookSlug)
             .resolve("audio")
-        path.mkdirs()
-        return path
-    }
-
-    override fun getDerivedContainerDirectory(metadata: ResourceMetadata, source: ResourceMetadata): File {
-        val appendedPath = listOf(
-            "der",
-            metadata.creator,
-            source.creator,
-            "${source.language.slug}_${source.identifier}",
-            "v${metadata.version}",
-            metadata.language.slug
-        ).joinToString(pathSeparator)
-        val path = resourceContainerDirectory.resolve(appendedPath)
         path.mkdirs()
         return path
     }

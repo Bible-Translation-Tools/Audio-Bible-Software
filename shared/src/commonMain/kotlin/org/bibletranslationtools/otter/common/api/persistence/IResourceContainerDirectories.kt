@@ -48,8 +48,22 @@ interface IResourceContainerDirectories {
     /** Where an incoming source is unpacked before its edition, and so its folder, is known. */
     val sourceStagingDirectory: File get() = internalSourceRCDirectory.resolve(".staging")
 
-    /** Internal-use directory of the given derived RC */
-    fun getDerivedContainerDirectory(metadata: ResourceMetadata, source: ResourceMetadata): File
+    /**
+     * Where a new derived RC (a project's target container) is created:
+     * `der/<creator>/<source creator>/<source language>_<source identifier>/<source edition folder>/<target language>`,
+     * where the edition folder is [editionFolderName] of the source edition, so two editions with the
+     * same version label don't share one. Derived RCs created before this stay where their stored
+     * path points.
+     */
+    fun getDerivedContainerDirectory(metadata: ResourceMetadata, source: ResourceMetadata, sourceEditionCode: String): File =
+        resourceContainerDirectory
+            .resolve("der")
+            .resolve(metadata.creator)
+            .resolve(source.creator)
+            .resolve("${source.language.slug}_${source.identifier}")
+            .resolve(editionFolderName(source.version, sourceEditionCode))
+            .resolve(metadata.language.slug)
+            .apply { mkdirs() }
 
     val resourceContainerDirectory: File
     val internalSourceRCDirectory: File

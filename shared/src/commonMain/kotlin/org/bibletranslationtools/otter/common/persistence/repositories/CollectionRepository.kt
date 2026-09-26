@@ -565,11 +565,12 @@ class CollectionRepository(
     ): ResourceMetadataEntity {
         // Check for existing resource containers
         val existingMetadata = metadataDao.fetchAll()
+        // Keyed by the source edition's id, not its version label: a re-imported edition can have
+        // its label updated, and its books must still share one derived row per target language.
         val matches = existingMetadata.filter {
             it.identifier == source.identifier &&
                     it.languageFk == language.id &&
                     it.creator == dublinCoreCreator &&
-                    it.version == source.version &&
                     it.derivedFromFk == source.id
         }
 
@@ -587,9 +588,9 @@ class CollectionRepository(
                 entity
             }
         } else {
-            // Use the existing metadata
-            // Will throw an exception if the list has more than one element
-            matches.single()
+            // Use the existing metadata. Before derived rows were keyed by edition id alone, a
+            // relabelled edition could get a second one; the first created wins.
+            matches.minBy { it.id }
         }
         return metadataEntity
     }
@@ -621,7 +622,10 @@ class CollectionRepository(
             // The file is never used, since the DP doesn't look at the directory
             // to generate the derived directory.
             dublinCore.mapToMetadata(File("."), targetLanguage),
-            source
+            source,
+            // A source without a fingerprint yet (the backfill hasn't reached it) still needs a
+            // folder of its own.
+            database.loadEditionFingerprint(source.id)?.shortCode ?: "id${source.id}"
         )
         val container = ResourceContainer.create(directory) {
             // Set up the manifest

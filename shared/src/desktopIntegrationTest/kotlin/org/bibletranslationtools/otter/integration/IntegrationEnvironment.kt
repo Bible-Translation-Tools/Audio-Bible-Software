@@ -8,6 +8,7 @@ import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ILanguageRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
 import org.bibletranslationtools.otter.common.domain.versification.Versification
 import org.bibletranslationtools.otter.common.domain.collections.CreateProject
 import org.bibletranslationtools.otter.common.domain.collections.DeleteProject
@@ -237,6 +238,17 @@ class IntegrationEnvironment private constructor(
 
     /** Whether bundled source [name]'s current zip is recorded as imported. */
     fun bundledSourceIsCurrent(name: String): Boolean = koin.get<BundledSourceStamps>().isCurrent(name)
+
+    /** The source edition a derived row (a project's target container) was derived from. */
+    fun derivedFromOf(derivedId: Int): Int? = db.resourceMetadataDao.fetchById(derivedId)?.derivedFromFk
+
+    /** Where [project]'s files live. */
+    fun projectDirectory(project: Collection): File {
+        val target = project.resourceContainer!!
+        val sourceId = derivedFromOf(target.id)!!
+        val source = koin.get<IResourceMetadataRepository>().getAllSources().blockingGet().single { it.id == sourceId }
+        return directoryProvider.getProjectDirectory(source, target, project.slug)
+    }
 
     /** Deletes every project, as the app's project management does. */
     fun deleteAllProjects() {
