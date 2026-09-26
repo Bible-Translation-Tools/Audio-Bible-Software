@@ -106,6 +106,10 @@
     <!-- As value_source_edition, plus a short content code when two installed editions share label and date. -->
     <string name="value_source_edition_with_code">%1$s %2$s · %3$s · %4$s</string>
     <string name="label_update_available">Update available</string>
+    <string name="wizard_select_edition">Choose Edition</string>
+    <string name="wizard_select_edition_hint">More than one edition of this source is installed. The newest is listed first.</string>
+    <string name="label_newest_edition">Newest</string>
+    <string name="label_older_edition">Older edition</string>
     <string name="cd_delete_project">Delete project</string>
     <string name="cd_back_up_project">Back up project</string>
     <string name="cd_edit_label">Edit %1$s</string>
