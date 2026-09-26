@@ -1,5 +1,11 @@
 package org.bibletranslationtools.otter.integration
 
+import org.wycliffeassociates.resourcecontainer.ResourceContainer
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.OtterResourceContainerConfig
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.IProjectReader
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.IZipEntryTreeBuilder
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.structure.EditionText
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.structure.editionTextOf
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
@@ -257,6 +263,12 @@ class IntegrationEnvironment private constructor(
         val edition = koin.get<IResourceMetadataRepository>().getAllSourcesSuspend().single { it.id == sourceId }
         koin.get<DescribeSourceEditions>().describe(edition)
     }
+
+    /** The verse text of the source in [rc], parsed as import would parse it. */
+    fun editionText(rc: File): EditionText =
+        ResourceContainer.load(rc, OtterResourceContainerConfig()).use { container ->
+            editionTextOf(IProjectReader.constructContainerTree(container, koin.get<IZipEntryTreeBuilder>()))
+        }
 
     /** Deletes every project, as the app's project management does. */
     fun deleteAllProjects() {
