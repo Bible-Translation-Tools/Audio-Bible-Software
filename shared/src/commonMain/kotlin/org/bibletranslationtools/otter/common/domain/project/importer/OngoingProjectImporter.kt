@@ -18,6 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.domain.project.importer
 
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionOrder
 import io.reactivex.Maybe
 import io.reactivex.Observable
 import io.reactivex.Single
@@ -672,6 +673,7 @@ class OngoingProjectImporter(
             .filter {
                 it.slug == manifestProject.identifier
             }
+            .sortedWith(EditionOrder.newestFirstBy { it.resourceContainer })
             .firstOrNull()
 
         if (sourceCollection == null) {
@@ -688,14 +690,15 @@ class OngoingProjectImporter(
     }
 
     /**
-     * Find the relevant source (if any) for the project, regardless of version
+     * Find the relevant source (if any) for the project, regardless of version. When several
+     * editions of it are installed, the newest.
      */
     private fun fetchExistingSource(
         manifestProject: Project,
         requestedSources: Set<Source>
     ): Collection? {
         return collectionRepository.getSourceProjects().blockingGet()
-            .asSequence()
+            .sortedWith(EditionOrder.newestFirstBy { it.resourceContainer })
             .firstOrNull { collection ->
                 requestedSources.any { source ->
                     manifestProject.identifier == collection.slug &&

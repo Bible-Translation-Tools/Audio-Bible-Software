@@ -19,248 +19,87 @@
 package org.bibletranslationtools.otter.common.domain.project.importer
 
 import io.reactivex.Single
-import org.koin.core.component.KoinComponent
-import org.koin.core.component.inject
-import org.slf4j.LoggerFactory
-import org.bibletranslationtools.otter.common.collections.OtterTree
-import org.bibletranslationtools.otter.common.data.primitives.CollectionOrContent
-import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
-import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
-import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.MediaMerge
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.DeleteResourceContainer
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.DeleteResult
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportException
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.IProjectReader
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.IZipEntryTreeBuilder
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.projectimportexport.MergeTextContent
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.rx2.rxMaybe
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceContainerRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IEditionFingerprintRepository
-import io.reactivex.Completable
-import kotlinx.coroutines.rx2.rxCompletable
+import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
+import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.MediaMerge
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.InstalledSourceEditions
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.OtterResourceContainerConfig
+import org.slf4j.LoggerFactory
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import java.io.File
-import java.io.IOException
 
+/**
+ * Handles an incoming source that is an edition already installed: same language, identifier and
+ * creator, and the same verse structure and text (see isSameEdition). Its media is merged into
+ * the installed edition, and the installed edition's metadata (such as its version label) is
+ * updated from the incoming manifest. Text and structure are never touched.
+ *
+ * Anything else, including a new edition of an installed source, is passed on to be installed
+ * as its own edition beside the others. Nothing is deleted or merged into another edition's text.
+ */
 class ExistingSourceImporter(
     directoryProvider: ITempFileProvider,
     private val resourceMetadataRepository: IResourceMetadataRepository,
-    private val resourceContainerRepository: IResourceContainerRepository,
-    private val zipEntryTreeBuilder: IZipEntryTreeBuilder,
-    private val deleteUseCase: DeleteResourceContainer,
-    private val fingerprinter: EditionFingerprinter,
-    private val fingerprintRepository: IEditionFingerprintRepository
-) : RCImporter(directoryProvider, resourceMetadataRepository), KoinComponent {
-
-    private val importUseCase: ImportProjectUseCase by inject()
+    private val installedEditions: InstalledSourceEditions,
+    private val fingerprinter: EditionFingerprinter
+) : RCImporter(directoryProvider, resourceMetadataRepository) {
 
     private val logger = LoggerFactory.getLogger(this.javaClass)
-    private var languageName = ""
 
     override fun import(
         file: File,
         callback: ProjectImporterCallback?,
         options: ImportOptions?
     ): Single<ImportResult> {
-        val existingSource = findExistingResourceMetadata(file)
-            ?: return super.passToNextImporter(file, callback, options)
-
-        var sameVersion: Boolean
-        var sameVersification: Boolean
-        try {
-            ResourceContainer.load(file).use { rc ->
-                sameVersion = (rc.manifest.dublinCore.version == existingSource.version)
-                ResourceContainer.load(existingSource.path).use { existingRC ->
-                    languageName = rc.manifest.dublinCore.language.title
-                    val sourceVersification = rc.manifest.projects.firstOrNull()?.versification
-                    val existingVersification = existingRC.manifest.projects.firstOrNull()?.versification
-                    sameVersification = sourceVersification == existingVersification
-                }
-            }
-        } catch (e: IOException) {
-            logger.error("Error loading RC", e)
-            return Single.just(ImportResult.LOAD_RC_ERROR)
-        }
-
-        val singleStream = if (sameVersion || sameVersification) {
-            callback?.onNotifyProgress(localizeKey = "mergingSource", percent = 30.0)
-
-            logger.info("RC ${file.name} already imported, updating source...")
-            updateSource(existingSource, file).blockingGet()
-
-            callback?.onNotifyProgress(localizeKey = "importing_source_audio", percent = 50.0)
-
-            mergeMedia(file, existingSource.path)
-                .flatMap {
-                    if (it == ImportResult.SUCCESS) {
-                        callback?.onNotifyProgress(localizeKey = "importing_source_text", percent = 90.0)
-                        mergeText(file, existingSource.path)
-                    } else {
-                        Single.just(it)
+        return findSameEdition(file)
+            .flatMap { installed ->
+                callback?.onNotifyProgress(localizeKey = "importing_source_audio", percent = 50.0)
+                logger.info("${file.name} is an installed edition (${installed.path}); merging its media")
+                mergeIntoInstalledEdition(file, installed)
+                    .doOnSuccess { result ->
+                        if (result == ImportResult.SUCCESS) {
+                            callback?.onNotifySuccess(language = installed.language.name)
+                        } else {
+                            callback?.onError(file.name)
+                        }
                     }
-                }
-                .flatMap { result ->
-                    if (result == ImportResult.SUCCESS) refreshFingerprint(existingSource).toSingleDefault(result)
-                    else Single.just(result)
-                }
-        } else {
-            // existing resource has a different version, confirms overwrite/delete
-            callback?.onNotifyProgress(localizeKey = "overridingSource", percent = 15.0)
-            logger.info("RC ${file.name} already imported, but with a different version and different versification.")
-            logger.info("Requesting user input to overwrite/delete existing source...")
-            val confirmDelete = callback?.onRequestUserInput()
-                ?.blockingGet()
-                ?.confirmed ?: true
-
-            when {
-                !confirmDelete -> {
-                    logger.info("User chose to abort import.")
-                    Single.just(ImportResult.ABORTED)
-                }
-
-                deleteUseCase.deleteSync(existingSource.path) == DeleteResult.SUCCESS -> {
-                    // re-import the file after deleting the existing source
-                    logger.info("Deleted existing source, re-importing ${file.name}...")
-                    importUseCase.import(file)
-                }
-
-                else -> {
-                    logger.info("User chose to delete existing source, but delete failed.")
-                    Single.just(ImportResult.DEPENDENCY_CONSTRAINT)
-                }
+                    .toMaybe()
             }
-        }
-
-        return singleStream
-            .doOnSuccess { result ->
-                notifyCallback(result, callback, file)
-            }
-    }
-
-    private fun notifyCallback(
-        result: ImportResult,
-        callback: ProjectImporterCallback?,
-        file: File
-    ) {
-        if (result == ImportResult.SUCCESS) {
-            callback?.onNotifySuccess(language = languageName)
-        } else {
-            callback?.onError(file.name)
-        }
+            .switchIfEmpty(Single.defer { passToNextImporter(file, callback, options) })
     }
 
     /**
-     * Re-fingerprints [metadata]'s source from its files after they were updated in place. Failing
-     * to only logs: the startup backfill can't repair a stale fingerprint, but an in-place update
-     * that succeeded must not be reported as failed because of it.
+     * The installed edition [file] is, if any. The file is only parsed when some edition of the
+     * same source is installed; a file that can't be read is left to the next importer.
      */
-    private fun refreshFingerprint(metadata: ResourceMetadata): Completable =
-        rxCompletable {
-            fingerprintRepository.save(metadata.id, fingerprinter.fingerprint(metadata.path))
-        }.onErrorComplete {
-            logger.error("Could not refresh the fingerprint of ${metadata.path}", it)
-            true
-        }
+    private fun findSameEdition(file: File) = rxMaybe(Dispatchers.IO) {
+        val dublinCore = runCatching {
+            ResourceContainer.load(file, OtterResourceContainerConfig()).use { it.manifest.dublinCore }
+        }.getOrNull() ?: return@rxMaybe null
+        val languageSlug = dublinCore.language.identifier
+        if (installedEditions.editionsOf(languageSlug, dublinCore.identifier).isEmpty()) return@rxMaybe null
 
-    private fun updateSource(metadata: ResourceMetadata, file: File): Single<ImportResult> {
-        return Single
-            .fromCallable {
-                try {
-                    ResourceContainer.load(file).use { rc ->
-                        // Ensures that the existing source creator value stays the same after updating.
-                        rc.manifest.dublinCore.creator = metadata.creator
-
-                        val tree = try {
-                            IProjectReader.constructContainerTree(rc, zipEntryTreeBuilder)
-                        } catch (e: ImportException) {
-                            logger.error("Error constructing container tree, file: $file", e)
-                            return@fromCallable ImportResult.FAILED
-                        }
-                        return@fromCallable resourceContainerRepository.updateContent(
-                            rc,
-                            tree
-                        ).map {
-                            if (it == ImportResult.SUCCESS) {
-                                resourceMetadataRepository.update(metadata, rc).blockingAwait()
-                            }
-                            it
-                        }.map {
-                            if (it == ImportResult.SUCCESS) {
-                                return@map updateCollections(rc, tree).blockingGet()
-                            }
-                            it
-                        }.blockingGet()
-                    }
-                } catch (e: IOException) {
-                    logger.error("Error loading RC", e)
-                    return@fromCallable ImportResult.LOAD_RC_ERROR
-                }
-            }
+        val fingerprint = runCatching { fingerprinter.fingerprint(file) }
+            .onFailure { logger.error("Could not fingerprint ${file.name}", it) }
+            .getOrNull() ?: return@rxMaybe null
+        installedEditions.findSameEdition(languageSlug, dublinCore.identifier, dublinCore.creator, fingerprint)
     }
 
-    fun mergeMedia(
-        newRC: File,
-        existingRC: File,
-    ): Single<ImportResult> {
-        logger.info("RC already imported, merging media...")
-        return Single
+    private fun mergeIntoInstalledEdition(file: File, installed: ResourceMetadata): Single<ImportResult> =
+        Single
             .fromCallable {
-                MediaMerge.merge(
-                    ResourceContainer.load(newRC),
-                    ResourceContainer.load(existingRC),
-                )
-                logger.info("Merge media completed.")
+                MediaMerge.merge(ResourceContainer.load(file), ResourceContainer.load(installed.path))
+                ResourceContainer.load(file).use { incoming ->
+                    resourceMetadataRepository.update(installed, incoming).blockingAwait()
+                }
                 ImportResult.SUCCESS
             }
             .onErrorReturn {
-                logger.error("Merge media failed!", it)
+                logger.error("Merging ${file.name} into ${installed.path} failed", it)
                 ImportResult.FAILED
             }
-    }
-
-    fun mergeText(
-        newRC: File,
-        existingRC: File
-    ): Single<ImportResult> {
-        logger.info("RC already imported, merging text...")
-        return Single
-            .fromCallable {
-                MergeTextContent.merge(
-                    ResourceContainer.load(newRC),
-                    ResourceContainer.load(existingRC)
-                )
-                logger.info("Merge text completed.")
-                ImportResult.SUCCESS
-            }
-            .onErrorReturn {
-                logger.error("Merge text failed!", it)
-                ImportResult.FAILED
-            }
-    }
-
-    private fun updateCollections(
-        container: ResourceContainer,
-        tree: OtterTree<CollectionOrContent>
-    ): Single<ImportResult> {
-        return resourceContainerRepository
-            .updateCollectionTitles(
-                container,
-                tree
-            )
-    }
-
-
-    private fun findExistingResourceMetadata(file: File): ResourceMetadata? {
-        ResourceContainer.load(file, true).use { rc ->
-            val dublinCore = rc.manifest.dublinCore
-            return resourceMetadataRepository.getAllSources()
-                .blockingGet()
-                .find {
-                    it.language.slug == dublinCore.language.identifier &&
-                            it.identifier == dublinCore.identifier
-                }
-        }
-    }
 }

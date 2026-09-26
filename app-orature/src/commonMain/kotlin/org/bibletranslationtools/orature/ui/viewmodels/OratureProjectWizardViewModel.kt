@@ -1,5 +1,6 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionOrder
 import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -322,8 +323,12 @@ class OratureProjectWizardViewModel(
             if (!exists) {
                 importer.sideloadSource(language).await()
             }
+            // One entry per source: the newest installed edition. Choosing among editions comes
+            // with the edition picker.
             val versions = resourceMetadataRepo.getAllSources().await()
                 .filter { it.language == language }
+                .sortedWith(EditionOrder.newestFirst)
+                .distinctBy { it.identifier }
                 .map { OratureResourceVersion(it.identifier, it.title) }
             withContext(Dispatchers.Main) {
                 _uiState.value = _uiState.value.copy(resourceVersions = versions)

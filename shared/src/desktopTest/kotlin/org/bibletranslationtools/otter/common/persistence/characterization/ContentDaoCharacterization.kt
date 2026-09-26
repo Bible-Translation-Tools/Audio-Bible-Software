@@ -284,5 +284,3 @@ abstract class ContentDaoCharacterization : AbstractDatabaseCharacterizationTest
         assertEquals(listOf(source.id), dao.fetchSources(content).map { it.id })
     }
 }
-
-/** jOOQ backend binding for [ContentDaoCharacterization]. */

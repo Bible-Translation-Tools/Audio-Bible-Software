@@ -3,6 +3,7 @@ package org.bibletranslationtools.otter.common.persistence.characterization
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import io.mockk.mockk
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
+import org.bibletranslationtools.otter.common.persistence.database.SCHEMA_VERSION
 import org.bibletranslationtools.otter.common.persistence.database.sqldelight.SqlDelightAppDatabase
 import org.bibletranslationtools.otter.common.persistence.database.sqldelight.SqlDelightDatabaseMigrator
 import java.io.File
@@ -14,7 +15,7 @@ import kotlin.test.assertEquals
 
 /**
  * Schema v14 → v15 (edition fingerprints). A v14 database is made by taking a fresh one and removing
- * what v15 added; migrating it must give the same tables as a fresh v15 database.
+ * what v15 and later added; migrating it must give the same tables as a fresh database.
  */
 class SqlDelightDatabaseMigrator14to15Test {
 
@@ -38,6 +39,7 @@ class SqlDelightDatabaseMigrator14to15Test {
     private fun v14Database(keepColumns: Set<String> = emptySet()): File =
         freshDatabase().also { file ->
             connect(file) { conn ->
+                conn.exec("DROP INDEX idx_dublin_core_source_edition")
                 conn.exec("DROP TABLE edition_chapter")
                 listOf("detected_versification", "structure_fingerprint", "text_fingerprint")
                     .filter { it !in keepColumns }
@@ -75,7 +77,7 @@ class SqlDelightDatabaseMigrator14to15Test {
         val migrated = v14Database().also(::migrate)
         val fresh = freshDatabase()
 
-        assertEquals("15", version(migrated))
+        assertEquals("$SCHEMA_VERSION", version(migrated))
         listOf("dublin_core_entity", "edition_chapter").forEach { table ->
             assertEquals(schema(fresh, table), schema(migrated, table), "schema for '$table' differs")
         }
@@ -85,7 +87,7 @@ class SqlDelightDatabaseMigrator14to15Test {
     fun `a step that failed partway completes on the next run`() {
         val migrated = v14Database(keepColumns = setOf("detected_versification")).also(::migrate)
 
-        assertEquals("15", version(migrated))
+        assertEquals("$SCHEMA_VERSION", version(migrated))
         assertEquals(schema(freshDatabase(), "dublin_core_entity"), schema(migrated, "dublin_core_entity"))
     }
 

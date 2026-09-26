@@ -147,30 +147,6 @@ class DesktopDirectoryProvider(
         return path
     }
 
-    override fun getSourceContainerDirectory(container: ResourceContainer): File {
-        val dublinCore = container.manifest.dublinCore
-        container.close()
-        var appendedPath = listOf(
-            dublinCore.creator,
-            "${dublinCore.language.identifier}_${dublinCore.identifier}",
-            "v${dublinCore.version}"
-        ).joinToString(pathSeparator)
-        appendedPath = appendedPath.removePrefix("/")
-        val path = internalSourceRCDirectory.resolve(appendedPath)
-        path.mkdirs()
-        return path
-    }
-
-    override fun getSourceContainerDirectory(metadata: ResourceMetadata): File {
-        return listOf(
-            metadata.creator,
-            "${metadata.language.slug}_${metadata.identifier}",
-            "v${metadata.version}"
-        )
-            .fold(internalSourceRCDirectory, File::resolve)
-            .apply { mkdirs() }
-    }
-
     override fun getDerivedContainerDirectory(metadata: ResourceMetadata, source: ResourceMetadata): File {
         val appendedPath = listOf(
             "der",

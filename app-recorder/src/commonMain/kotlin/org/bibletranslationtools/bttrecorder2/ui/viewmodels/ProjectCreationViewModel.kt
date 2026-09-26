@@ -1,5 +1,6 @@
 package org.bibletranslationtools.bttrecorder2.ui.viewmodels
 
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionOrder
 import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -71,7 +72,11 @@ class ProjectCreationViewModel : ViewModel(), KoinComponent {
                 // languages whose source zip is actually bundled (LanguageRepository consults
                 // the build-generated manifest), so every entry here is sideloadable.
                 val (sources, available) = withContext(Dispatchers.IO) {
+                    // One entry per source: the newest installed edition. Choosing among
+                    // editions comes with the edition picker.
                     val imported = resourceMetadataRepository.getAllSources().blockingGet()
+                        .sortedWith(EditionOrder.newestFirst)
+                        .distinctBy { it.language.slug to it.identifier }
                     val importedLangs = imported.map { it.language.slug }.toSet()
                     val available = languageRepository.getAvailableGatewaySources().blockingGet()
                         .filter { it.slug !in importedLangs }
@@ -114,7 +119,8 @@ class ProjectCreationViewModel : ViewModel(), KoinComponent {
                 val metadata = withContext(Dispatchers.IO) {
                     importer.sideloadSource(language).blockingAwait()
                     resourceMetadataRepository.getAllSources().blockingGet()
-                        .firstOrNull { it.language.slug == language.slug }
+                        .filter { it.language.slug == language.slug }
+                        .let(EditionOrder::newest)
                 }
                 if (metadata != null) {
                     _uiState.update {

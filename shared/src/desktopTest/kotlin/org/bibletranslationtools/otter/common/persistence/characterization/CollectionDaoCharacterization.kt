@@ -219,5 +219,3 @@ abstract class CollectionDaoCharacterization : AbstractDatabaseCharacterizationT
         assertEquals(listOf("ch2"), result.map { it.slug })
     }
 }
-
-/** jOOQ backend binding for [CollectionDaoCharacterization]. */

@@ -74,5 +74,3 @@ abstract class ContentTypeDaoCharacterization : AbstractDatabaseCharacterization
         }
     }
 }
-
-/** jOOQ backend binding for [ContentTypeDaoCharacterization]. */

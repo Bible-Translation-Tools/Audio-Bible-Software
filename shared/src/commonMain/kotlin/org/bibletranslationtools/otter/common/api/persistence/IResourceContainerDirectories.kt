@@ -31,15 +31,36 @@ import java.io.File
  */
 interface IResourceContainerDirectories {
 
-    /** Internal-use directory of the given source RC */
-    fun getSourceContainerDirectory(container: ResourceContainer): File
+    /**
+     * Where a newly imported source edition is kept:
+     * `src/<creator>/<language>_<identifier>/<edition folder>`, where the edition folder is
+     * [editionFolderName]. Editions imported before schema v16 stay in their `v<version>` folders;
+     * a source's actual location is always its stored path.
+     */
+    fun getSourceEditionDirectory(container: ResourceContainer, editionCode: String): File {
+        val dublinCore = container.manifest.dublinCore
+        return internalSourceRCDirectory
+            .resolve(dublinCore.creator)
+            .resolve("${dublinCore.language.identifier}_${dublinCore.identifier}")
+            .resolve(editionFolderName(dublinCore.version, editionCode))
+    }
 
-    /** Internal-use directory of the given source RC */
-    fun getSourceContainerDirectory(metadata: ResourceMetadata): File
+    /** Where an incoming source is unpacked before its edition, and so its folder, is known. */
+    val sourceStagingDirectory: File get() = internalSourceRCDirectory.resolve(".staging")
 
     /** Internal-use directory of the given derived RC */
     fun getDerivedContainerDirectory(metadata: ResourceMetadata, source: ResourceMetadata): File
 
     val resourceContainerDirectory: File
     val internalSourceRCDirectory: File
+}
+
+/**
+ * An edition's folder name: its version label and short content code, for example `v12-3f9a2c`.
+ * The code keeps two editions with the same label apart. Characters that aren't safe in a folder
+ * name are replaced, so a label such as `"12.1"` (quotes included) gives `v12.1-3f9a2c`.
+ */
+fun editionFolderName(version: String, editionCode: String): String {
+    val label = version.trim().trim('"', '\'').replace(Regex("[^A-Za-z0-9._-]"), "_").ifEmpty { "none" }
+    return "v$label-$editionCode"
 }

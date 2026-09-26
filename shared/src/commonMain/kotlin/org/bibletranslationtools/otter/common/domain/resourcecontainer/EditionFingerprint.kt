@@ -39,6 +39,12 @@ data class EditionFingerprint(
     val textFingerprint: String,
     val chapters: List<ChapterFingerprint>
 ) {
+    /**
+     * Six hex characters derived from both fingerprints: short enough for a folder name, and
+     * enough to keep apart editions that share a version label.
+     */
+    val shortCode: String get() = sha256("$structureFingerprint\n$textFingerprint").take(6)
+
     companion object {
         /** The fingerprint of the text in [tree], a parsed source before any gap-filling. */
         fun of(tree: OtterTree<CollectionOrContent>, detectedVersification: String?): EditionFingerprint {

@@ -18,6 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.domain.collections
 
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionOrder
 import io.reactivex.Completable
 import io.reactivex.Single
 import io.reactivex.rxkotlin.flatMapIterable
@@ -97,6 +98,8 @@ class CreateProject(
                 collection.resourceContainer?.language == sourceLanguage &&
                         (resourceId?.let  { collection.resourceContainer?.identifier == resourceId } ?: true)
             }
+            // Several editions of a source may be installed; new projects use the newest.
+            .sorted(EditionOrder.newestFirstBy { it.resourceContainer })
             .firstOrError()
             .flatMap { rootCollection ->
                 collectionRepo

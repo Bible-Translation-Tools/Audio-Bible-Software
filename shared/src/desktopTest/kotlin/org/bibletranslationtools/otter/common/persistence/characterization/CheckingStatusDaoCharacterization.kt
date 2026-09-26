@@ -68,5 +68,3 @@ abstract class CheckingStatusDaoCharacterization : AbstractDatabaseCharacterizat
         }
     }
 }
-
-/** jOOQ backend binding for [CheckingStatusDaoCharacterization]. */

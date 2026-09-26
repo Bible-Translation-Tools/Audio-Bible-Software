@@ -16,6 +16,9 @@ import io.reactivex.Observable
 import org.bibletranslationtools.otter.common.data.ProgressStatus
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
 import org.bibletranslationtools.otter.common.initialization.AuditSourceStructure
+import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.DeleteResourceContainer
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.DeleteResult
 import org.bibletranslationtools.otter.common.initialization.BackfillEditionFingerprints
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IEditionFingerprintRepository
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionFingerprint
@@ -48,7 +51,7 @@ import kotlin.test.assertTrue
  * Orature verified that importing a resource container produced the right rows. Its absence is why a
  * change to the import path could pass 15 unit tests and still be wrong: `VersificationTreeBuilderTest`
  * pins the tree that gets built and `SourceStructurePlannerTest` pins what fills its gaps, but nothing
- * exercised the join — `importResourceContainer` and `updateContent` against an actual database.
+ * exercised the join — `importResourceContainer` against an actual database.
  *
  * Differences from the original, all forced by this codebase rather than chosen:
  *
@@ -189,6 +192,22 @@ class IntegrationEnvironment private constructor(
 
     private fun installedSource() = db.resourceMetadataDao.fetchAll().single { it.derivedFromFk == null }
 
+    /** The committed fixture [rcFile], for tests that need the file itself. */
+    fun fixture(rcFile: String): File = rcResourceFile(rcFile)
+
+    /** Every installed source edition (not derived rows), in install order. */
+    fun sourceEditions() = db.resourceMetadataDao.fetchAll().filter { it.derivedFromFk == null }.sortedBy { it.id }
+
+    /** Whether the edition in [rc] is already installed, as the app asks before bundling one. */
+    fun isAlreadyImported(rc: File): Boolean = koin.get<ImportProjectUseCase>().isAlreadyImported(rc)
+
+    /** Deletes the source edition stored at [path], as the app would. */
+    fun deleteSource(path: String): DeleteResult =
+        koin.get<DeleteResourceContainer>().deleteSync(File(path))
+
+    /** The internal directory source editions live under. */
+    val sourceRoot: File get() = directoryProvider.internalSourceRCDirectory
+
     /** What the one-time source structure report would say about every installed source. */
     fun auditSources(): List<SourceStructureFindings> = koin.get<AuditSourceStructure>().audit()
 
@@ -305,8 +324,9 @@ class IntegrationEnvironment private constructor(
      * difference is the pre-allocation. Both are the point: a total on its own cannot distinguish
      * "pre-allocated 25" from "parsed 25 out of the text".
      */
-    fun verseCounts(chapterSlug: String): VerseCounts {
-        val chapter = db.collectionDao.fetchAll().firstOrNull { it.slug == chapterSlug }
+    fun verseCounts(chapterSlug: String, sourceId: Int? = null): VerseCounts {
+        val chapter = db.collectionDao.fetchAll()
+            .firstOrNull { it.slug == chapterSlug && (sourceId == null || it.dublinCoreFk == sourceId) }
         assertNotNull(chapter, "no chapter collection '$chapterSlug'")
         val textType = db.contentTypeDao.fetchId(ContentType.TEXT)
         val verses = db.contentDao.fetchByCollectionId(chapter.id).filter { it.type_fk == textType }

@@ -68,6 +68,7 @@ class SqlDelightDatabaseMigrator(
             current = migrate12to13(driver, current)
             current = migrate13to14(driver, current)
             current = migrate14to15(driver, current)
+            current = migrate15to16(driver, current)
             exec(driver, "UPDATE installed_entity SET version = $current WHERE name = '$DATABASE_INSTALLABLE_NAME'")
         }
     }
@@ -489,6 +490,31 @@ class SqlDelightDatabaseMigrator(
             }
             logger.info("Updated database from version 14 to 15")
             15
+        } else current
+    }
+
+    /**
+     * Version 16
+     * One row per source edition: a partial unique index on source rows by language, identifier,
+     * creator and both fingerprints. Rows without a fingerprint yet aren't constrained.
+     */
+    private fun migrate15to16(driver: SqlDriver, current: Int): Int {
+        return if (current < 16) {
+            try {
+                exec(
+                    driver,
+                    """
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_dublin_core_source_edition
+                    ON dublin_core_entity (language_fk, identifier, creator, structure_fingerprint, text_fingerprint)
+                    WHERE derivedFrom_fk IS NULL AND structure_fingerprint IS NOT NULL;
+                    """.trimIndent()
+                )
+            } catch (e: Exception) {
+                logger.error("Error in while migrating database from version 15 to 16", e)
+                return 15
+            }
+            logger.info("Updated database from version 15 to 16")
+            16
         } else current
     }
 

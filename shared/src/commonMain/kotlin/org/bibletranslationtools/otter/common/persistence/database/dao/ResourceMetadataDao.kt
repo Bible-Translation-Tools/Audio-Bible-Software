@@ -36,14 +36,6 @@ interface ResourceMetadataDao {
     fun insert(entity: ResourceMetadataEntity): Int
     fun fetchById(id: Int): ResourceMetadataEntity?
     fun fetchByIds(ids: List<Int>): List<ResourceMetadataEntity>
-    fun fetchLatestVersion(
-        languageSlug: String,
-        identifier: String,
-        creator: String,
-        derivedFromFk: Int?,
-        relaxCreatorIfNoMatch: Boolean = true,
-    ): ResourceMetadataEntity?
-    fun fetchLatestVersion(languageSlug: String, identifier: String): ResourceMetadataEntity?
     fun fetchAll(): List<ResourceMetadataEntity>
     fun update(entity: ResourceMetadataEntity)
     fun delete(entity: ResourceMetadataEntity)
@@ -54,6 +46,8 @@ interface ResourceMetadataDao {
     /** Sets the edition fingerprint columns of row [id]; [insert] and [update] never touch them. */
     fun setEditionFingerprint(id: Int, fingerprint: EditionFingerprintEntity)
     fun fetchEditionFingerprint(id: Int): EditionFingerprintEntity?
+    /** Every installed edition of a source: its source rows for [languageId] and [identifier]. */
+    fun fetchSourceEditions(languageId: Int, identifier: String): List<ResourceMetadataEntity>
     /** Ids of source rows (not derived ones) that have no edition fingerprint yet. */
     fun fetchSourceIdsWithoutFingerprint(): List<Int>
 }

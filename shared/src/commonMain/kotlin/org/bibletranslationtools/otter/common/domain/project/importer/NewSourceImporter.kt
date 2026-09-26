@@ -37,20 +37,21 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IReso
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import java.io.File
 import java.io.IOException
+import java.util.UUID
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
 import org.bibletranslationtools.otter.common.OTTER_JSON
 
 class NewSourceImporter(
     private val directoryProvider: IDirectoryProvider,
     private val resourceContainerRepository: IResourceContainerRepository,
-    resourceMetadataRepository: IResourceMetadataRepository,
+    private val metadataRepository: IResourceMetadataRepository,
     private val structurePlanner: SourceStructurePlanner,
     private val fingerprinter: EditionFingerprinter,
     // getVersification() below reads a versification directly to synthesize USFM for audio-only
     // containers.
     private val versificationRepository: IVersificationRepository,
     private val zipEntryTreeBuilder: IZipEntryTreeBuilder
-) : RCImporter(directoryProvider, resourceMetadataRepository) {
+) : RCImporter(directoryProvider, metadataRepository) {
 
     private val logger = LoggerFactory.getLogger(this.javaClass)
     private var sourceLanguageName = ""
@@ -73,7 +74,14 @@ class NewSourceImporter(
             callback?.onNotifyProgress(
                 localizeKey = "loadingSomething", message = "${file.name}", percent = 10.0
             )
-            val fileToImport = prepareFileToImport(file)
+            val staged = try {
+                stage(file)
+            } catch (e: Exception) {
+                logger.error("Could not unpack ${file.name}", e)
+                emitter.onSuccess(ImportResult.LOAD_RC_ERROR)
+                return@create
+            }
+            val fileToImport = staged.rcFile
 
             val container = try {
                 val rc = ResourceContainer.load(fileToImport, OtterResourceContainerConfig())
@@ -113,7 +121,7 @@ class NewSourceImporter(
                 rc
             } catch (e: Exception) {
                 logger.error("Error loading rc in importFromInternalDir, file: $fileToImport", e)
-                cleanUp(fileToImport, ImportResult.LOAD_RC_ERROR).subscribe(emitter::onSuccess)
+                emitter.onSuccess(staged.discard(ImportResult.LOAD_RC_ERROR))
                 return@create
             }
 
@@ -123,7 +131,7 @@ class NewSourceImporter(
                 logger.error("Error constructing container tree, file: $fileToImport", e)
                 logger.error("Container had format: ${container.manifest.dublinCore.format}")
                 container.close()
-                cleanUp(fileToImport, e.result).subscribe(emitter::onSuccess)
+                emitter.onSuccess(staged.discard(e.result))
                 return@create
             }
 
@@ -147,7 +155,16 @@ class NewSourceImporter(
                 .onFailure { logger.error("Could not fingerprint ${file.name}; importing without one", it) }
                 .getOrNull()
 
-            importTree(container, plan.tree, fileToImport, fingerprint)
+            val placed = try {
+                place(staged, container, fingerprint)
+            } catch (e: Exception) {
+                logger.error("Could not move ${file.name} into its edition folder", e)
+                container.close()
+                emitter.onSuccess(staged.discard(e.castOrFindImportException()?.result ?: ImportResult.IMPORT_ERROR))
+                return@create
+            }
+
+            importTree(placed, plan.tree, fingerprint)
                 .subscribe { result ->
                     notifyCallback(result, callback, file)
                     emitter.onSuccess(result)
@@ -170,55 +187,83 @@ class NewSourceImporter(
         }
     }
 
-    private fun prepareFileToImport(file: File): File {
-        var exists = false
-        val internalDir = getInternalDirectory(file) ?: throw ImportException(ImportResult.LOAD_RC_ERROR)
-        if (internalDir.exists()) {
-            val rcFileExists = file.isFile && internalDir.contains(file.name)
-            val rcDirExists = file.isDirectory && internalDir.listFiles().isNotEmpty()
-            if (rcFileExists || rcDirExists) {
-                exists = true
-            }
+    /**
+     * Where [file] is imported from. A source already inside the internal source directory is
+     * imported in place. Anything else is unpacked into a fresh staging folder, because the folder
+     * it finally lives in is named after its edition, which isn't known until its text is read.
+     */
+    private fun stage(file: File): Staged {
+        if (file.isInside(directoryProvider.internalSourceRCDirectory) &&
+            !file.isInside(directoryProvider.sourceStagingDirectory)
+        ) {
+            return Staged(root = null, rcFile = file)
         }
-        return if (exists) {
-            file
-        } else {
-            copyToInternalDirectory(file, internalDir)
-        }
-    }
-
-    private fun getInternalDirectory(file: File): File? {
-        // Load the external container to get the metadata we need to figure out where to copy to
-        val extContainer = try {
-            ResourceContainer.load(file, OtterResourceContainerConfig())
+        val root = directoryProvider.sourceStagingDirectory.resolve(UUID.randomUUID().toString())
+        root.mkdirs()
+        return try {
+            Staged(root, copyToInternalDirectory(file, root))
         } catch (e: Exception) {
-            // Could be checked or unchecked exception from RC library
-            logger.error("Error in getInternalDirectory, file: $file", e)
-            return null
+            root.deleteRecursively()
+            throw e
         }
-        return directoryProvider.getSourceContainerDirectory(extContainer)
     }
 
-    private fun cleanUp(container: File, result: ImportResult): Single<ImportResult> = Single.fromCallable {
-        container.deleteRecursively()
-        return@fromCallable result
+    /**
+     * Moves a staged source into its edition folder (see IResourceContainerDirectories
+     * .getSourceEditionDirectory) and reopens it there. A source imported in place stays put.
+     */
+    private fun place(staged: Staged, container: ResourceContainer, fingerprint: EditionFingerprint?): Placed {
+        val root = staged.root ?: return Placed(container, staged.rcFile, editionRoot = null)
+        // Without a fingerprint the code only has to keep this folder apart from the others.
+        val code = fingerprint?.shortCode ?: UUID.randomUUID().toString().take(6)
+        val editionDir = directoryProvider.getSourceEditionDirectory(container, code)
+        container.close()
+
+        if (editionDir.exists()) {
+            if (isStoredSourcePath(editionDir)) throw ImportException(ImportResult.ALREADY_EXISTS)
+            // Left behind by an import that failed after moving it.
+            editionDir.deleteRecursively()
+        }
+        editionDir.parentFile.mkdirs()
+        if (!root.renameTo(editionDir)) {
+            root.copyRecursively(editionDir, overwrite = true)
+            root.deleteRecursively()
+        }
+        val rcFile = editionDir.resolve(staged.rcFile.relativeTo(root))
+        return Placed(ResourceContainer.load(rcFile, OtterResourceContainerConfig()), rcFile, editionDir)
     }
+
+    private fun isStoredSourcePath(dir: File): Boolean =
+        metadataRepository.getAllSources().blockingGet().any { it.path.isInside(dir) }
 
     private fun importTree(
-        container: ResourceContainer,
+        placed: Placed,
         tree: OtterTree<CollectionOrContent>,
-        fileToLoad: File,
         fingerprint: EditionFingerprint?
     ): Single<ImportResult> {
+        val container = placed.container
         return resourceContainerRepository
             .importResourceContainer(container, tree, container.manifest.dublinCore.language.identifier, fingerprint)
             .doOnEvent { result, err ->
                 if (err != null) {
-                    logger.error("Error in importFromInternalDirectory importing rc, file: $fileToLoad", err)
+                    logger.error("Error in importFromInternalDirectory importing rc, file: ${placed.rcFile}", err)
                 }
-                if (result != ImportResult.SUCCESS || err != null) fileToLoad.deleteRecursively()
+                // Only remove files this import created; a source imported in place is left alone.
+                if (result != ImportResult.SUCCESS || err != null) placed.editionRoot?.deleteRecursively()
             }
     }
+
+    /** A source ready to read: [rcFile], unpacked under the staging folder [root], or in place. */
+    private class Staged(val root: File?, val rcFile: File) {
+        /** Deletes what staging unpacked, never a source imported in place. */
+        fun discard(result: ImportResult): ImportResult {
+            root?.deleteRecursively()
+            return result
+        }
+    }
+
+    /** A source in its final folder; [editionRoot] is null when it was imported in place. */
+    private class Placed(val container: ResourceContainer, val rcFile: File, val editionRoot: File?)
 
     private fun copyToInternalDirectory(file: File, destinationDirectory: File): File {
         return if (file.isDirectory) {
@@ -237,26 +282,6 @@ class NewSourceImporter(
             }
         }
         return destinationDirectory
-    }
-
-    private fun File.contains(name: String): Boolean {
-        if (!this.isDirectory) {
-            throw Exception("Cannot call contains on non-directory file")
-        }
-        return this.listFiles().map { it.name }.contains(name)
-    }
-
-    private fun copyFileToInternalDirectory(filepath: File, destinationDirectory: File): File {
-        // Copy the resource container zip file into the correct directory
-        val destinationFile = File(destinationDirectory, filepath.name)
-        if (filepath.absoluteFile != destinationFile) {
-            filepath.copyTo(destinationFile, true)
-            val success = destinationDirectory.contains(filepath.name)
-            if (!success) {
-                throw IOException("Could not copy resource container ${filepath.name} to resource container directory")
-            }
-        }
-        return destinationFile
     }
 
     private fun extractSourceToDir(source: File, dir: File): File {
@@ -312,4 +337,9 @@ class NewSourceImporter(
         }
         return sb.toString()
     }
+}
+
+private fun File.isInside(dir: File): Boolean {
+    val path = canonicalFile.toPath()
+    return path.startsWith(dir.canonicalFile.toPath())
 }

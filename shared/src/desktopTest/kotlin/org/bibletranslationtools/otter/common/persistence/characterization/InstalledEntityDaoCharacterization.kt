@@ -67,5 +67,3 @@ abstract class InstalledEntityDaoCharacterization : AbstractDatabaseCharacteriza
         assertEquals(7, dao.fetchVersion(installable("myfeature", 0)))
     }
 }
-
-/** jOOQ backend binding for [InstalledEntityDaoCharacterization]. */

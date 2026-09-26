@@ -140,5 +140,3 @@ abstract class LanguageDaoCharacterization : AbstractDatabaseCharacterizationTes
         assertEquals(2, dao.fetchAll().size)
     }
 }
-
-/** jOOQ backend binding for [LanguageDaoCharacterization]. */

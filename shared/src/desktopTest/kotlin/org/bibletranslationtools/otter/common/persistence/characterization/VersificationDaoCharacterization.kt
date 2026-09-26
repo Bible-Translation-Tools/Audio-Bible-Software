@@ -73,5 +73,3 @@ abstract class VersificationDaoCharacterization : AbstractDatabaseCharacterizati
         assertEquals("/versification/ulb-updated.json", dao.fetchVersificationFile("ulb"))
     }
 }
-
-/** jOOQ backend binding for [VersificationDaoCharacterization]. */

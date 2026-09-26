@@ -69,4 +69,18 @@ abstract class EditionFingerprintDaoCharacterization : AbstractDatabaseCharacter
         assertEquals(listOf(chapter(a.id, "exo_1")), db.editionChapterDao.fetchForEdition(a.id))
         assertEquals(listOf(chapter(b.id, "gen_1")), db.editionChapterDao.fetchForEdition(b.id))
     }
+
+    @Test
+    fun `fetchSourceEditions lists every source row of that language and identifier`() {
+        val english = insertLanguage("en").id
+        val first = insertMetadata(english, identifier = "ulb", version = "12")
+        val second = insertMetadata(english, identifier = "ulb", version = "24-07", creator = "other")
+        insertMetadata(english, identifier = "ust")
+        insertMetadata(insertLanguage("fr").id, identifier = "ulb", derivedFromFk = first.id)
+
+        assertEquals(
+            listOf(first.id, second.id),
+            db.resourceMetadataDao.fetchSourceEditions(english, "ulb").map { it.id }.sorted()
+        )
+    }
 }

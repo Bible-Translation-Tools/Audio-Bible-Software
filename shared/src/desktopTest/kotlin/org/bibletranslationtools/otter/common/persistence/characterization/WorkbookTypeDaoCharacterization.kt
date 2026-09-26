@@ -67,5 +67,3 @@ abstract class WorkbookTypeDaoCharacterization : AbstractDatabaseCharacterizatio
         }
     }
 }
-
-/** jOOQ backend binding for [WorkbookTypeDaoCharacterization]. */

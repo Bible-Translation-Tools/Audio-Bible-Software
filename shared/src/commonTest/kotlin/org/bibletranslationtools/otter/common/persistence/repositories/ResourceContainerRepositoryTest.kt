@@ -86,15 +86,4 @@ class ResourceContainerRepositoryTest {
         assertEquals(ImportResult.SUCCESS, result)
     }
 
-    @Test
-    fun testUpdateContentSuspend() = runTest {
-        val rc = mockk<ResourceContainer>(relaxed = true)
-        val rcTree = mockk<OtterTree<CollectionOrContent>>()
-        
-        val spy = spyk(repository)
-        every { spy.updateContent(any(), any()) } returns Single.just(ImportResult.SUCCESS)
-        
-        val result = spy.updateContentSuspend(rc, rcTree)
-        assertEquals(ImportResult.SUCCESS, result)
-    }
 }

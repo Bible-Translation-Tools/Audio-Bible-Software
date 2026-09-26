@@ -18,6 +18,9 @@
  */
 package org.bibletranslationtools.otter.common.persistence.repositories
 
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionOrder
+import org.bibletranslationtools.otter.common.persistence.entities.ResourceMetadataEntity
+import java.io.File
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionFingerprint
 import io.reactivex.Completable
 import io.reactivex.Single
@@ -73,7 +76,7 @@ class ResourceContainerRepository(
                     val language = LanguageMapper().mapFromEntity(languageEntity)
                     val metadata = dublinCore.mapToMetadata(rc.file, language)
                         .let {
-                            insertMetadataOrThrow(it)
+                            insertMetadataOrThrow(it, fingerprint)
                         }
                     fingerprint?.let { database.storeEditionFingerprint(metadata.id, it) }
 
@@ -104,257 +107,39 @@ class ResourceContainerRepository(
             .subscribeOn(Schedulers.io())
     }
 
-    override fun updateContent(
-        rc: ResourceContainer,
-        rcTree: OtterTree<CollectionOrContent>
-    ): Single<ImportResult> {
-        return Single.fromCallable {
-            val rcMetadata = getMetadataForContainer(rc) ?: run {
-                return@fromCallable ImportResult.IMPORT_ERROR
-            }
-            val projects = collectionRepository
-                .getSourceProjects()
-                .map { it.filter { it.resourceContainer == rcMetadata } }
-                .blockingGet()
-
-            val databaseMap = hashMapOf<Collection, MutableList<Content>>()
-
-            projects
-                .map { getProjectAsOtterTree(it, rcMetadata).toChapterContentMap() }
-                .forEach { databaseMap.putAll(it) }
-
-            val parsedTextMap = rcTree.toChapterContentMap()
-            updateTextContent(databaseMap, parsedTextMap)
-            updateBridges(databaseMap, parsedTextMap)
-
-            return@fromCallable ImportResult.SUCCESS
-        }.subscribeOn(Schedulers.io())
-    }
-
-    override fun updateCollectionTitles(
-        rc: ResourceContainer,
-        rcTree: OtterTree<CollectionOrContent>
-    ): Single<ImportResult> {
-        return Single
-            .fromCallable {
-                val rcMetadata = getMetadataForContainer(rc) ?: run {
-                    return@fromCallable ImportResult.IMPORT_ERROR
-                }
-
-                val derivedMetadata = resourceMetadataRepository
-                    .getAllDerivatives(rcMetadata)
-                    .blockingGet()
-
-                val sourceProjects = collectionRepository
-                    .getSourceProjects()
-                    .map { it.filter { it.resourceContainer == rcMetadata } }
-                    .blockingGet()
-
-                val derivativeProjects = collectionRepository
-                    .getDerivedProjects()
-                    .map { it.filter { it.resourceContainer in derivedMetadata } }
-                    .blockingGet()
-
-                val updateFrom = rcTree.toCollectionList()
-                updateCollectionTitles(
-                    listOf(*sourceProjects.toTypedArray(), *derivativeProjects.toTypedArray()),
-                    updateFrom
-                )
-
-                return@fromCallable ImportResult.SUCCESS
-            }
-            .onErrorReturn { ImportResult.LOAD_RC_ERROR }
-            .subscribeOn(Schedulers.io())
-    }
-
-    private fun updateCollectionTitles(
-        updateTo: List<Collection>,
-        updateFrom: List<Collection>,
-    ) {
-        updateFrom.forEach { updatedCollection ->
-            val toUpdate = updateTo.filter {
-                it.slug == updatedCollection.slug && (it.titleKey.isNullOrEmpty() || it.sort == Int.MAX_VALUE)
-            }
-            toUpdate.forEach { match ->
-                val copy = match.copy(
-                    sort = if (updatedCollection.sort != Int.MAX_VALUE) updatedCollection.sort else match.sort,
-                    titleKey = updatedCollection.titleKey.ifBlank { match.titleKey },
-                    labelKey = updatedCollection.labelKey
-                )
-                logger.info("Updating collection of title: ${copy.titleKey} to updated title: ${updatedCollection.titleKey}")
-                try {
-                    collectionRepository.update(copy).blockingGet()
-                } catch (e: Exception) {
-                    logger.error("Error updating collection: $copy", e)
-                }
-            }
+    /** The installed source (not a derived row) stored at [file], if any. */
+    private fun sourceEntityAt(file: File): ResourceMetadataEntity? {
+        val target = file.canonicalFile
+        return resourceMetadataDao.fetchAll().firstOrNull {
+            it.derivedFromFk == null && File(it.path).canonicalFile == target
         }
-    }
-
-    private fun updateTextContent(
-        databaseMap: Map<Collection, List<Content>>,
-        parsedTextMap: Map<Collection, List<Content>>
-    ) {
-        val toUpdate = mutableListOf<Content>()
-        parsedTextMap.keys.forEach { collection ->
-            val textMapContent = parsedTextMap[collection]
-            val matchingCollection = databaseMap.keys.find { it.slug == collection.slug } ?: return@forEach
-            val databaseContent = databaseMap[matchingCollection]!!
-
-            textMapContent!!.forEach { content ->
-                val match = databaseContent.find {
-                    it.start == content.start &&
-                    it.type == content.type &&
-                    it.sort == content.sort
-                }
-                match?.let {
-                    match.text = content.text ?: ""
-                    toUpdate.add(match)
-                }
-            }
-        }
-        contentRepository.updateAll(toUpdate).blockingGet()
-    }
-
-    private fun updateBridges(
-        databaseMap: Map<Collection, List<Content>>,
-        parsedTextMap: Map<Collection, List<Content>>
-    ) {
-        val toUpdate = mutableListOf<Content>()
-        parsedTextMap.keys.forEach { collection ->
-            val textMapContent = parsedTextMap[collection]
-            val matchingCollection = databaseMap.keys.find { it.slug == collection.slug } ?: return@forEach
-            val databaseContent = databaseMap[matchingCollection]!!
-
-            textMapContent!!.forEach { content ->
-                val match = databaseContent.find {
-                    it.start == content.start &&
-                    it.type == content.type &&
-                    it.type != ContentType.TITLE
-                }
-                match?.let {
-                    if (match.end != content.end && match.type != ContentType.META) {
-                        match.end = content.end
-                        logger.info("Bridging ${collection.slug}:${match.start}-${match.end}")
-                        contentRepository.update(match).blockingGet()
-                        for (i in (match.start + 1)..match.end) {
-                            val found = databaseContent.find { it.start == i && it.type != ContentType.META }
-                            if (found != null) {
-                                found.bridged = true
-                                toUpdate.add(found)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        contentRepository.updateAll(toUpdate).blockingGet()
-    }
-
-    private fun getProjectAsOtterTree(book: Collection, rc: ResourceMetadata): OtterTree<CollectionOrContent> {
-        val tree = OtterTree<CollectionOrContent>(book)
-        val chapters = collectionDao.fetchChildren(CollectionMapper().mapToEntity(book))
-        chapters.forEach { collectionEntity ->
-            val collection = CollectionMapper().mapFromEntity(collectionEntity, rc)
-            val chapterTree = OtterTree<CollectionOrContent>(collection)
-            val content = contentRepository.getByCollection(collection).blockingGet()
-            content.forEach {
-                val node = OtterTreeNode<CollectionOrContent>(it)
-                chapterTree.addChild(node)
-            }
-            tree.addChild(chapterTree)
-        }
-        return tree
-    }
-
-    fun OtterTree<CollectionOrContent>.toCollectionList(): List<Collection> {
-        if (value is Content) {
-            return mutableListOf()
-        } else {
-            val list = mutableListOf(value as Collection)
-            children.forEach {
-                list.addAll((it as? OtterTree<CollectionOrContent>)?.toCollectionList() ?: mutableListOf())
-            }
-            return list
-        }
-    }
-
-    fun OtterTree<CollectionOrContent>.toChapterContentMap(): Map<Collection, MutableList<Content>> {
-        val isBook = children.any { it.hasContent() }
-        return if (isBook) {
-            toChapterContentMapFromBook()
-        } else {
-            toChapterContentMapFromResource()
-        }
-    }
-
-    private fun OtterTreeNode<CollectionOrContent>.hasContent(): Boolean {
-        if (value is Collection) {
-            return (this as OtterTree<CollectionOrContent>).children.any { it.value is Content }
-        } else {
-            return false
-        }
-    }
-
-    private fun OtterTree<CollectionOrContent>.toChapterContentMapFromResource(): Map<Collection, MutableList<Content>> {
-        val bigMap = hashMapOf<Collection, MutableList<Content>>()
-
-        val trees = children.map { it as OtterTree<CollectionOrContent> }
-        val maps = trees.map { it.toChapterContentMap() }
-        maps.forEach {
-            bigMap.putAll(it)
-        }
-        return bigMap
-    }
-
-    private fun OtterTree<CollectionOrContent>.toChapterContentMapFromBook(): Map<Collection, MutableList<Content>> {
-        val isBook = children.any { it.hasContent() }
-
-        val bigMap = hashMapOf<Collection, MutableList<Content>>()
-        if (isBook) {
-            for (child in children) {
-                val collection = child.value
-                if (collection !is Collection) {
-                    continue
-                }
-                val content = (child as OtterTree<CollectionOrContent>).children.map { it.value }.map { it as Content }
-                bigMap[collection] = content.toMutableList()
-            }
-        }
-        return bigMap
-    }
-
-    private fun getMetadataForContainer(rc: ResourceContainer): ResourceMetadata? {
-        val language = languageDao.fetchBySlug(rc.manifest.dublinCore.language.identifier) ?: run {
-            return null
-        }
-        val metadata = resourceMetadataDao
-            .fetchAll()
-            .firstOrNull { entity ->
-                val isSource = entity.derivedFromFk == null
-                val rcSlugMatches = entity.identifier == rc.manifest.dublinCore.identifier
-                val languagesMatch = entity.languageFk == language.id
-                isSource && rcSlugMatches && languagesMatch
-            } ?: run { return null }
-
-        return ResourceMetadataMapper()
-            .mapFromEntity(
-                metadata,
-                LanguageMapper().mapFromEntity(language)
-            )
     }
 
     /**
      * Insert metadata, return metadata modified to include row ID.
-     * @throws [ImportException] if a matching row already exists.
+     *
+     * Other editions of the same source may already be installed; only the same edition (same
+     * creator and [fingerprint]) is refused. The unique index on source editions backs this up.
+     *
+     * @throws [ImportException] if the same edition is already installed.
      */
     private fun insertMetadataOrThrow(
-        metadata: ResourceMetadata
+        metadata: ResourceMetadata,
+        fingerprint: EditionFingerprint?
     ): ResourceMetadata {
-        val existingRow = resourceMetadataDao.fetchLatestVersion(metadata.language.slug, metadata.identifier)
-        if (existingRow != null && existingRow.derivedFromFk == null) {
-            logger.error("Error in inserting metadata, row already exists!: $existingRow")
-            throw ImportException(ImportResult.ALREADY_EXISTS)
+        if (fingerprint != null) {
+            val sameEdition = resourceMetadataDao
+                .fetchSourceEditions(metadata.language.id, metadata.identifier)
+                .firstOrNull { row ->
+                    val stored = resourceMetadataDao.fetchEditionFingerprint(row.id)
+                    row.creator == metadata.creator &&
+                        stored?.structureFingerprint == fingerprint.structureFingerprint &&
+                        stored.textFingerprint == fingerprint.textFingerprint
+                }
+            if (sameEdition != null) {
+                logger.error("Error in inserting metadata, this edition is already installed: $sameEdition")
+                throw ImportException(ImportResult.ALREADY_EXISTS)
+            }
         }
         val entity = ResourceMetadataMapper().mapToEntity(metadata)
         val rowId = resourceMetadataDao.insert(entity)
@@ -369,19 +154,26 @@ class ResourceContainerRepository(
         val relatedIds = mutableListOf<Int>()
         relations.forEach { relation ->
             val (languageSlug, identifier) = relation.split('/')
-            resourceMetadataDao.fetchLatestVersion(
-                languageSlug = languageSlug,
-                identifier = identifier,
-                creator = creator,
-                relaxCreatorIfNoMatch = true,
-                derivedFromFk = null, // derivedFromFk=null since we are looking for the original resource container
-            )
+            newestSourceEdition(languageSlug, identifier, creator)
                 ?.let { relatedDublinCore ->
                     resourceMetadataDao.addLink(newDublinCore.id, relatedDublinCore.id)
                     relatedIds.add(relatedDublinCore.id)
                 }
         }
         return relatedIds
+    }
+
+    /**
+     * The newest installed edition (see EditionOrder) of [identifier] in [languageSlug], preferring
+     * one by [creator] and falling back to any creator.
+     */
+    private fun newestSourceEdition(languageSlug: String, identifier: String, creator: String): ResourceMetadataEntity? {
+        val languageEntity = languageDao.fetchBySlug(languageSlug) ?: return null
+        val language = LanguageMapper().mapFromEntity(languageEntity)
+        val editions = resourceMetadataDao.fetchSourceEditions(languageEntity.id, identifier)
+        val candidates = editions.filter { it.creator == creator }.ifEmpty { editions }
+        val newest = EditionOrder.newest(candidates.map { ResourceMetadataMapper().mapFromEntity(it, language) })
+        return candidates.firstOrNull { it.id == newest?.id }
     }
 
     override fun removeResourceContainer(
@@ -391,12 +183,7 @@ class ResourceContainerRepository(
             var result = DeleteResult.SUCCESS
 
             database.transaction {
-                val metadataEntity = resourceMetadataDao.fetchLatestVersion(
-                    resourceContainer.manifest.dublinCore.language.identifier,
-                    resourceContainer.manifest.dublinCore.identifier,
-                    resourceContainer.manifest.dublinCore.creator,
-                    derivedFromFk = null,
-                )
+                val metadataEntity = sourceEntityAt(resourceContainer.file)
 
                 val derivedRcExists = resourceMetadataDao.fetchAll().any {
                     it.derivedFromFk != null && it.derivedFromFk == metadataEntity?.id
@@ -441,16 +228,6 @@ class ResourceContainerRepository(
         languageSlug: String,
         fingerprint: EditionFingerprint?
     ): ImportResult = importResourceContainer(rc, rcTree, languageSlug, fingerprint).await()
-
-    override suspend fun updateContentSuspend(
-        rc: ResourceContainer,
-        rcTree: OtterTree<CollectionOrContent>
-    ): ImportResult = updateContent(rc, rcTree).await()
-
-    override suspend fun updateCollectionTitlesSuspend(
-        rc: ResourceContainer,
-        rcTree: OtterTree<CollectionOrContent>
-    ): ImportResult = updateCollectionTitles(rc, rcTree).await()
 
     override suspend fun removeResourceContainerSuspend(
         resourceContainer: ResourceContainer
