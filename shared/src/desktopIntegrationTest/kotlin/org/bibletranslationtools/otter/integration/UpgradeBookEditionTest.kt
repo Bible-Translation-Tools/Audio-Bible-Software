@@ -119,14 +119,14 @@ class UpgradeBookEditionTest {
     }
 
     @Test
-    fun `when nothing is held back the superseded older edition is removed`() {
+    fun `the edition a book leaves stays installed, even with nothing using it`() {
         val setup = setup()
         val older = setup.older
 
         setup.upgrade()
 
-        assertFalse(setup.environment.sourceEditions().any { it.id == older.id })
-        assertFalse(File(older.path).exists())
+        assertTrue(setup.environment.sourceEditions().any { it.id == older.id }, "never removed automatically (O1-Q5)")
+        assertTrue(File(older.path).exists())
     }
 
     /** A chapter-mode project with chunks marked in Acts 19 but nothing recorded (S8-Q4, S8-Q7). */

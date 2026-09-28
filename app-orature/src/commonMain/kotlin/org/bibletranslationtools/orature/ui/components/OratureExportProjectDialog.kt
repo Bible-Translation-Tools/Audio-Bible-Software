@@ -1,5 +1,6 @@
 package org.bibletranslationtools.orature.ui.components
 
+import org.bibletranslationtools.orature.resources.exportMixedEditionsWarning
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -151,6 +152,15 @@ fun OratureExportProjectDialog(
 
                     // ---- Footer (estimated size + Export) ----
                     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp)) {
+                        // A13's fallback: allowed, with a warning.
+                        if (state.mixedEditionChapters.isNotEmpty()) {
+                            Text(
+                                stringResource(Res.string.exportMixedEditionsWarning, state.mixedEditionChapters.joinToString(", ")),
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                        }
                         if (exporting) {
                             LinearProgressIndicator(
                                 progress = { state.progress ?: 0f },

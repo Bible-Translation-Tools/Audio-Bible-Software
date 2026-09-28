@@ -1,5 +1,6 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
+import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
 import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -73,6 +74,7 @@ data class OratureTranslationUiState(
     val activeChapterTitle: String = "",
     val activeChapterSort: Int? = null,
     val chapters: List<OratureChapterGridItem> = emptyList(),
+    val editionNotice: OratureEditionNotice? = null,
     val hasPreviousChapter: Boolean = false,
     val hasNextChapter: Boolean = false,
     /** The step whose screen is shown in the center. */
@@ -130,6 +132,7 @@ class OratureTranslationViewModel(
 ) : ViewModel(), KoinComponent {
 
     private val openWorkbook: OpenWorkbook by inject()
+    private val upgradeBookEdition: UpgradeBookEdition by inject()
     private val projectEvents: OratureProjectEvents by inject()
     private val workbookDataStore: OratureWorkbookDataStore by inject()
 
@@ -247,6 +250,7 @@ class OratureTranslationViewModel(
                     sourceTitle = loaded.sourceTitle,
                     sourceLicense = loaded.sourceLicense
                 )
+                loadEditionNotice { opened.workbook.target.collectionId }
                 updateReachableStep()
                 if (active != null) resumeStepForChapter(active, active.sort)
             } catch (e: CancellationException) {
@@ -586,6 +590,28 @@ class OratureTranslationViewModel(
         if (activeSort == null) return false
         val index = chapters.indexOfFirst { it.sort == activeSort }
         return index >= 0 && chapters.getOrNull(index + step) != null
+    }
+
+    /**
+     * Whether a newer edition is installed and which chapters keep an earlier edition's verses,
+     * for the banner and the chapter grid. Changing edition happens from home (O1-Q4).
+     */
+    private fun loadEditionNotice(projectBookId: () -> Int) = launchLogged {
+        val book = try {
+            withContext(Dispatchers.IO) { upgradeBookEdition.editionState(projectBookId()) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logFailure("loading the book's source editions", e)
+            null
+        } ?: return@launchLogged
+        val held = book.heldBackChapters.toSet()
+        val newest = book.choices.firstOrNull { it.newer }
+        _uiState.value = _uiState.value.copy(
+            editionNotice = OratureEditionNotice(newest?.edition, newest?.distinguishingCode, book.heldBackChapters)
+                .takeIf { newest != null || held.isNotEmpty() },
+            chapters = _uiState.value.chapters.map { it.copy(heldBack = it.sort in held) }
+        )
     }
 
     private fun buildGrid(activeSort: Int?, completed: Map<Int, Boolean>): List<OratureChapterGridItem> =

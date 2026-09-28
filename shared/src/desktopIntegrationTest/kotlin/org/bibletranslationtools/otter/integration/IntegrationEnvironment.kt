@@ -1,6 +1,7 @@
 package org.bibletranslationtools.otter.integration
 
 import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
+import org.bibletranslationtools.otter.common.domain.collections.UpgradeProjectEdition
 import org.bibletranslationtools.otter.common.initialization.ReconcileEditionLabels
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.MatchEditionToRecordings
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
@@ -482,6 +483,17 @@ class IntegrationEnvironment private constructor(
         db.contentDao.linkDerivative(projectRow, sourceRow)
     }
 
+    /** Removes source edition [sourceId] if nothing uses it, as a user's remove action would. */
+    fun removeEdition(sourceId: Int): Boolean = runBlocking {
+        koin.get<org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionLifecycle>()
+            .removeIfUnused(editionMetadata(sourceId))
+    }
+
+    /** Anything from the app's Koin graph, for a test of a use case this file has no helper for. */
+    inline fun <reified T : Any> koinGet(): T = koinForTests.get()
+
+    @PublishedApi internal val koinForTests: Koin get() = koin
+
     /** Deletes every project, as the app's project management does. */
     fun deleteAllProjects() {
         val descriptors = koin.get<IWorkbookDescriptorRepository>().getAll(computeSourceAudio = false).blockingGet()
@@ -507,6 +519,14 @@ class IntegrationEnvironment private constructor(
     ): Collection = koin.get<CreateProject>()
         .create(sourceProject, targetLanguage, mode, resourceId = null, deriveProjectFromVerses)
         .blockingGet()
+
+    /** Creates every book of [source]'s source into [targetLanguage], as Orature's project wizard does. */
+    fun createAllBooks(source: Int, targetLanguage: Language, mode: ProjectMode = ProjectMode.NARRATION) {
+        val edition = editionMetadata(source)
+        koin.get<CreateProject>().createAllBooks(edition.language, targetLanguage, mode, edition = edition).blockingAwait()
+    }
+
+    val upgradeProjectEdition: UpgradeProjectEdition get() = koin.get()
 
     /** An imported source book by slug, e.g. "jud"; of edition [sourceId] when several are installed. */
     fun sourceBook(slug: String, sourceId: Int? = null): Collection {

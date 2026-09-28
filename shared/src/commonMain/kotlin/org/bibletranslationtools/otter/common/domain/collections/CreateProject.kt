@@ -98,19 +98,21 @@ class CreateProject(
         edition: ResourceMetadata? = null
     ): Completable {
         val isVerseByVerse = projectMode != ProjectMode.TRANSLATION
-        return collectionRepo.getRootSources()
-            .flattenAsObservable {
-                it
-            }
-            .filter { collection ->
-                collection.resourceContainer?.language == sourceLanguage &&
-                        (resourceId?.let  { collection.resourceContainer?.identifier == resourceId } ?: true) &&
-                        (edition?.let { collection.resourceContainer?.id == it.id } ?: true)
-            }
-            // Several editions of a source may be installed; new projects use the newest.
-            .sorted(EditionOrder.newestFirstBy { it.resourceContainer })
-            .firstOrError()
-            .map { rootCollection ->
+        // One action with plain blocking calls, not blocking calls inside an Rx chain's callbacks:
+        // `firstOrError` hands its IO worker back to the pool while its callback still runs on it,
+        // so a blocking call made there could be queued behind itself on that same thread.
+        return Completable
+            .fromAction {
+                val rootCollection = collectionRepo.getRootSources().blockingGet()
+                    .filter { collection ->
+                        collection.resourceContainer?.language == sourceLanguage &&
+                            (resourceId?.let { collection.resourceContainer?.identifier == resourceId } ?: true) &&
+                            (edition?.let { collection.resourceContainer?.id == it.id } ?: true)
+                    }
+                    // Several editions of a source may be installed; new projects use the newest.
+                    .sortedWith(EditionOrder.newestFirstBy { it.resourceContainer })
+                    .firstOrNull()
+                    ?: throw NoSuchElementException("No source in ${sourceLanguage.slug} to create books from")
                 val translated = booksWithProjects(rootCollection.resourceContainer!!, targetLanguage)
                 collectionRepo.getChildren(rootCollection).blockingGet()
                     .filter { it.slug !in translated }
@@ -121,7 +123,6 @@ class CreateProject(
                     }
             }
             .subscribeOn(Schedulers.io())
-            .ignoreElement()
             .concatWith(
                 translationCreation.create(sourceLanguage, targetLanguage).ignoreElement()
             )

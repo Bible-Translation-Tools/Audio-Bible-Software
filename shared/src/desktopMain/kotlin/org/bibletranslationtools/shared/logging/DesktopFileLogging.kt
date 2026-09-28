@@ -3,9 +3,11 @@ package org.bibletranslationtools.shared.logging
 import org.bibletranslationtools.otter.common.persistence.DesktopDirectoryProvider
 import org.slf4j.LoggerFactory
 import java.io.File
+import java.io.PrintStream
 
 /**
- * Sends the desktop apps' logs to a FILE, because in a packaged app they otherwise go nowhere.
+ * Sends the desktop apps' logs to a FILE, because in a packaged app they otherwise go nowhere, and
+ * also to the console (stdout), so a run from the IDE or a terminal shows them as they happen.
  *
  * The binding is `slf4j-simple`, which writes to stderr. That is fine from a terminal — which is what
  * its comment in `shared/build.gradle.kts` had in mind — but a jpackage app on Windows is launched by a
@@ -57,9 +59,19 @@ object DesktopFileLogging {
             }
         }
 
+        // slf4j-simple writes to one place, so it writes to stdout and stdout is split into the file
+        // and the console. stdout rather than stderr so an IDE doesn't show every line as an error.
+        // Where there is no console, as in a packaged Windows app, the file still gets it all. A
+        // launcher `-Dorg.slf4j.simpleLogger.logFile` still wins, and then nothing is split.
+        if (System.getProperty(LOG_FILE_PROPERTY) == null) {
+            val fileTeed = runCatching {
+                val file = logFile.outputStream()
+                System.setOut(PrintStream(TeeOutputStream(System.out, file), true, Charsets.UTF_8))
+            }.isSuccess
+            System.setProperty(LOG_FILE_PROPERTY, if (fileTeed) "System.out" else logFile.absolutePath)
+        }
         // Only set what has not been set already, so a launcher `-D` or an env-specific override still
-        // wins — including pointing the logs somewhere else entirely.
-        setIfAbsent("org.slf4j.simpleLogger.logFile", logFile.absolutePath)
+        // wins.
         setIfAbsent("org.slf4j.simpleLogger.showDateTime", "true")
         setIfAbsent("org.slf4j.simpleLogger.dateTimeFormat", "yyyy-MM-dd HH:mm:ss.SSS")
         // Left at slf4j-simple's default (info) unless asked otherwise: the `logDebug` traces include a
@@ -76,6 +88,8 @@ object DesktopFileLogging {
             .info("Logging to ${logFile.absolutePath}")
         return logFile
     }
+
+    private const val LOG_FILE_PROPERTY = "org.slf4j.simpleLogger.logFile"
 
     private fun setIfAbsent(key: String, value: String) {
         if (System.getProperty(key) == null) System.setProperty(key, value)

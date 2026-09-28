@@ -22,6 +22,7 @@ import org.bibletranslationtools.otter.common.domain.collections.BookUpgradePlan
 import org.bibletranslationtools.otter.common.domain.collections.ChapterOutcome
 import org.bibletranslationtools.otter.common.domain.collections.ChapterUpgradePlan
 import org.bibletranslationtools.otter.common.domain.collections.EditionChoice
+import org.bibletranslationtools.otter.common.domain.collections.EditionRelation
 import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
 import org.bibletranslationtools.shared.preferences.ActiveNavState
 import org.bibletranslationtools.shared.preferences.IAppPreferences
@@ -66,7 +67,7 @@ class EditionChangeViewModelTest {
 
     private fun startWith(nav: ActiveNavState) {
         coEvery { upgrade.editionState(projectBook) } returns BookEditionState(
-            projectBook, v12, null, listOf(EditionChoice(v2407, newer = true, distinguishingCode = null)), emptyList()
+            projectBook, v12, null, listOf(EditionChoice(v2407, EditionRelation.NEWER, distinguishingCode = null)), emptyList()
         )
         coEvery { upgrade.plan(projectBook, v2407) } returns plan
         every { preferences.navState } returns flowOf(nav)

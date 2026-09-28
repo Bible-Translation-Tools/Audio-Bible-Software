@@ -1,5 +1,8 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
+import org.bibletranslationtools.otter.common.domain.collections.EditionRelation
+import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.DescribeSourceEditions
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionOrder
 import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.CancellationException
@@ -35,7 +38,27 @@ import org.koin.core.component.inject
  */
 data class OratureResourceVersion(
     val slug: String,
-    val title: String
+    val title: String,
+    /** The installed editions of this resource, newest first; more than one adds the edition step. */
+    val editions: List<ResourceMetadata> = emptyList()
+)
+
+/**
+ * An edition offered in the edition step: [code] tells apart two that would look the same.
+ * [relation] compares it with the others: NEWER is the newest, OLDER has a newer one installed,
+ * SAME_DATES has none newer and none older (editions released together).
+ */
+data class OratureEditionOption(val edition: ResourceMetadata, val code: String?, val relation: EditionRelation) {
+    val isNewest: Boolean get() = relation == EditionRelation.NEWER
+}
+
+/** A create waiting for its edition to be chosen. */
+data class OraturePendingCreate(
+    val sourceLanguage: Language,
+    val targetLanguage: Language,
+    val resourceVersion: OratureResourceVersion?,
+    /** Where back goes from the edition step. */
+    val returnStep: WizardStep
 )
 
 /**
@@ -55,7 +78,9 @@ enum class WizardStep {
     SELECT_TYPE,
     SELECT_SOURCE_LANGUAGE,
     SELECT_TARGET_LANGUAGE,
-    SELECT_VERSION
+    SELECT_VERSION,
+    /** Only when the chosen resource has more than one edition installed. */
+    SELECT_EDITION
 }
 
 /**
@@ -74,7 +99,9 @@ data class WizardUiState(
     val resourceVersions: List<OratureResourceVersion> = emptyList(),
     val sourceLanguageSearchQuery: String = "",
     val targetLanguageSearchQuery: String = "",
-    val isLoading: Boolean = false
+    val isLoading: Boolean = false,
+    val editionOptions: List<OratureEditionOption> = emptyList(),
+    val pendingCreate: OraturePendingCreate? = null
 ) {
     /** Source languages filtered+sorted by [sourceLanguageSearchQuery] (VM's setupLanguageSearchListener). */
     val visibleSourceLanguages: List<Language>
@@ -136,6 +163,7 @@ class OratureProjectWizardViewModel(
     private val workbookDescriptorRepo: IWorkbookDescriptorRepository by inject()
     private val importer: ImportProjectUseCase by inject()
     private val projectDeletion: OratureProjectDeletion by inject()
+    private val describeSourceEditions: DescribeSourceEditions by inject()
 
     private val _uiState = MutableStateFlow(WizardUiState())
     val uiState: StateFlow<WizardUiState> = _uiState.asStateFlow()
@@ -323,17 +351,33 @@ class OratureProjectWizardViewModel(
             if (!exists) {
                 importer.sideloadSource(language).await()
             }
-            // One entry per source: the newest installed edition. Choosing among editions comes
-            // with the edition picker.
+            // One entry per source, titled by its newest edition; the editions come along for the
+            // edition step.
             val versions = resourceMetadataRepo.getAllSources().await()
                 .filter { it.language == language }
                 .sortedWith(EditionOrder.newestFirst)
-                .distinctBy { it.identifier }
-                .map { OratureResourceVersion(it.identifier, it.title) }
+                .groupBy { it.identifier }
+                .map { (identifier, editions) -> OratureResourceVersion(identifier, editions.first().title, editions) }
             withContext(Dispatchers.Main) {
                 _uiState.value = _uiState.value.copy(resourceVersions = versions)
             }
             versions
+        }
+    }
+
+    /** The edition step: create the project from [option]'s edition. */
+    fun onEditionSelected(option: OratureEditionOption) {
+        val pending = _uiState.value.pendingCreate ?: return
+        _uiState.value = _uiState.value.copy(isLoading = true)
+        launchLogged {
+            try {
+                createProject(pending.sourceLanguage, pending.targetLanguage, pending.resourceVersion, option.edition)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logFailure("creating the project from the selected edition", e)
+                _uiState.value = _uiState.value.copy(isLoading = false)
+            }
         }
     }
 
@@ -347,7 +391,8 @@ class OratureProjectWizardViewModel(
     private suspend fun createProject(
         sourceLanguage: Language,
         targetLanguage: Language,
-        resourceVersion: OratureResourceVersion?
+        resourceVersion: OratureResourceVersion?,
+        edition: ResourceMetadata? = null
     ) {
         val mode = _uiState.value.mode ?: return
         _uiState.value = _uiState.value.copy(isLoading = true)
@@ -374,6 +419,28 @@ class OratureProjectWizardViewModel(
             return
         }
 
+        // Several editions of this resource installed: the user picks one first. An existing
+        // project was reopened above whatever its edition (O1-Q3); it changes edition from home.
+        val editions = (resourceVersion ?: _uiState.value.resourceVersions.singleOrNull())?.editions.orEmpty()
+        if (edition == null && editions.size > 1) {
+            val summaries = withContext(ioDispatcher) { describeSourceEditions.describeAll(editions) }
+            _uiState.value = _uiState.value.copy(
+                isLoading = false,
+                editionOptions = editions.map { edition ->
+                    val others = editions.filter { it.id != edition.id }
+                    val relation = when {
+                        others.any { EditionOrder.isNewer(it, edition) } -> EditionRelation.OLDER
+                        others.any { EditionOrder.isNewer(edition, it) } -> EditionRelation.NEWER
+                        else -> EditionRelation.SAME_DATES
+                    }
+                    OratureEditionOption(edition, summaries[edition.id]?.distinguishingCode, relation)
+                },
+                pendingCreate = OraturePendingCreate(sourceLanguage, targetLanguage, resourceVersion, _uiState.value.step),
+                step = WizardStep.SELECT_EDITION
+            )
+            return
+        }
+
         withContext(ioDispatcher) {
             val sourceExists = collectionRepo.getRootSources().await()
                 .any { it.resourceContainer?.language == sourceLanguage }
@@ -384,7 +451,8 @@ class OratureProjectWizardViewModel(
                 sourceLanguage,
                 targetLanguage,
                 mode,
-                resourceVersion?.slug
+                resourceVersion?.slug,
+                edition
             ).await()
         }
 
@@ -462,6 +530,17 @@ class OratureProjectWizardViewModel(
                 _uiState.value = state.copy(
                     selectedTargetLanguage = null,
                     step = WizardStep.SELECT_TARGET_LANGUAGE
+                )
+                true
+            }
+            WizardStep.SELECT_EDITION -> {
+                // Back to the step the edition step was reached from, as it was before the choice.
+                val returnStep = state.pendingCreate?.returnStep ?: WizardStep.SELECT_TARGET_LANGUAGE
+                _uiState.value = state.copy(
+                    editionOptions = emptyList(),
+                    pendingCreate = null,
+                    selectedTargetLanguage = if (returnStep == WizardStep.SELECT_VERSION) state.selectedTargetLanguage else null,
+                    step = returnStep
                 )
                 true
             }

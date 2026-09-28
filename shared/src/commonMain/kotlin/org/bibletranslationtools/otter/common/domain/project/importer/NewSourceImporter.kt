@@ -39,8 +39,6 @@ import java.io.File
 import java.io.IOException
 import java.util.UUID
 import io.reactivex.Completable
-import kotlinx.coroutines.rx2.rxCompletable
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionLifecycle
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
 import org.bibletranslationtools.otter.common.OTTER_JSON
 
@@ -50,7 +48,6 @@ class NewSourceImporter(
     private val metadataRepository: IResourceMetadataRepository,
     private val structurePlanner: SourceStructurePlanner,
     private val fingerprinter: EditionFingerprinter,
-    private val editionLifecycle: EditionLifecycle,
     // getVersification() below reads a versification directly to synthesize USFM for audio-only
     // containers.
     private val versificationRepository: IVersificationRepository,
@@ -168,11 +165,8 @@ class NewSourceImporter(
                 return@create
             }
 
+            // Older editions are never removed automatically (O1-Q5): the new one goes beside them.
             importTree(placed, plan.tree, fingerprint)
-                .flatMap { result ->
-                    if (result == ImportResult.SUCCESS) retireSuperseded(placed).toSingleDefault(result)
-                    else Single.just(result)
-                }
                 .subscribe { result ->
                     notifyCallback(result, callback, file)
                     emitter.onSuccess(result)
@@ -233,27 +227,15 @@ class NewSourceImporter(
             editionDir.deleteRecursively()
         }
         editionDir.parentFile.mkdirs()
-        if (!root.renameTo(editionDir)) {
-            root.copyRecursively(editionDir, overwrite = true)
-            root.deleteRecursively()
+        // The container's own folder becomes the edition folder. Staging unpacks a zip under its
+        // file name (import_123/en_ulb/manifest.yaml), and those folders mean nothing here.
+        val containerRoot = staged.rcFile
+        if (!containerRoot.renameTo(editionDir)) {
+            containerRoot.copyRecursively(editionDir, overwrite = true)
         }
-        val rcFile = editionDir.resolve(staged.rcFile.relativeTo(root))
-        return Placed(ResourceContainer.load(rcFile, OtterResourceContainerConfig()), rcFile, editionDir)
+        root.deleteRecursively()
+        return Placed(ResourceContainer.load(editionDir, OtterResourceContainerConfig()), editionDir, editionDir)
     }
-
-    /**
-     * Removes older editions of the same source that the one just installed supersedes and that
-     * nothing uses. A failure here is logged: the new edition is installed either way.
-     */
-    private fun retireSuperseded(placed: Placed): Completable =
-        rxCompletable {
-            val target = placed.rcFile.canonicalFile
-            val installed = metadataRepository.getAllSourcesSuspend().firstOrNull { it.path.canonicalFile == target }
-            if (installed != null) editionLifecycle.retireSupersededBy(installed)
-        }.onErrorComplete {
-            logger.error("Could not retire editions superseded by ${placed.rcFile}", it)
-            true
-        }
 
     private fun isStoredSourcePath(dir: File): Boolean =
         metadataRepository.getAllSources().blockingGet().any { it.path.isInside(dir) }

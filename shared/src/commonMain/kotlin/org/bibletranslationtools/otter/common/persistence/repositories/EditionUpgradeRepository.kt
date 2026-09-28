@@ -57,7 +57,7 @@ class EditionUpgradeRepository(
                 slug = chapter.slug,
                 sort = chapter.sort,
                 structureEditionId = collectionDao.fetchStructureEdition(chapter.id) ?: source.id,
-                hasLiveTakes = rows.any { takeDao.fetchByContentId(it.id, includeDeleted = false).isNotEmpty() },
+                hasLiveTakes = takeDao.fetchByCollectionId(chapter.id, includeDeleted = false).isNotEmpty(),
                 hasChunks = rows.any { it.type_fk == textType && it.labelKey == CHUNK_LABEL },
                 verses = rows.filter { it.isVerse() }.sortedBy { it.start }.map { it.range() }
             )
@@ -66,9 +66,8 @@ class EditionUpgradeRepository(
     }
 
     override fun sourceBookText(editionId: Int, bookSlug: String): SourceBookText? {
-        val book = collectionDao.fetchAll()
-            .filter { it.dublinCoreFk == editionId && it.slug == bookSlug }
-            .firstOrNull { collectionDao.fetchChildren(it).isNotEmpty() }
+        val book = collectionDao.fetch(bookSlug, editionId)
+            ?.takeIf { collectionDao.fetchChildren(it).isNotEmpty() }
             ?: return null
         val chapters = collectionDao.fetchChildren(book).associate { chapter ->
             val verses = contentDao.fetchByCollectionId(chapter.id)

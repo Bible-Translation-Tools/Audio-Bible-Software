@@ -115,6 +115,8 @@
     <string name="edition_change_no_other">No other edition of this source is installed.</string>
     <string name="label_newer">Newer</string>
     <string name="label_older">Older</string>
+    <!-- Two editions with the same issued and modified dates but different content: neither is newer. -->
+    <string name="label_same_dates">Same date, different content</string>
     <string name="action_next">Next</string>
     <string name="action_apply">Apply</string>
     <string name="edition_preview_title">Move to %1$s</string>

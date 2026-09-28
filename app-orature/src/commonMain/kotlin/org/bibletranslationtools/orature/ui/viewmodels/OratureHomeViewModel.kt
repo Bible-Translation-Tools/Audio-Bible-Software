@@ -15,6 +15,8 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IWork
 import org.bibletranslationtools.otter.common.data.primitives.Anthology
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
+import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.DescribeSourceEditions
 import org.bibletranslationtools.orature.services.OratureImportEvents
 import org.bibletranslationtools.orature.services.OratureProjectEvents
 import org.bibletranslationtools.orature.services.OratureProjectDeletion
@@ -48,8 +50,29 @@ data class OratureBookUiModel(
     /** True when the book has source audio available (JVM: shows the speaker status icon). */
     val hasSourceAudio: Boolean,
     /** The project mode — routes book-open to the narration vs translation page. */
-    val mode: ProjectMode
+    val mode: ProjectMode,
+    /** The book's project collection (the descriptor's target), which an edition change moves. */
+    val projectBookId: Int = id,
+    /** The source edition the book is on; null when its source has no container. */
+    val edition: ResourceMetadata? = null
 )
+
+/**
+ * Which source edition a project's books are on (O1-Q2).
+ *
+ * @property main the edition most of its books are on.
+ * @property mainCode [main]'s short code, when another installed edition would look the same.
+ * @property mixed its books aren't all on [main].
+ * @property newer the newest installed edition, when it is newer than an edition a book is on.
+ */
+data class OratureGroupEdition(
+    val main: ResourceMetadata,
+    val mainCode: String?,
+    val mixed: Boolean,
+    val newer: ResourceMetadata?
+) {
+    val updateAvailable: Boolean get() = newer != null
+}
 
 /** One project-group card in the projects pane (mirrors ProjectGroupCardModel). */
 data class OratureProjectGroupUiModel(
@@ -59,7 +82,8 @@ data class OratureProjectGroupUiModel(
     val mode: ProjectMode,
     val resourceSlug: String,
     val modifiedTs: LocalDateTime?,
-    val books: List<OratureBookUiModel>
+    val books: List<OratureBookUiModel>,
+    val edition: OratureGroupEdition? = null
 )
 
 data class OratureHomeUiState(
@@ -98,6 +122,7 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
     private val importEvents: OratureImportEvents by inject()
     private val projectEvents: OratureProjectEvents by inject()
     private val projectDeletion: OratureProjectDeletion by inject()
+    private val describeSourceEditions: DescribeSourceEditions by inject()
 
     private val _uiState = MutableStateFlow(OratureHomeUiState())
     val uiState: StateFlow<OratureHomeUiState> = _uiState.asStateFlow()
@@ -152,6 +177,12 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
     /** Reload projects, selecting the most-recently-modified group (the default landing state). */
     fun loadProjects() = reloadProjects { groups -> groups.firstOrNull()?.key }
 
+    /** After a project or book moved to another edition: reload, keeping the same project selected. */
+    fun onEditionChanged() {
+        val selected = _uiState.value.selectedGroupKey
+        reloadProjects { groups -> groups.firstOrNull { it.key == selected }?.key ?: groups.firstOrNull()?.key }
+    }
+
     /**
      * Reload projects after the wizard created (or matched) a project, then reselect THAT
      * group — mirroring the JVM app's `bookMarkedProjectGroupProperty ?: mostRecent` logic
@@ -187,7 +218,7 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
                 // (false) unresolved. The per-book progress scans and the source-RC zip opens are the
                 // expensive parts; keeping them off the critical path is what makes the home page
                 // appear at once. Mirrors the JVM HomePageViewModel2, which renders the list first.
-                val groups = buildProjectGroups(descriptors)
+                val groups = withEditions(buildProjectGroups(descriptors))
                 loadedDescriptors = descriptors
                 allGroups = groups
                 val visible = groups.filter { it.key !in pendingDeleteKeys }
@@ -373,6 +404,38 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
             .sortedWith(compareBy<OratureProjectGroupUiModel> { it.modifiedTs == null }.thenByDescending { it.modifiedTs })
     }
 
+    /**
+     * Adds each group's edition (O1-Q2). One read of the installed editions for all groups, so it
+     * stays on the list's critical path; a failure only leaves the editions out.
+     */
+    private suspend fun withEditions(groups: List<OratureProjectGroupUiModel>): List<OratureProjectGroupUiModel> {
+        val editions = groups.flatMap { group -> group.books.mapNotNull { it.edition } }
+        if (editions.isEmpty()) return groups
+        val summaries = try {
+            describeSourceEditions.describeAll(editions)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logFailure("describing the projects' source editions", e)
+            return groups
+        }
+        return groups.map { group ->
+            val onEditions = group.books.mapNotNull { it.edition }
+            val main = onEditions.groupingBy { it.id }.eachCount().maxByOrNull { it.value }?.key
+                ?.let { id -> onEditions.first { it.id == id } }
+                ?: return@map group
+            val newer = onEditions.distinctBy { it.id }.mapNotNull { summaries[it.id]?.newerEdition }.firstOrNull()
+            group.copy(
+                edition = OratureGroupEdition(
+                    main = main,
+                    mainCode = summaries[main.id]?.distinguishingCode,
+                    mixed = onEditions.any { it.id != main.id },
+                    newer = newer
+                )
+            )
+        }
+    }
+
     private fun WorkbookDescriptor.groupKey(): OratureProjectGroupKey {
         val resourceSlug = sourceCollection.resourceContainer?.identifier
             ?: sourceCollection.slug
@@ -396,7 +459,9 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
             progress = 0.0,
             sort = sort,
             hasSourceAudio = hasSourceAudio,
-            mode = mode
+            mode = mode,
+            projectBookId = targetCollection.id,
+            edition = sourceCollection.resourceContainer
         )
 
     fun onSelectProjectGroup(key: OratureProjectGroupKey) {

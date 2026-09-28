@@ -56,6 +56,17 @@ class SideBySideEditionsTest {
     }
 
     @Test
+    fun `the edition folder is the container itself, with nothing from the zip's own folders`() {
+        val environment = environment().importBoth()
+
+        environment.sourceEditions().forEach { edition ->
+            val path = File(edition.path)
+            assertTrue(Regex("v12-[0-9a-f]{6}").matches(path.name), "stored path '$path'")
+            assertTrue(path.resolve("manifest.yaml").isFile, "no manifest directly in $path")
+        }
+    }
+
+    @Test
     fun `nothing is left in the staging folder`() {
         val environment = environment().importBoth()
 

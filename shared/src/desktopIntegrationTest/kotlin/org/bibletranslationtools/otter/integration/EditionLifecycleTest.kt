@@ -8,7 +8,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * What happens to older editions of a source when a newer one arrives or a project leaves one.
+ * Editions are never removed automatically (O1-Q5): not when a newer one arrives, not when a
+ * project leaves one. Removing one by hand needs nothing to use it.
  * The "newer" edition is the committed English ULB fixture with later issued and modified dates
  * and one verse reworded.
  */
@@ -28,31 +29,16 @@ class EditionLifecycleTest {
         createProject(sourceBook("jud", sourceId), language("en"))
 
     @Test
-    fun `a newer edition replaces an older one nothing uses`() {
+    fun `a newer edition is installed beside an older one nothing uses`() {
         val environment = environment().import("en_ulb.zip")
         val older = environment.sourceEditions().single()
 
         environment.import(environment.newerEdition("en_ulb.zip"))
 
-        val editions = environment.sourceEditions()
-        assertEquals(1, editions.size)
-        assertEquals("2024-07-12", editions.single().issued)
-        assertFalse(File(older.path).exists(), "the replaced edition's files are gone")
+        assertEquals(listOf("2017-11-29", "2024-07-12"), environment.sourceEditions().map { it.issued })
+        assertTrue(File(older.path).exists(), "never removed automatically (O1-Q5)")
     }
 
-    @Test
-    fun `an older edition a project uses is kept beside the newer one`() {
-        val environment = environment().import("en_ulb.zip")
-        val older = environment.sourceEditions().single()
-        environment.projectFrom(older.id)
-
-        environment.import(environment.newerEdition("en_ulb.zip"))
-
-        assertEquals(2, environment.sourceEditions().size)
-        assertTrue(File(older.path).exists())
-    }
-
-    /** Importing an older edition on purpose (for example to downgrade to) keeps it. */
     @Test
     fun `an older edition imported after a newer one is kept`() {
         val environment = environment()
@@ -74,7 +60,7 @@ class EditionLifecycleTest {
     }
 
     @Test
-    fun `deleting the last project of a superseded edition removes that edition`() {
+    fun `deleting the last project of an older edition keeps that edition`() {
         val environment = environment().import("en_ulb.zip")
         val older = environment.sourceEditions().single()
         environment.projectFrom(older.id)
@@ -82,17 +68,28 @@ class EditionLifecycleTest {
 
         environment.deleteAllProjects()
 
-        assertEquals(listOf("2024-07-12"), environment.sourceEditions().map { it.issued })
-        assertFalse(File(older.path).exists())
+        assertEquals(2, environment.sourceEditions().size)
+        assertTrue(File(older.path).exists())
     }
 
     @Test
-    fun `deleting the last project of the newest edition keeps it`() {
+    fun `an edition a project uses can't be removed`() {
         val environment = environment().import("en_ulb.zip")
-        environment.projectFrom(environment.sourceEditions().single().id)
+        val edition = environment.sourceEditions().single()
+        environment.projectFrom(edition.id)
 
-        environment.deleteAllProjects()
+        assertFalse(environment.removeEdition(edition.id))
+        assertTrue(File(edition.path).exists())
+    }
 
-        assertEquals(1, environment.sourceEditions().size)
+    @Test
+    fun `an edition nothing uses can be removed, files and all`() {
+        val environment = environment().import("en_ulb.zip")
+        val edition = environment.sourceEditions().single()
+
+        assertTrue(environment.removeEdition(edition.id))
+
+        assertTrue(environment.sourceEditions().isEmpty())
+        assertFalse(File(edition.path).exists())
     }
 }

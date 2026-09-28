@@ -57,9 +57,9 @@ class BackupEditionRoundTripTest {
         val backup = environment.backup(project)
         assertTrue(RcConstants.SOURCE_EDITIONS_FILE in environment.zipEntries(backup))
 
-        // As on another device: the project, and with it the older edition, gone.
+        // As on another device: the project, and the older edition, gone.
         environment.deleteAllProjects()
-        assertTrue(environment.sourceEditions().none { it.issued == "2017-11-29" }, "the older edition was retired")
+        assertTrue(environment.removeEdition(environment.older.id), "the older edition is removed")
 
         environment.import(backup)
 
@@ -108,7 +108,7 @@ class BackupEditionRoundTripTest {
             "${RcConstants.SOURCE_DIR}/en_ulb.zip"
         )
         environment.deleteAllProjects()
-        assertTrue(environment.sourceEditions().none { it.issued == "2017-11-29" }, "v12 was retired with the project")
+        assertTrue(environment.removeEdition(environment.older.id), "v12 is removed with the project")
 
         environment.import(stripped)
 

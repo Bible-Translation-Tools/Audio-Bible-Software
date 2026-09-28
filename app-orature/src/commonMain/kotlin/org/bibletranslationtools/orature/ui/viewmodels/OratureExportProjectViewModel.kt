@@ -1,5 +1,6 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
+import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
 import androidx.lifecycle.ViewModel
 import io.reactivex.Single
 import kotlinx.coroutines.CancellationException
@@ -43,8 +44,15 @@ data class OratureExportUiState(
     /** Non-null while exporting (0..1); null otherwise. */
     val progress: Float? = null,
     val done: Boolean = false,
-    val error: String? = null
-)
+    val error: String? = null,
+    /** Chapters that keep an earlier source edition's verses: a published export mixes structures (A13). */
+    val heldBackChapters: List<Int> = emptyList()
+) {
+    /** Selected chapters that would mix verse structures in a published export; a backup restores them as they are. */
+    val mixedEditionChapters: List<Int>
+        get() = if (selectedType == ExportType.BACKUP) emptyList()
+        else chapters.filter { it.selected && it.sort in heldBackChapters }.map { it.sort }
+}
 
 /**
  * Drives the project-export dialog (JVM: `ExportProjectViewModel`): loads the workbook's chapters
@@ -60,6 +68,7 @@ class OratureExportProjectViewModel(
     private val audioExporter: AudioProjectExporter by inject()
     private val sourceExporter: SourceProjectExporter by inject()
     private val backupExporter: BackupProjectExporter by inject()
+    private val upgradeBookEdition: UpgradeBookEdition by inject()
 
     private val _uiState = MutableStateFlow(OratureExportUiState())
     val uiState: StateFlow<OratureExportUiState> = _uiState.asStateFlow()
@@ -108,7 +117,11 @@ class OratureExportProjectViewModel(
                     isLoading = false,
                     bookTitle = wb.target.title.ifEmpty { wb.target.slug.uppercase() },
                     // Derive selectability for the default type and pre-select all selectable.
-                    chapters = applySelectability(chapters, _uiState.value.selectedType)
+                    chapters = applySelectability(chapters, _uiState.value.selectedType),
+                    heldBackChapters = runCatching {
+                        withContext(Dispatchers.IO) { upgradeBookEdition.editionState(wb.target.collectionId) }
+                    }.onFailure { logFailure("loading the book's source editions", it) }
+                        .getOrNull()?.heldBackChapters.orEmpty()
                 )
                 recomputeEstimate()
             } catch (e: CancellationException) {

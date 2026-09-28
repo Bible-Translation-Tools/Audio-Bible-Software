@@ -1,5 +1,7 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
+import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
+import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.reactivex.disposables.Disposable
@@ -66,7 +68,19 @@ data class OratureChapterGridItem(
     /** The chapter number/title shown on the button (JVM: `chapter.title`). */
     val title: String,
     val completed: Boolean,
-    val selected: Boolean
+    val selected: Boolean,
+    /** The chapter keeps an earlier source edition's verses: it was recorded when the book moved on. */
+    val heldBack: Boolean = false
+)
+
+/**
+ * What the open book's banner says about source editions: [newer] is installed (the book can move
+ * to it from home), and [heldBackChapters] keep an earlier edition's verse structure.
+ */
+data class OratureEditionNotice(
+    val newer: ResourceMetadata?,
+    val newerCode: String?,
+    val heldBackChapters: List<Int>
 )
 
 /**
@@ -95,6 +109,7 @@ data class OratureNarrationUiState(
     val activeChapterTitle: String = "",
     val activeChapterSort: Int? = null,
     val chapters: List<OratureChapterGridItem> = emptyList(),
+    val editionNotice: OratureEditionNotice? = null,
     val hasPreviousChapter: Boolean = false,
     val hasNextChapter: Boolean = false,
     /** The narration verse list (empty while a chapter's narration is still loading). */
@@ -203,6 +218,7 @@ class OratureNarrationViewModel(
 ) : ViewModel(), KoinComponent {
 
     private val openWorkbook: OpenWorkbook by inject()
+    private val upgradeBookEdition: UpgradeBookEdition by inject()
     private val projectEvents: OratureProjectEvents by inject()
     private val loadChapterSourceText: LoadChapterSourceText by inject()
     private val workbookDataStore: OratureWorkbookDataStore by inject()
@@ -400,6 +416,7 @@ class OratureNarrationViewModel(
                     hasPreviousChapter = hasNeighbor(active?.sort, step = -1),
                     hasNextChapter = hasNeighbor(active?.sort, step = +1)
                 )
+                loadEditionNotice { loaded.workbook.target.collectionId }
 
                 if (active != null) initializeNarration(active)
             } catch (e: CancellationException) {
@@ -444,6 +461,28 @@ class OratureNarrationViewModel(
         if (activeSort == null) return false
         val index = chapters.indexOfFirst { it.sort == activeSort }
         return index >= 0 && chapters.getOrNull(index + step) != null
+    }
+
+    /**
+     * Whether a newer edition is installed and which chapters keep an earlier edition's verses,
+     * for the banner and the chapter grid. Changing edition happens from home (O1-Q4).
+     */
+    private fun loadEditionNotice(projectBookId: () -> Int) = launchLogged {
+        val book = try {
+            withContext(ioDispatcher) { upgradeBookEdition.editionState(projectBookId()) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logFailure("loading the book's source editions", e)
+            null
+        } ?: return@launchLogged
+        val held = book.heldBackChapters.toSet()
+        val newest = book.choices.firstOrNull { it.newer }
+        _uiState.value = _uiState.value.copy(
+            editionNotice = OratureEditionNotice(newest?.edition, newest?.distinguishingCode, book.heldBackChapters)
+                .takeIf { newest != null || held.isNotEmpty() },
+            chapters = _uiState.value.chapters.map { it.copy(heldBack = it.sort in held) }
+        )
     }
 
     private fun buildGrid(activeSort: Int?, completed: Map<Int, Boolean>): List<OratureChapterGridItem> =

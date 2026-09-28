@@ -3,10 +3,8 @@ package org.bibletranslationtools.otter.common.domain.collections
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IEditionUpgradeRepository
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.DescribeSourceEditions
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionLifecycle
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionOrder
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.InstalledSourceEditions
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.structure.ChapterDiff
@@ -65,14 +63,34 @@ data class BookUpgradePlan(
     val toSourceBookId: Int get() = rebase.toSourceBookId
 }
 
+/** How an edition compares with the one a book is on (see [EditionOrder]). */
+enum class EditionRelation {
+    /** Issued, or modified, later: moving to it is an upgrade. */
+    NEWER,
+    /** Issued, or modified, earlier: moving to it is a downgrade. */
+    OLDER,
+    /** The same dates, with different content: neither supersedes the other. */
+    SAME_DATES;
+
+    companion object {
+        fun of(edition: ResourceMetadata, comparedWith: ResourceMetadata): EditionRelation = when {
+            EditionOrder.isNewer(edition, comparedWith) -> NEWER
+            EditionOrder.isNewer(comparedWith, edition) -> OLDER
+            else -> SAME_DATES
+        }
+    }
+}
+
 /**
  * An installed edition a book can move to.
  *
- * @property newer it is newer than the book's current edition (an upgrade); otherwise a downgrade
- *   or a sibling edition.
+ * @property relation how it compares with the book's current edition.
  * @property distinguishingCode as in [org.bibletranslationtools.otter.common.domain.resourcecontainer.SourceEditionSummary].
  */
-data class EditionChoice(val edition: ResourceMetadata, val newer: Boolean, val distinguishingCode: String?)
+data class EditionChoice(val edition: ResourceMetadata, val relation: EditionRelation, val distinguishingCode: String?) {
+    /** Moving to it is an upgrade. */
+    val newer: Boolean get() = relation == EditionRelation.NEWER
+}
 
 /**
  * A project book's source edition and where it can move.
@@ -90,8 +108,8 @@ data class BookEditionState(
     val updateAvailable: Boolean get() = choices.any { it.newer }
 }
 
-/** A book can't move to that edition. */
-class UpgradeNotPossibleException(message: String) : IllegalStateException(message)
+/** A book can't move to that edition; [bookSlug] is set when the edition hasn't got the book. */
+class UpgradeNotPossibleException(message: String, val bookSlug: String? = null) : IllegalStateException(message)
 
 /**
  * Moves a project book to another installed edition of its source: an upgrade or a downgrade.
@@ -107,8 +125,6 @@ class UpgradeNotPossibleException(message: String) : IllegalStateException(messa
  */
 class UpgradeBookEdition(
     private val repository: IEditionUpgradeRepository,
-    private val metadataRepository: IResourceMetadataRepository,
-    private val editionLifecycle: EditionLifecycle,
     private val installedEditions: InstalledSourceEditions,
     private val describeSourceEditions: DescribeSourceEditions
 ) {
@@ -123,7 +139,7 @@ class UpgradeBookEdition(
             projectBookId = book.bookId,
             current = current,
             currentCode = summaries[current.id]?.distinguishingCode,
-            choices = others.map { EditionChoice(it, EditionOrder.isNewer(it, current), summaries[it.id]?.distinguishingCode) },
+            choices = others.map { EditionChoice(it, EditionRelation.of(it, current), summaries[it.id]?.distinguishingCode) },
             heldBackChapters = book.chapters.filter { it.structureEditionId != current.id }.map { it.sort }.sorted()
         )
     }
@@ -132,7 +148,7 @@ class UpgradeBookEdition(
         val book = repository.projectBook(projectBookId)
             ?: throw UpgradeNotPossibleException("No project book $projectBookId")
         val toText = repository.sourceBookText(to.id, book.slug)
-            ?: throw UpgradeNotPossibleException("${to.identifier} v${to.version} has no ${book.slug}")
+            ?: throw UpgradeNotPossibleException("${to.identifier} v${to.version} has no ${book.slug}", book.slug)
 
         // Each chapter is compared from the edition its own structure came from.
         val fromTexts = mutableMapOf<Int, SourceBookText?>()
@@ -193,15 +209,11 @@ class UpgradeBookEdition(
     }
 
     /**
-     * Carries out [plan], then removes the editions the book no longer needs, if they are
-     * superseded and nothing else uses them (see [EditionLifecycle]).
+     * Carries out [plan]. The edition the book leaves stays installed, even when nothing uses it
+     * any more (O1-Q5), so the book can always move back.
      */
     suspend fun apply(plan: BookUpgradePlan) {
         withContext(Dispatchers.IO) { repository.apply(plan.rebase) }
-        val stillNeeded = plan.rebase.chapters.map { it.structureEditionId }.toSet()
-        metadataRepository.getAllSourcesSuspend()
-            .filter { it.id == plan.from.id && it.id !in stillNeeded }
-            .forEach { editionLifecycle.retireIfSuperseded(it) }
     }
 
     /**

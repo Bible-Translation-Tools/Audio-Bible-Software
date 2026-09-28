@@ -1,6 +1,7 @@
 package org.bibletranslationtools.shared.di.koin
 
 import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
+import org.bibletranslationtools.otter.common.domain.collections.UpgradeProjectEdition
 import org.bibletranslationtools.otter.common.initialization.RefreshBundledSources
 import org.bibletranslationtools.otter.common.initialization.ReconcileEditionLabels
 import org.bibletranslationtools.otter.common.domain.project.BundledSourceStamps
@@ -53,6 +54,7 @@ import org.bibletranslationtools.otter.common.domain.project.importer.SourceStru
 import org.bibletranslationtools.otter.common.domain.project.importer.EditionFingerprinter
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.InstalledSourceEditions
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionLifecycle
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.InstalledResources
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.DescribeSourceEditions
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.MatchEditionToRecordings
 import org.bibletranslationtools.otter.common.initialization.AuditSourceStructure
@@ -134,9 +136,11 @@ val implicitCommonModule = module {
     factoryOf(::EditionFingerprinter)
     factoryOf(::InstalledSourceEditions)
     factoryOf(::EditionLifecycle)
+    factoryOf(::InstalledResources)
     factoryOf(::DescribeSourceEditions)
     factoryOf(::MatchEditionToRecordings)
     factoryOf(::UpgradeBookEdition)
+    factoryOf(::UpgradeProjectEdition)
     factoryOf(::BackupEditions)
     factoryOf(::BurritoToResourceContainerConverter)
     factoryOf(::ScriptureBurritoUtils)

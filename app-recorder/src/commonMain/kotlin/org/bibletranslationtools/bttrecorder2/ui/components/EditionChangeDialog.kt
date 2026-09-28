@@ -1,5 +1,7 @@
 package org.bibletranslationtools.bttrecorder2.ui.components
 
+import org.bibletranslationtools.otter.common.domain.collections.EditionRelation
+import org.bibletranslationtools.shared.resources.label_same_dates
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -210,7 +212,13 @@ private fun Choose(state: EditionChangeState.Choosing, onSelect: (EditionChoice)
                 Column {
                     Text(choiceText(choice))
                     Text(
-                        stringResource(if (choice.newer) Res.string.label_newer else Res.string.label_older),
+                        stringResource(
+                            when (choice.relation) {
+                                EditionRelation.NEWER -> Res.string.label_newer
+                                EditionRelation.OLDER -> Res.string.label_older
+                                EditionRelation.SAME_DATES -> Res.string.label_same_dates
+                            }
+                        ),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

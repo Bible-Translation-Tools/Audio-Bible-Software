@@ -21,8 +21,8 @@ import org.slf4j.LoggerFactory
  * Imports a bundled source again when this build bundles a different zip for it than the one last
  * imported, so a newer edition shipped with an app update reaches devices that already have the
  * source. It goes through the ordinary import: the same edition only has its media merged, and a
- * new edition is installed beside the old one, which is then removed if nothing uses it (see
- * EditionLifecycle).
+ * new edition is installed beside the old one, which stays (editions are never removed
+ * automatically, O1-Q5).
  *
  * Only sources with an edition already installed are refreshed; the others are imported on demand
  * when a project first needs them. [BundledSourceStamps] records which zip was last imported, so

@@ -18,8 +18,6 @@
  */
 package org.bibletranslationtools.otter.common.domain.collections
 
-import kotlinx.coroutines.rx2.rxCompletable
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionLifecycle
 import io.reactivex.Completable
 import io.reactivex.Observable
 import io.reactivex.schedulers.Schedulers
@@ -27,8 +25,6 @@ import org.bibletranslationtools.otter.common.api.persistence.IProjectDirectorie
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IEditionUpgradeRepository
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
@@ -39,10 +35,7 @@ class DeleteProject(
     private val collectionRepository: ICollectionRepository,
     private val directoryProvider: IProjectDirectories,
     private val workbookRepository: IWorkbookRepository,
-    private val workbookDescriptorRepo: IWorkbookDescriptorRepository,
-    private val editionLifecycle: EditionLifecycle,
-    private val upgradeRepository: IEditionUpgradeRepository,
-    private val metadataRepository: IResourceMetadataRepository
+    private val workbookDescriptorRepo: IWorkbookDescriptorRepository
 ) {
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -82,29 +75,18 @@ class DeleteProject(
     }
 
     /**
-     * Deletes all the projects/workbooks including the derived collections & content. A source
-     * edition these projects were the last users of, as their book's edition or the one a
-     * held-back chapter keeps its verses from, is then removed if a newer edition of it is
-     * installed (see [EditionLifecycle]).
+     * Deletes all the projects/workbooks including the derived collections & content. The source
+     * editions they used stay installed (O1-Q5).
      */
     fun deleteProjects(list: List<WorkbookDescriptor>): Completable {
-        // Read before the rows go: the editions held-back chapters keep their verses from.
-        var structureEditions = emptySet<Int>()
         return Completable
             .fromAction {
-                structureEditions = list
-                    .flatMap { upgradeRepository.projectBook(it.targetCollection.id)?.chapters.orEmpty() }
-                    .map { it.structureEditionId }
-                    .toSet()
-            }
-            .andThen(Completable.fromAction {
                 list.map { workbookRepository.get(it.sourceCollection, it.targetCollection) }
                     .forEach {
                         delete(it, true).blockingAwait() // avoid concurrent accesses to the same file
                     }
-            })
+            }
             .andThen(workbookDescriptorRepo.delete(list))
-            .andThen(Completable.defer { retireSourceEditions(list, structureEditions) })
             .subscribeOn(Schedulers.single()) // sequential execution of delete to avoid db transaction error
     }
 
@@ -121,18 +103,6 @@ class DeleteProject(
             }
             .andThen(deleteProjects(books))
     }
-
-    private fun retireSourceEditions(list: List<WorkbookDescriptor>, structureEditions: Set<Int>): Completable =
-        rxCompletable {
-            val books = list.mapNotNull { it.sourceCollection.resourceContainer }
-            val held = metadataRepository.getAllSourcesSuspend().filter { it.id in structureEditions }
-            (books + held)
-                .distinctBy { it.id }
-                .forEach { editionLifecycle.retireIfSuperseded(it) }
-        }.onErrorComplete {
-            logger.error("Could not retire source editions after deleting projects", it)
-            true
-        }
 
     private fun recreateWorkbookDescriptor(workbookDescriptor: WorkbookDescriptor): Completable {
         val sourceMetadata = workbookDescriptor.sourceCollection.resourceContainer!!
