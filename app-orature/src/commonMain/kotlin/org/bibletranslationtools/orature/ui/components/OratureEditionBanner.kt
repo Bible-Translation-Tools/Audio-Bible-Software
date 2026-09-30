@@ -37,7 +37,7 @@ fun OratureEditionBanner(notice: OratureEditionNotice, modifier: Modifier = Modi
         }
         if (notice.heldBackChapters.isNotEmpty()) {
             Text(
-                stringResource(Res.string.editionHeldBackChapters, notice.heldBackChapters.joinToString(", ")),
+                stringResource(Res.string.editionHeldBackChapters, localizedList(notice.heldBackChapters.map { it.toString() })),
                 fontSize = 13.sp,
                 color = OratureColors.NoteText
             )

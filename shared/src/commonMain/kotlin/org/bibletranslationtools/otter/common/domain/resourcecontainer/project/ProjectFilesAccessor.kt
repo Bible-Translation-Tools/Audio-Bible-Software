@@ -418,16 +418,22 @@ class ProjectFilesAccessor(
             .ignoreElement()
     }
 
+    /**
+     * Copies the take files in [fileReader]'s project into [destination], keeping their folders
+     * (`c19/...`). An import copies them to a staging folder first, so that none overwrites a take
+     * already in the project (see OngoingProjectImporter).
+     */
     fun copyTakeFiles(
         fileReader: IFileReader,
         manifestProject: Project,
-        filter: (String) -> Boolean = { true }
+        filter: (String) -> Boolean = { true },
+        destination: File = audioDir
     ): Observable<String> {
         return Observable.just(RcConstants.TAKE_DIR, manifestProject.path)
             .filter(fileReader::exists)
             .flatMap { audioDirInRc ->
                 val normalized = File(audioDirInRc).normalize().path
-                fileReader.copyDirectory(normalized, audioDir) {
+                fileReader.copyDirectory(normalized, destination) {
                     isAudioFile(it) && filter(it)
                 }
             }

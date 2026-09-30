@@ -1,5 +1,6 @@
 package org.bibletranslationtools.orature.ui.components
 
+import org.bibletranslationtools.orature.resources.listItemBullet
 import org.bibletranslationtools.otter.common.domain.collections.EditionRelation
 import org.bibletranslationtools.orature.resources.sameDateEdition
 import androidx.compose.foundation.background
@@ -305,7 +306,7 @@ private fun Preview(target: OratureEditionChangeTarget, plan: ProjectUpgradePlan
     }
     if (plan.unavailable.isNotEmpty()) {
         Text(
-            stringResource(Res.string.editionPreviewUnavailable, plan.unavailable.joinToString(", ")),
+            stringResource(Res.string.editionPreviewUnavailable, localizedList(plan.unavailable)),
             fontSize = 14.sp,
             color = OratureColors.NoteText
         )
@@ -319,7 +320,7 @@ private fun ChapterLine(chapter: ChapterUpgradePlan) {
         Text(outcomeText(chapter), fontSize = 14.sp, color = OratureColors.RegularText)
         if (chapter.outcome == ChapterOutcome.ADOPTS || chapter.outcome == ChapterOutcome.HELD_BACK) {
             chapter.structuralChanges.forEach { group ->
-                Text("• " + changeText(group), fontSize = 13.sp, color = OratureColors.NoteText)
+                Text(stringResource(Res.string.listItemBullet, changeText(group)), fontSize = 13.sp, color = OratureColors.NoteText)
             }
         }
         if (chapter.chunksReset) {
@@ -336,7 +337,7 @@ private fun Done(target: OratureEditionChangeTarget, choice: EditionChoice, plan
             stringResource(
                 Res.string.editionHeldBackBook,
                 target.bookTitles[book.projectBookId] ?: book.bookSlug,
-                book.heldBack.joinToString(", ") { it.sort.toString() }
+                localizedList(book.heldBack.map { it.sort.toString() })
             ),
             fontSize = 14.sp,
             color = OratureColors.RegularText
@@ -372,7 +373,8 @@ private fun changeText(group: VerseGroup): String {
     }
 }
 
-private fun List<VerseRange>.ranges() = joinToString(", ")
+@Composable
+private fun List<VerseRange>.ranges() = localizedList(map { it.toString() })
 
 /** Chapter slugs end in the chapter number, e.g. `act_20`. */
 private fun String.chapterNumber() = substringAfterLast('_').trimStart('0').ifEmpty { this }

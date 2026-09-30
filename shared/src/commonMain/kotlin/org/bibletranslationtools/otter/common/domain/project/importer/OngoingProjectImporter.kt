@@ -18,6 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.domain.project.importer
 
+import java.util.UUID
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionOrder
 import io.reactivex.Maybe
 import io.reactivex.Observable
@@ -545,22 +546,30 @@ class OngoingProjectImporter(
         takesCheckingMap = parseCheckingStatusFile(fileReader)
 
         projectFilesAccessor.copySelectedTakesFile(fileReader)
-        projectFilesAccessor.copyTakeFiles(fileReader, manifestProject, ::takeCopyFilter)
-            .doOnError { e ->
-                logger.error("Error in importTakes, project: $project, manifestProject: $manifestProject")
-                logger.error("metadata: $metadata, sourceMetadata: $sourceMetadata")
-                logger.error("sourceCollection: $sourceCollection", e)
-            }
-            .blockingSubscribe { newTakeFile ->
-                insertTake(
-                    newTakeFile,
-                    projectFilesAccessor.audioDir,
-                    collectionForTakes,
-                    sourceMetadata,
-                    takesInSelectedFile
-                )
-            }
-        
+        // Staged first, then placed one by one: an imported recording never overwrites one already
+        // in the project. It comes in as a new take, renumbered if its number is taken.
+        val staging = File(directoryProvider.tempDirectory, "take-import-${UUID.randomUUID()}").apply { mkdirs() }
+        try {
+            projectFilesAccessor.copyTakeFiles(fileReader, manifestProject, ::takeCopyFilter, destination = staging)
+                .doOnError { e ->
+                    logger.error("Error in importTakes, project: $project, manifestProject: $manifestProject")
+                    logger.error("metadata: $metadata, sourceMetadata: $sourceMetadata")
+                    logger.error("sourceCollection: $sourceCollection", e)
+                }
+                .blockingSubscribe { stagedTakeFile ->
+                    insertTake(
+                        File(stagedTakeFile),
+                        staging,
+                        projectFilesAccessor.audioDir,
+                        collectionForTakes,
+                        sourceMetadata,
+                        takesInSelectedFile
+                    )
+                }
+        } finally {
+            staging.deleteRecursively()
+        }
+
         val isNarrationMigration = projectAppVersion == ProjectAppVersion.ONE && projectMode == ProjectMode.NARRATION
         if (isNarrationMigration) {
             takesToCompile.forEach { (chapter, takeFiles) ->
@@ -610,62 +619,123 @@ class OngoingProjectImporter(
         } ?: true
     }
 
+    /**
+     * Places [staged], a take file copied from the import into [staging], in the project.
+     *
+     * It never overwrites a take already there: it comes in as a new take, numbered after the
+     * content's existing takes and renamed to match when its own number is taken. Only a file
+     * byte-for-byte the same as an existing take of that content is not added again (re-importing
+     * one's own backup); the existing take is selected instead if the import selects it.
+     */
     private fun insertTake(
-        filepath: String,
+        staged: File,
+        staging: File,
         projectAudioDir: File,
         project: Collection,
         metadata: ResourceMetadata,
         selectedTakes: Set<String>
     ) {
-        parseNumbers(filepath)?.let { (sig, takeNumber) ->
-            getContent(sig, project, metadata)?.let { chunk ->
-                val now = LocalDate.now()
-                val file = File(filepath).canonicalFile
-                val relativeFile = file.relativeTo(projectAudioDir.canonicalFile)
-                val isSelected = relativeFile.invariantSeparatorsPath in selectedTakes || filepath in migratedSelectedTakes
-
-                val checkingStatus = when {
-                    projectAppVersion.ordinal >= ProjectAppVersion.THREE.ordinal -> takesCheckingMap[relativeFile.name]
-
-                    completedChapters.contains(sig.chapter) -> {
-                        TakeCheckingState(CheckingStatus.VERSE, computeFileChecksum(file))
-                    }
-
-                    else -> null
-                }
-
-                val take = Take(
-                    file.name,
-                    file,
-                    takeNumber,
-                    now,
-                    null,
-                    false,
-                    checkingStatus?.status ?: CheckingStatus.UNCHECKED,
-                    checkingStatus?.checksum,
-                    listOf()
-                )
-                val insertedId = takeRepository.insertForContent(take, chunk).blockingGet()
-                take.id = insertedId
-
-                if (isSelected) {
-                    chunk.selectedTake = take
-                    contentRepository.update(chunk).blockingAwait()
-
-                    val isNarrationMigration = projectMode == ProjectMode.NARRATION && projectAppVersion == ProjectAppVersion.ONE
-                    // store verse take of incomplete chapter narration to compile later
-                    if (isNarrationMigration && sig.chapter !in completedChapters && sig.verse != null) {
-                        val existingFiles = takesToCompile.getOrDefault(sig.chapter, listOf())
-                        takesToCompile[sig.chapter] = existingFiles.plus(file)
-                    }
-                }
-            } ?: logger.warn(
+        // Selection and checking status are recorded under the take's name in the import.
+        val importedPath = staged.relativeTo(staging).invariantSeparatorsPath
+        val parsed = parseNumbers(importedPath)
+        val chunk = parsed?.let { (sig, _) -> getContent(sig, project, metadata) }
+        if (parsed == null || chunk == null) {
+            val kept = moveIntoProject(staged, projectAudioDir.resolve(importedPath))
+            if (parsed != null) {
                 // Restored onto an edition without this verse: the file is kept in the project's
                 // folder, but nothing in the project refers to it.
-                "Restoring ${project.slug}: take $filepath has no place in the project " +
-                    "(chapter ${sig.chapter}, verse ${sig.verse}), so it isn't listed"
-            )
+                logger.warn(
+                    "Restoring ${project.slug}: take $kept has no place in the project " +
+                        "(chapter ${parsed.contentSignature.chapter}, verse ${parsed.contentSignature.verse}), so it isn't listed"
+                )
+            }
+            return
         }
+        val (sig, importedNumber) = parsed
+        // An Orature 1 migration names selected takes by where they land in the project.
+        val landing = projectAudioDir.resolve(importedPath)
+        val isSelected = importedPath in selectedTakes ||
+            landing.path in migratedSelectedTakes || landing.absolutePath in migratedSelectedTakes
+        val existing = takeRepository.getByContent(chunk, includeDeleted = true).blockingGet()
+
+        val checksum = computeFileChecksum(staged)
+        existing.firstOrNull { it.path.exists() && computeFileChecksum(it.path) == checksum }?.let { same ->
+            staged.delete()
+            if (isSelected && same.deleted == null) {
+                chunk.selectedTake = same
+                contentRepository.update(chunk).blockingAwait()
+            }
+            return
+        }
+
+        val target = projectAudioDir.resolve(importedPath)
+        val numberTaken = existing.any { it.number == importedNumber } || target.exists()
+        val takeNumber = if (numberTaken) nextTakeNumber(existing, target) else importedNumber
+        val file = moveIntoProject(staged, if (numberTaken) target.withTakeNumber(takeNumber) else target).canonicalFile
+        if (numberTaken) logger.info("Imported take $importedPath added as take $takeNumber (${file.name})")
+
+        val now = LocalDate.now()
+        val relativeFile = File(importedPath)
+
+        val checkingStatus = when {
+            projectAppVersion.ordinal >= ProjectAppVersion.THREE.ordinal -> takesCheckingMap[relativeFile.name]
+
+            completedChapters.contains(sig.chapter) -> {
+                TakeCheckingState(CheckingStatus.VERSE, computeFileChecksum(file))
+            }
+
+            else -> null
+        }
+
+        val take = Take(
+            file.name,
+            file,
+            takeNumber,
+            now,
+            null,
+            false,
+            checkingStatus?.status ?: CheckingStatus.UNCHECKED,
+            checkingStatus?.checksum,
+            listOf()
+        )
+        val insertedId = takeRepository.insertForContent(take, chunk).blockingGet()
+        take.id = insertedId
+
+        if (isSelected) {
+            chunk.selectedTake = take
+            contentRepository.update(chunk).blockingAwait()
+
+            val isNarrationMigration = projectMode == ProjectMode.NARRATION && projectAppVersion == ProjectAppVersion.ONE
+            // store verse take of incomplete chapter narration to compile later
+            if (isNarrationMigration && sig.chapter !in completedChapters && sig.verse != null) {
+                val existingFiles = takesToCompile.getOrDefault(sig.chapter, listOf())
+                takesToCompile[sig.chapter] = existingFiles.plus(file)
+            }
+        }
+    }
+
+    /** The first take number after [existing]'s whose file name is free next to [target]. */
+    private fun nextTakeNumber(existing: List<Take>, target: File): Int {
+        var number = (existing.maxOfOrNull { it.number } ?: 0) + 1
+        while (target.withTakeNumber(number).exists()) number++
+        return number
+    }
+
+    /** [this] take file's name with take number [number]: `..._t3.wav` for 3. */
+    private fun File.withTakeNumber(number: Int): File =
+        resolveSibling(name.replace(TAKE_NUMBER_SUFFIX, "_t$number$2"))
+
+    /** Moves [staged] to [target], or to a free name beside it: never over a file already there. */
+    private fun moveIntoProject(staged: File, target: File): File {
+        var destination = target
+        var n = 2
+        while (destination.exists()) destination = target.resolveSibling("${target.nameWithoutExtension}_$n.${target.extension}").also { n++ }
+        destination.parentFile?.mkdirs()
+        if (!staged.renameTo(destination)) {
+            staged.copyTo(destination)
+            staged.delete()
+        }
+        return destination
     }
 
     private fun createDerivedProjects(
@@ -969,6 +1039,11 @@ class OngoingProjectImporter(
         } else {
             null
         }
+    }
+
+    private companion object {
+        /** The take number at the end of a take file's name: `_t12.wav`. */
+        val TAKE_NUMBER_SUFFIX = Regex("""_t(\d+)(\.[^.]+)$""")
     }
 
     data class ContentSignature(val chapter: Int, val verse: Int?, val sort: Int?, val type: ContentType?)

@@ -15,6 +15,7 @@ import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.InstalledResource
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.InstalledResources
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.ExportSourceEdition
 import java.io.File
 import java.time.LocalDate
 import kotlin.test.AfterTest
@@ -43,6 +44,7 @@ class OratureResourcesViewModelTest {
     private val used = resource(1, listOf(Language("fr", "Français", "French", "ltr", true, "")))
     private val unused = resource(2, emptyList())
     private val installed = mockk<InstalledResources>()
+    private val exporter = mockk<ExportSourceEdition>()
 
     @BeforeTest
     fun setUp() = Dispatchers.setMain(dispatcher)
@@ -54,7 +56,7 @@ class OratureResourcesViewModelTest {
     fun `removing an unused resource reports it and reloads the list`() = runTest(dispatcher) {
         coEvery { installed.list() } returnsMany listOf(listOf(used, unused), listOf(used))
         coEvery { installed.remove(unused.edition) } returns true
-        val vm = OratureResourcesViewModel(installed)
+        val vm = OratureResourcesViewModel(installed, exporter)
         vm.onOpened()
         advanceUntilIdle()
         assertEquals(20L * 1024 * 1024, vm.uiState.value.totalBytes)
@@ -69,7 +71,7 @@ class OratureResourcesViewModelTest {
     @Test
     fun `a resource in use is never sent for removal`() = runTest(dispatcher) {
         coEvery { installed.list() } returns listOf(used)
-        val vm = OratureResourcesViewModel(installed)
+        val vm = OratureResourcesViewModel(installed, exporter)
         vm.onOpened()
         advanceUntilIdle()
 
@@ -83,7 +85,7 @@ class OratureResourcesViewModelTest {
     fun `opening again shows a resource that stopped being used while the drawer was closed`() = runTest(dispatcher) {
         val noLongerUsed = resource(1, emptyList())
         coEvery { installed.list() } returnsMany listOf(listOf(used), listOf(noLongerUsed))
-        val vm = OratureResourcesViewModel(installed)
+        val vm = OratureResourcesViewModel(installed, exporter)
         vm.onOpened()
         advanceUntilIdle()
 
@@ -98,7 +100,7 @@ class OratureResourcesViewModelTest {
     fun `opening again drops the message about the last removal`() = runTest(dispatcher) {
         coEvery { installed.list() } returnsMany listOf(listOf(used, unused), listOf(used))
         coEvery { installed.remove(unused.edition) } returns true
-        val vm = OratureResourcesViewModel(installed)
+        val vm = OratureResourcesViewModel(installed, exporter)
         vm.onOpened()
         advanceUntilIdle()
         vm.remove(unused)
@@ -108,5 +110,35 @@ class OratureResourcesViewModelTest {
         advanceUntilIdle()
 
         assertEquals(null, vm.uiState.value.lastRemoval)
+    }
+
+    @Test
+    fun `exporting reports where the zip was written`() = runTest(dispatcher) {
+        coEvery { installed.list() } returns listOf(used)
+        coEvery { exporter.export(used.edition, File("/out")) } returns File("/out/en_ulb_v12.zip")
+        val vm = OratureResourcesViewModel(installed, exporter)
+        vm.onOpened()
+        advanceUntilIdle()
+
+        vm.export(used, "/out")
+        advanceUntilIdle()
+
+        val export = assertIs<OratureResourceExport.Exported>(vm.uiState.value.lastExport)
+        assertEquals(File("/out/en_ulb_v12.zip").absolutePath, export.location)
+        assertEquals(null, vm.uiState.value.exportingId)
+    }
+
+    @Test
+    fun `a failed export is reported, not thrown`() = runTest(dispatcher) {
+        coEvery { installed.list() } returns listOf(used)
+        coEvery { exporter.export(any(), any()) } throws IllegalArgumentException("missing")
+        val vm = OratureResourcesViewModel(installed, exporter)
+        vm.onOpened()
+        advanceUntilIdle()
+
+        vm.export(used, "/out")
+        advanceUntilIdle()
+
+        assertIs<OratureResourceExport.Failed>(vm.uiState.value.lastExport)
     }
 }

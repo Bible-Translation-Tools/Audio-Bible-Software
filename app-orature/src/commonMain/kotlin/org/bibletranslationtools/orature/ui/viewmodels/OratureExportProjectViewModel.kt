@@ -1,5 +1,8 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
+import org.jetbrains.compose.resources.getString
+import org.bibletranslationtools.orature.resources.Res
+import org.bibletranslationtools.orature.resources.errUnknown
 import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
 import androidx.lifecycle.ViewModel
 import io.reactivex.Single
@@ -128,7 +131,7 @@ class OratureExportProjectViewModel(
                 throw e
             } catch (e: Exception) {
                 logFailure("loading export options", e)
-                _uiState.value = _uiState.value.copy(isLoading = false, error = e.message ?: "Unknown error")
+                _uiState.value = _uiState.value.copy(isLoading = false, error = e.message ?: getString(Res.string.errUnknown))
             }
         }
     }

@@ -1,5 +1,6 @@
 package org.bibletranslationtools.bttrecorder2.ui.screens
 
+import org.bibletranslationtools.bttrecorder2.ui.components.localizedList
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -294,7 +295,7 @@ private fun EditionBanner(editions: BookEditionState, onReview: () -> Unit) {
                 }
                 if (editions.heldBackChapters.isNotEmpty()) {
                     Text(
-                        stringResource(Res.string.edition_held_back_message, editions.heldBackChapters.joinToString(", ")),
+                        stringResource(Res.string.edition_held_back_message, localizedList(editions.heldBackChapters.map { it.toString() })),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSecondaryContainer
                     )

@@ -1,5 +1,8 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
+import org.jetbrains.compose.resources.getString
+import org.bibletranslationtools.orature.resources.Res
+import org.bibletranslationtools.orature.resources.errUnknown
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -144,7 +147,7 @@ class OratureConsumeViewModel(
                 throw e
             } catch (e: Exception) {
                 logFailure("loading the consume screen", e)
-                _uiState.value = OratureConsumeUiState(isLoading = false, error = e.message ?: "Unknown error")
+                _uiState.value = OratureConsumeUiState(isLoading = false, error = e.message ?: getString(Res.string.errUnknown))
             }
         }
     }

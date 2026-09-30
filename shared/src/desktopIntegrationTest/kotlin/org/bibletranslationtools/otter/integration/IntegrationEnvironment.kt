@@ -413,6 +413,40 @@ class IntegrationEnvironment private constructor(
     /** The entry names in zip [file]. */
     fun zipEntries(file: File): List<String> = ZipFile(file).use { zip -> zip.entries().asSequence().map { it.name }.toList() }
 
+    /** A copy of zip [file] with entry [name] holding [bytes] instead. */
+    fun withEntryReplaced(file: File, name: String, bytes: ByteArray): File {
+        val target = File(tempRoot, "${file.nameWithoutExtension}-replaced-${System.nanoTime()}.${file.extension}")
+        ZipFile(file).use { zip ->
+            assertNotNull(zip.getEntry(name), "'$name' is not in ${file.name}")
+            ZipOutputStream(target.outputStream().buffered()).use { out ->
+                zip.entries().asSequence().forEach { entry ->
+                    out.putNextEntry(ZipEntry(entry.name))
+                    if (!entry.isDirectory) {
+                        if (entry.name == name) out.write(bytes) else zip.getInputStream(entry).use { it.copyTo(out) }
+                    }
+                    out.closeEntry()
+                }
+            }
+        }
+        return target
+    }
+
+    /** The live and deleted takes on verse [verse] of chapter [sort] of [project]. */
+    fun takesOn(project: Collection, sort: Int, verse: Int): List<TakeEntity> {
+        val textType = db.contentTypeDao.fetchId(ContentType.TEXT)
+        val row = db.contentDao.fetchByCollectionId(projectChapter(project, sort).id)
+            .single { it.type_fk == textType && it.labelKey == "verse" && it.start == verse }
+        return db.takeDao.fetchByContentId(row.id, includeDeleted = true).sortedBy { it.number }
+    }
+
+    /** The take selected on verse [verse] of chapter [sort] of [project], if any. */
+    fun selectedTakeOn(project: Collection, sort: Int, verse: Int): Int? {
+        val textType = db.contentTypeDao.fetchId(ContentType.TEXT)
+        return db.contentDao.fetchByCollectionId(projectChapter(project, sort).id)
+            .single { it.type_fk == textType && it.labelKey == "verse" && it.start == verse }
+            .selectedTakeFk
+    }
+
     /** A copy of zip [file] without the entries under [prefix]: a backup made without them. */
     fun withoutEntries(file: File, prefix: String): File {
         val target = File(tempRoot, "${file.nameWithoutExtension}-without-${prefix.replace('/', '_')}.${file.extension}")

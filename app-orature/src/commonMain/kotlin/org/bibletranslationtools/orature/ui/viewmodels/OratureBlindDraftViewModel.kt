@@ -1,5 +1,8 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
+import org.jetbrains.compose.resources.getString
+import org.bibletranslationtools.orature.resources.Res
+import org.bibletranslationtools.orature.resources.errUnknown
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -301,7 +304,7 @@ class OratureBlindDraftViewModel(
                 throw e
             } catch (e: Exception) {
                 logFailure("loading the blind-draft chunk", e)
-                _uiState.value = OratureBlindDraftUiState(hasChunk = true, error = e.message ?: "Unknown error")
+                _uiState.value = OratureBlindDraftUiState(hasChunk = true, error = e.message ?: getString(Res.string.errUnknown))
             }
         }
     }

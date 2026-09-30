@@ -2,6 +2,8 @@ package org.bibletranslationtools.otter.integration
 
 import kotlinx.coroutines.runBlocking
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.InstalledResources
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.ExportSourceEdition
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IEditionFingerprintRepository
 import java.io.File
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -41,5 +43,28 @@ class InstalledResourcesTest {
         assertTrue(runBlocking { resources.remove(listed.getValue(unused.id).edition) })
         assertEquals(listOf(used.id), environment.sourceEditions().map { it.id })
         assertFalse(File(unused.path).exists(), "its files are gone")
+    }
+
+    /** A shared source imports elsewhere as the same edition, text and audio, not a new one. */
+    @Test
+    fun `an exported source imports as the same edition`() {
+        val environment = IntegrationEnvironment.create().also { env = it }
+        environment.import("en_ulb.zip")
+        val edition = environment.sourceEditions().single()
+        val before = runBlocking { environment.koinGet<IEditionFingerprintRepository>().get(edition.id) }!!
+        val outDir = kotlin.io.path.createTempDirectory("export-source").toFile()
+
+        val zip = runBlocking {
+            environment.koinGet<ExportSourceEdition>().export(environment.editionMetadata(edition.id), outDir)
+        }
+        assertTrue(zip.name.startsWith("en_ulb_v"), zip.name)
+        assertTrue(environment.removeEdition(edition.id))
+        environment.import(zip)
+
+        val reimported = environment.sourceEditions().single()
+        val after = runBlocking { environment.koinGet<IEditionFingerprintRepository>().get(reimported.id) }!!
+        assertEquals(before.structureFingerprint, after.structureFingerprint)
+        assertEquals(before.textFingerprint, after.textFingerprint)
+        outDir.deleteRecursively()
     }
 }

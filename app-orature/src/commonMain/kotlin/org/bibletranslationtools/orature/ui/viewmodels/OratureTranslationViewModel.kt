@@ -1,5 +1,6 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
+import org.bibletranslationtools.orature.resources.errUnknown
 import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
 import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.CancellationException
@@ -257,7 +258,7 @@ class OratureTranslationViewModel(
                 throw e
             } catch (e: Exception) {
                 logFailure("loading the translation screen", e)
-                _uiState.value = OratureTranslationUiState(isLoading = false, error = e.message ?: "Unknown error")
+                _uiState.value = OratureTranslationUiState(isLoading = false, error = e.message ?: getString(Res.string.errUnknown))
             }
         }
     }

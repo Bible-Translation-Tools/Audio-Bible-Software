@@ -1,5 +1,6 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
+import org.bibletranslationtools.orature.resources.errUnknown
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
 import androidx.lifecycle.ViewModel
@@ -423,7 +424,7 @@ class OratureNarrationViewModel(
                 throw e
             } catch (e: Exception) {
                 logFailure("loading the narration screen", e)
-                _uiState.value = OratureNarrationUiState(isLoading = false, error = e.message ?: "Unknown error")
+                _uiState.value = OratureNarrationUiState(isLoading = false, error = e.message ?: getString(Res.string.errUnknown))
             }
         }
     }

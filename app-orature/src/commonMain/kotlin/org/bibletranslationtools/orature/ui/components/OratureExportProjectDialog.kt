@@ -155,7 +155,7 @@ fun OratureExportProjectDialog(
                         // A13's fallback: allowed, with a warning.
                         if (state.mixedEditionChapters.isNotEmpty()) {
                             Text(
-                                stringResource(Res.string.exportMixedEditionsWarning, state.mixedEditionChapters.joinToString(", ")),
+                                stringResource(Res.string.exportMixedEditionsWarning, localizedList(state.mixedEditionChapters.map { it.toString() })),
                                 fontSize = 14.sp,
                                 color = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.padding(bottom = 8.dp)

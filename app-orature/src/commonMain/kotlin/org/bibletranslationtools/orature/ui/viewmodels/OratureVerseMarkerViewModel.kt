@@ -1,5 +1,8 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
+import org.jetbrains.compose.resources.getString
+import org.bibletranslationtools.orature.resources.Res
+import org.bibletranslationtools.orature.resources.errUnknown
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -179,7 +182,7 @@ class OratureVerseMarkerViewModel : ViewModel(), KoinComponent {
                 throw e
             } catch (e: Exception) {
                 logFailure("loading the verse marker screen", e)
-                _uiState.value = _uiState.value.copy(isLoading = false, error = e.message ?: "Unknown error")
+                _uiState.value = _uiState.value.copy(isLoading = false, error = e.message ?: getString(Res.string.errUnknown))
             }
         }
     }

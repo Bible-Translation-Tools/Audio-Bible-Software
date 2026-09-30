@@ -271,4 +271,9 @@
     <string name="export_error_no_audio">Export failed: no recorded audio was found on disk for this project.</string>
     <string name="export_error_no_takes_selected">Export failed: no takes are selected. Select a take in each verse you want to include, then try again.</string>
     <string name="export_error_packaging">Export failed while packaging the project (found %1$d audio file(s), %2$d selected take(s)). Run the desktop app from a terminal to see the detailed error.</string>
+    <!-- Joins two items of a list; applied repeatedly for longer lists ("19, 20, 21"). -->
+    <string name="list_join">%1$s, %2$s</string>
+    <string name="list_item_bullet">• %1$s</string>
+    <!-- java.time pattern for an edition's issue month, e.g. "MMM yyyy" gives "Nov 2017". -->
+    <string name="edition_month_pattern">MMM yyyy</string>
 </resources>

@@ -467,10 +467,10 @@
     <!-- Resources drawer: installed source texts and source audio. English only for now. -->
     <string name="resourcesTitle">Resources</string>
     <string name="resourcesDescription">Source texts and source audio installed on this device. A resource can be removed when no project uses it.</string>
-    <string name="resourcesSummary">%1$d installed · %2$s MB</string>
+    <string name="resourcesSummary">%1$d installed · %2$s</string>
     <string name="resourcesEmpty">No resources are installed yet.</string>
-    <string name="resourceSize">%1$s MB</string>
-    <string name="resourceSizeWithAudio">%1$s MB, including %2$s MB of source audio</string>
+    <string name="resourceSize">%1$s</string>
+    <string name="resourceSizeWithAudio">%1$s, including %2$s of source audio</string>
     <string name="resourceTypeBible">Bible</string>
     <string name="resourceTypeHelp">Translation help</string>
     <string name="resourceUsedBy">Used by projects in %1$s</string>
@@ -480,10 +480,25 @@
     <string name="removeResource">Remove</string>
     <string name="removeResourceInUse">In use, so it can\'t be removed</string>
     <string name="removeResourceTitle">Remove %1$s?</string>
-    <string name="removeResourceMessage">Its files (%1$s MB) will be deleted from this device. You can import it again later.</string>
+    <string name="removeResourceMessage">Its files (%1$s) will be deleted from this device. You can import it again later.</string>
     <string name="resourceRemoved">Removed %1$s.</string>
     <string name="resourceRemoveFailed">%1$s could not be removed.</string>
     <string name="getResourcesTitle">Get More Resources</string>
     <string name="getResourcesComingSoon">Finding and downloading resources is coming in a later version. For now, add them with Import.</string>
     <string name="findResources">Find Resources</string>
+
+    <!-- Shown when something failed without a message of its own. -->
+    <string name="errUnknown">Unknown error</string>
+    <!-- Joins two items of a list; applied repeatedly for longer lists ("Genesis, Exodus, Leviticus"). -->
+    <string name="listJoin">%1$s, %2$s</string>
+    <string name="listItemBullet">• %1$s</string>
+    <!-- A language shown with its own name, e.g. "Russian (Русский)". -->
+    <string name="languageWithNativeName">%1$s (%2$s)</string>
+    <string name="resourceTitleWithType">%1$s · %2$s</string>
+    <string name="sizeMegabytes">%1$s MB</string>
+    <string name="sizeUnderOneMegabyte">under 1 MB</string>
+    <!-- java.time pattern for an edition's issue month, e.g. "MMM yyyy" gives "Nov 2017". -->
+    <string name="editionMonthPattern">MMM yyyy</string>
+    <string name="exportResourceDone">Exported %1$s to %2$s.</string>
+    <string name="exportResourceFailed">%1$s could not be exported.</string>
 </resources>

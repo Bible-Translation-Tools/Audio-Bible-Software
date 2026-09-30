@@ -55,6 +55,7 @@ import org.bibletranslationtools.otter.common.domain.project.importer.EditionFin
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.InstalledSourceEditions
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionLifecycle
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.InstalledResources
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.ExportSourceEdition
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.DescribeSourceEditions
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.MatchEditionToRecordings
 import org.bibletranslationtools.otter.common.initialization.AuditSourceStructure
@@ -137,6 +138,7 @@ val implicitCommonModule = module {
     factoryOf(::InstalledSourceEditions)
     factoryOf(::EditionLifecycle)
     factoryOf(::InstalledResources)
+    factoryOf(::ExportSourceEdition)
     factoryOf(::DescribeSourceEditions)
     factoryOf(::MatchEditionToRecordings)
     factoryOf(::UpgradeBookEdition)

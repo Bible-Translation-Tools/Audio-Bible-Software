@@ -184,7 +184,7 @@ private fun ReadyDialog(
                 if (state.type != ExportType.BACKUP && mixed.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = stringResource(Res.string.export_mixed_editions_warning, mixed.joinToString(", ")),
+                        text = stringResource(Res.string.export_mixed_editions_warning, localizedList(mixed.map { it.toString() })),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )

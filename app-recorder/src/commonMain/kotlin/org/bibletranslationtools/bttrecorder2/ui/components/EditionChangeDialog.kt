@@ -1,5 +1,6 @@
 package org.bibletranslationtools.bttrecorder2.ui.components
 
+import org.bibletranslationtools.shared.resources.list_item_bullet
 import org.bibletranslationtools.otter.common.domain.collections.EditionRelation
 import org.bibletranslationtools.shared.resources.label_same_dates
 import androidx.compose.foundation.clickable
@@ -131,7 +132,7 @@ fun EditionChangeDialog(
                         Text(stringResource(Res.string.edition_done_message, choiceText(s.choice)))
                         if (s.heldBack.isNotEmpty()) {
                             Spacer(Modifier.padding(top = 8.dp))
-                            Text(stringResource(Res.string.edition_held_back_message, s.heldBack.joinToString(", ")))
+                            Text(stringResource(Res.string.edition_held_back_message, localizedList(s.heldBack.map { it.toString() })))
                         }
                     }
                     is EditionChangeState.Error -> Text(
@@ -247,7 +248,7 @@ private fun Preview(chapters: List<ChapterUpgradePlan>) {
                 if (chapter.outcome == ChapterOutcome.ADOPTS || chapter.outcome == ChapterOutcome.HELD_BACK) {
                     chapter.structuralChanges.forEach { group ->
                         Text(
-                            "• " + changeText(group),
+                            stringResource(Res.string.list_item_bullet, changeText(group)),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -297,7 +298,8 @@ private fun changeText(group: VerseGroup): String {
     }
 }
 
-private fun List<VerseRange>.ranges() = joinToString(", ")
+@Composable
+private fun List<VerseRange>.ranges() = localizedList(map { it.toString() })
 
 /** Chapter slugs end in the chapter number, e.g. `act_20`. */
 private fun String.chapterNumber() = substringAfterLast('_').trimStart('0').ifEmpty { this }

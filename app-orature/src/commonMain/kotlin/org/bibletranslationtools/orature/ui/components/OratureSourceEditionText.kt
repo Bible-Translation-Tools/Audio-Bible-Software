@@ -1,5 +1,6 @@
 package org.bibletranslationtools.orature.ui.components
 
+import org.bibletranslationtools.orature.resources.editionMonthPattern
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import org.bibletranslationtools.orature.resources.Res
@@ -17,8 +18,9 @@ import java.util.Locale
  */
 @Composable
 fun sourceEditionText(edition: ResourceMetadata, distinguishingCode: String? = null): String {
-    val issued = remember(edition.issued) {
-        edition.issued.format(DateTimeFormatter.ofPattern("MMM yyyy", Locale.getDefault()))
+    val pattern = stringResource(Res.string.editionMonthPattern)
+    val issued = remember(edition.issued, pattern) {
+        edition.issued.format(DateTimeFormatter.ofPattern(pattern, Locale.getDefault()))
     }
     val identifier = edition.identifier.uppercase()
     // Some manifests quote the version, e.g. "12.1" with the quotes.

@@ -1,5 +1,17 @@
 package org.bibletranslationtools.orature.ui.components
 
+import androidx.compose.material.icons.filled.Publish
+import io.github.vinceglb.filekit.dialogs.compose.rememberDirectoryPickerLauncher
+import io.github.vinceglb.filekit.path
+import org.bibletranslationtools.orature.platform.canOpenInFileManager
+import org.bibletranslationtools.orature.resources.exportResource
+import org.bibletranslationtools.orature.resources.exportResourceDone
+import org.bibletranslationtools.orature.resources.exportResourceFailed
+import org.bibletranslationtools.orature.resources.showLocation
+import org.bibletranslationtools.orature.ui.viewmodels.OratureResourceExport
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.ExportSourceEdition
+import org.bibletranslationtools.orature.resources.languageWithNativeName
+import org.bibletranslationtools.orature.resources.resourceTitleWithType
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -81,10 +93,19 @@ import org.koin.mp.KoinPlatform.getKoin
 fun OratureResourcesDrawer(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: OratureResourcesViewModel = viewModel { OratureResourcesViewModel(getKoin().get<InstalledResources>()) }
+    viewModel: OratureResourcesViewModel = viewModel {
+        OratureResourcesViewModel(getKoin().get<InstalledResources>(), getKoin().get<ExportSourceEdition>())
+    }
 ) {
     val state by viewModel.uiState.collectAsState()
     var confirming by remember { mutableStateOf<InstalledResource?>(null) }
+    // The resource whose export folder is being picked.
+    var exporting by remember { mutableStateOf<InstalledResource?>(null) }
+    val folderPicker = rememberDirectoryPickerLauncher { folder ->
+        val resource = exporting
+        exporting = null
+        if (folder != null && resource != null) viewModel.export(resource, folder.path)
+    }
 
     // Every time the drawer opens: what uses each resource changes while it's closed.
     LaunchedEffect(Unit) { viewModel.onOpened() }
@@ -94,7 +115,7 @@ fun OratureResourcesDrawer(
         AlertDialog(
             onDismissRequest = { confirming = null },
             title = { Text(stringResource(Res.string.removeResourceTitle, name)) },
-            text = { Text(stringResource(Res.string.removeResourceMessage, megabytes(resource.sizeBytes))) },
+            text = { Text(stringResource(Res.string.removeResourceMessage, megabytesText(resource.sizeBytes))) },
             confirmButton = {
                 TextButton(onClick = {
                     confirming = null
@@ -136,13 +157,31 @@ fun OratureResourcesDrawer(
                 )
             }
 
+            state.lastExport?.let { export ->
+                val name = resourceName(export.resource)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = when (export) {
+                            is OratureResourceExport.Exported -> stringResource(Res.string.exportResourceDone, name, export.location)
+                            is OratureResourceExport.Failed -> stringResource(Res.string.exportResourceFailed, name)
+                        },
+                        fontSize = 14.sp,
+                        color = if (export is OratureResourceExport.Failed) MaterialTheme.colorScheme.error else OratureColors.NoteText,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (export is OratureResourceExport.Exported && canOpenInFileManager()) {
+                        TextButton(onClick = viewModel::showExportLocation) { Text(stringResource(Res.string.showLocation)) }
+                    }
+                }
+            }
+
             when {
                 state.isLoading -> CircularProgressIndicator(color = OratureColors.Primary)
                 state.error != null -> Text(state.error.orEmpty(), color = MaterialTheme.colorScheme.error)
                 state.resources.isEmpty() -> Text(stringResource(Res.string.resourcesEmpty), color = OratureColors.NoteText)
                 else -> {
                     Text(
-                        stringResource(Res.string.resourcesSummary, state.resources.size, megabytes(state.totalBytes)),
+                        stringResource(Res.string.resourcesSummary, state.resources.size, megabytesText(state.totalBytes)),
                         fontSize = 14.sp,
                         color = OratureColors.NoteText
                     )
@@ -150,8 +189,11 @@ fun OratureResourcesDrawer(
                         val language = inLanguage.first().edition.language
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(
-                                text = language.name.takeIf { it != language.anglicizedName }
-                                    ?.let { "${language.anglicizedName} ($it)" } ?: language.anglicizedName,
+                                text = if (language.name != language.anglicizedName) {
+                                    stringResource(Res.string.languageWithNativeName, language.anglicizedName, language.name)
+                                } else {
+                                    language.anglicizedName
+                                },
                                 fontSize = 20.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
@@ -160,6 +202,12 @@ fun OratureResourcesDrawer(
                                 ResourceRow(
                                     resource = resource,
                                     removing = state.removingId == resource.edition.id,
+                                    exportingThis = state.exportingId == resource.edition.id,
+                                    exportEnabled = state.exportingId == null,
+                                    onExport = {
+                                        exporting = resource
+                                        folderPicker.launch()
+                                    },
                                     onRemove = { confirming = resource }
                                 )
                             }
@@ -187,7 +235,14 @@ fun OratureResourcesDrawer(
 }
 
 @Composable
-private fun ResourceRow(resource: InstalledResource, removing: Boolean, onRemove: () -> Unit) {
+private fun ResourceRow(
+    resource: InstalledResource,
+    removing: Boolean,
+    exportingThis: Boolean,
+    exportEnabled: Boolean,
+    onExport: () -> Unit,
+    onRemove: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -201,13 +256,25 @@ private fun ResourceRow(resource: InstalledResource, removing: Boolean, onRemove
                 if (resource.edition.type == ContainerType.Help) Res.string.resourceTypeHelp else Res.string.resourceTypeBible
             )
             val size = if (resource.audioBytes > 0) {
-                stringResource(Res.string.resourceSizeWithAudio, megabytes(resource.sizeBytes), megabytes(resource.audioBytes))
+                stringResource(Res.string.resourceSizeWithAudio, megabytesText(resource.sizeBytes), megabytesText(resource.audioBytes))
             } else {
-                stringResource(Res.string.resourceSize, megabytes(resource.sizeBytes))
+                stringResource(Res.string.resourceSize, megabytesText(resource.sizeBytes))
             }
-            Text("${resource.edition.title} · $type", fontSize = 13.sp, color = OratureColors.NoteText)
+            Text(stringResource(Res.string.resourceTitleWithType, resource.edition.title, type), fontSize = 13.sp, color = OratureColors.NoteText)
             Text(size, fontSize = 13.sp, color = OratureColors.NoteText)
             usageLines(resource).forEach { Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface) }
+        }
+        // Export: share the source, text and audio, as a zip that imports as this same edition.
+        if (exportingThis) {
+            CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp, color = OratureColors.Primary)
+        } else {
+            IconButton(onClick = onExport, enabled = exportEnabled && !removing) {
+                Icon(
+                    Icons.Filled.Publish,
+                    contentDescription = stringResource(Res.string.exportResource),
+                    tint = if (exportEnabled) OratureColors.Primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                )
+            }
         }
         if (removing) {
             CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp, color = OratureColors.Primary)
@@ -229,21 +296,14 @@ private fun ResourceRow(resource: InstalledResource, removing: Boolean, onRemove
 @Composable
 private fun usageLines(resource: InstalledResource): List<String> = buildList {
     if (resource.usedByLanguages.isNotEmpty()) {
-        add(stringResource(Res.string.resourceUsedBy, resource.usedByLanguages.joinToString(", ") { it.anglicizedName }))
+        add(stringResource(Res.string.resourceUsedBy, localizedList(resource.usedByLanguages.map { it.anglicizedName })))
     }
     if (resource.heldBackChapters > 0) add(stringResource(Res.string.resourceHeldBack, resource.heldBackChapters))
     if (resource.linkedTo.isNotEmpty()) {
-        add(stringResource(Res.string.resourceLinkedTo, resource.linkedTo.joinToString(", ") { it.identifier.uppercase() }))
+        add(stringResource(Res.string.resourceLinkedTo, localizedList(resource.linkedTo.map { it.identifier.uppercase() })))
     }
     if (isEmpty()) add(stringResource(Res.string.resourceUnused))
 }
 
 @Composable
 private fun resourceName(resource: InstalledResource) = sourceEditionText(resource.edition, resource.distinguishingCode)
-
-/** Whole megabytes, "< 1" below one; the unit is in the strings. */
-private fun megabytes(bytes: Long): String {
-    if (bytes <= 0) return "0"
-    val mb = bytes.toDouble() / (1024 * 1024)
-    return if (mb < 1) "< 1" else "${mb.toLong()}"
-}

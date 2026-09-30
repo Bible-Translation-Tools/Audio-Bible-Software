@@ -1,5 +1,8 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
+import org.jetbrains.compose.resources.getString
+import org.bibletranslationtools.orature.resources.Res
+import org.bibletranslationtools.orature.resources.errUnknown
 import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -239,7 +242,7 @@ class OratureHomeViewModel : ViewModel(), KoinComponent {
                 logFailure("reloading the project list", e)
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    error = e.message ?: "Unknown error"
+                    error = e.message ?: getString(Res.string.errUnknown)
                 )
             }
         }
