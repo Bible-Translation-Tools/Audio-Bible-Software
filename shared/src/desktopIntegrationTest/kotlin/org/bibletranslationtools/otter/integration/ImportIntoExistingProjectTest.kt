@@ -74,23 +74,44 @@ class ImportIntoExistingProjectTest {
         assertEquals(takes[1].id, environment.selectedTakeOn(project, 19, 41), "the backup's selection is applied")
     }
 
-    /**
-     * KNOWN GAP, documented rather than fixed here: Orature answers the importer's "which chapters?"
-     * request for an existing project with an overwrite yes/no and no chapters, which the importer
-     * reads as the user cancelling. When Orature's import dialog lets the user pick chapters, this
-     * test fails; turn it into a test of that.
-     */
-    @Test
-    fun `an answer without chapters, as Orature gives today, aborts the import`() {
-        val (environment, _, backup) = setup()
-        val orature = object : ProjectImporterCallback {
-            override fun onRequestUserInput(): Single<ImportOptions> = Single.just(ImportOptions(confirmed = true))
-            override fun onRequestUserInput(parameter: ImportCallbackParameter) = onRequestUserInput()
-            override fun onNotifyProgress(localizeKey: String?, message: String?, percent: Double?) = Unit
-            override fun onNotifySuccess(language: String?, project: String?, workbookDescriptor: WorkbookDescriptor?) = Unit
-            override fun onError(filePath: String) = Unit
+    /** A recording app's callback, keeping what the importer tells it about takes. */
+    private class Recording : ProjectImporterCallback {
+        var asked = false
+        var takes: Triple<Boolean, Int, Int>? = null
+        override fun onRequestUserInput(): Single<ImportOptions> {
+            asked = true
+            return Single.just(ImportOptions(confirmed = true))
         }
+        override fun onRequestUserInput(parameter: ImportCallbackParameter) = onRequestUserInput()
+        override fun onNotifyProgress(localizeKey: String?, message: String?, percent: Double?) = Unit
+        override fun onNotifySuccess(language: String?, project: String?, workbookDescriptor: WorkbookDescriptor?) = Unit
+        override fun onNotifyTakesImported(merged: Boolean, added: Int, alreadyThere: Int) {
+            takes = Triple(merged, added, alreadyThere)
+        }
+        override fun onError(filePath: String) = Unit
+    }
 
-        assertEquals(ImportResult.ABORTED, environment.importer.import(backup, orature).blockingGet())
+    @Test
+    fun `a book already here is merged without asking, and the app is told what came in`() {
+        val (environment, project, backup) = setup()
+        val entry = environment.zipEntries(backup).single { it.endsWith("_v41_t1.wav") }
+        val imported = environment.withEntryReplaced(backup, entry, "imported recording".toByteArray())
+        val callback = Recording()
+
+        assertEquals(ImportResult.SUCCESS, environment.importer.import(imported, callback).blockingGet())
+
+        assertEquals(false, callback.asked, "nothing to ask: nothing is replaced")
+        assertEquals(Triple(true, 1, 0), callback.takes)
+        assertEquals(2, environment.takesOn(project, 19, 41).size)
+    }
+
+    @Test
+    fun `re-importing reports the recordings that were already there`() {
+        val (environment, _, backup) = setup()
+        val callback = Recording()
+
+        environment.importer.import(backup, callback).blockingGet()
+
+        assertEquals(Triple(true, 0, 1), callback.takes)
     }
 }

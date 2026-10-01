@@ -1,5 +1,11 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
+import org.bibletranslationtools.orature.resources.importMergedMessage
+import org.bibletranslationtools.orature.resources.importMergedWithExistingMessage
+import org.bibletranslationtools.orature.resources.importFailedInvalidContent
+import org.bibletranslationtools.orature.resources.importFailedUnsupported
+import org.bibletranslationtools.orature.resources.importFailedCannotOpen
+import org.bibletranslationtools.orature.resources.importFailedWithCode
 import androidx.lifecycle.ViewModel
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.name
@@ -79,6 +85,9 @@ class OratureImportViewModel : ViewModel(), KoinComponent {
     private var successBookId: Int? = null
     @Volatile
     private var successBookMode: org.bibletranslationtools.otter.common.data.primitives.ProjectMode? = null
+    // A book already here was merged into: how many recordings came in, and how many were already there.
+    @Volatile
+    private var mergedTakes: Pair<Int, Int>? = null
 
     fun importFile(platformFile: PlatformFile) {
         val s = _importState.value
@@ -87,6 +96,7 @@ class OratureImportViewModel : ViewModel(), KoinComponent {
         successLanguage = null
         successBookId = null
         successBookMode = null
+        mergedTakes = null
         _importState.value = OratureImportState.InProgress()
         launchLogged {
             var staged: File? = null
@@ -106,7 +116,15 @@ class OratureImportViewModel : ViewModel(), KoinComponent {
                         importEvents.notifyImported() // refresh the home project list
                         // Success message shows as an app-root snackbar (JVM notification), not in a
                         // dialog: "{project} ({language})…" for a book, or the source-only variant.
-                        val message = if (successProject != null) {
+                        val merged = mergedTakes
+                        val message = if (successProject != null && merged != null) {
+                            val (added, alreadyThere) = merged
+                            if (alreadyThere > 0) {
+                                getString(Res.string.importMergedWithExistingMessage, successProject!!, successLanguage.orEmpty(), added, alreadyThere)
+                            } else {
+                                getString(Res.string.importMergedMessage, successProject!!, successLanguage.orEmpty(), added)
+                            }
+                        } else if (successProject != null) {
                             getString(Res.string.importProjectSuccessfulMessage, successProject!!, successLanguage.orEmpty())
                         } else {
                             getString(Res.string.importSourceSuccessfulMessage, successLanguage.orEmpty())
@@ -171,6 +189,10 @@ class OratureImportViewModel : ViewModel(), KoinComponent {
             successBookMode = workbookDescriptor?.mode
         }
 
+        override fun onNotifyTakesImported(merged: Boolean, added: Int, alreadyThere: Int) {
+            mergedTakes = if (merged) added to alreadyThere else null
+        }
+
         override fun onError(filePath: String) {
             logger.error("Importer reported an error for: $filePath")
         }
@@ -181,10 +203,10 @@ class OratureImportViewModel : ViewModel(), KoinComponent {
         val base = getString(Res.string.importFailed)
         return when (result) {
             ImportResult.INVALID_RC,
-            ImportResult.INVALID_CONTENT -> "$base ${result.name}: the file's content is invalid or unreadable."
-            ImportResult.UNSUPPORTED_CONTENT -> "$base ${result.name}: this file type isn't supported."
-            ImportResult.LOAD_RC_ERROR -> "$base ${result.name}: the project could not be opened."
-            else -> "$base (${result.name})"
+            ImportResult.INVALID_CONTENT -> getString(Res.string.importFailedInvalidContent, base, result.name)
+            ImportResult.UNSUPPORTED_CONTENT -> getString(Res.string.importFailedUnsupported, base, result.name)
+            ImportResult.LOAD_RC_ERROR -> getString(Res.string.importFailedCannotOpen, base, result.name)
+            else -> getString(Res.string.importFailedWithCode, base, result.name)
         }
     }
 

@@ -110,6 +110,9 @@ class OngoingProjectImporter(
     private var completedChapters = listOf<Int>() // for Ot1 projects
     private var takesToCompile = mutableMapOf<Int, List<File>>() // for compiling verses of incomplete chapter in Ot1
     private var migratedSelectedTakes = listOf<String>() // list of all selected take paths extracted from Ot1 database
+    /** Takes this import added, and those it found already in the project (byte-for-byte). */
+    private var takesAdded = 0
+    private var takesAlreadyThere = 0
     /** The source book of the project already here that the backup is merged into, if there is one. */
     private var existingProjectSource: Collection? = null
 
@@ -130,6 +133,8 @@ class OngoingProjectImporter(
         takesToCompile = mutableMapOf()
         migratedSelectedTakes = listOf()
         existingProjectSource = null
+        takesAdded = 0
+        takesAlreadyThere = 0
         contentCache.clear()
 
         return Single
@@ -138,19 +143,16 @@ class OngoingProjectImporter(
                 logger.error("Error while checking whether project already exists.", it)
             }
             .flatMap { exists ->
-                val takesByChapterInProject = fetchTakesInRC(file)
+                // A book already here is merged, never replaced, so there is nothing to ask: every
+                // recording comes in as a new take (see insertTake), and the callback is told how
+                // many were added.
+                takesInChapterFilter = fetchTakesInRC(file)
 
-                if (exists && callback != null) {
-                    val availableChapters = takesByChapterInProject.values.distinct().sorted()
-                    val selectedChapters = getUserSelectedChapter(availableChapters, callback)
-                        ?: return@flatMap Single.just(ImportResult.ABORTED)
-
-                    takesInChapterFilter = takesByChapterInProject.filterValues { it in selectedChapters }
-                } else {
-                    takesInChapterFilter = takesByChapterInProject // accept all takes
+                importResumableProject(file, callback).doOnSuccess { result ->
+                    if (result == ImportResult.SUCCESS) {
+                        callback?.onNotifyTakesImported(merged = exists, added = takesAdded, alreadyThere = takesAlreadyThere)
+                    }
                 }
-
-                importResumableProject(file, callback)
             }
             .subscribeOn(Schedulers.io())
     }
@@ -194,14 +196,6 @@ class OngoingProjectImporter(
                 } ?: false
             }
         }
-    }
-
-    private fun getUserSelectedChapter(
-        availableChapters: List<Int>,
-        callback: ProjectImporterCallback
-    ): List<Int>? {
-        val callbackParam = ImportCallbackParameter(availableChapters, projectName)
-        return callback.onRequestUserInput(callbackParam).blockingGet().chapters
     }
 
     private fun fetchTakesInRC(file: File): Map<String, Int> {
@@ -661,6 +655,7 @@ class OngoingProjectImporter(
         val checksum = computeFileChecksum(staged)
         existing.firstOrNull { it.path.exists() && computeFileChecksum(it.path) == checksum }?.let { same ->
             staged.delete()
+            takesAlreadyThere++
             if (isSelected && same.deleted == null) {
                 chunk.selectedTake = same
                 contentRepository.update(chunk).blockingAwait()
@@ -700,6 +695,7 @@ class OngoingProjectImporter(
         )
         val insertedId = takeRepository.insertForContent(take, chunk).blockingGet()
         take.id = insertedId
+        takesAdded++
 
         if (isSelected) {
             chunk.selectedTake = take

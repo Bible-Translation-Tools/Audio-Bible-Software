@@ -501,4 +501,12 @@
     <string name="editionMonthPattern">MMM yyyy</string>
     <string name="exportResourceDone">Exported %1$s to %2$s.</string>
     <string name="exportResourceFailed">%1$s could not be exported.</string>
+    <!-- A backup of a book already on this device was merged into it. -->
+    <string name="importMergedMessage">%1$s (%2$s): %3$d recordings added as new takes.</string>
+    <string name="importMergedWithExistingMessage">%1$s (%2$s): %3$d recordings added as new takes; %4$d were already there.</string>
+    <!-- Why an import failed: %1$s is the generic "Import Failed", %2$s the importer's result code. -->
+    <string name="importFailedInvalidContent">%1$s (%2$s): the file\'s content is invalid or unreadable.</string>
+    <string name="importFailedUnsupported">%1$s (%2$s): this file type isn\'t supported.</string>
+    <string name="importFailedCannotOpen">%1$s (%2$s): the project could not be opened.</string>
+    <string name="importFailedWithCode">%1$s (%2$s)</string>
 </resources>
