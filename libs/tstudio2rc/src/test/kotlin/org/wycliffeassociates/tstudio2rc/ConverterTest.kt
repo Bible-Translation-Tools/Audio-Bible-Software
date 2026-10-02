@@ -8,11 +8,15 @@ import org.wycliffeassociates.resourcecontainer.entity.Project
 import org.wycliffeassociates.resourcecontainer.entity.Source
 import java.io.File
 import java.time.LocalDate
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import kotlin.io.path.createTempDirectory
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class ConverterTest {
 
@@ -102,6 +106,54 @@ class ConverterTest {
         } finally {
             result.delete()
         }
+    }
+
+    @Test
+    fun validFormatAcceptsTstudioArchive() {
+        assertTrue(Tstudio2RcConverter.isValidFormat(getResourceFile()))
+    }
+
+    @Test
+    fun validFormatAcceptsExtractedDirectory() {
+        val unzipDir = outputDir.resolve("ts-extracted").apply { mkdir() }
+        unzipFile(getResourceFile(), unzipDir)
+        assertTrue(Tstudio2RcConverter.isValidFormat(unzipDir))
+    }
+
+    @Test
+    fun validFormatRejectsLegacyRecorderZip() {
+        // A legacy BTT Recorder export also contains a file named manifest.json, but with a
+        // completely different schema. It must not be misdetected as tstudio.
+        val recorderManifest = """
+            {"language":{"slug":"aa","name":"Afar"},
+             "book":{"slug":"gen","name":"Genesis","number":1},
+             "version":{"slug":"reg","name":"Regular"},
+             "anthology":{"slug":"ot","name":"Old Testament"},
+             "mode":{"slug":"chunk","name":"Chunk","type":"chunk"},
+             "manifest":[],"users":[]}
+        """.trimIndent()
+        val zip = makeZip("manifest.json" to recorderManifest)
+        assertFalse(Tstudio2RcConverter.isValidFormat(zip))
+    }
+
+    @Test
+    fun validFormatRejectsUnrelatedManifestJson() {
+        // A zip that merely contains a file named manifest.json (the old substring match) is
+        // not a tstudio project.
+        val zip = makeZip("some/dir/manifest.json" to """{"foo":"bar"}""")
+        assertFalse(Tstudio2RcConverter.isValidFormat(zip))
+    }
+
+    private fun makeZip(vararg entries: Pair<String, String>): File {
+        val zip = outputDir.resolve("test-${System.nanoTime()}.zip")
+        ZipOutputStream(zip.outputStream()).use { zos ->
+            entries.forEach { (name, content) ->
+                zos.putNextEntry(ZipEntry(name))
+                zos.write(content.toByteArray())
+                zos.closeEntry()
+            }
+        }
+        return zip
     }
 
     @BeforeTest
