@@ -36,8 +36,10 @@ import org.bibletranslationtools.otter.common.domain.project.importer.OngoingPro
 import org.bibletranslationtools.otter.common.domain.project.importer.ProjectImporterCallback
 import org.bibletranslationtools.otter.common.domain.project.importer.RCImporterFactory
 import org.bibletranslationtools.otter.common.domain.project.importer.TsImporterFactory
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportException
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstants
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.castOrFindImportException
 import org.bibletranslationtools.otter.common.api.persistence.IFileIOFactory
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import java.io.File
@@ -67,7 +69,6 @@ class ImportProjectUseCase(
 
     private val logger = LoggerFactory.getLogger(javaClass)
 
-    @Throws(IllegalArgumentException::class)
     fun import(
         file: File,
         callback: ProjectImporterCallback?,
@@ -75,18 +76,31 @@ class ImportProjectUseCase(
     ): Single<ImportResult> {
         return Single
             .fromCallable {
-                val format = ProjectFormatIdentifier.getProjectFormat(file)
+                val format = try {
+                    ProjectFormatIdentifier.getProjectFormat(file)
+                } catch (e: IllegalArgumentException) {
+                    logger.info("No project-format identifier matched $file; treating as unsupported.", e)
+                    throw ImportException(ImportResult.UNSUPPORTED_CONTENT)
+                }
                 getImporter(format)
             }
             .flatMap {
                 it.import(file, callback, options)
             }
-            .onErrorReturn {
-                logger.error(
-                    "Failed to import project file: $file. See exception detail below.",
-                    it
-                )
-                ImportResult.FAILED
+            .onErrorReturn { error ->
+                // An importer (or the format/importer selection above) can carry a specific
+                // ImportResult via ImportException — surface that rather than a blanket FAILED.
+                val carried = error.castOrFindImportException()?.result
+                if (carried != null) {
+                    logger.warn("Could not import project file: $file (result=$carried)", error)
+                    carried
+                } else {
+                    logger.error(
+                        "Failed to import project file: $file. See exception detail below.",
+                        error
+                    )
+                    ImportResult.FAILED
+                }
             }
     }
 
@@ -166,7 +180,7 @@ class ImportProjectUseCase(
             ProjectFormat.SCRIPTURE_BURRITO -> burritoFactoryProvider
             ProjectFormat.RESOURCE_CONTAINER -> rcFactoryProvider
             ProjectFormat.TSTUDIO -> tsFactoryProvider
-            else -> throw Exception("Unsupported project format.")
+            else -> throw ImportException(ImportResult.UNSUPPORTED_CONTENT)
         }
         return factory.makeImporter()
     }
