@@ -18,6 +18,11 @@
  */
 package org.bibletranslationtools.otter.common.domain.project
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.InstalledSourceEditions
+import org.bibletranslationtools.otter.common.domain.project.importer.EditionFingerprinter
+import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import kotlinx.serialization.Serializable
 
 import io.reactivex.Completable
@@ -53,6 +58,7 @@ const val SOURCE_PATH_TEMPLATE = "files/content/%s.zip"
 // Build-generated manifest (generateEmbeddedSourcesManifest) of the source names whose zip
 // actually got bundled — the wa-catalog manifest is partly stale, so this reflects reality.
 const val EMBEDDED_SOURCES_FILE = "files/embedded_gl_sources.json"
+const val EMBEDDED_SOURCE_CHECKSUMS_FILE = "files/embedded_gl_source_checksums.json"
 
 class ImportProjectUseCase(
     val burritoFactoryProvider: BurritoImporterFactory,
@@ -63,6 +69,9 @@ class ImportProjectUseCase(
     val tempFiles: ITempFileProvider,
     private val bundledContent: IBundledContentSource,
     private val glSourceCatalog: GlSourceCatalog,
+    private val installedEditions: InstalledSourceEditions,
+    private val fingerprinter: EditionFingerprinter,
+    private val bundledStamps: BundledSourceStamps,
 ) {
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -109,6 +118,12 @@ class ImportProjectUseCase(
             .flatMap { sourceFile ->
                 import(sourceFile, null, null)
             }
+            .doOnSuccess { result ->
+                // So RefreshBundledSources doesn't import this same zip again at the next launch.
+                if (result == ImportResult.SUCCESS || result == ImportResult.ALREADY_EXISTS) {
+                    glSources.find { it.languageCode == language.slug }?.name?.let(bundledStamps::markImported)
+                }
+            }
             .ignoreElement()
     }
 
@@ -135,10 +150,16 @@ class ImportProjectUseCase(
         return sourceFile
     }
 
-    fun isAlreadyImported(file: File): Boolean {
-        return rcFactoryProvider
-            .makeImporter()
-            .isAlreadyImported(file)
+    /**
+     * Whether the source edition in [file] is already installed: the same edition, not just some
+     * edition of the same source. The file is only parsed when some edition of it is installed.
+     */
+    fun isAlreadyImported(file: File): Boolean = runBlocking(Dispatchers.IO) {
+        val dublinCore = ResourceContainer.load(file, true).use { it.manifest.dublinCore }
+        val languageSlug = dublinCore.language.identifier
+        if (installedEditions.editionsOf(languageSlug, dublinCore.identifier).isEmpty()) return@runBlocking false
+        val fingerprint = fingerprinter.fingerprint(file)
+        installedEditions.findSameEdition(languageSlug, dublinCore.identifier, dublinCore.creator, fingerprint) != null
     }
 
     fun isSourceAudioProject(file: File): Boolean {

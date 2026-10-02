@@ -20,13 +20,13 @@ package org.bibletranslationtools.otter.common.persistence.database.sqldelight
 
 import org.bibletranslationtools.otter.common.persistence.database.InsertionException
 import org.bibletranslationtools.otter.common.persistence.database.dao.ResourceMetadataDao
+import org.bibletranslationtools.otter.common.persistence.entities.EditionFingerprintEntity
 import org.bibletranslationtools.otter.common.persistence.entities.ResourceMetadataEntity
 import org.bibletranslationtools.otter.db.OtterDatabase
 
 /**
  * SQLDelight-backed [ResourceMetadataDao]. Behavior mirrors the jOOQ ResourceMetadataDao, including
- * the `insert → SELECT max(id)` id retrieval, min/max ordering of link foreign keys, and the
- * `fetchLatestVersion` retry that relaxes the creator filter when no exact match is found.
+ * the `insert → SELECT max(id)` id retrieval and min/max ordering of link foreign keys.
  */
 internal class SqlDelightResourceMetadataDao(private val db: OtterDatabase) : ResourceMetadataDao {
     private val queries = db.dublinCoreQueries
@@ -86,27 +86,6 @@ internal class SqlDelightResourceMetadataDao(private val db: OtterDatabase) : Re
         return queries.fetchByIds(ids).executeAsList().map { it.toEntity() }
     }
 
-    override fun fetchLatestVersion(
-        languageSlug: String,
-        identifier: String,
-        creator: String,
-        derivedFromFk: Int?,
-        relaxCreatorIfNoMatch: Boolean,
-    ): ResourceMetadataEntity? {
-        fun flv(creatorArg: String?) =
-            queries.fetchLatestVersion(languageSlug, identifier, creatorArg, derivedFromFk)
-                .executeAsOneOrNull()
-                ?.toEntity()
-
-        return flv(creator)
-            ?: if (relaxCreatorIfNoMatch) flv(null) else null
-    }
-
-    override fun fetchLatestVersion(languageSlug: String, identifier: String): ResourceMetadataEntity? =
-        queries.fetchLatestVersionByLanguageAndIdentifier(languageSlug, identifier)
-            .executeAsOneOrNull()
-            ?.toEntity()
-
     override fun fetchAll(): List<ResourceMetadataEntity> =
         queries.fetchAll().executeAsList().map { it.toEntity() }
 
@@ -144,4 +123,24 @@ internal class SqlDelightResourceMetadataDao(private val db: OtterDatabase) : Re
 
     override fun subtreeResourceMetadata(collectionId: Int): List<ResourceMetadataEntity> =
         queries.subtreeResourceMetadata(collectionId).executeAsList().map { it.toEntity() }
+
+    override fun setEditionFingerprint(id: Int, fingerprint: EditionFingerprintEntity) {
+        queries.setEditionFingerprint(
+            detectedVersification = fingerprint.detectedVersification,
+            structureFingerprint = fingerprint.structureFingerprint,
+            textFingerprint = fingerprint.textFingerprint,
+            id = id
+        )
+    }
+
+    override fun fetchEditionFingerprint(id: Int): EditionFingerprintEntity? =
+        queries.fetchEditionFingerprint(id).executeAsOneOrNull()?.let {
+            EditionFingerprintEntity(it.detected_versification, it.structure_fingerprint, it.text_fingerprint)
+        }
+
+    override fun fetchSourceEditions(languageId: Int, identifier: String): List<ResourceMetadataEntity> =
+        queries.fetchSourceEditions(languageId, identifier).executeAsList().map { it.toEntity() }
+
+    override fun fetchSourceIdsWithoutFingerprint(): List<Int> =
+        queries.fetchSourceIdsWithoutFingerprint().executeAsList()
 }

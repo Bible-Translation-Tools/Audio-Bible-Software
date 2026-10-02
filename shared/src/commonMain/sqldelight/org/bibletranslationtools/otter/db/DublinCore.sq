@@ -1,4 +1,4 @@
--- Mirrors sql/CreateAppDb.sql `dublin_core_entity` (resource metadata).
+-- Ported from the legacy (jOOQ) CreateAppDb.sql `dublin_core_entity` (resource metadata).
 CREATE TABLE dublin_core_entity (
     id          INTEGER AS kotlin.Int PRIMARY KEY AUTOINCREMENT,
     conformsTo  TEXT NOT NULL,
@@ -17,8 +17,20 @@ CREATE TABLE dublin_core_entity (
     license     TEXT NOT NULL DEFAULT '',
     path        TEXT NOT NULL,
     derivedFrom_fk INTEGER AS kotlin.Int REFERENCES dublin_core_entity(id),
+    -- Edition fingerprint (schema v15), set for sources at import or by the startup backfill; NULL
+    -- until then and for derived rows. See EditionFingerprint.
+    detected_versification TEXT,
+    structure_fingerprint  TEXT,
+    text_fingerprint       TEXT,
     UNIQUE (language_fk, identifier, version, creator, derivedFrom_fk)
 );
+
+-- Schema v16: one row per source edition. The table's UNIQUE never applies to sources, whose
+-- derivedFrom_fk is NULL (SQLite doesn't compare NULLs in a uniqueness check), and a version label
+-- doesn't identify an edition anyway: two different English ULB zips both say '12'.
+CREATE UNIQUE INDEX idx_dublin_core_source_edition
+ON dublin_core_entity (language_fk, identifier, creator, structure_fingerprint, text_fingerprint)
+WHERE derivedFrom_fk IS NULL AND structure_fingerprint IS NOT NULL;
 
 -- Queries for ResourceMetadataDao (over dublin_core_entity + the rc_link_entity join table). -----
 
@@ -80,29 +92,6 @@ WHERE NOT EXISTS (SELECT 1 FROM rc_link_entity WHERE rc1_fk = :low AND rc2_fk = 
 removeLink:
 DELETE FROM rc_link_entity WHERE rc1_fk = :low AND rc2_fk = :high;
 
--- fetchLatestVersion (private overload): dynamic creator/derivedFrom filters folded into one query.
--- :creator IS NULL  -> no creator filter (the relax-creator retry passes null).
--- :derivedFromFk IS NULL -> require derivedFrom_fk IS NULL; otherwise match it exactly.
--- ORDER BY version DESC is a TEXT sort, preserving the existing (lexical) behavior.
-fetchLatestVersion:
-SELECT dublin_core_entity.* FROM dublin_core_entity
-JOIN language_entity ON dublin_core_entity.language_fk = language_entity.id
-WHERE language_entity.slug = :languageSlug
-  AND dublin_core_entity.identifier = :identifier
-  AND (:creator IS NULL OR dublin_core_entity.creator = :creator)
-  AND ((:derivedFromFk IS NULL AND dublin_core_entity.derivedFrom_fk IS NULL)
-       OR dublin_core_entity.derivedFrom_fk = :derivedFromFk)
-ORDER BY dublin_core_entity.version DESC
-LIMIT 1;
-
--- fetchLatestVersion (2-arg overload): no creator / derivedFrom filter at all.
-fetchLatestVersionByLanguageAndIdentifier:
-SELECT dublin_core_entity.* FROM dublin_core_entity
-JOIN language_entity ON dublin_core_entity.language_fk = language_entity.id
-WHERE language_entity.slug = :languageSlug AND dublin_core_entity.identifier = :identifier
-ORDER BY dublin_core_entity.version DESC
-LIMIT 1;
-
 -- ResourceRepository.getResourceMetadata(content): distinct metadata rows linked via resource_link.content_fk.
 resourceMetadataByContent:
 SELECT DISTINCT dublin_core_entity.* FROM resource_link
@@ -120,3 +109,27 @@ subtreeResourceMetadata:
 SELECT dublin_core_entity.* FROM subtree_has_resource
 JOIN dublin_core_entity ON dublin_core_entity.id = subtree_has_resource.dublin_core_fk
 WHERE subtree_has_resource.collection_fk = :collectionId;
+
+-- Edition fingerprint. Kept out of insert/update so re-mapping metadata from a manifest never
+-- clears it.
+setEditionFingerprint:
+UPDATE dublin_core_entity
+SET detected_versification = :detectedVersification,
+    structure_fingerprint = :structureFingerprint,
+    text_fingerprint = :textFingerprint
+WHERE id = :id;
+
+fetchEditionFingerprint:
+SELECT detected_versification, structure_fingerprint, text_fingerprint
+FROM dublin_core_entity WHERE id = ?;
+
+-- Sources (not derived rows) that have no fingerprint yet.
+fetchSourceIdsWithoutFingerprint:
+SELECT id FROM dublin_core_entity
+WHERE derivedFrom_fk IS NULL AND structure_fingerprint IS NULL;
+
+-- Every installed edition of a source: source rows (not derived ones) for this language and
+-- identifier, of any creator and version.
+fetchSourceEditions:
+SELECT * FROM dublin_core_entity
+WHERE language_fk = :languageId AND identifier = :identifier AND derivedFrom_fk IS NULL;

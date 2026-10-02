@@ -32,6 +32,7 @@ import org.bibletranslationtools.otter.common.domain.project.exporter.resourceco
 import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.SourceProjectExporter
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
+import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
 import org.jetbrains.compose.resources.getString
 import org.bibletranslationtools.shared.resources.Res
 import org.bibletranslationtools.shared.resources.export_error_project_not_found
@@ -70,6 +71,7 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
     private val directoryProvider: ITempFileProvider by inject()
     private val workbookRepository: IWorkbookRepository by inject()
     private val completionStatus: ProjectCompletionStatus by inject()
+    private val upgradeBookEdition: UpgradeBookEdition by inject()
 
     private val _options = MutableStateFlow<ExportOptionsState>(ExportOptionsState.Closed)
     val options: StateFlow<ExportOptionsState> = _options.asStateFlow()
@@ -152,11 +154,15 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
                     .map { it.sort }
                     .toSet()
 
+                val heldBack = runCatching { upgradeBookEdition.editionState(descriptor.targetCollection.id) }
+                    .onFailure { logFailure("loading the book's editions", it) }
+                    .getOrNull()?.heldBackChapters.orEmpty()
                 _options.value = ExportOptionsState.Ready(
                     descriptor = descriptor,
                     chapters = chapterDescriptors,
                     type = defaultType,
-                    selectedChapterSorts = initialSelection
+                    selectedChapterSorts = initialSelection,
+                    heldBackChapters = heldBack
                 )
             } catch (e: CancellationException) {
                 throw e
@@ -485,7 +491,9 @@ sealed interface ExportOptionsState {
         val descriptor: WorkbookDescriptor,
         val chapters: List<ExportChapter>,
         val type: ExportType,
-        val selectedChapterSorts: Set<Int>
+        val selectedChapterSorts: Set<Int>,
+        /** Chapters that keep an earlier source edition's verses: exporting them mixes verse structures (A13). */
+        val heldBackChapters: List<Int> = emptyList()
     ) : ExportOptionsState {
         val canExport: Boolean get() = selectedChapterSorts.isNotEmpty()
     }

@@ -24,11 +24,7 @@ import org.bibletranslationtools.otter.common.persistence.characterization.Abstr
 import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.bibletranslationtools.otter.common.persistence.database.sqldelight.SqlDelightAppDatabase
 
-/**
- * The new (SQLDelight) backend. Builds a fresh in-memory database per test. Because it runs the same
- * [AbstractDatabaseCharacterizationTest] bodies as [JooqBackend] and must satisfy the same
- * assertions, green-on-both is the proof of functional equivalence.
- */
+/** The SQLDelight backend the characterization suite runs against: a fresh in-memory database per test. */
 object SqlDelightBackend : DatabaseBackend {
 
     override fun createDatabase(): DaoProvider {

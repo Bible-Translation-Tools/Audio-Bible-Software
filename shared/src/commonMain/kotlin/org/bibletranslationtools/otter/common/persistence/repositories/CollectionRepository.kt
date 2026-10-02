@@ -454,31 +454,7 @@ class CollectionRepository(
                         val metadataSourceToDerivedMap = sourceMetadatas.zip(derivedMetadata).associate { it }
                         copyResourceLinks(projectEntity, metadataSourceToDerivedMap)
 
-                        // Add a project to the container if necessary
-                        // Load the existing resource container and see if we need to add another project
-                        ResourceContainer.load(File(mainDerivedMetadata.path)).use { container ->
-                            if (container.manifest.projects.none { it.identifier == sourceCollection.slug }) {
-                                container.manifest.projects = container.manifest.projects.plus(
-                                    project {
-                                        sort = if (
-                                            mainDerivedMetadata.subject.lowercase() == "bible" &&
-                                            projectEntity.sort > 39
-                                        ) {
-                                            projectEntity.sort + 1
-                                        } else {
-                                            projectEntity.sort
-                                        }
-                                        identifier = projectEntity.slug
-                                        path = "./${projectEntity.slug}"
-                                        // This title will not be localized into the target language
-                                        title = projectEntity.title
-                                        // Unable to get categories and versification from the source collection
-                                    }
-                                )
-                                // Update the container
-                                container.write()
-                            }
-                        }
+                        addToDerivedManifest(mainDerivedMetadata, projectEntity)
                     }
 
                     val workbookDescriptor = database.workbookDescriptorDao.fetch(
@@ -514,6 +490,45 @@ class CollectionRepository(
             }
             .subscribeOn(Schedulers.io())
     }
+
+    /** Adds project book [book] to derived container [derived]'s manifest, if it isn't listed yet. */
+    internal fun addToDerivedManifest(derived: ResourceMetadataEntity, book: CollectionEntity) {
+        ResourceContainer.load(File(derived.path)).use { container ->
+            if (container.manifest.projects.none { it.identifier == book.slug }) {
+                container.manifest.projects = container.manifest.projects.plus(
+                    project {
+                        sort = if (derived.subject.lowercase() == "bible" && book.sort > 39) book.sort + 1 else book.sort
+                        identifier = book.slug
+                        path = "./${book.slug}"
+                        // This title will not be localized into the target language
+                        title = book.title
+                        // Unable to get categories and versification from the source collection
+                    }
+                )
+                container.write()
+            }
+        }
+    }
+
+    /**
+     * Removes [bookSlug] from derived container [derived]'s manifest. When no book is left, the
+     * container's folder and row are deleted too.
+     */
+    internal fun removeFromDerivedManifest(derived: ResourceMetadataEntity, bookSlug: String) {
+        ResourceContainer.load(File(derived.path)).use { container ->
+            container.manifest.projects = container.manifest.projects.filter { it.identifier != bookSlug }
+            if (container.manifest.projects.isNotEmpty()) {
+                container.writeManifest()
+            } else {
+                File(derived.path).deleteRecursively()
+                metadataDao.delete(derived)
+            }
+        }
+    }
+
+    /** The derived row (a target container) for source edition [source] in [language], created if needed. */
+    internal fun derivedMetadataFor(source: ResourceMetadata, language: Language): ResourceMetadataEntity =
+        findOrInsertMetadataEntity(source, language)
 
     private fun findProjectCollection(
         sourceEntity: CollectionEntity,
@@ -565,11 +580,12 @@ class CollectionRepository(
     ): ResourceMetadataEntity {
         // Check for existing resource containers
         val existingMetadata = metadataDao.fetchAll()
+        // Keyed by the source edition's id, not its version label: a re-imported edition can have
+        // its label updated, and its books must still share one derived row per target language.
         val matches = existingMetadata.filter {
             it.identifier == source.identifier &&
                     it.languageFk == language.id &&
                     it.creator == dublinCoreCreator &&
-                    it.version == source.version &&
                     it.derivedFromFk == source.id
         }
 
@@ -587,9 +603,9 @@ class CollectionRepository(
                 entity
             }
         } else {
-            // Use the existing metadata
-            // Will throw an exception if the list has more than one element
-            matches.single()
+            // Use the existing metadata. Before derived rows were keyed by edition id alone, a
+            // relabelled edition could get a second one; the first created wins.
+            matches.minBy { it.id }
         }
         return metadataEntity
     }
@@ -621,7 +637,10 @@ class CollectionRepository(
             // The file is never used, since the DP doesn't look at the directory
             // to generate the derived directory.
             dublinCore.mapToMetadata(File("."), targetLanguage),
-            source
+            source,
+            // A source without a fingerprint yet (the backfill hasn't reached it) still needs a
+            // folder of its own.
+            database.loadEditionFingerprint(source.id)?.shortCode ?: "id${source.id}"
         )
         val container = ResourceContainer.create(directory) {
             // Set up the manifest

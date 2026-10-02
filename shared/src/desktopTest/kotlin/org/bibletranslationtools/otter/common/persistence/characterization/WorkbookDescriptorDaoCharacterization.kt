@@ -25,7 +25,7 @@ import kotlin.test.assertNull
 
 /**
  * Characterizes
- * [org.bibletranslationtools.otter.common.persistence.database.daos.WorkbookDescriptorDao].
+ * [org.bibletranslationtools.otter.common.persistence.database.dao.WorkbookDescriptorDao].
  * source_fk/target_fk are COLLECTION ids.
  */
 abstract class WorkbookDescriptorDaoCharacterization : AbstractDatabaseCharacterizationTest() {
@@ -91,8 +91,4 @@ abstract class WorkbookDescriptorDaoCharacterization : AbstractDatabaseCharacter
         db.workbookDescriptorDao.delete(db.workbookDescriptorDao.fetchById(id)!!)
         assertNull(db.workbookDescriptorDao.fetchById(id))
     }
-}
-
-class JooqWorkbookDescriptorDaoCharacterizationTest : WorkbookDescriptorDaoCharacterization() {
-    override val backend = JooqBackend
 }

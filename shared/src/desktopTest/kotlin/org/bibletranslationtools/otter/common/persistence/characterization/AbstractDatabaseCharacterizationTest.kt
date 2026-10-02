@@ -38,22 +38,16 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 
 /**
- * Backend-agnostic characterization of the whole DAO surface, written against [IAppDatabase] and
- * therefore runnable against ANY implementation of it. This is the load-bearing safety net for the
- * jOOQ → SQLDelight migration (docs/jooq-to-sqldelight-migration-plan.md).
+ * Characterization of the whole DAO surface, written against [DaoProvider].
  *
- * The differential design: this class asserts fixed, hand-derived expected values for every DAO
- * behavior that matters — including the quirks (`insert` returning `SELECT max(id)`, `insertAll`
- * returning a contiguous id range, lazy enum-table seeding, boolean↔int, nested-subquery result
- * sets, the three `fetchLatestVersion` overloads). A subclass supplies a backend via
- * [createDatabase]. Today the only subclass builds the jOOQ backend; Phase 3 adds a SQLDelight
- * subclass, and because both run these identical assertions, green-on-both IS the proof of
- * functional identity. (Phase 3 also adds a direct jooq-vs-sqldelight comparator for result sets
- * whose expected value is impractical to hardcode.)
+ * It asserts fixed, hand-derived expected values for every DAO behavior that matters, including
+ * the quirks (`insert` returning `SELECT max(id)`, `insertAll` returning a contiguous id range,
+ * lazy enum-table seeding, boolean↔int, nested-subquery result sets, the three
+ * `fetchLatestVersion` overloads). These values were first proven against the jOOQ backend the
+ * SQLDelight one replaced, so they pin the behavior the app was built on.
  *
  * Each DAO's tests live in a reusable abstract subclass (e.g. `LanguageDaoCharacterization`);
- * a concrete class per backend supplies [backend] and nothing else, e.g.
- * `class JooqLanguageDaoCharacterizationTest : LanguageDaoCharacterization() { override val backend = JooqBackend }`.
+ * a concrete class supplies [backend] and nothing else (see SqlDelightCharacterizationTests).
  */
 abstract class AbstractDatabaseCharacterizationTest {
 

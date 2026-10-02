@@ -1,4 +1,4 @@
--- Mirrors sql/CreateAppDb.sql `checking_status`.
+-- Ported from the legacy (jOOQ) CreateAppDb.sql `checking_status`.
 CREATE TABLE checking_status (
     id          INTEGER AS kotlin.Int PRIMARY KEY AUTOINCREMENT,
     name        TEXT NOT NULL,

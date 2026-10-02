@@ -1,5 +1,6 @@
 package org.bibletranslationtools.bttrecorder2.ui.screens
 
+import org.bibletranslationtools.bttrecorder2.ui.screens.wizard.EditionSelectionScreen
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -82,7 +83,7 @@ fun ProjectWizardScreen(
                             onQueryChange = { searchQuery = it },
                             focusRequester = searchFocus,
                             placeholder = when (uiState.currentStep) {
-                                WizardStep.SOURCE -> stringResource(Res.string.wizard_search_source)
+                                WizardStep.SOURCE, WizardStep.EDITION -> stringResource(Res.string.wizard_search_source)
                                 WizardStep.TARGET_LANGUAGE -> stringResource(Res.string.wizard_search_language)
                                 WizardStep.BOOK -> stringResource(Res.string.wizard_search_book)
                             }
@@ -153,6 +154,12 @@ fun ProjectWizardScreen(
                             searchQuery = searchQuery,
                             onSourceSelected = { viewModel.selectSource(it) },
                             onAvailableSourceSelected = { viewModel.selectAvailableSource(it) }
+                        )
+                    }
+                    WizardStep.EDITION -> {
+                        EditionSelectionScreen(
+                            editions = uiState.editions,
+                            onEditionSelected = { viewModel.selectEdition(it) }
                         )
                     }
                     WizardStep.TARGET_LANGUAGE -> {

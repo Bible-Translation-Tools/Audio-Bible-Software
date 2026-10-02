@@ -19,6 +19,7 @@
 package org.bibletranslationtools.otter.common.domain.versification
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import org.bibletranslationtools.otter.common.CoercingStringSerializer
 
 
@@ -35,16 +36,23 @@ data class ParatextVersification(
     val partialVerses: PartialVerses?
 ): Versification {
 
+    /**
+     * [maxVerses] keyed by lower-case book slug. The bundled `ulb` file uses the app's own lower-case
+     * slugs (`gen`), while the Copenhagen Alliance files use upper-case USFM codes (`GEN`).
+     */
+    @Transient
+    private val versesByBook: Map<String, List<String>> = maxVerses.mapKeys { it.key.lowercase() }
+
     override fun getChaptersInBook(bookSlug: String): Int {
-        return maxVerses[bookSlug]?.size ?: 0
+        return versesByBook[bookSlug.lowercase()]?.size ?: 0
     }
 
     override fun getVersesInChapter(bookSlug: String, chapterNumber: Int): Int {
-        return maxVerses[bookSlug]?.get(chapterNumber-1)?.toInt() ?: 0
+        return versesByBook[bookSlug.lowercase()]?.getOrNull(chapterNumber - 1)?.toInt() ?: 0
     }
 
     override fun getBookSlugs(): List<String> {
-        return maxVerses.keys.toList()
+        return versesByBook.keys.toList()
     }
 }
 

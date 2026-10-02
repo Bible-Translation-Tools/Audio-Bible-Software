@@ -31,8 +31,8 @@ import java.io.File
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus as CheckingStatusEnum
 
 /**
- * Raw-SQL port of [org.bibletranslationtools.otter.common.persistence.database.DatabaseMigrator],
- * running the identical v0->14 upgrade path through a SQLDelight [SqlDriver] instead of jOOQ.
+ * Raw-SQL port of the jOOQ `DatabaseMigrator` it replaced (removed with jOOQ), running the
+ * identical v0->14 upgrade path through a SQLDelight [SqlDriver], then the steps added since.
  *
  * This mirrors the jOOQ migrator's control flow AND its quirks exactly (see
  * docs/phase5a-handoff.md), including the two deliberate ones in the 12->13 take rebuild (the
@@ -67,6 +67,10 @@ class SqlDelightDatabaseMigrator(
             current = migrate11to12(driver, current)
             current = migrate12to13(driver, current)
             current = migrate13to14(driver, current)
+            current = migrate14to15(driver, current)
+            current = migrate15to16(driver, current)
+            current = migrate16to17(driver, current)
+            current = migrate17to18(driver, current)
             exec(driver, "UPDATE installed_entity SET version = $current WHERE name = '$DATABASE_INSTALLABLE_NAME'")
         }
     }
@@ -96,6 +100,25 @@ class SqlDelightDatabaseMigrator(
             { cursor ->
                 val value = if (cursor.next().value) cursor.getLong(0)?.toInt() else null
                 QueryResult.Value(value)
+            },
+            0
+        ).value
+    }
+
+    /**
+     * The column names of [table]. Reads `PRAGMA table_info` directly: the `pragma_table_info()`
+     * table function needs SQLite 3.16, and Android 7 ships 3.9.2.
+     */
+    private fun columnNames(driver: SqlDriver, table: String): Set<String> {
+        return driver.executeQuery(
+            null,
+            "PRAGMA table_info($table);",
+            { cursor ->
+                val names = mutableSetOf<String>()
+                while (cursor.next().value) {
+                    cursor.getString(1)?.let(names::add)
+                }
+                QueryResult.Value(names)
             },
             0
         ).value
@@ -434,6 +457,129 @@ class SqlDelightDatabaseMigrator(
             }
             logger.info("Updated database from version 13 to 14")
             14
+        } else current
+    }
+
+    /**
+     * Version 15
+     * Edition fingerprints: three nullable columns on `dublin_core_entity` and the `edition_chapter`
+     * table. Existing sources get their fingerprints from the startup backfill, not here: computing
+     * them needs each source's text.
+     */
+    private fun migrate14to15(driver: SqlDriver, current: Int): Int {
+        return if (current < 15) {
+            try {
+                // A step that failed partway is retried next launch, so skip columns already added.
+                val existing = columnNames(driver, "dublin_core_entity")
+                listOf("detected_versification", "structure_fingerprint", "text_fingerprint")
+                    .filter { it !in existing }
+                    .forEach { exec(driver, "ALTER TABLE dublin_core_entity ADD COLUMN $it TEXT;") }
+                exec(
+                    driver,
+                    """
+                    CREATE TABLE IF NOT EXISTS edition_chapter (
+                        dublin_core_fk  INTEGER NOT NULL REFERENCES dublin_core_entity(id) ON DELETE CASCADE,
+                        chapter_slug    TEXT NOT NULL,
+                        structure_hash  TEXT NOT NULL,
+                        text_hash       TEXT NOT NULL,
+                        PRIMARY KEY (dublin_core_fk, chapter_slug)
+                    );
+                    """.trimIndent()
+                )
+            } catch (e: Exception) {
+                logger.error("Error in while migrating database from version 14 to 15", e)
+                return 14
+            }
+            logger.info("Updated database from version 14 to 15")
+            15
+        } else current
+    }
+
+    /**
+     * Version 16
+     * One row per source edition: a partial unique index on source rows by language, identifier,
+     * creator and both fingerprints. Rows without a fingerprint yet aren't constrained.
+     */
+    private fun migrate15to16(driver: SqlDriver, current: Int): Int {
+        return if (current < 16) {
+            try {
+                exec(
+                    driver,
+                    """
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_dublin_core_source_edition
+                    ON dublin_core_entity (language_fk, identifier, creator, structure_fingerprint, text_fingerprint)
+                    WHERE derivedFrom_fk IS NULL AND structure_fingerprint IS NOT NULL;
+                    """.trimIndent()
+                )
+            } catch (e: Exception) {
+                logger.error("Error in while migrating database from version 15 to 16", e)
+                return 15
+            }
+            logger.info("Updated database from version 15 to 16")
+            16
+        } else current
+    }
+
+    /**
+     * Version 17
+     * `collection_entity.structure_edition_fk`: which source edition a project chapter's verse
+     * structure came from. NULL, as every existing chapter gets, means the book's current source.
+     */
+    private fun migrate16to17(driver: SqlDriver, current: Int): Int {
+        return if (current < 17) {
+            try {
+                if ("structure_edition_fk" !in columnNames(driver, "collection_entity")) {
+                    exec(
+                        driver,
+                        "ALTER TABLE collection_entity ADD COLUMN structure_edition_fk INTEGER REFERENCES dublin_core_entity(id);"
+                    )
+                }
+            } catch (e: Exception) {
+                logger.error("Error in while migrating database from version 16 to 17", e)
+                return 16
+            }
+            logger.info("Updated database from version 16 to 17")
+            17
+        } else current
+    }
+
+    /**
+     * Version 18
+     * Removes rows left behind by deleted projects. Desktop enabled foreign keys on one connection
+     * only, so a project deleted on another thread lost its book row but kept its chapters, verses,
+     * takes and markers; their files were already deleted. Each table is cleared explicitly, children
+     * after parents, so this doesn't depend on the connection's foreign key setting.
+     */
+    private fun migrate17to18(driver: SqlDriver, current: Int): Int {
+        return if (current < 18) {
+            try {
+                val collections = "(SELECT id FROM collection_entity)"
+                val contents = "(SELECT id FROM content_entity)"
+                // Chapters of a deleted book, then anything nested under them.
+                repeat(3) {
+                    exec(driver, "DELETE FROM collection_entity WHERE parent_fk IS NOT NULL AND parent_fk NOT IN $collections;")
+                }
+                exec(driver, "DELETE FROM content_entity WHERE collection_fk NOT IN $collections;")
+                exec(driver, "DELETE FROM content_derivative WHERE content_fk NOT IN $contents OR source_fk NOT IN $contents;")
+                exec(
+                    driver,
+                    "DELETE FROM resource_link WHERE resource_content_fk NOT IN $contents " +
+                        "OR (content_fk IS NOT NULL AND content_fk NOT IN $contents) " +
+                        "OR (collection_fk IS NOT NULL AND collection_fk NOT IN $collections);"
+                )
+                exec(driver, "DELETE FROM subtree_has_resource WHERE collection_fk NOT IN $collections;")
+                exec(driver, "DELETE FROM take_entity WHERE content_fk NOT IN $contents;")
+                exec(driver, "DELETE FROM marker_entity WHERE take_fk NOT IN (SELECT id FROM take_entity);")
+                exec(
+                    driver,
+                    "DELETE FROM workbook_descriptor_entity WHERE target_FK NOT IN $collections OR source_FK NOT IN $collections;"
+                )
+            } catch (e: Exception) {
+                logger.error("Error in while migrating database from version 17 to 18", e)
+                return 17
+            }
+            logger.info("Updated database from version 17 to 18")
+            18
         } else current
     }
 

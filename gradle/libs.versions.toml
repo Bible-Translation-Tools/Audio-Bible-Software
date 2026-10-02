@@ -20,7 +20,6 @@ androidx-material = "1.14.0"
 compose-multiplatform = "1.11.1"
 kotlin = "2.4.10"
 kotlinx-coroutines = "1.11.0"
-sqldroid = "1.0.3"
 runtimeAndroid = "1.11.4"
 uiAndroid = "1.11.4"
 material3 = "1.9.0"
@@ -60,7 +59,6 @@ androidx-lifecycle-viewmodel-compose = { group = "org.jetbrains.androidx.lifecyc
 androidx-lifecycle-runtime-compose = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "androidx-lifecycle" }
 androidx-navigation-compose = { group = "org.jetbrains.androidx.navigation", name = "navigation-compose", version.ref = "androidx-navigation"}
 kotlinx-coroutines-swing = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-swing", version.ref = "kotlinx-coroutines" }
-sqldroid = { module = "org.sqldroid:sqldroid", version.ref = "sqldroid" }
 sqldelight-runtime = { module = "app.cash.sqldelight:runtime", version.ref = "sqldelight" }
 sqldelight-sqlite-driver = { module = "app.cash.sqldelight:sqlite-driver", version.ref = "sqldelight" }
 sqldelight-android-driver = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }

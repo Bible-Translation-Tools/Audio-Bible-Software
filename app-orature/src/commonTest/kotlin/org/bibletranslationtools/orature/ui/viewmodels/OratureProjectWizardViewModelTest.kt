@@ -1,5 +1,9 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
+import io.mockk.coEvery
+import org.bibletranslationtools.otter.common.domain.collections.EditionRelation
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.DescribeSourceEditions
+import org.koin.core.context.loadKoinModules
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -451,5 +455,98 @@ class OratureProjectWizardViewModelTest : KoinTest {
 
         verify { importer.sideloadSource(english) }
         verify { createProject.createAllBooks(english, spanish, ProjectMode.TRANSLATION, null) }
+    }
+
+    // ---- edition step (O1) --------------------------------------------------------------
+
+    private fun edition(id: Int, version: String, issued: String, language: Language) =
+        metadata("ulb", "ULB", language).copy(
+            id = id, version = version, issued = LocalDate.parse(issued), modified = LocalDate.parse(issued)
+        )
+
+    @Test
+    fun `a resource with two editions asks which, newest first, and creates from the chosen one`() = runVmTest {
+        val english = lang("eng", "English")
+        val spanish = lang("spa", "Spanish")
+        val v12 = edition(1, "12", "2017-11-29", english)
+        val v2407 = edition(2, "24-07", "2024-07-12", english)
+        every { collectionRepo.getRootSources() } returns Single.just(listOf(collection(english, "ulb")))
+        every { resourceMetadataRepo.getAllSources() } returns Single.just(listOf(v12, v2407))
+        every { languageRepo.getAll() } returns Single.just(listOf(english, spanish))
+        every { createProject.createAllBooks(any(), any(), any(), any(), any()) } returns Completable.complete()
+        val describe = mockk<DescribeSourceEditions>()
+        coEvery { describe.describeAll(any()) } returns emptyMap()
+        loadKoinModules(module { single { describe } })
+
+        val done = CompletableDeferred<Unit>()
+        val vm = newVm(onComplete = { done.complete(Unit) })
+        vm.onModeSelected(ProjectMode.TRANSLATION)
+        vm.awaitState { it.step == WizardStep.SELECT_SOURCE_LANGUAGE }
+        vm.onLanguageSelected(english)
+        vm.awaitState { it.step == WizardStep.SELECT_TARGET_LANGUAGE }
+        vm.onLanguageSelected(spanish)
+        val editionState = vm.awaitState { it.step == WizardStep.SELECT_EDITION }
+
+        assertEquals(listOf(2, 1), editionState.editionOptions.map { it.edition.id })
+        assertTrue(editionState.editionOptions.first().isNewest)
+        verify(exactly = 0) { createProject.createAllBooks(any(), any(), any(), any(), any()) }
+
+        vm.onEditionSelected(editionState.editionOptions.last())
+        done.await()
+        verify { createProject.createAllBooks(english, spanish, ProjectMode.TRANSLATION, null, v12) }
+    }
+
+    @Test
+    fun `back from the edition step returns to the step it came from`() = runVmTest {
+        val english = lang("eng", "English")
+        val spanish = lang("spa", "Spanish")
+        every { collectionRepo.getRootSources() } returns Single.just(listOf(collection(english, "ulb")))
+        every { resourceMetadataRepo.getAllSources() } returns Single.just(
+            listOf(edition(1, "12", "2017-11-29", english), edition(2, "24-07", "2024-07-12", english))
+        )
+        every { languageRepo.getAll() } returns Single.just(listOf(english, spanish))
+        val describe = mockk<DescribeSourceEditions>()
+        coEvery { describe.describeAll(any()) } returns emptyMap()
+        loadKoinModules(module { single { describe } })
+
+        val vm = newVm()
+        vm.onModeSelected(ProjectMode.TRANSLATION)
+        vm.awaitState { it.step == WizardStep.SELECT_SOURCE_LANGUAGE }
+        vm.onLanguageSelected(english)
+        vm.awaitState { it.step == WizardStep.SELECT_TARGET_LANGUAGE }
+        vm.onLanguageSelected(spanish)
+        vm.awaitState { it.step == WizardStep.SELECT_EDITION }
+
+        assertTrue(vm.onBack())
+        val back = vm.uiState.value
+        assertEquals(WizardStep.SELECT_TARGET_LANGUAGE, back.step)
+        assertEquals(null, back.pendingCreate)
+    }
+
+    @Test
+    fun `two editions with the same dates are both labelled as such, neither as newest`() = runVmTest {
+        val english = lang("eng", "English")
+        val spanish = lang("spa", "Spanish")
+        every { collectionRepo.getRootSources() } returns Single.just(listOf(collection(english, "ulb")))
+        every { resourceMetadataRepo.getAllSources() } returns Single.just(
+            listOf(edition(1, "12", "2017-11-29", english), edition(2, "12", "2017-11-29", english))
+        )
+        every { languageRepo.getAll() } returns Single.just(listOf(english, spanish))
+        val describe = mockk<DescribeSourceEditions>()
+        coEvery { describe.describeAll(any()) } returns emptyMap()
+        loadKoinModules(module { single { describe } })
+
+        val vm = newVm()
+        vm.onModeSelected(ProjectMode.TRANSLATION)
+        vm.awaitState { it.step == WizardStep.SELECT_SOURCE_LANGUAGE }
+        vm.onLanguageSelected(english)
+        vm.awaitState { it.step == WizardStep.SELECT_TARGET_LANGUAGE }
+        vm.onLanguageSelected(spanish)
+        val state = vm.awaitState { it.step == WizardStep.SELECT_EDITION }
+
+        assertEquals(
+            listOf(EditionRelation.SAME_DATES, EditionRelation.SAME_DATES),
+            state.editionOptions.map { it.relation }
+        )
     }
 }

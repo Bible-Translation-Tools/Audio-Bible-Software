@@ -1,5 +1,8 @@
 package org.bibletranslationtools.bttrecorder2.ui.viewmodels
 
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.DescribeSourceEditions
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.SourceEditionSummary
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionOrder
 import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,6 +29,8 @@ import org.koin.core.component.inject
 
 enum class WizardStep {
     SOURCE,
+    /** Only when the chosen source has more than one edition installed. */
+    EDITION,
     TARGET_LANGUAGE,
     BOOK
 }
@@ -38,12 +43,27 @@ data class ProjectCreationUiState(
     val availableSources: List<Language> = emptyList(),
     val targetLanguages: List<Language> = emptyList(),
     val availableBooks: List<Collection> = emptyList(),
+    /** The installed editions of the chosen source, newest first, for the edition step. */
+    val editions: List<EditionOption> = emptyList(),
     val selectedSource: ResourceMetadata? = null,
     val selectedTarget: Language? = null,
     val selectedBook: Collection? = null,
     val isLoading: Boolean = false,
     val error: String? = null,
     val isCreated: Boolean = false
+)
+
+/**
+ * One edition in the edition picker.
+ *
+ * @property isNewest the edition preselected at the top of the list.
+ * @property isOlder a newer edition of the same source is installed; false for the newest and for
+ *   editions with the same dates as it (see EditionOrder).
+ */
+data class EditionOption(
+    val summary: SourceEditionSummary,
+    val isNewest: Boolean,
+    val isOlder: Boolean
 )
 
 class ProjectCreationViewModel : ViewModel(), KoinComponent {
@@ -53,6 +73,7 @@ class ProjectCreationViewModel : ViewModel(), KoinComponent {
     private val collectionRepository: ICollectionRepository by inject()
     private val createProject: CreateProject by inject()
     private val importer: ImportProjectUseCase by inject()
+    private val describeSourceEditions: DescribeSourceEditions by inject()
 
     private val _uiState = MutableStateFlow(ProjectCreationUiState())
     val uiState: StateFlow<ProjectCreationUiState> = _uiState.asStateFlow()
@@ -71,7 +92,11 @@ class ProjectCreationViewModel : ViewModel(), KoinComponent {
                 // languages whose source zip is actually bundled (LanguageRepository consults
                 // the build-generated manifest), so every entry here is sideloadable.
                 val (sources, available) = withContext(Dispatchers.IO) {
+                    // One entry per source: the newest installed edition. Choosing among
+                    // editions comes with the edition picker.
                     val imported = resourceMetadataRepository.getAllSources().blockingGet()
+                        .sortedWith(EditionOrder.newestFirst)
+                        .distinctBy { it.language.slug to it.identifier }
                     val importedLangs = imported.map { it.language.slug }.toSet()
                     val available = languageRepository.getAvailableGatewaySources().blockingGet()
                         .filter { it.slug !in importedLangs }
@@ -98,8 +123,42 @@ class ProjectCreationViewModel : ViewModel(), KoinComponent {
         }
     }
 
+    /**
+     * Choosing a source: when more than one edition of it is installed, the user picks one next
+     * (newest first); otherwise the wizard goes straight on with it.
+     */
     fun selectSource(source: ResourceMetadata) {
-        _uiState.update { it.copy(selectedSource = source, currentStep = WizardStep.TARGET_LANGUAGE) }
+        launchLogged {
+            val options = withContext(Dispatchers.IO) { editionOptions(source) }
+            if (options.size > 1) {
+                _uiState.update { it.copy(editions = options, currentStep = WizardStep.EDITION) }
+            } else {
+                _uiState.update {
+                    it.copy(editions = emptyList(), selectedSource = source, currentStep = WizardStep.TARGET_LANGUAGE)
+                }
+            }
+        }
+    }
+
+    fun selectEdition(edition: ResourceMetadata) {
+        _uiState.update { it.copy(selectedSource = edition, currentStep = WizardStep.TARGET_LANGUAGE) }
+    }
+
+    private suspend fun editionOptions(source: ResourceMetadata): List<EditionOption> {
+        val editions = resourceMetadataRepository.getAllSourcesSuspend()
+            .filter { it.language.slug == source.language.slug && it.identifier == source.identifier }
+            .sortedWith(EditionOrder.newestFirst)
+        val summaries = describeSourceEditions.describeAll(editions)
+        val newest = editions.firstOrNull()
+        return editions.mapNotNull { edition ->
+            summaries[edition.id]?.let { summary ->
+                EditionOption(
+                    summary = summary,
+                    isNewest = edition.id == newest?.id,
+                    isOlder = newest != null && EditionOrder.isNewer(newest, edition)
+                )
+            }
+        }
     }
 
     /**
@@ -114,7 +173,8 @@ class ProjectCreationViewModel : ViewModel(), KoinComponent {
                 val metadata = withContext(Dispatchers.IO) {
                     importer.sideloadSource(language).blockingAwait()
                     resourceMetadataRepository.getAllSources().blockingGet()
-                        .firstOrNull { it.language.slug == language.slug }
+                        .filter { it.language.slug == language.slug }
+                        .let(EditionOrder::newest)
                 }
                 if (metadata != null) {
                     _uiState.update {
@@ -227,7 +287,11 @@ class ProjectCreationViewModel : ViewModel(), KoinComponent {
         _uiState.update { 
             when (it.currentStep) {
                 WizardStep.BOOK -> it.copy(currentStep = WizardStep.TARGET_LANGUAGE, selectedTarget = null, availableBooks = emptyList())
-                WizardStep.TARGET_LANGUAGE -> it.copy(currentStep = WizardStep.SOURCE, selectedSource = null)
+                WizardStep.TARGET_LANGUAGE -> it.copy(
+                    currentStep = if (it.editions.size > 1) WizardStep.EDITION else WizardStep.SOURCE,
+                    selectedSource = null
+                )
+                WizardStep.EDITION -> it.copy(currentStep = WizardStep.SOURCE, editions = emptyList())
                 WizardStep.SOURCE -> it // Should be handled by UI to pop stack
             }
         }

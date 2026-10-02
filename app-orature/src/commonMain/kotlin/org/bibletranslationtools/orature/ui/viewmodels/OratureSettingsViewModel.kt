@@ -1,5 +1,8 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
+import org.jetbrains.compose.resources.getString
+import org.bibletranslationtools.orature.resources.Res
+import org.bibletranslationtools.orature.resources.errUnknown
 import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -165,6 +168,7 @@ class OratureSettingsViewModel(
                 _uiState.update { it.copy(langNamesUpdateState = OratureLangNamesUpdateState.InProgress) }
             }
             val result = runCatching { importLanguages.update(url).await() }
+            val unknownError = getString(Res.string.errUnknown)
             withContext(Dispatchers.Main) {
                 _uiState.update {
                     it.copy(
@@ -172,7 +176,7 @@ class OratureSettingsViewModel(
                             OratureLangNamesUpdateState.Success
                         } else {
                             OratureLangNamesUpdateState.Error(
-                                result.exceptionOrNull()?.message ?: "Unknown error"
+                                result.exceptionOrNull()?.message ?: unknownError
                             )
                         }
                     )

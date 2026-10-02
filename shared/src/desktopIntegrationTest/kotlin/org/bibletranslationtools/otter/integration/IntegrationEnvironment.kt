@@ -1,5 +1,23 @@
 package org.bibletranslationtools.otter.integration
 
+import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
+import org.bibletranslationtools.otter.common.domain.collections.UpgradeProjectEdition
+import org.bibletranslationtools.otter.common.initialization.ReconcileEditionLabels
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.MatchEditionToRecordings
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
+import org.bibletranslationtools.otter.common.domain.project.exporter.ExportResult
+import org.bibletranslationtools.otter.common.domain.project.exporter.ProjectExporterCallback
+import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.BackupProjectExporter
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.structure.ReferenceAlignment
+import org.bibletranslationtools.otter.common.persistence.entities.TakeEntity
+import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
+import org.bibletranslationtools.otter.common.persistence.ProjectDirectoryLayout
+import org.wycliffeassociates.resourcecontainer.ResourceContainer
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.OtterResourceContainerConfig
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.IProjectReader
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.IZipEntryTreeBuilder
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.structure.EditionText
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.structure.editionTextOf
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
@@ -7,15 +25,32 @@ import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ILanguageRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
+import org.bibletranslationtools.otter.common.domain.versification.Versification
 import org.bibletranslationtools.otter.common.domain.collections.CreateProject
+import org.bibletranslationtools.otter.common.domain.collections.DeleteProject
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.domain.languages.ImportLanguages
 import org.bibletranslationtools.otter.common.domain.project.importer.RCImporterFactory
 import io.reactivex.Observable
 import org.bibletranslationtools.otter.common.data.ProgressStatus
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.VersificationTreeBuilder
+import org.bibletranslationtools.otter.common.initialization.AuditSourceStructure
+import org.bibletranslationtools.otter.common.initialization.RefreshBundledSources
+import org.bibletranslationtools.otter.common.domain.project.BundledSourceStamps
+import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.DeleteResourceContainer
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.DeleteResult
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.DescribeSourceEditions
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.SourceEditionSummary
+import org.bibletranslationtools.otter.common.initialization.BackfillEditionFingerprints
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IEditionFingerprintRepository
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionFingerprint
+import org.bibletranslationtools.otter.common.persistence.entities.EditionFingerprintEntity
+import kotlinx.coroutines.runBlocking
 import org.bibletranslationtools.otter.common.initialization.InitializeVersification
-import org.wycliffeassociates.resourcecontainer.ResourceContainer
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.SourceStructureFindings
 import org.bibletranslationtools.otter.common.persistence.DesktopDirectoryProvider
 import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.bibletranslationtools.otter.common.persistence.entities.ContentEntity
@@ -40,8 +75,8 @@ import kotlin.test.assertTrue
  * This is the port of the JavaFX app's `integrationtest.projects.DatabaseEnvironment`, which is how
  * Orature verified that importing a resource container produced the right rows. Its absence is why a
  * change to the import path could pass 15 unit tests and still be wrong: `VersificationTreeBuilderTest`
- * pins the tree that gets built and `PlanImportTest` pins which tree is chosen, but nothing exercised
- * the join — `importResourceContainer` and `updateContent` against an actual database.
+ * pins the tree that gets built and `SourceStructurePlannerTest` pins what fills its gaps, but nothing
+ * exercised the join — `importResourceContainer` against an actual database.
  *
  * Differences from the original, all forced by this codebase rather than chosen:
  *
@@ -103,27 +138,76 @@ class IntegrationEnvironment private constructor(
      * Derived at test time rather than committed as a second fixture, so there is one binary in the
      * repo and the difference between the two inputs is stated in code rather than hidden in a zip.
      */
-    fun withBookTruncated(rcFile: String, usfmEntry: String, keepVerses: Int): File {
-        val source = rcResourceFile(rcFile)
-        val target = File(tempRoot, "truncated-${usfmEntry.substringBefore('.')}-$keepVerses.zip")
-
-        ZipFile(source).use { zip ->
-            val entry = zip.getEntry(usfmEntry)
-            assertNotNull(entry, "'$usfmEntry' is not in $rcFile")
-            val usfm = zip.getInputStream(entry).bufferedReader().readText()
-
+    fun withBookTruncated(rcFile: String, usfmEntry: String, keepVerses: Int): File =
+        withUsfmEdited(rcFile, usfmEntry, "truncated-$keepVerses") { usfm ->
             // Cut at the first verse marker beyond the keep count. USFM is read forward, so dropping
             // the tail simply means those verses are not in the text.
-            val cutAt = usfm.indexOf("\\v ${keepVerses + 1}")
+            val cutAt = usfm.indexOf("\\v ${keepVerses + 1} ")
             assertTrue(cutAt > 0, "no verse ${keepVerses + 1} marker in '$usfmEntry' to truncate at")
-            val truncated = usfm.substring(0, cutAt)
+            usfm.substring(0, cutAt)
+        }
 
+    /**
+     * [rcFile] with one verse, marker and text, removed from a single-chapter book: the gap an
+     * omitted textual variant leaves inside a chapter.
+     */
+    fun withVerseRemoved(rcFile: String, usfmEntry: String, verse: Int): File =
+        withUsfmEdited(rcFile, usfmEntry, "without-v$verse") { usfm ->
+            val from = usfm.indexOf("\\v $verse ")
+            val to = usfm.indexOf("\\v ${verse + 1} ")
+            assertTrue(from > 0 && to > from, "no verse $verse to remove in '$usfmEntry'")
+            usfm.removeRange(from, to)
+        }
+
+    private fun withUsfmEdited(rcFile: String, usfmEntry: String, label: String, edit: (String) -> String): File =
+        withEntriesEdited(rcFile, "${usfmEntry.substringBefore('.')}-$label", mapOf(usfmEntry to edit))
+
+    /**
+     * A strictly newer edition of [rcFile]: issued and modified on 2024-07-12, and with Jude 1:1
+     * reworded, so its fingerprint differs too.
+     */
+    fun newerEdition(rcFile: String): File =
+        withEntriesEdited(
+            rcFile, "newer-edition",
+            mapOf(
+                "manifest.yaml" to { manifest ->
+                    manifest.replace("issued: '2017-11-29'", "issued: '2024-07-12'")
+                        .replace("modified: '2017-11-29'", "modified: '2024-07-12'")
+                },
+                "66-JUD.usfm" to { usfm -> usfm.replaceFirst("\\v 1 ", "\\v 1 (revised) ") }
+            )
+        )
+
+    private fun withEntriesEdited(rcFile: String, label: String, edits: Map<String, (String) -> String>): File =
+        withEntriesEdited(rcResourceFile(rcFile), label, edits)
+
+    /**
+     * [rc] made strictly newer: issued and modified on 2024-07-12, relabelled [version] when given. Used on the
+     * bundled English ULB, whose Acts 19 has 40 verses where the fixture's has 41.
+     */
+    fun newerDatesOf(rc: File, version: String? = null): File {
+        val manifest = ZipFile(rc).use { zip -> zip.entries().asSequence().first { it.name.endsWith("manifest.yaml") }.name }
+        return withEntriesEdited(rc, "newer-dates-${rc.nameWithoutExtension}-${version ?: "same"}", mapOf(manifest to { text ->
+            text.replace(Regex("issued: '[0-9-]+'"), "issued: '2024-07-12'")
+                .replace(Regex("modified: '[0-9-]+'"), "modified: '2024-07-12'")
+                .let { if (version == null) it else it.replace(Regex("(?m)^  version: '[^']*'"), "  version: '$version'") }
+        }))
+    }
+
+    private fun withEntriesEdited(source: File, label: String, edits: Map<String, (String) -> String>): File {
+        val rcFile = source.name
+        val target = File(tempRoot, "$label.zip")
+
+        ZipFile(source).use { zip ->
+            edits.keys.forEach { assertNotNull(zip.getEntry(it), "'$it' is not in $rcFile") }
             ZipOutputStream(target.outputStream().buffered()).use { out ->
                 zip.entries().asSequence().forEach { source ->
                     if (source.isDirectory) return@forEach
                     out.putNextEntry(ZipEntry(source.name))
-                    if (source.name == usfmEntry) {
-                        out.write(truncated.toByteArray())
+                    val edit = edits[source.name]
+                    if (edit != null) {
+                        val edited = edit(zip.getInputStream(source).bufferedReader().readText())
+                        out.write(edited.toByteArray())
                     } else {
                         zip.getInputStream(source).use { it.copyTo(out) }
                     }
@@ -133,6 +217,328 @@ class IntegrationEnvironment private constructor(
         }
         return target
     }
+
+    /** A source the app bundles, read from the repo rather than the test classpath. */
+    fun bundledSource(fileName: String): File {
+        val file = File(repoRoot(), "shared/src/commonMain/composeResources/files/content/$fileName")
+        assertTrue(file.isFile, "bundled source not found at ${file.absolutePath}")
+        return file
+    }
+
+    /** A versification as source import reads it, or null if it isn't installed. */
+    fun versification(code: String): Versification? =
+        koin.get<IVersificationRepository>().getVersification(code).blockingGet()
+
+    /** The single installed source's stored fingerprint, or null if it has none. */
+    fun storedFingerprint(): EditionFingerprint? = runBlocking {
+        koin.get<IEditionFingerprintRepository>().get(installedSource().id)
+    }
+
+    /** Removes the installed source's fingerprint, as a database from before schema v15 has none. */
+    fun clearFingerprint() {
+        val id = installedSource().id
+        db.resourceMetadataDao.setEditionFingerprint(id, EditionFingerprintEntity(null, null, null))
+        db.editionChapterDao.replaceForEdition(id, emptyList())
+    }
+
+    /** Runs the startup fingerprint backfill. */
+    fun backfillFingerprints() {
+        Observable.create<ProgressStatus> { emitter ->
+            koin.get<BackfillEditionFingerprints>().exec(emitter).blockingAwait()
+            emitter.onComplete()
+        }.blockingSubscribe()
+    }
+
+    private fun installedSource() = db.resourceMetadataDao.fetchAll().single { it.derivedFromFk == null }
+
+    /** The committed fixture [rcFile], for tests that need the file itself. */
+    fun fixture(rcFile: String): File = rcResourceFile(rcFile)
+
+    /** Every installed source edition (not derived rows), in install order. */
+    fun sourceEditions() = db.resourceMetadataDao.fetchAll().filter { it.derivedFromFk == null }.sortedBy { it.id }
+
+    /** Whether the edition in [rc] is already installed, as the app asks before bundling one. */
+    fun isAlreadyImported(rc: File): Boolean = koin.get<ImportProjectUseCase>().isAlreadyImported(rc)
+
+    /** Deletes the source edition stored at [path], as the app would. */
+    fun deleteSource(path: String): DeleteResult =
+        koin.get<DeleteResourceContainer>().deleteSync(File(path))
+
+    /** Runs the startup step that re-imports bundled sources whose zip changed. */
+    fun refreshBundledSources() {
+        Observable.create<ProgressStatus> { emitter ->
+            koin.get<RefreshBundledSources>().exec(emitter).blockingAwait()
+            emitter.onComplete()
+        }.blockingSubscribe()
+    }
+
+    /** Whether bundled source [name]'s current zip is recorded as imported. */
+    fun bundledSourceIsCurrent(name: String): Boolean = koin.get<BundledSourceStamps>().isCurrent(name)
+
+    /** The source edition a derived row (a project's target container) was derived from. */
+    fun derivedFromOf(derivedId: Int): Int? = db.resourceMetadataDao.fetchById(derivedId)?.derivedFromFk
+
+    /** Where [project]'s files live. */
+    fun projectDirectory(project: Collection): File {
+        val target = project.resourceContainer!!
+        val sourceId = derivedFromOf(target.id)!!
+        val source = koin.get<IResourceMetadataRepository>().getAllSources().blockingGet().single { it.id == sourceId }
+        return directoryProvider.getProjectDirectory(source, target, project.slug)
+    }
+
+    /** How the app would describe the installed source edition [sourceId]. */
+    fun describeEdition(sourceId: Int): SourceEditionSummary = runBlocking {
+        val edition = koin.get<IResourceMetadataRepository>().getAllSourcesSuspend().single { it.id == sourceId }
+        koin.get<DescribeSourceEditions>().describe(edition)
+    }
+
+    /** The verse text of the source in [rc], parsed as import would parse it. */
+    fun editionText(rc: File): EditionText =
+        ResourceContainer.load(rc, OtterResourceContainerConfig()).use { container ->
+            editionTextOf(IProjectReader.constructContainerTree(container, koin.get<IZipEntryTreeBuilder>()))
+        }
+
+    /** A source edition as the app's domain sees it. */
+    fun editionMetadata(sourceId: Int) =
+        koin.get<IResourceMetadataRepository>().getAllSources().blockingGet().single { it.id == sourceId }
+
+    fun projectBookRow(project: Collection): CollectionEntity = db.collectionDao.fetchById(project.id)
+
+    /** The source edition a source collection belongs to. */
+    fun sourceCollectionEdition(collectionId: Int): Int? = db.collectionDao.fetchById(collectionId).dublinCoreFk
+
+    fun structureEdition(project: Collection, sort: Int): Int? =
+        db.collectionDao.fetchStructureEdition(projectChapter(project, sort).id)
+
+    /** The source edition [project]'s workbook descriptor points at. */
+    fun descriptorSourceEdition(project: Collection): Int? =
+        db.workbookDescriptorDao.fetchAll().single { it.targetFk == project.id }.sourceFk.let(::sourceCollectionEdition)
+
+    /** The upgrade use case, as the app would use it. */
+    val upgradeBookEdition: UpgradeBookEdition get() = koin.get()
+
+    val referenceAlignment: ReferenceAlignment get() = koin.get()
+
+    /** A project chapter's rows, by chapter sort. */
+    fun projectChapter(project: Collection, sort: Int): CollectionEntity =
+        db.collectionDao.fetchChildren(db.collectionDao.fetchById(project.id)).single { it.sort == sort }
+
+    /** A project chapter's verse rows' ranges, in order. */
+    fun projectVerses(project: Collection, sort: Int): List<Pair<Int, Int>> {
+        val textType = db.contentTypeDao.fetchId(ContentType.TEXT)
+        return db.contentDao.fetchByCollectionId(projectChapter(project, sort).id)
+            .filter { it.type_fk == textType && it.labelKey == "verse" }
+            .sortedBy { it.start }
+            .map { it.start to it.end }
+    }
+
+    /**
+     * Records a take on verse [verse] of chapter [sort] of [project], with a real file in the
+     * project's takes folder. [deleted] makes it a soft-deleted take.
+     */
+    fun addTake(project: Collection, sort: Int, verse: Int, deleted: Boolean = false): Int {
+        val textType = db.contentTypeDao.fetchId(ContentType.TEXT)
+        val row = db.contentDao.fetchByCollectionId(projectChapter(project, sort).id)
+            .single { it.type_fk == textType && it.labelKey == "verse" && it.start == verse }
+        val file = projectDirectory(project).resolve(".apps/orature/takes/c$sort/v${verse}_t1.wav")
+        file.parentFile.mkdirs()
+        file.writeText("audio")
+        return db.takeDao.insert(
+            TakeEntity(
+                id = 0, contentFk = row.id, filename = file.name, filepath = file.toURI().path, number = 1,
+                createdTs = "2026-01-01", deletedTs = if (deleted) "2026-01-02" else null, played = 0,
+                checkingFk = db.checkingStatusDao.fetchId(CheckingStatus.UNCHECKED), checksum = null
+            )
+        )
+    }
+
+    /**
+     * Records a selected take on verse [verse] of chapter [sort] of [project], named as the app
+     * names takes so a backup carries it and a restore places it.
+     */
+    fun recordTake(project: Collection, sort: Int, verse: Int): Int {
+        val textType = db.contentTypeDao.fetchId(ContentType.TEXT)
+        val row = db.contentDao.fetchByCollectionId(projectChapter(project, sort).id)
+            .single { it.type_fk == textType && it.labelKey == "verse" && it.start == verse }
+        val target = project.resourceContainer!!
+        val name = "${target.language.slug}_${target.identifier}_${project.slug}_c${"%02d".format(sort)}_v${"%02d".format(verse)}_t1.wav"
+        val file = projectDirectory(project).resolve(".apps/orature/takes/c${"%02d".format(sort)}/$name")
+        file.parentFile.mkdirs()
+        file.writeBytes(ByteArray(0))
+        val id = db.takeDao.insert(
+            TakeEntity(
+                id = 0, contentFk = row.id, filename = file.name, filepath = file.toURI().path, number = 1,
+                createdTs = "2026-01-01", deletedTs = null, played = 0,
+                checkingFk = db.checkingStatusDao.fetchId(CheckingStatus.UNCHECKED), checksum = null
+            )
+        )
+        db.contentDao.update(row.copy(selectedTakeFk = id))
+        return id
+    }
+
+    /** The content rows of chapter [sort] of [project] that have a live take, by verse start. */
+    fun versesWithTakes(project: Collection, sort: Int): List<Int> =
+        db.contentDao.fetchByCollectionId(projectChapter(project, sort).id)
+            .filter { row -> db.takeDao.fetchByContentId(row.id, includeDeleted = false).isNotEmpty() }
+            .map { it.start }
+            .sorted()
+
+    /** Backs [project] up as the app's export does, into a file in this environment's temp directory. */
+    fun backup(project: Collection): File {
+        val descriptor = koin.get<IWorkbookDescriptorRepository>().getAll().blockingGet().single { it.targetCollection.id == project.id }
+        val workbook = koin.get<IWorkbookRepository>().get(descriptor.sourceCollection, descriptor.targetCollection)!!
+        val accessor = workbook.projectFilesAccessor
+        if (!accessor.isInitialized()) {
+            accessor.initializeResourceContainerInDir(overwrite = false)
+            accessor.copySourceFiles(null)
+            accessor.writeSelectedTakesFile(workbook, isBook = true)
+        }
+        accessor.setProjectMode(descriptor.mode)
+        val outDir = File(tempRoot, "backups-${System.nanoTime()}").apply { mkdirs() }
+        var produced: File? = null
+        val result = koin.get<BackupProjectExporter>().export(
+            outDir, workbook,
+            object : ProjectExporterCallback {
+                override fun onNotifyProgress(percent: Double, messageKey: String?) = Unit
+                override fun onNotifySuccess(project: Collection, file: File) { produced = file }
+                override fun onError(project: Collection) = Unit
+            },
+            null
+        ).blockingGet()
+        assertEquals(ExportResult.SUCCESS, result, "backing up ${project.slug}")
+        koin.get<IWorkbookRepository>().closeWorkbook(workbook)
+        return produced!!
+    }
+
+    /** The entry names in zip [file]. */
+    fun zipEntries(file: File): List<String> = ZipFile(file).use { zip -> zip.entries().asSequence().map { it.name }.toList() }
+
+    /** A copy of zip [file] with entry [name] holding [bytes] instead. */
+    fun withEntryReplaced(file: File, name: String, bytes: ByteArray): File {
+        val target = File(tempRoot, "${file.nameWithoutExtension}-replaced-${System.nanoTime()}.${file.extension}")
+        ZipFile(file).use { zip ->
+            assertNotNull(zip.getEntry(name), "'$name' is not in ${file.name}")
+            ZipOutputStream(target.outputStream().buffered()).use { out ->
+                zip.entries().asSequence().forEach { entry ->
+                    out.putNextEntry(ZipEntry(entry.name))
+                    if (!entry.isDirectory) {
+                        if (entry.name == name) out.write(bytes) else zip.getInputStream(entry).use { it.copyTo(out) }
+                    }
+                    out.closeEntry()
+                }
+            }
+        }
+        return target
+    }
+
+    /** The live and deleted takes on verse [verse] of chapter [sort] of [project]. */
+    fun takesOn(project: Collection, sort: Int, verse: Int): List<TakeEntity> {
+        val textType = db.contentTypeDao.fetchId(ContentType.TEXT)
+        val row = db.contentDao.fetchByCollectionId(projectChapter(project, sort).id)
+            .single { it.type_fk == textType && it.labelKey == "verse" && it.start == verse }
+        return db.takeDao.fetchByContentId(row.id, includeDeleted = true).sortedBy { it.number }
+    }
+
+    /** The take selected on verse [verse] of chapter [sort] of [project], if any. */
+    fun selectedTakeOn(project: Collection, sort: Int, verse: Int): Int? {
+        val textType = db.contentTypeDao.fetchId(ContentType.TEXT)
+        return db.contentDao.fetchByCollectionId(projectChapter(project, sort).id)
+            .single { it.type_fk == textType && it.labelKey == "verse" && it.start == verse }
+            .selectedTakeFk
+    }
+
+    /** A copy of zip [file] without the entries under [prefix]: a backup made without them. */
+    fun withoutEntries(file: File, prefix: String): File {
+        val target = File(tempRoot, "${file.nameWithoutExtension}-without-${prefix.replace('/', '_')}.${file.extension}")
+        ZipFile(file).use { zip ->
+            ZipOutputStream(target.outputStream().buffered()).use { out ->
+                zip.entries().asSequence().filterNot { it.name.startsWith(prefix) }.forEach { entry ->
+                    out.putNextEntry(ZipEntry(entry.name))
+                    if (!entry.isDirectory) zip.getInputStream(entry).use { it.copyTo(out) }
+                    out.closeEntry()
+                }
+            }
+        }
+        return target
+    }
+
+    /** Adds a chunk row (chunked translation mode) covering verses [start]..[end] of chapter [sort]. */
+    fun addChunk(project: Collection, sort: Int, start: Int, end: Int) {
+        db.contentDao.insert(
+            ContentEntity(
+                id = 0, sort = start, labelKey = "chunk", start = start, end = end,
+                collectionFk = projectChapter(project, sort).id, selectedTakeFk = null, text = null, format = null,
+                type_fk = db.contentTypeDao.fetchId(ContentType.TEXT), draftNumber = 2, bridged = false
+            )
+        )
+    }
+
+    /** How many chunk rows chapter [sort] of [project] has. */
+    fun chunkCount(project: Collection, sort: Int): Int =
+        db.contentDao.fetchByCollectionId(projectChapter(project, sort).id).count { it.labelKey == "chunk" }
+
+    /** The content row take [takeId] is on, and its stored path. */
+    fun take(takeId: Int): TakeEntity = db.takeDao.fetchById(takeId)
+
+    fun content(contentId: Int) = db.contentDao.fetchById(contentId)
+
+    /** Moves [project]'s folder to where a project created before per-book pinning would have it. */
+    fun moveProjectToLegacyFolder(project: Collection): File {
+        val current = projectDirectory(project)
+        val target = project.resourceContainer!!
+        val source = koin.get<IResourceMetadataRepository>().getAllSources().blockingGet().single { it.id == derivedFromOf(target.id) }
+        val legacy = ProjectDirectoryLayout.legacyPath(source, target, project.slug)
+            .fold(directoryProvider.getUserDataDirectory(), File::resolve)
+        legacy.parentFile.mkdirs()
+        check(current.renameTo(legacy))
+        return legacy
+    }
+
+    /** Step 13's one-time jobs and the recording matcher, as the app builds them. */
+    val reconcileEditionLabels: ReconcileEditionLabels get() = koin.get()
+    val auditSourceStructure: AuditSourceStructure get() = koin.get()
+    val matchEditionToRecordings: MatchEditionToRecordings get() = koin.get()
+
+    /**
+     * Adds an empty verse [verse] at the end of chapter [sort] of source edition [sourceId], and the
+     * same verse to [project]'s chapter: what a source imported from a versification file between
+     * 31 July and the import fix gave its projects (such as English ULB Acts 19:41).
+     */
+    fun addPhantomVerse(sourceId: Int, project: Collection, sort: Int, verse: Int) {
+        val textType = db.contentTypeDao.fetchId(ContentType.TEXT)
+        val sourceChapter = db.collectionDao.fetchAll()
+            .single { it.dublinCoreFk == sourceId && it.parentFk != null && it.sort == sort && it.slug == projectChapter(project, sort).slug }
+        fun row(chapterId: Int) = ContentEntity(
+            id = 0, sort = verse, labelKey = "verse", start = verse, end = verse, collectionFk = chapterId,
+            selectedTakeFk = null, text = null, format = null, type_fk = textType, draftNumber = 1, bridged = false
+        )
+        val sourceRow = db.contentDao.insert(row(sourceChapter.id))
+        val projectRow = db.contentDao.insert(row(projectChapter(project, sort).id))
+        db.contentDao.linkDerivative(projectRow, sourceRow)
+    }
+
+    /** Removes source edition [sourceId] if nothing uses it, as a user's remove action would. */
+    fun removeEdition(sourceId: Int): Boolean = runBlocking {
+        koin.get<org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionLifecycle>()
+            .removeIfUnused(editionMetadata(sourceId))
+    }
+
+    /** Anything from the app's Koin graph, for a test of a use case this file has no helper for. */
+    inline fun <reified T : Any> koinGet(): T = koinForTests.get()
+
+    @PublishedApi internal val koinForTests: Koin get() = koin
+
+    /** Deletes every project, as the app's project management does. */
+    fun deleteAllProjects() {
+        val descriptors = koin.get<IWorkbookDescriptorRepository>().getAll(computeSourceAudio = false).blockingGet()
+        koin.get<DeleteProject>().deleteProjects(descriptors).blockingAwait()
+    }
+
+    /** The internal directory source editions live under. */
+    val sourceRoot: File get() = directoryProvider.internalSourceRCDirectory
+
+    /** What the one-time source structure report would say about every installed source. */
+    fun auditSources(): List<SourceStructureFindings> = koin.get<AuditSourceStructure>().audit()
 
     /**
      * @param deriveProjectFromVerses whether verse rows are derived into the target. NOT inferred from
@@ -148,10 +554,18 @@ class IntegrationEnvironment private constructor(
         .create(sourceProject, targetLanguage, mode, resourceId = null, deriveProjectFromVerses)
         .blockingGet()
 
-    /** An imported source book by slug, e.g. "jud". */
-    fun sourceBook(slug: String): Collection {
+    /** Creates every book of [source]'s source into [targetLanguage], as Orature's project wizard does. */
+    fun createAllBooks(source: Int, targetLanguage: Language, mode: ProjectMode = ProjectMode.NARRATION) {
+        val edition = editionMetadata(source)
+        koin.get<CreateProject>().createAllBooks(edition.language, targetLanguage, mode, edition = edition).blockingAwait()
+    }
+
+    val upgradeProjectEdition: UpgradeProjectEdition get() = koin.get()
+
+    /** An imported source book by slug, e.g. "jud"; of edition [sourceId] when several are installed. */
+    fun sourceBook(slug: String, sourceId: Int? = null): Collection {
         val projects = koin.get<ICollectionRepository>().getSourceProjects().blockingGet()
-        return projects.firstOrNull { it.slug == slug }
+        return projects.firstOrNull { it.slug == slug && (sourceId == null || it.resourceContainer?.id == sourceId) }
             ?: error("no source project '$slug'; imported: ${projects.map { it.slug }.sorted().take(10)}…")
     }
 
@@ -241,24 +655,15 @@ class IntegrationEnvironment private constructor(
     }
 
     /**
-     * The versification trees the source importer would pre-allocate from, for [rcFile].
-     *
-     * Exposed so a test can assert the path is REACHABLE. `NewSourceImporter` degrades to a text-only
-     * import when the versification cannot be read, and does it silently by design — so without this,
-     * a broken versification looks exactly like a working one for any source whose text is complete.
-     */
-    fun versificationTreesFor(rcFile: String): List<*>? =
-        VersificationTreeBuilder(koin.get()).build(ResourceContainer.load(rcResourceFile(rcFile)))
-
-    /**
      * Verse rows for one chapter, split by whether they carry text.
      *
      * [total] is what the versification allocated and [withText] what the source supplied, so the
      * difference is the pre-allocation. Both are the point: a total on its own cannot distinguish
      * "pre-allocated 25" from "parsed 25 out of the text".
      */
-    fun verseCounts(chapterSlug: String): VerseCounts {
-        val chapter = db.collectionDao.fetchAll().firstOrNull { it.slug == chapterSlug }
+    fun verseCounts(chapterSlug: String, sourceId: Int? = null): VerseCounts {
+        val chapter = db.collectionDao.fetchAll()
+            .firstOrNull { it.slug == chapterSlug && (sourceId == null || it.dublinCoreFk == sourceId) }
         assertNotNull(chapter, "no chapter collection '$chapterSlug'")
         val textType = db.contentTypeDao.fetchId(ContentType.TEXT)
         val verses = db.contentDao.fetchByCollectionId(chapter.id).filter { it.type_fk == textType }
@@ -281,8 +686,8 @@ class IntegrationEnvironment private constructor(
     companion object {
         /**
          * Builds an environment over a fresh temp directory. The database bootstraps itself:
-         * `AppDatabase` runs `sql/CreateAppDb.sql` (shipped in the otter-db artifact) when the file
-         * does not exist, then applies migrations.
+         * SQLDelight creates the schema from the `.sq` files when the file does not exist, then
+         * applies migrations.
          */
         fun create(): IntegrationEnvironment {
             val tempRoot = File.createTempFile("orature-integration", "").let {

@@ -1,5 +1,6 @@
 package org.bibletranslationtools.bttrecorder2.ui.viewmodels
 
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.structure.ReferenceAlignment
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import org.bibletranslationtools.otter.common.device.AudioConfig
@@ -49,13 +50,15 @@ class RecorderViewModel(
     private val unitTargetLoader: UnitTargetLoader,
     private val audioRecorderFactory: AudioRecorderConnectionFactory,
     audioPlayerFactory: AudioPlayerConnectionFactory,
+    referenceAlignment: ReferenceAlignment,
     /** The format to capture at. See [AudioConfig.spec] — this is the one place it is decided. */
     private val audioConfig: AudioConfig = AudioConfig()
 ) : ViewModel() {
 
     private val sourceAudioController = SourceAudioPlayerController(
         factory = audioPlayerFactory,
-        scope = viewModelScope
+        scope = viewModelScope,
+        referenceAlignment = referenceAlignment
     )
 
     /**

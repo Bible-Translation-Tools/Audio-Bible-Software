@@ -18,6 +18,8 @@
  */
 package org.bibletranslationtools.otter.common.domain.project.importer
 
+import java.util.UUID
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionOrder
 import io.reactivex.Maybe
 import io.reactivex.Observable
 import io.reactivex.Single
@@ -41,6 +43,11 @@ import org.bibletranslationtools.otter.common.data.primitives.Take
 import org.bibletranslationtools.otter.common.data.workbook.TakeCheckingState
 import org.bibletranslationtools.otter.common.data.workbook.Translation
 import org.bibletranslationtools.otter.common.domain.collections.CreateProject
+import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
+import org.bibletranslationtools.otter.common.domain.project.BackupEditionRecord
+import org.bibletranslationtools.otter.common.domain.project.BackupEditions
+import org.bibletranslationtools.otter.common.domain.project.BackupHeldChapter
+import kotlinx.coroutines.runBlocking
 import org.bibletranslationtools.otter.common.domain.content.ConcatenateAudio
 import org.bibletranslationtools.otter.common.domain.content.FileNamer
 import org.bibletranslationtools.otter.common.domain.content.FileNamer.Companion.takeFilenamePattern
@@ -86,7 +93,10 @@ class OngoingProjectImporter(
     private val languageRepository: ILanguageRepository,
     private val resourceRepository: IResourceRepository,
     private val createProjectUseCase: CreateProject,
-    private val concatAudioUseCase: ConcatenateAudio
+    private val concatAudioUseCase: ConcatenateAudio,
+    private val backupEditions: BackupEditions,
+    private val upgradeBookEdition: UpgradeBookEdition,
+    private val editionFingerprinter: EditionFingerprinter
 ) : RCImporter(directoryProvider, resourceMetadataRepository) {
     private val logger = LoggerFactory.getLogger(this.javaClass)
 
@@ -100,6 +110,11 @@ class OngoingProjectImporter(
     private var completedChapters = listOf<Int>() // for Ot1 projects
     private var takesToCompile = mutableMapOf<Int, List<File>>() // for compiling verses of incomplete chapter in Ot1
     private var migratedSelectedTakes = listOf<String>() // list of all selected take paths extracted from Ot1 database
+    /** Takes this import added, and those it found already in the project (byte-for-byte). */
+    private var takesAdded = 0
+    private var takesAlreadyThere = 0
+    /** The source book of the project already here that the backup is merged into, if there is one. */
+    private var existingProjectSource: Collection? = null
 
     override fun import(
         file: File,
@@ -117,6 +132,9 @@ class OngoingProjectImporter(
         completedChapters = listOf()
         takesToCompile = mutableMapOf()
         migratedSelectedTakes = listOf()
+        existingProjectSource = null
+        takesAdded = 0
+        takesAlreadyThere = 0
         contentCache.clear()
 
         return Single
@@ -125,19 +143,16 @@ class OngoingProjectImporter(
                 logger.error("Error while checking whether project already exists.", it)
             }
             .flatMap { exists ->
-                val takesByChapterInProject = fetchTakesInRC(file)
+                // A book already here is merged, never replaced, so there is nothing to ask: every
+                // recording comes in as a new take (see insertTake), and the callback is told how
+                // many were added.
+                takesInChapterFilter = fetchTakesInRC(file)
 
-                if (exists && callback != null) {
-                    val availableChapters = takesByChapterInProject.values.distinct().sorted()
-                    val selectedChapters = getUserSelectedChapter(availableChapters, callback)
-                        ?: return@flatMap Single.just(ImportResult.ABORTED)
-
-                    takesInChapterFilter = takesByChapterInProject.filterValues { it in selectedChapters }
-                } else {
-                    takesInChapterFilter = takesByChapterInProject // accept all takes
+                importResumableProject(file, callback).doOnSuccess { result ->
+                    if (result == ImportResult.SUCCESS) {
+                        callback?.onNotifyTakesImported(merged = exists, added = takesAdded, alreadyThere = takesAlreadyThere)
+                    }
                 }
-
-                importResumableProject(file, callback)
             }
             .subscribeOn(Schedulers.io())
     }
@@ -150,11 +165,16 @@ class OngoingProjectImporter(
         }
     }
 
+    /**
+     * Whether the project in [file] already exists here: same book and target language, translated
+     * from the same source (language and identifier). The source edition may differ, since an
+     * edition change doesn't make it a different project.
+     */
     private fun projectExists(file: File): Boolean {
         ResourceContainer.load(file).use { rc ->
             rc.manifest.dublinCore.let {
-                val sourceLanguageSlug = it.source.firstOrNull()?.language
-                    ?: return false
+                val source = it.source.firstOrNull() ?: return false
+                val sourceLanguageSlug = source.language
 
                 val languageSlug = it.language.identifier
                 val projectSlug = rc.manifest.projects.first().let { p ->
@@ -165,22 +185,17 @@ class OngoingProjectImporter(
                 val projects = workbookRepository.getProjects().blockingGet()
                 return projects.firstOrNull { existingProject ->
                     sourceLanguageSlug == existingProject.source.language.slug &&
+                        source.identifier == existingProject.source.resourceMetadata.identifier &&
                         languageSlug == existingProject.target.language.slug &&
                         projectSlug == existingProject.target.slug
                 }?.let {
                     workbookRepository.closeWorkbook(it)
-                    it.projectFilesAccessor.isInitialized()
+                    it.projectFilesAccessor.isInitialized().also { initialized ->
+                        if (initialized) existingProjectSource = it.source.toCollection()
+                    }
                 } ?: false
             }
         }
-    }
-
-    private fun getUserSelectedChapter(
-        availableChapters: List<Int>,
-        callback: ProjectImporterCallback
-    ): List<Int>? {
-        val callbackParam = ImportCallbackParameter(availableChapters, projectName)
-        return callback.onRequestUserInput(callbackParam).blockingGet().chapters
     }
 
     private fun fetchTakesInRC(file: File): Map<String, Int> {
@@ -236,20 +251,21 @@ class OngoingProjectImporter(
                     percent = 10.0
                 )
                 directoryProvider.newFileReader(resourceContainer).use { fileReader ->
-                    val existingSource = fetchExistingSource(manifestProject, manifestSources)
+                    val editionRecord = backupEditions.read(fileReader)
+                        ?.takeIf { it.book == manifestProject.identifier }
                     try {
                         callback?.onNotifyProgress(localizeKey = "importingSource", percent = 25.0)
-                        // Import Sources even if existing source exists in order to potentially merge source audio
+                        // Import Sources even if existing source exists in order to potentially merge source audio.
+                        // Each is its own edition, beside any other edition of it already here.
                         importSources(fileReader)
+                        importSources(fileReader, RcConstants.OWN_SOURCE_DIR)
                     } catch (e: ImportException) {
                         logger.error("Error importing source of resumable project", e)
                     }
-                    val sourceCollection = if (existingSource == null) {
-                        findSourceCollection(manifestSources, manifestProject)
-                    } else {
-                        existingSource
-                    }
-                    syncProjectVersion(manifest, sourceCollection.resourceContainer!!.version)
+                    // Merging into a project already here keeps it on its edition. Otherwise the
+                    // project attaches to the edition it was backed up from (S11-Q3).
+                    val sourceCollection = existingProjectSource
+                        ?: backedUpSourceCollection(editionRecord, manifestSources, manifestProject, fileReader)
 
                     val metadata = languageRepository
                         .getBySlug(manifest.dublinCore.language.identifier)
@@ -258,7 +274,10 @@ class OngoingProjectImporter(
                         }
                         .blockingGet()
 
-                    val derived = importResumableProject(fileReader, metadata, manifestProject, sourceCollection, callback)
+                    val derived = importResumableProject(
+                        fileReader, metadata, manifestProject, sourceCollection, callback,
+                        heldBack = editionRecord.takeIf { existingProjectSource == null }?.heldBack.orEmpty()
+                    )
                     val workbookDescriptor = workbookDescriptorRepository.getAll().blockingGet().firstOrNull {
                         it.targetCollection.id == derived.id && it.sourceCollection.id == sourceCollection.id
                     }
@@ -284,7 +303,8 @@ class OngoingProjectImporter(
         metadata: ResourceMetadata,
         manifestProject: Project,
         sourceCollection: Collection,
-        callback: ProjectImporterCallback?
+        callback: ProjectImporterCallback?,
+        heldBack: List<BackupHeldChapter> = emptyList()
     ): Collection {
         val sourceMetadata = sourceCollection.resourceContainer!!
         projectMode = getProjectMode(fileReader, metadata.language, sourceCollection.resourceContainer!!.language)
@@ -298,12 +318,16 @@ class OngoingProjectImporter(
             isVerseByVerse
         )
 
+        restoreHeldChapters(derivedProject, heldBack)
+
         val translation = createTranslation(sourceMetadata.language, metadata.language)
 
+        // The project's folder is found from its own row, as the rest of the app finds it; the
+        // backup's manifest may carry another version (it isn't overwritten to match any more).
         val projectFilesAccessor = ProjectFilesAccessor(
             directoryProvider,
             sourceMetadata,
-            metadata,
+            derivedProject.resourceContainer ?: metadata,
             derivedProject
         )
 
@@ -516,22 +540,30 @@ class OngoingProjectImporter(
         takesCheckingMap = parseCheckingStatusFile(fileReader)
 
         projectFilesAccessor.copySelectedTakesFile(fileReader)
-        projectFilesAccessor.copyTakeFiles(fileReader, manifestProject, ::takeCopyFilter)
-            .doOnError { e ->
-                logger.error("Error in importTakes, project: $project, manifestProject: $manifestProject")
-                logger.error("metadata: $metadata, sourceMetadata: $sourceMetadata")
-                logger.error("sourceCollection: $sourceCollection", e)
-            }
-            .blockingSubscribe { newTakeFile ->
-                insertTake(
-                    newTakeFile,
-                    projectFilesAccessor.audioDir,
-                    collectionForTakes,
-                    sourceMetadata,
-                    takesInSelectedFile
-                )
-            }
-        
+        // Staged first, then placed one by one: an imported recording never overwrites one already
+        // in the project. It comes in as a new take, renumbered if its number is taken.
+        val staging = File(directoryProvider.tempDirectory, "take-import-${UUID.randomUUID()}").apply { mkdirs() }
+        try {
+            projectFilesAccessor.copyTakeFiles(fileReader, manifestProject, ::takeCopyFilter, destination = staging)
+                .doOnError { e ->
+                    logger.error("Error in importTakes, project: $project, manifestProject: $manifestProject")
+                    logger.error("metadata: $metadata, sourceMetadata: $sourceMetadata")
+                    logger.error("sourceCollection: $sourceCollection", e)
+                }
+                .blockingSubscribe { stagedTakeFile ->
+                    insertTake(
+                        File(stagedTakeFile),
+                        staging,
+                        projectFilesAccessor.audioDir,
+                        collectionForTakes,
+                        sourceMetadata,
+                        takesInSelectedFile
+                    )
+                }
+        } finally {
+            staging.deleteRecursively()
+        }
+
         val isNarrationMigration = projectAppVersion == ProjectAppVersion.ONE && projectMode == ProjectMode.NARRATION
         if (isNarrationMigration) {
             takesToCompile.forEach { (chapter, takeFiles) ->
@@ -581,57 +613,125 @@ class OngoingProjectImporter(
         } ?: true
     }
 
+    /**
+     * Places [staged], a take file copied from the import into [staging], in the project.
+     *
+     * It never overwrites a take already there: it comes in as a new take, numbered after the
+     * content's existing takes and renamed to match when its own number is taken. Only a file
+     * byte-for-byte the same as an existing take of that content is not added again (re-importing
+     * one's own backup); the existing take is selected instead if the import selects it.
+     */
     private fun insertTake(
-        filepath: String,
+        staged: File,
+        staging: File,
         projectAudioDir: File,
         project: Collection,
         metadata: ResourceMetadata,
         selectedTakes: Set<String>
     ) {
-        parseNumbers(filepath)?.let { (sig, takeNumber) ->
-            getContent(sig, project, metadata)?.let { chunk ->
-                val now = LocalDate.now()
-                val file = File(filepath).canonicalFile
-                val relativeFile = file.relativeTo(projectAudioDir.canonicalFile)
-                val isSelected = relativeFile.invariantSeparatorsPath in selectedTakes || filepath in migratedSelectedTakes
-
-                val checkingStatus = when {
-                    projectAppVersion.ordinal >= ProjectAppVersion.THREE.ordinal -> takesCheckingMap[relativeFile.name]
-
-                    completedChapters.contains(sig.chapter) -> {
-                        TakeCheckingState(CheckingStatus.VERSE, computeFileChecksum(file))
-                    }
-
-                    else -> null
-                }
-
-                val take = Take(
-                    file.name,
-                    file,
-                    takeNumber,
-                    now,
-                    null,
-                    false,
-                    checkingStatus?.status ?: CheckingStatus.UNCHECKED,
-                    checkingStatus?.checksum,
-                    listOf()
+        // Selection and checking status are recorded under the take's name in the import.
+        val importedPath = staged.relativeTo(staging).invariantSeparatorsPath
+        val parsed = parseNumbers(importedPath)
+        val chunk = parsed?.let { (sig, _) -> getContent(sig, project, metadata) }
+        if (parsed == null || chunk == null) {
+            val kept = moveIntoProject(staged, projectAudioDir.resolve(importedPath))
+            if (parsed != null) {
+                // Restored onto an edition without this verse: the file is kept in the project's
+                // folder, but nothing in the project refers to it.
+                logger.warn(
+                    "Restoring ${project.slug}: take $kept has no place in the project " +
+                        "(chapter ${parsed.contentSignature.chapter}, verse ${parsed.contentSignature.verse}), so it isn't listed"
                 )
-                val insertedId = takeRepository.insertForContent(take, chunk).blockingGet()
-                take.id = insertedId
+            }
+            return
+        }
+        val (sig, importedNumber) = parsed
+        // An Orature 1 migration names selected takes by where they land in the project.
+        val landing = projectAudioDir.resolve(importedPath)
+        val isSelected = importedPath in selectedTakes ||
+            landing.path in migratedSelectedTakes || landing.absolutePath in migratedSelectedTakes
+        val existing = takeRepository.getByContent(chunk, includeDeleted = true).blockingGet()
 
-                if (isSelected) {
-                    chunk.selectedTake = take
-                    contentRepository.update(chunk).blockingAwait()
+        val checksum = computeFileChecksum(staged)
+        existing.firstOrNull { it.path.exists() && computeFileChecksum(it.path) == checksum }?.let { same ->
+            staged.delete()
+            takesAlreadyThere++
+            if (isSelected && same.deleted == null) {
+                chunk.selectedTake = same
+                contentRepository.update(chunk).blockingAwait()
+            }
+            return
+        }
 
-                    val isNarrationMigration = projectMode == ProjectMode.NARRATION && projectAppVersion == ProjectAppVersion.ONE
-                    // store verse take of incomplete chapter narration to compile later
-                    if (isNarrationMigration && sig.chapter !in completedChapters && sig.verse != null) {
-                        val existingFiles = takesToCompile.getOrDefault(sig.chapter, listOf())
-                        takesToCompile[sig.chapter] = existingFiles.plus(file)
-                    }
-                }
+        val target = projectAudioDir.resolve(importedPath)
+        val numberTaken = existing.any { it.number == importedNumber } || target.exists()
+        val takeNumber = if (numberTaken) nextTakeNumber(existing, target) else importedNumber
+        val file = moveIntoProject(staged, if (numberTaken) target.withTakeNumber(takeNumber) else target).canonicalFile
+        if (numberTaken) logger.info("Imported take $importedPath added as take $takeNumber (${file.name})")
+
+        val now = LocalDate.now()
+        val relativeFile = File(importedPath)
+
+        val checkingStatus = when {
+            projectAppVersion.ordinal >= ProjectAppVersion.THREE.ordinal -> takesCheckingMap[relativeFile.name]
+
+            completedChapters.contains(sig.chapter) -> {
+                TakeCheckingState(CheckingStatus.VERSE, computeFileChecksum(file))
+            }
+
+            else -> null
+        }
+
+        val take = Take(
+            file.name,
+            file,
+            takeNumber,
+            now,
+            null,
+            false,
+            checkingStatus?.status ?: CheckingStatus.UNCHECKED,
+            checkingStatus?.checksum,
+            listOf()
+        )
+        val insertedId = takeRepository.insertForContent(take, chunk).blockingGet()
+        take.id = insertedId
+        takesAdded++
+
+        if (isSelected) {
+            chunk.selectedTake = take
+            contentRepository.update(chunk).blockingAwait()
+
+            val isNarrationMigration = projectMode == ProjectMode.NARRATION && projectAppVersion == ProjectAppVersion.ONE
+            // store verse take of incomplete chapter narration to compile later
+            if (isNarrationMigration && sig.chapter !in completedChapters && sig.verse != null) {
+                val existingFiles = takesToCompile.getOrDefault(sig.chapter, listOf())
+                takesToCompile[sig.chapter] = existingFiles.plus(file)
             }
         }
+    }
+
+    /** The first take number after [existing]'s whose file name is free next to [target]. */
+    private fun nextTakeNumber(existing: List<Take>, target: File): Int {
+        var number = (existing.maxOfOrNull { it.number } ?: 0) + 1
+        while (target.withTakeNumber(number).exists()) number++
+        return number
+    }
+
+    /** [this] take file's name with take number [number]: `..._t3.wav` for 3. */
+    private fun File.withTakeNumber(number: Int): File =
+        resolveSibling(name.replace(TAKE_NUMBER_SUFFIX, "_t$number$2"))
+
+    /** Moves [staged] to [target], or to a free name beside it: never over a file already there. */
+    private fun moveIntoProject(staged: File, target: File): File {
+        var destination = target
+        var n = 2
+        while (destination.exists()) destination = target.resolveSibling("${target.nameWithoutExtension}_$n.${target.extension}").also { n++ }
+        destination.parentFile?.mkdirs()
+        if (!staged.renameTo(destination)) {
+            staged.copyTo(destination)
+            staged.delete()
+        }
+        return destination
     }
 
     private fun createDerivedProjects(
@@ -649,11 +749,12 @@ class OngoingProjectImporter(
             logger.error("Error while deriving project(s) during import", it)
         }.blockingGet()
 
-        // populate all books when importing a project
+        // populate all books when importing a project, from the edition the project is on
         createProjectUseCase.createAllBooks(
             sourceCollection.resourceContainer!!.language,
             language,
-            mode
+            mode,
+            edition = sourceCollection.resourceContainer
         ).blockingAwait()
 
         return project
@@ -672,6 +773,7 @@ class OngoingProjectImporter(
             .filter {
                 it.slug == manifestProject.identifier
             }
+            .sortedWith(EditionOrder.newestFirstBy { it.resourceContainer })
             .firstOrNull()
 
         if (sourceCollection == null) {
@@ -688,26 +790,93 @@ class OngoingProjectImporter(
     }
 
     /**
-     * Find the relevant source (if any) for the project, regardless of version
+     * The source book a backup's project attaches to: the edition its record names, found by
+     * fingerprint; for a backup without a record (made by Orature, or before the record existed),
+     * the edition embedded in it; and failing both, the installed edition with the version label its
+     * manifest names, or the newest, which is logged (S11-Q4).
      */
-    private fun fetchExistingSource(
+    private fun backedUpSourceCollection(
+        record: BackupEditionRecord?,
+        manifestSources: Set<Source>,
         manifestProject: Project,
-        requestedSources: Set<Source>
-    ): Collection? {
-        return collectionRepository.getSourceProjects().blockingGet()
-            .asSequence()
-            .firstOrNull { collection ->
-                requestedSources.any { source ->
-                    manifestProject.identifier == collection.slug &&
-                            source.identifier == collection.resourceContainer!!.identifier &&
-                            source.language == collection.resourceContainer!!.language.slug
+        fileReader: IFileReader
+    ): Collection {
+        val edition = runBlocking {
+            record?.let { backupEditions.findInstalled(it.edition) }
+                ?: embeddedEdition(fileReader, manifestSources)
+                ?: manifestSources.firstNotNullOfOrNull { source ->
+                    backupEditions.closestInstalled(source.language, source.identifier, source.version)?.also {
+                        logger.warn(
+                            "Restoring ${manifestProject.identifier}: the backup doesn't say which edition of " +
+                                "${source.language}_${source.identifier} it used (its manifest says version " +
+                                "${source.version}), so it is attached to v${it.version}, issued ${it.issued}"
+                        )
+                    }
                 }
-            }
+        }
+        val sourceCollection = edition?.let { found ->
+            collectionRepository.getSourceProjects().blockingGet()
+                .firstOrNull { it.resourceContainer?.id == found.id && it.slug == manifestProject.identifier }
+        }
+        if (sourceCollection == null) {
+            logger.error("Failed to find source that matches requested import.")
+            throw ImportException(ImportResult.FAILED)
+        }
+        return sourceCollection
     }
 
-    private fun importSources(fileReader: IFileReader) {
+    /** The installed edition that is the source embedded in the backup, matched by content. */
+    private suspend fun embeddedEdition(fileReader: IFileReader, manifestSources: Set<Source>): ResourceMetadata? {
+        val embedded = fileReader.list(RcConstants.SOURCE_DIR)
+            .filter { OratureFileFormat.isSupported(it.substringAfterLast(".")) }
+            .toList()
+        for (path in embedded) {
+            val file = directoryProvider.createTempFile(File(path).nameWithoutExtension, ".zip")
+            try {
+                fileReader.stream(path).use { input -> file.outputStream().use { input.copyTo(it) } }
+                val dublinCore = ResourceContainer.load(file).use { it.manifest.dublinCore }
+                val isProjectSource = manifestSources.any {
+                    it.identifier == dublinCore.identifier && it.language == dublinCore.language.identifier
+                }
+                if (!isProjectSource) continue
+                val fingerprint = editionFingerprinter.fingerprint(file)
+                backupEditions.findInstalled(dublinCore.language.identifier, dublinCore.identifier, fingerprint)
+                    ?.let { return it }
+            } catch (e: Exception) {
+                logger.error("Could not identify the embedded source $path", e)
+            } finally {
+                file.delete()
+            }
+        }
+        return null
+    }
+
+    /**
+     * Gives the chapters that were held back on an upgrade their earlier edition's verses again,
+     * before their takes are imported onto them. A chapter whose edition can't be found keeps the
+     * book's edition, and its takes are matched to that edition's verses by number.
+     */
+    private fun restoreHeldChapters(project: Collection, heldBack: List<BackupHeldChapter>) {
+        if (heldBack.isEmpty()) return
+        runBlocking {
+            val editions = heldBack.mapNotNull { held ->
+                backupEditions.findInstalled(held.edition)?.let { held.chapter to it }
+                    ?: null.also {
+                        logger.warn(
+                            "Restoring ${project.slug} chapter ${held.chapter}: its edition " +
+                                "${held.edition.language}_${held.edition.identifier} v${held.edition.version} " +
+                                "isn't installed, so it takes the book's edition"
+                        )
+                    }
+            }.toMap()
+            upgradeBookEdition.holdChapters(project.id, editions)
+        }
+    }
+
+    private fun importSources(fileReader: IFileReader, directory: String = RcConstants.SOURCE_DIR) {
+        if (directory != RcConstants.SOURCE_DIR && !fileReader.exists(directory)) return
         val sourceFiles: Sequence<String> = fileReader
-            .list(RcConstants.SOURCE_DIR)
+            .list(directory)
             .filter {
                 val ext = it.substringAfterLast(".")
                 OratureFileFormat.isSupported(ext)
@@ -868,9 +1037,9 @@ class OngoingProjectImporter(
         }
     }
 
-    /** Applies source version to target version before importing. */
-    private fun syncProjectVersion(projectManifest: Manifest, version: String) {
-        projectManifest.dublinCore.version = version
+    private companion object {
+        /** The take number at the end of a take file's name: `_t12.wav`. */
+        val TAKE_NUMBER_SUFFIX = Regex("""_t(\d+)(\.[^.]+)$""")
     }
 
     data class ContentSignature(val chapter: Int, val verse: Int?, val sort: Int?, val type: ContentType?)

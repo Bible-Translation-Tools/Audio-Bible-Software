@@ -1,5 +1,6 @@
 package org.bibletranslationtools.bttrecorder2.ui.viewmodels
 
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.DescribeSourceEditions
 import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -49,9 +50,11 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
     private val workbookDescriptorRepository: IWorkbookDescriptorRepository by inject()
     private val importProjectUseCase: ImportProjectUseCase by inject()
     private val directoryProvider: ITempFileProvider by inject()
+    private val describeSourceEditions: DescribeSourceEditions by inject()
 
     private val _rawWorkbooks = MutableStateFlow<List<WorkbookDescriptor>?>(null)
     private val _sortState = MutableStateFlow(SortState())
+    private val _updatesAvailable = MutableStateFlow<Set<Int>>(emptySet())
 
     private val _uiState = MutableStateFlow<ProjectManagementUiState>(ProjectManagementUiState.Loading)
     val uiState: StateFlow<ProjectManagementUiState> = _uiState.asStateFlow()
@@ -69,9 +72,11 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
             try {
                 val workbooks = workbookDescriptorRepository.getAll().blockingGet()
                 _rawWorkbooks.value = workbooks
+                _updatesAvailable.value = updatesAvailable(workbooks)
                 _uiState.value = ProjectManagementUiState.Success(
                     groups = groupAndSort(workbooks, _sortState.value),
-                    sortState = _sortState.value
+                    sortState = _sortState.value,
+                    updatesAvailable = _updatesAvailable.value
                 )
             } catch (e: Exception) {
                 logFailure("loading the project list", e)
@@ -92,8 +97,19 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
         val workbooks = _rawWorkbooks.value ?: return
         _uiState.value = ProjectManagementUiState.Success(
             groups = groupAndSort(workbooks, _sortState.value),
-            sortState = _sortState.value
+            sortState = _sortState.value,
+            updatesAvailable = _updatesAvailable.value
         )
+    }
+
+    /** Ids of the projects whose source edition has a newer edition installed. */
+    private suspend fun updatesAvailable(workbooks: List<WorkbookDescriptor>): Set<Int> {
+        val editions = workbooks.mapNotNull { it.sourceCollection.resourceContainer }
+        val summaries = describeSourceEditions.describeAll(editions)
+        return workbooks
+            .filter { workbook -> workbook.sourceCollection.resourceContainer?.let { summaries[it.id]?.updateAvailable } == true }
+            .map { it.id }
+            .toSet()
     }
 
     private fun groupAndSort(
@@ -200,7 +216,9 @@ sealed interface ProjectManagementUiState {
     data object Loading : ProjectManagementUiState
     data class Success(
         val groups: List<ProjectGroup>,
-        val sortState: SortState = SortState()
+        val sortState: SortState = SortState(),
+        /** Ids of projects with a newer source edition installed. */
+        val updatesAvailable: Set<Int> = emptySet()
     ) : ProjectManagementUiState
     data class Error(val message: String) : ProjectManagementUiState
 }

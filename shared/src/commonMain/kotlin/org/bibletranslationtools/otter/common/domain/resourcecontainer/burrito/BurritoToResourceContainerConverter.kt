@@ -51,6 +51,7 @@ import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
 import org.bibletranslationtools.otter.common.data.audio.OratureCueType
 import org.bibletranslationtools.otter.common.domain.versification.ParatextVersification
+import org.bibletranslationtools.otter.common.domain.versification.StandardVersifications
 import org.bibletranslationtools.otter.common.data.audio.VerseMarker
 import org.bibletranslationtools.otter.common.domain.versification.Versification
 import org.bibletranslationtools.otter.common.audio.wav.WavFile
@@ -890,7 +891,7 @@ open class BurritoToResourceContainerConverter(
                 null
             }
         } else {
-            versificationRepository.getVersification("ulb").blockingGet()
+            versificationRepository.getVersification(StandardVersifications.DEFAULT).blockingGet()
         }
     }
 }

@@ -1,5 +1,10 @@
 package org.bibletranslationtools.orature.ui.screens
 
+import org.bibletranslationtools.orature.ui.components.OratureEditionChangeDialog
+import org.bibletranslationtools.orature.ui.viewmodels.OratureEditionChangeTarget
+import org.bibletranslationtools.orature.resources.updateEdition
+import org.bibletranslationtools.orature.resources.changeEdition
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -131,8 +136,10 @@ fun OratureHomeScreen(
         },
         onWizardLanguageSelected = wizardViewModel::onLanguageSelected,
         onWizardResourceVersionSelected = wizardViewModel::onResourceVersionSelected,
+        onWizardEditionSelected = wizardViewModel::onEditionSelected,
         onWizardSourceSearchChange = wizardViewModel::onSourceLanguageSearchQueryChange,
-        onWizardTargetSearchChange = wizardViewModel::onTargetLanguageSearchQueryChange
+        onWizardTargetSearchChange = wizardViewModel::onTargetLanguageSearchQueryChange,
+        onEditionChanged = viewModel::onEditionChanged
     )
 
     if (showImport) {
@@ -162,9 +169,30 @@ fun OratureHomeContent(
     onWizardBack: () -> Unit,
     onWizardLanguageSelected: (org.bibletranslationtools.otter.common.data.primitives.Language) -> Unit,
     onWizardResourceVersionSelected: (org.bibletranslationtools.orature.ui.viewmodels.OratureResourceVersion) -> Unit,
+    onWizardEditionSelected: (org.bibletranslationtools.orature.ui.viewmodels.OratureEditionOption) -> Unit = {},
     onWizardSourceSearchChange: (String) -> Unit,
-    onWizardTargetSearchChange: (String) -> Unit
+    onWizardTargetSearchChange: (String) -> Unit,
+    onEditionChanged: () -> Unit = {}
 ) {
+    // The project or book an edition change is open for (O1-Q1), or null. Only from home (O1-Q4).
+    var editionTarget by remember { mutableStateOf<OratureEditionChangeTarget?>(null) }
+    val openGroupEdition = { group: OratureProjectGroupUiModel -> editionTarget = group.editionTarget() }
+    val openBookEdition = { book: OratureBookUiModel ->
+        editionTarget = OratureEditionChangeTarget(
+            projectBookIds = listOf(book.projectBookId),
+            editions = listOfNotNull(book.edition),
+            bookTitles = mapOf(book.projectBookId to book.title),
+            singleBook = true
+        )
+    }
+    editionTarget?.let { target ->
+        OratureEditionChangeDialog(
+            target = target,
+            onDismiss = { editionTarget = null },
+            onChanged = onEditionChanged
+        )
+    }
+
     // The nav rail + Settings/Info drawers now live in the persistent OratureRootShell
     // (present on every screen); the home content is just the projects pane + center section.
     Row(modifier = Modifier.fillMaxSize()) {
@@ -175,6 +203,10 @@ fun OratureHomeContent(
             onSelectGroup = onSelectGroup,
             onNewProjectClick = onNewProjectClick,
             onImportClick = onImportClick,
+            onUpdateEdition = { group ->
+                onSelectGroup(group.key)
+                openGroupEdition(group)
+            },
             modifier = Modifier.width(320.dp).fillMaxHeight()
         )
 
@@ -187,6 +219,8 @@ fun OratureHomeContent(
                 onScheduleGroupDelete = onScheduleGroupDelete,
                 onUndoGroupDelete = onUndoGroupDelete,
                 onDeleteBook = onDeleteBook,
+                onChangeGroupEdition = openGroupEdition,
+                onChangeBookEdition = openBookEdition,
                 modifier = Modifier.weight(1f).fillMaxHeight()
             )
             CenterPaneMode.WIZARD -> OratureProjectWizardSection(
@@ -195,6 +229,7 @@ fun OratureHomeContent(
                 onBack = onWizardBack,
                 onLanguageSelected = onWizardLanguageSelected,
                 onResourceVersionSelected = onWizardResourceVersionSelected,
+                onEditionSelected = onWizardEditionSelected,
                 onSourceSearchQueryChange = onWizardSourceSearchChange,
                 onTargetSearchQueryChange = onWizardTargetSearchChange,
                 modifier = Modifier.weight(1f).fillMaxHeight()
@@ -210,6 +245,7 @@ private fun OratureProjectsPane(
     onSelectGroup: (OratureProjectGroupKey) -> Unit,
     onNewProjectClick: () -> Unit,
     onImportClick: () -> Unit,
+    onUpdateEdition: (OratureProjectGroupUiModel) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -255,7 +291,8 @@ private fun OratureProjectsPane(
                         OratureProjectGroupCard(
                             group = group,
                             isSelected = group.key == uiState.selectedGroupKey,
-                            onClick = { onSelectGroup(group.key) }
+                            onClick = { onSelectGroup(group.key) },
+                            onUpdateEdition = { onUpdateEdition(group) }
                         )
                     }
                 }
@@ -276,6 +313,8 @@ private fun OratureBookSection(
     onScheduleGroupDelete: (OratureProjectGroupKey) -> Unit,
     onUndoGroupDelete: (OratureProjectGroupKey) -> Unit,
     onDeleteBook: (Int) -> Unit,
+    onChangeGroupEdition: (OratureProjectGroupUiModel) -> Unit,
+    onChangeBookEdition: (OratureBookUiModel) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val projectDeletedMsg = stringResource(Res.string.projectDeleted)
@@ -329,6 +368,19 @@ private fun OratureBookSection(
                             contributorsForId = selectedGroup?.books?.firstOrNull()?.id
                         }
                     )
+                    // Update Edition / Change Edition: move every book to another installed edition (O1-Q1).
+                    selectedGroup?.edition?.let { edition ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(stringResource(if (edition.updateAvailable) Res.string.updateEdition else Res.string.changeEdition))
+                            },
+                            leadingIcon = { Icon(Icons.Filled.SwapHoriz, contentDescription = null) },
+                            onClick = {
+                                menuExpanded = false
+                                onChangeGroupEdition(selectedGroup)
+                            }
+                        )
+                    }
                     // Delete Project — disabled when any book has progress (JVM: disableWhen
                     // books.any { progress > 0 }). Deletes after an undo window.
                     val groupHasProgress = selectedGroup?.books?.any { it.progress > 0.0 } == true
@@ -407,6 +459,8 @@ private fun OratureBookSection(
             else -> {
                 OratureBookTable(
                     books = uiState.visibleBooks,
+                    groupEditionId = selectedGroup.edition?.main?.id,
+                    onChangeEdition = onChangeBookEdition,
                     onBookClick = onBookClick,
                     onBackupBook = { book -> backupBookId = book.id },
                     onExportBook = { book -> exportBookId = book.id },
@@ -474,3 +528,11 @@ private fun OratureBookSection(
         )
     }
 }
+
+/** An edition change for every book of this project. */
+private fun OratureProjectGroupUiModel.editionTarget() = OratureEditionChangeTarget(
+    projectBookIds = books.map { it.projectBookId },
+    editions = books.mapNotNull { it.edition }.distinctBy { it.id },
+    bookTitles = books.associate { it.projectBookId to it.title },
+    singleBook = false
+)

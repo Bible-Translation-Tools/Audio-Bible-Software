@@ -29,7 +29,7 @@ import org.bibletranslationtools.orature.ui.navigation.OratureSplashRoute
 import org.koin.compose.koinInject
 
 /** Which left drawer (if any) is currently open over the content. */
-private enum class OpenDrawer { NONE, SETTINGS, INFO }
+private enum class OpenDrawer { NONE, RESOURCES, SETTINGS, INFO }
 
 /**
  * The persistent app shell (JVM: `RootView` = `borderpane { left<AppBar>; center<AppContent> }`).
@@ -59,6 +59,7 @@ fun OratureRootShell(
     val isHome = destination?.hasRoute(OratureHomeRoute::class) == true
 
     val selected: OratureNavDestination? = when {
+        openDrawer == OpenDrawer.RESOURCES -> OratureNavDestination.RESOURCES
         openDrawer == OpenDrawer.SETTINGS -> OratureNavDestination.SETTINGS
         openDrawer == OpenDrawer.INFO -> OratureNavDestination.INFO
         isHome -> OratureNavDestination.HOME
@@ -89,6 +90,10 @@ fun OratureRootShell(
                 onInfoClick = {
                     if (locked) return@OratureNavRail
                     openDrawer = if (openDrawer == OpenDrawer.INFO) OpenDrawer.NONE else OpenDrawer.INFO
+                },
+                onResourcesClick = {
+                    if (locked) return@OratureNavRail
+                    openDrawer = if (openDrawer == OpenDrawer.RESOURCES) OpenDrawer.NONE else OpenDrawer.RESOURCES
                 }
             )
         }
@@ -110,6 +115,10 @@ fun OratureRootShell(
                 )
                 when (openDrawer) {
                     OpenDrawer.SETTINGS -> OratureSettingsDrawer(
+                        onClose = { openDrawer = OpenDrawer.NONE },
+                        modifier = Modifier.align(Alignment.CenterStart)
+                    )
+                    OpenDrawer.RESOURCES -> org.bibletranslationtools.orature.ui.components.OratureResourcesDrawer(
                         onClose = { openDrawer = OpenDrawer.NONE },
                         modifier = Modifier.align(Alignment.CenterStart)
                     )

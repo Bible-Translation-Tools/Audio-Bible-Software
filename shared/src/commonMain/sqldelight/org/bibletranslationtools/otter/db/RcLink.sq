@@ -1,4 +1,4 @@
--- Mirrors sql/CreateAppDb.sql `rc_link_entity`.
+-- Ported from the legacy (jOOQ) CreateAppDb.sql `rc_link_entity`.
 CREATE TABLE rc_link_entity (
     rc1_fk      INTEGER AS kotlin.Int NOT NULL REFERENCES dublin_core_entity(id) ON DELETE CASCADE,
     rc2_fk      INTEGER AS kotlin.Int NOT NULL REFERENCES dublin_core_entity(id) ON DELETE CASCADE,

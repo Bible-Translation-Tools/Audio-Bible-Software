@@ -1,4 +1,4 @@
--- Mirrors sql/CreateAppDb.sql `subtree_has_resource`.
+-- Ported from the legacy (jOOQ) CreateAppDb.sql `subtree_has_resource`.
 CREATE TABLE subtree_has_resource (
   collection_fk       INTEGER AS kotlin.Int NOT NULL REFERENCES collection_entity (id) ON DELETE CASCADE,
   dublin_core_fk      INTEGER AS kotlin.Int NOT NULL REFERENCES dublin_core_entity (id) ON DELETE CASCADE,

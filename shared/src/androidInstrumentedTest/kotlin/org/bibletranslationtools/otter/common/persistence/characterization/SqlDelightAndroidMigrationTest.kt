@@ -18,6 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.persistence.characterization
 
+import org.bibletranslationtools.otter.common.persistence.database.SCHEMA_VERSION
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
@@ -38,14 +39,13 @@ import org.junit.runner.RunWith
 import java.io.File
 
 /**
- * Phase 5b's second on-device gate (docs/phase5b-handoff.md): proves [SqlDelightDatabaseMigrator]
- * runs the v0->14 upgrade path on the FRAMEWORK sqlite engine (API 24 / SQLite 3.9.2), including
+ * Proves [SqlDelightDatabaseMigrator] runs the upgrade path from v12 on the FRAMEWORK sqlite engine
+ * (API 24 / SQLite 3.9.2), including
  * the delicate 12->13 `take_entity` `DROP TABLE` / `ALTER ... RENAME` rebuild dance — a
  * table-rebuild-under-a-transaction pattern that is exactly the kind of thing an old SQLite build
  * could plausibly choke on.
  *
- * Seeds a legacy v12 fixture (schema matches SqlDelightDatabaseMigratorDifferentialTest's v12
- * fixture in desktopTest: full v14 schema minus the checking infra, a Psalms collection slug
+ * Seeds a legacy v12 fixture (the v14 schema minus the checking infra, a Psalms collection slug
  * 'psa' label 'chapter', and a take) with plain `android.database.sqlite.SQLiteDatabase`, then
  * opens the SAME file with a dumb-callback `AndroidSqliteDriver` (FKs on) and runs the migrator.
  */
@@ -88,8 +88,8 @@ class SqlDelightAndroidMigrationTest {
         // 3) Run the ported migrator directly.
         SqlDelightDatabaseMigrator(FakeTempFileProvider(context)).migrate(driver)
 
-        // (a) version -> 14
-        assertEquals(14, queryInt(driver, "SELECT version FROM installed_entity WHERE name = 'DATABASE'"))
+        // (a) version -> current
+        assertEquals(SCHEMA_VERSION, queryInt(driver, "SELECT version FROM installed_entity WHERE name = 'DATABASE'"))
 
         // (b) Psalms collection relabeled 'chapter' -> 'psalm' (13->14 step).
         assertEquals(
@@ -103,9 +103,14 @@ class SqlDelightAndroidMigrationTest {
         assertEquals(1, queryInt(driver, "SELECT COUNT(*) FROM take_entity"))
         assertEquals(uncheckedId, queryInt(driver, "SELECT checking_fk FROM take_entity LIMIT 1"))
         assertNull(queryStringOrNull(driver, "SELECT checksum FROM take_entity LIMIT 1"))
+
+        // (d) the 14->15 edition fingerprint columns and table exist. That step reads PRAGMA
+        // table_info directly because this SQLite (3.9.2) has no pragma_table_info() function.
+        assertEquals(0, queryInt(driver, "SELECT COUNT(structure_fingerprint) FROM dublin_core_entity"))
+        assertEquals(0, queryInt(driver, "SELECT COUNT(*) FROM edition_chapter"))
     }
 
-    // ── legacy v12 fixture (mirrors SqlDelightDatabaseMigratorDifferentialTest in desktopTest) ──
+    // ── legacy v12 fixture ──
 
     private fun writeLegacyV12Fixture() {
         val db = context.openOrCreateDatabase(dbName, Context.MODE_PRIVATE, null)

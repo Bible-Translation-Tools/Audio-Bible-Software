@@ -28,6 +28,7 @@ import org.bibletranslationtools.otter.common.api.persistence.config.Initializab
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.ProgressStatus
+import org.bibletranslationtools.otter.common.domain.versification.StandardVersifications
 import java.io.File
 
 private const val ULB_VERSIFICATION_FILE = "ulb.json"
@@ -46,6 +47,7 @@ class InitializeVersification(
         return Single.fromCallable {
             progressEmitter.onNext(ProgressStatus(titleKey = "initializingVersification"))
             copyUlbVersification()
+            copyStandardVersifications()
 
             directoryProvider.versificationDirectory.listFiles()?.forEach { file ->
                 if (file.extension == "json") {
@@ -74,6 +76,19 @@ class InitializeVersification(
             File(directoryProvider.versificationDirectory.absolutePath, fileName)
                 .outputStream()
                 .use { it.write(bytes) }
+        }
+    }
+
+    /** The Copenhagen standard files source import detects against, named by their codes. */
+    private fun copyStandardVersifications() {
+        StandardVersifications.all.forEach { code ->
+            val path = StandardVersifications.resourcePath(code)
+            val bytes = runCatching { bundledContent.readBlocking(path) }
+                .getOrElse {
+                    logger.error("Failed to read bundled versification resource $path", it)
+                    return@forEach
+                }
+            File(directoryProvider.versificationDirectory, "$code.json").writeBytes(bytes)
         }
     }
 }

@@ -1,5 +1,7 @@
 package org.bibletranslationtools.shared.audio.engine
 
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.structure.ReferenceAlignment
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.structure.VerseRange
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -36,7 +38,9 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.SourceAud
  */
 class SourceAudioPlayerController(
     private val factory: AudioPlayerConnectionFactory,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    /** Lines a held-back chapter's verses up with its newer reference edition; see [ReferenceAlignment]. */
+    private val referenceAlignment: ReferenceAlignment? = null
 ) {
     data class UiState(
         val available: Boolean = false,
@@ -108,15 +112,23 @@ class SourceAudioPlayerController(
         val accessor = workbook.sourceAudioAccessor
         val source = try {
             if (chunk != null) {
+                // A chapter held back on an upgrade keeps its old verses while its book refers to
+                // a newer edition: look its verse up in the reference's numbering. Null means the
+                // reference has no counterpart for it here.
+                val referenceStart = referenceAlignment
+                    ?.referenceStart(workbook.target.collectionId, chapter.sort, VerseRange(chunk.start, maxOf(chunk.start, chunk.end)))
+                    ?: if (referenceAlignment == null) chunk.start else null
                 // For verse / chunk recordings, the accessor first tries chunk
                 // markers in the user-imported chapter audio and falls back to
                 // verse markers in the RC-provided chapter audio.
-                accessor.getChunk(
-                    chapter.sort,
-                    chunk.sort,
-                    chunk.start,
-                    workbook.target
-                )
+                referenceStart?.let {
+                    accessor.getChunk(
+                        chapter.sort,
+                        chunk.sort,
+                        it,
+                        workbook.target
+                    )
+                }
             } else {
                 // For chapter-level recordings, prefer user-imported audio (which
                 // may be a freshly imported file with no markers yet) and fall

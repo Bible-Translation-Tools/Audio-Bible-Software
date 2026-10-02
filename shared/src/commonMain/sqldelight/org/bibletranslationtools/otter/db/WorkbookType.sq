@@ -1,4 +1,4 @@
--- Mirrors sql/CreateAppDb.sql `workbook_type`.
+-- Ported from the legacy (jOOQ) CreateAppDb.sql `workbook_type`.
 CREATE TABLE workbook_type (
     id               INTEGER AS kotlin.Int PRIMARY KEY AUTOINCREMENT,
     name             TEXT NOT NULL,

@@ -24,7 +24,6 @@ import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
-import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import java.io.File
 import java.io.InputStream
 
@@ -73,25 +72,6 @@ abstract class RCImporter(
                 outFile.delete()
             }
             .subscribeOn(Schedulers.io())
-    }
-
-    fun isAlreadyImported(file: File): Boolean {
-        ResourceContainer.load(file, true).use { rc ->
-            val dublinCore = rc.manifest.dublinCore
-
-            return resourceMetadataRepository
-                .getAll()
-                .map { resources ->
-                    resources.any {
-                        it.language.slug == dublinCore.language.identifier &&
-                                it.identifier == dublinCore.identifier
-                    }
-                }
-                .doOnError {
-                    logger.error("Error while checking if RC is already imported.")
-                }
-                .blockingGet()
-        }
     }
 
     fun setNext(next: RCImporter) {

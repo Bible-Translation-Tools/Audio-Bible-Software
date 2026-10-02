@@ -1,5 +1,8 @@
 package org.bibletranslationtools.orature.ui.components
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material.icons.filled.SwapHoriz
+import org.bibletranslationtools.orature.resources.changeEdition
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -85,6 +88,9 @@ fun anthologyLabel(anthology: Anthology): String = when (anthology) {
 fun OratureBookTable(
     books: List<OratureBookUiModel>,
     onBookClick: (OratureBookUiModel) -> Unit,
+    /** The edition most of the project's books are on; a book on another shows its own (O1-Q2). */
+    groupEditionId: Int? = null,
+    onChangeEdition: (OratureBookUiModel) -> Unit = {},
     onBackupBook: (OratureBookUiModel) -> Unit,
     onExportBook: (OratureBookUiModel) -> Unit,
     onDeleteBook: (OratureBookUiModel) -> Unit,
@@ -128,7 +134,9 @@ fun OratureBookTable(
                     onClick = { onBookClick(book) },
                     onBackup = { onBackupBook(book) },
                     onExport = { onExportBook(book) },
-                    onDelete = { onDeleteBook(book) }
+                    onDelete = { onDeleteBook(book) },
+                    showEdition = groupEditionId != null && book.edition != null && book.edition.id != groupEditionId,
+                    onChangeEdition = { onChangeEdition(book) }
                 )
                 HorizontalDivider(color = OratureColors.SurfaceTertiary.copy(alpha = 0.6f))
             }
@@ -231,7 +239,9 @@ private fun OratureBookTableRow(
     onClick: () -> Unit,
     onBackup: () -> Unit,
     onExport: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    showEdition: Boolean = false,
+    onChangeEdition: () -> Unit = {}
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     Row(
@@ -242,13 +252,22 @@ private fun OratureBookTableRow(
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = book.title,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.SemiBold,
-            color = OratureColors.RegularText,
-            modifier = Modifier.weight(WEIGHT_BOOK)
-        )
+        Column(modifier = Modifier.weight(WEIGHT_BOOK)) {
+            Text(
+                text = book.title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = OratureColors.RegularText
+            )
+            // Only a book on another edition than the rest of the project says which (O1-Q2).
+            if (showEdition && book.edition != null) {
+                Text(
+                    text = sourceEditionText(book.edition),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = OratureColors.NoteText
+                )
+            }
+        }
         Text(
             text = book.slug,
             style = MaterialTheme.typography.bodyMedium,
@@ -310,6 +329,14 @@ private fun OratureBookTableRow(
                     leadingIcon = { Icon(Icons.Filled.OpenInNew, contentDescription = null) },
                     onClick = { menuExpanded = false; onExport() }
                 )
+                // Change Edition: move this book to another installed edition, up or down (O1-Q1).
+                if (book.edition != null) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(Res.string.changeEdition)) },
+                        leadingIcon = { Icon(Icons.Filled.SwapHoriz, contentDescription = null) },
+                        onClick = { menuExpanded = false; onChangeEdition() }
+                    )
+                }
                 // Delete Book resets the book to its initial state (JVM: deleteBook — deletes takes).
                 DropdownMenuItem(
                     text = { Text(stringResource(Res.string.deleteBook), color = MaterialTheme.colorScheme.error) },

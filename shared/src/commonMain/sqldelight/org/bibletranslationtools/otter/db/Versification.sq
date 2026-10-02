@@ -1,4 +1,4 @@
--- Mirrors sql/CreateAppDb.sql `versification_entity`.
+-- Ported from the legacy (jOOQ) CreateAppDb.sql `versification_entity`.
 CREATE TABLE versification_entity (
     id              INTEGER AS kotlin.Int PRIMARY KEY AUTOINCREMENT,
     slug            TEXT NOT NULL UNIQUE,

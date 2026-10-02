@@ -147,12 +147,13 @@ class SourceAudioImporter(
             ?: emptySet()
 
         return try {
-            // An auto-confirm callback so the import pipeline doesn't block waiting for
-            // user input (e.g., version-conflict confirmation). We always confirm here
-            // because the user explicitly chose to import this file.
+            // A non-interactive callback so the import pipeline doesn't block waiting for user
+            // input. Source import no longer asks anything destructive (a new edition is installed
+            // beside the old one), and if a question like that ever comes back it must be put to
+            // the user, so it is declined here rather than approved on their behalf.
             val autoConfirm = object : ProjectImporterCallback {
                 override fun onRequestUserInput(): Single<ImportOptions> =
-                    Single.just(ImportOptions(confirmed = true))
+                    Single.just(ImportOptions(confirmed = false))
 
                 override fun onRequestUserInput(parameter: ImportCallbackParameter): Single<ImportOptions> =
                     Single.just(ImportOptions(confirmed = true))

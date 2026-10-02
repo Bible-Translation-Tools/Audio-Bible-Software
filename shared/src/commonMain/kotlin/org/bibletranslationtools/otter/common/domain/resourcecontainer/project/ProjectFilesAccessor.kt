@@ -227,31 +227,51 @@ class ProjectFilesAccessor(
     /**
      * Copies the source files of the project containing project-related media only.
      *
+     * Each is named `<language>_<identifier>.zip`, as Orature names them, whatever its folder is
+     * called on this device (an edition's folder is named after its version).
+     *
      * @param fileWriter used to write to the project file.
      * @param tempDir a temporary directory used to dump source file before copying.
      * @param linkedResource the associated resource file to the project's source.
+     * @return where the project's own source went in the project file.
      */
     fun copySourceFilesWithRelatedMedia(
         fileWriter: IFileWriter,
         tempDir: File,
         linkedResource: ResourceMetadata? = null
-    ) {
+    ): String {
         val sources = listOfNotNull(sourceMetadata, linkedResource)
         /* generate a sub-temp directory to avoid dirty file
             being accidentally reused due to the same name */
         val sourceTempDir = createTempDirectory(tempDir.toPath(), "otter-export").toFile()
 
         sources
-            .map { it.path }
-            .distinct()
+            .distinctBy { it.path }
             .forEach { source ->
                 // prepare source before copying into export file.
-                val newSource = filterSourceFileToContainProjectRelatedMedia(source, sourceTempDir)
+                val newSource = filterSourceFileToContainProjectRelatedMedia(
+                    source.path, sourceTempDir.resolve(embeddedSourceName(source))
+                )
                 fileWriter.copyFile(newSource, RcConstants.SOURCE_DIR)
             }
 
         fileWriter.copyDirectory(sourceAudioDir, RcConstants.SOURCE_AUDIO_DIR)
+        return "${RcConstants.SOURCE_DIR}/${embeddedSourceName(sourceMetadata)}"
     }
+
+    /**
+     * Copies another edition of the project's source, with the project's media only, to
+     * [destination] in the project file: an earlier edition a chapter keeps its verses from.
+     */
+    fun copyEditionWithRelatedMedia(fileWriter: IFileWriter, tempDir: File, edition: ResourceMetadata, destination: String) {
+        val editionTempDir = createTempDirectory(tempDir.toPath(), "otter-export").toFile()
+        val newSource = filterSourceFileToContainProjectRelatedMedia(
+            edition.path, editionTempDir.resolve(destination.substringAfterLast('/'))
+        )
+        fileWriter.copyFile(newSource, destination.substringBeforeLast('/'))
+    }
+
+    private fun embeddedSourceName(source: ResourceMetadata) = "${source.language.slug}_${source.identifier}.zip"
 
     fun initializeResourceContainerInDir(overwrite: Boolean = true) {
         if (!overwrite) { // if existing container is valid, then use it
@@ -398,16 +418,22 @@ class ProjectFilesAccessor(
             .ignoreElement()
     }
 
+    /**
+     * Copies the take files in [fileReader]'s project into [destination], keeping their folders
+     * (`c19/...`). An import copies them to a staging folder first, so that none overwrites a take
+     * already in the project (see OngoingProjectImporter).
+     */
     fun copyTakeFiles(
         fileReader: IFileReader,
         manifestProject: Project,
-        filter: (String) -> Boolean = { true }
+        filter: (String) -> Boolean = { true },
+        destination: File = audioDir
     ): Observable<String> {
         return Observable.just(RcConstants.TAKE_DIR, manifestProject.path)
             .filter(fileReader::exists)
             .flatMap { audioDirInRc ->
                 val normalized = File(audioDirInRc).normalize().path
-                fileReader.copyDirectory(normalized, audioDir) {
+                fileReader.copyDirectory(normalized, destination) {
                     isAudioFile(it) && filter(it)
                 }
             }
@@ -661,9 +687,8 @@ class ProjectFilesAccessor(
      */
     private fun filterSourceFileToContainProjectRelatedMedia(
         source: File,
-        tempDir: File
+        newSourceFile: File
     ): File {
-        val newSourceFile = tempDir.resolve(source.nameWithoutExtension + ".zip")
         val newSourceZip = ZipAccessor(newSourceFile)
 
         ResourceContainer.load(source).use {
