@@ -26,7 +26,21 @@ kotlin {
         }
     }
 
-    jvm("desktop")
+    jvm("desktop") {
+        // The integration tier, as in :shared: tests that import whole resource containers into a
+        // real database (the legacy migration's ULB templates are two full Bibles). Too slow for
+        // the `desktopTest` loop, so it runs on demand with `integrationTest`, outside `check`.
+        compilations {
+            val main by getting
+            val integrationTest by creating {
+                associateWith(main)
+                defaultSourceSet.dependencies {
+                    implementation(libs.kotlin.test)
+                    implementation(libs.kotlin.test.junit)
+                }
+            }
+        }
+    }
 
     sourceSets {
 
@@ -273,6 +287,20 @@ tasks.withType<JavaExec>().configureEach {
     if (name == "run" && OperatingSystem.current().isMacOsX) {
         jvmArgs("-Xdock:name=BTT-Recorder")
     }
+}
+
+// Runs the `desktopIntegrationTest` compilation (see the jvm("desktop") block). Not wired into
+// `check`: it imports whole resource containers into a real database.
+tasks.register<Test>("integrationTest") {
+    description = "Runs the recorder's integration tier: real Koin graph, real SQLite, real resource containers."
+    group = "verification"
+
+    val compilation = kotlin.targets.getByName("desktop").compilations.getByName("integrationTest")
+    testClassesDirs = compilation.output.classesDirs
+    classpath = files(compilation.output.allOutputs, compilation.runtimeDependencyFiles)
+
+    useJUnit()
+    testLogging { events("passed", "failed", "skipped") }
 }
 
 // Guards against calling java.*/javax.* APIs newer than minSdk — the class of bug that
