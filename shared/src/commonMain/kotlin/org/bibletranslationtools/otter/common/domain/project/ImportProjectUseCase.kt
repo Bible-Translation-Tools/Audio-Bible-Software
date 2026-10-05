@@ -20,6 +20,7 @@ package org.bibletranslationtools.otter.common.domain.project
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.InstalledSourceEditions
 import org.bibletranslationtools.otter.common.domain.project.importer.EditionFingerprinter
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
@@ -154,12 +155,19 @@ class ImportProjectUseCase(
      * Whether the source edition in [file] is already installed: the same edition, not just some
      * edition of the same source. The file is only parsed when some edition of it is installed.
      */
-    fun isAlreadyImported(file: File): Boolean = runBlocking(Dispatchers.IO) {
+    fun isAlreadyImported(file: File): Boolean = runBlocking(Dispatchers.IO) { installedEditionOf(file) != null }
+
+    /**
+     * The installed edition that the source in [file] is (the same edition, matched by content, not
+     * just some edition of the same source), or null when it isn't installed. The file is only parsed
+     * when some edition of it is installed.
+     */
+    suspend fun installedEditionOf(file: File): ResourceMetadata? = withContext(Dispatchers.IO) {
         val dublinCore = ResourceContainer.load(file, true).use { it.manifest.dublinCore }
         val languageSlug = dublinCore.language.identifier
-        if (installedEditions.editionsOf(languageSlug, dublinCore.identifier).isEmpty()) return@runBlocking false
+        if (installedEditions.editionsOf(languageSlug, dublinCore.identifier).isEmpty()) return@withContext null
         val fingerprint = fingerprinter.fingerprint(file)
-        installedEditions.findSameEdition(languageSlug, dublinCore.identifier, dublinCore.creator, fingerprint) != null
+        installedEditions.findSameEdition(languageSlug, dublinCore.identifier, dublinCore.creator, fingerprint)
     }
 
     fun isSourceAudioProject(file: File): Boolean {

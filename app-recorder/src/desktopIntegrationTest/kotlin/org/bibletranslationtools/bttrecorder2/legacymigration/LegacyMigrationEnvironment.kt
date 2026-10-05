@@ -28,6 +28,10 @@ import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
 import org.koin.dsl.module
 import java.io.File
+import java.io.InputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
 import kotlin.test.assertTrue
 
 /**
@@ -84,6 +88,45 @@ class LegacyMigrationEnvironment private constructor(
         koin.get<ICollectionRepository>().getSourceProjects().blockingGet()
             .singleOrNull { it.slug == slug && it.resourceContainer?.id == editionId }
             ?: error("no source book '$slug' in edition $editionId")
+
+    // ── templates ────────────────────────────────────────────────────────────────────────────
+
+    /** Reads the templates from the repo's assets folder, as the app reads them from its own assets. */
+    val templatesFromDisk: IUlbTemplateFiles = object : IUlbTemplateFiles {
+        override fun open(template: UlbTemplate): InputStream = templateFile(template).inputStream()
+    }
+
+    /** The install step, built from the production graph, reading the templates from [files]. */
+    fun installUlbTemplates(files: IUlbTemplateFiles = templatesFromDisk): InstallUlbTemplates =
+        InstallUlbTemplates(files, koin.get(), koin.get(), koin.get())
+
+    /**
+     * A copy of [template] with the same manifest (title, version, dates) but different wording in
+     * Jude 1:1: a different edition that looks the same by its labels, as an older bundled ULB does
+     * next to the verse template.
+     */
+    fun lookAlikeOf(template: UlbTemplate): File {
+        val target = File(tempRoot, "look-alike-${template.name.lowercase()}.zip")
+        ZipFile(templateFile(template)).use { zip ->
+            ZipOutputStream(target.outputStream().buffered()).use { out ->
+                zip.entries().asSequence().forEach { entry ->
+                    out.putNextEntry(ZipEntry(entry.name))
+                    if (!entry.isDirectory) {
+                        val bytes = zip.getInputStream(entry).use { it.readBytes() }
+                        if (entry.name.endsWith("66-JUD.usfm")) {
+                            val text = bytes.decodeToString()
+                            assertTrue("\\v 1 " in text, "no Jude 1:1 to reword in $template")
+                            out.write(text.replaceFirst("\\v 1 ", "\\v 1 (reworded) ").encodeToByteArray())
+                        } else {
+                            out.write(bytes)
+                        }
+                    }
+                    out.closeEntry()
+                }
+            }
+        }
+        return target
+    }
 
     // ── projects ─────────────────────────────────────────────────────────────────────────────
 
