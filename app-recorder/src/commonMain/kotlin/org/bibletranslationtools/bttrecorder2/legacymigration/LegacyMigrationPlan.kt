@@ -65,6 +65,12 @@ data class LegacyProjectPlan(
 
         /** It isn't migrated at all; [problems] say why. It stays in the old app's storage. */
         data object Kept : Disposition
+
+        /**
+         * It belongs on [template], which this version doesn't migrate onto. It is left as it is,
+         * for a later version: neither migrated nor kept for good.
+         */
+        data class Deferred(val template: UlbTemplate) : Disposition
     }
 
     /** Whether its old files may be deleted once its project is verified. */
@@ -72,7 +78,7 @@ data class LegacyProjectPlan(
         get() = when (disposition) {
             is Disposition.Migrated -> problems.none { it.blocksDeletion }
             Disposition.NothingRecorded -> true
-            Disposition.Kept -> false
+            Disposition.Kept, is Disposition.Deferred -> false
         }
 }
 

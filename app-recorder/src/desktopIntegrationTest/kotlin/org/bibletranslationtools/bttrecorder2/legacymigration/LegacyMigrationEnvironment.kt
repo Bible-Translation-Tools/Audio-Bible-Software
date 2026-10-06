@@ -157,6 +157,26 @@ class LegacyMigrationEnvironment private constructor(
     fun writeMigrationBackup(files: IUlbTemplateFiles = templatesFromDisk): WriteMigrationBackup =
         WriteMigrationBackup(CompileLegacyChapterTake(koin.get(), koin.get()), koin.get(), files, koin.get())
 
+    /** The whole migration, from the production graph, over [old]'s storage and the journal at [journal]. */
+    internal fun migrateLegacyProjects(
+        old: OldAppStorage,
+        journal: File,
+        freeBytes: () -> Long = { Long.MAX_VALUE },
+        now: () -> Long = System::currentTimeMillis
+    ): MigrateLegacyProjects = MigrateLegacyProjects(
+        reader = old.reader(),
+        installTemplates = installUlbTemplates(),
+        loadTemplateChunks = LoadTemplateChunks(koin.get()),
+        planner = PlanLegacyMigration(),
+        writeBackup = writeMigrationBackup(),
+        importBackup = importMigrationBackup(),
+        languages = koin.get(),
+        journal = MigrationJournal(journal),
+        tempFiles = koin.get(),
+        freeBytes = freeBytes,
+        now = now
+    )
+
     /** The import-and-verify step, built from the production graph. */
     fun importMigrationBackup(): ImportMigrationBackup =
         ImportMigrationBackup(koin.get(), koin.get(), koin.get(), koin.get())

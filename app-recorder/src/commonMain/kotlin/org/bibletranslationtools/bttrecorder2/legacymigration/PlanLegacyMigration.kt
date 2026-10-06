@@ -22,8 +22,16 @@ import org.bibletranslationtools.bttrecorder2.legacymigration.MigrationProblem.T
  */
 class PlanLegacyMigration {
 
-    fun execute(projects: List<LegacyProject>, templates: TemplateChunks): LegacyMigrationPlan {
-        val assessed = projects.map { assess(it, templates) }
+    /**
+     * @param enabled the templates this version migrates onto. A project that belongs on another is
+     *   [Disposition.Deferred]: left as it is for a later version.
+     */
+    fun execute(
+        projects: List<LegacyProject>,
+        templates: TemplateChunks,
+        enabled: Set<UlbTemplate> = UlbTemplate.entries.toSet()
+    ): LegacyMigrationPlan {
+        val assessed = projects.map { assess(it, templates, enabled) }
         val groups = assessed.filter { it.key != null }.groupBy { it.key!! }
 
         val migrationProjects = groups.map { (key, members) -> buildProject(key, members) }
@@ -57,7 +65,7 @@ class PlanLegacyMigration {
     /** A verse or chunk's chosen take and the verses it holds, before matching the template. */
     private data class Candidate(val chapter: Int, val verses: IntRange, val take: LegacyTake)
 
-    private fun assess(project: LegacyProject, templates: TemplateChunks): Assessment {
+    private fun assess(project: LegacyProject, templates: TemplateChunks, enabled: Set<UlbTemplate>): Assessment {
         if (project.anthology !in BIBLE_ANTHOLOGIES) return kept(project, OutOfScope(project.anthology))
         if (project.targetLanguage == ENGLISH && project.versionLabel == UDB) return kept(project, EnglishUdb)
 
@@ -74,6 +82,7 @@ class PlanLegacyMigration {
             is Resolved.Contradicted -> return kept(project, problems + ChunkingContradicted(resolved.detail))
         }
         val template = templateFor(chunking)
+        if (template !in enabled) return Assessment(project, Disposition.Deferred(template), problems)
         if (!templates.hasBook(template, project.book.slug)) {
             return kept(project, problems + BookNotInTemplate(project.book.slug))
         }
