@@ -128,7 +128,32 @@ sealed interface MigrationProblem {
         override val blocksDeletion = true
     }
 
+    /** The take's audio couldn't be read, even after trying to repair its header. */
+    data class AudioUnreadable(val chapter: Int, val take: LegacyTake, val reason: String) : MigrationProblem {
+        override val blocksDeletion = true
+    }
+
+    /** The take isn't 44.1 kHz, 16-bit mono like the rest of the old app's recordings. */
+    data class AudioFormatUnexpected(val chapter: Int, val take: LegacyTake, val detail: String) : MigrationProblem {
+        override val blocksDeletion = true
+    }
+
     // ── reported, nothing lost ─────────────────────────────────────────────────────────────
+
+    /** The take's recording never finished, so its length had to be worked out from the file (M6-1). */
+    data class AudioRepaired(val chapter: Int, val take: LegacyTake) : MigrationProblem {
+        override val blocksDeletion = false
+    }
+
+    /**
+     * Some of the recordist's inner verse markers didn't fit: outside the take's verses, at its very
+     * start, or past its end. The audio is all kept; only those markers aren't carried.
+     */
+    data class InnerMarkersSetAside(val chapter: Int, val take: LegacyTake, val markers: List<LegacyMarker>) :
+        MigrationProblem {
+        override val blocksDeletion = false
+    }
+
 
     /** No usable selection, so the old app's rule chose a take: highest rating, then newest (M5-3). */
     data class SelectionChosen(val chapter: Int, val startVerse: Int, val take: LegacyTake) : MigrationProblem {
