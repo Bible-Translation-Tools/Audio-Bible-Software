@@ -35,15 +35,15 @@ class DescribeSourceEditionsTest {
     @Test
     fun `look-alike editions each show their code`() {
         val environment = environment().import("en_ulb.zip")
-        environment.import(environment.bundledSource("en_ulb.zip"))
-        val (fixture, bundled) = environment.sourceEditions()
+        environment.import(environment.siblingUlb())
+        val (fixture, sibling) = environment.sourceEditions()
 
         val fixtureCode = environment.describeEdition(fixture.id).distinguishingCode
-        val bundledCode = environment.describeEdition(bundled.id).distinguishingCode
+        val siblingCode = environment.describeEdition(sibling.id).distinguishingCode
 
         assertNotNull(fixtureCode)
-        assertNotNull(bundledCode)
-        assertTrue(fixtureCode != bundledCode)
+        assertNotNull(siblingCode)
+        assertTrue(fixtureCode != siblingCode)
         assertFalse(environment.describeEdition(fixture.id).updateAvailable, "siblings aren't updates")
     }
 

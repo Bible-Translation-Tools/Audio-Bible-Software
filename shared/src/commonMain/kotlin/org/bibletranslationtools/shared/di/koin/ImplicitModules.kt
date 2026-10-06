@@ -6,6 +6,7 @@ import org.bibletranslationtools.otter.common.initialization.RefreshBundledSourc
 import org.bibletranslationtools.otter.common.initialization.ReconcileEditionLabels
 import org.bibletranslationtools.otter.common.domain.project.BundledSourceStamps
 import org.bibletranslationtools.otter.common.domain.project.BackupEditions
+import org.bibletranslationtools.otter.common.domain.project.WriteChapterTakesBackup
 import org.bibletranslationtools.otter.common.audio.wav.IWaveFileCreator
 import org.bibletranslationtools.otter.common.audio.wav.WaveFileCreator
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
@@ -144,6 +145,7 @@ val implicitCommonModule = module {
     factoryOf(::UpgradeBookEdition)
     factoryOf(::UpgradeProjectEdition)
     factoryOf(::BackupEditions)
+    factoryOf(::WriteChapterTakesBackup)
     factoryOf(::BurritoToResourceContainerConverter)
     factoryOf(::ScriptureBurritoUtils)
 

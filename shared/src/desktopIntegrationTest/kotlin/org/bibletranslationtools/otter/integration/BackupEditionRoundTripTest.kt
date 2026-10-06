@@ -41,7 +41,7 @@ class BackupEditionRoundTripTest {
             mode = ProjectMode.NARRATION, deriveProjectFromVerses = true
         )
         environment.recordTake(project, sort = 19, verse = 41)
-        environment.import(environment.newerDatesOf(environment.bundledSource("en_ulb.zip"), newerVersion))
+        environment.import(environment.newerDatesOf(environment.siblingUlb(), newerVersion))
         return environment to project
     }
 

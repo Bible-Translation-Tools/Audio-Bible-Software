@@ -34,6 +34,12 @@ object RcConstants {
     const val ACTIVE_VERSES_FILE = "$TAKE_DIR/%s/active_verses.json"
 
     /**
+     * The creator a project's own container names, as `CollectionRepository` writes it. Derived
+     * rows are matched on it, so the value stays as it has been written, odd as it looks.
+     */
+    const val DERIVED_CREATOR = "OratureInfo.SUITE_NAME"
+
+    /**
      * This app family's own folder in a backup, beside Orature's: what Orature doesn't know about
      * goes here, so a backup still restores in Orature (S11-Q2).
      */

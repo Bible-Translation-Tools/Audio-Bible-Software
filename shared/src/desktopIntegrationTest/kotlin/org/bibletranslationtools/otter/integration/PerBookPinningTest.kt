@@ -26,7 +26,7 @@ class PerBookPinningTest {
 
     private fun IntegrationEnvironment.importBoth() = apply {
         import("en_ulb.zip")
-        import(bundledSource("en_ulb.zip"))
+        import(siblingUlb())
     }
 
     private fun IntegrationEnvironment.project(book: String, sourceId: Int) =
@@ -35,23 +35,23 @@ class PerBookPinningTest {
     @Test
     fun `each book points at the edition it was created from`() {
         val environment = environment().importBoth()
-        val (fixture, bundled) = environment.sourceEditions()
+        val (fixture, sibling) = environment.sourceEditions()
 
         val jude = environment.project("jud", fixture.id)
-        val john3 = environment.project("3jn", bundled.id)
+        val john3 = environment.project("3jn", sibling.id)
 
         assertEquals(fixture.id, jude.resourceContainer?.let { environment.derivedFromOf(it.id) })
-        assertEquals(bundled.id, john3.resourceContainer?.let { environment.derivedFromOf(it.id) })
+        assertEquals(sibling.id, john3.resourceContainer?.let { environment.derivedFromOf(it.id) })
     }
 
     /** Before, both went to `der/…/en_ulb/v12/fr`, and the second overwrote the first's manifest. */
     @Test
     fun `editions with the same label get separate derived containers`() {
         val environment = environment().importBoth()
-        val (fixture, bundled) = environment.sourceEditions()
+        val (fixture, sibling) = environment.sourceEditions()
 
         val jude = environment.project("jud", fixture.id).resourceContainer!!
-        val john3 = environment.project("3jn", bundled.id).resourceContainer!!
+        val john3 = environment.project("3jn", sibling.id).resourceContainer!!
 
         assertNotEquals(jude.path, john3.path)
         assertEquals(listOf("jud"), ResourceContainer.load(jude.path).use { rc -> rc.manifest.projects.map { it.identifier } })

@@ -22,7 +22,7 @@ class RefreshBundledSourcesTest {
 
     private fun environment() = IntegrationEnvironment.create().also { env = it }
 
-    /** A device with an older edition installed gets the bundled one; they're siblings here, so both stay. */
+    /** A device with another edition installed gets the bundled one beside it, so both are there. */
     @Test
     fun `an installed source gets the bundled edition`() {
         val environment = environment().import("en_ulb.zip")

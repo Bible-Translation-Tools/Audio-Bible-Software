@@ -14,12 +14,14 @@ import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.domain.collections.CreateProject
 import org.bibletranslationtools.otter.common.domain.languages.ImportLanguages
+import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
 import org.bibletranslationtools.otter.common.domain.project.importer.NewSourceImporter
 import org.bibletranslationtools.otter.common.domain.project.importer.RCImporterFactory
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
 import org.bibletranslationtools.otter.common.initialization.InitializeVersification
 import org.bibletranslationtools.otter.common.persistence.DesktopDirectoryProvider
 import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
+import org.bibletranslationtools.otter.common.persistence.entities.CollectionEntity
 import org.bibletranslationtools.otter.common.persistence.entities.ResourceMetadataEntity
 import org.bibletranslationtools.shared.di.koin.appDatabaseModule
 import org.bibletranslationtools.shared.di.koin.sharedCommonModules
@@ -149,6 +151,43 @@ class LegacyMigrationEnvironment private constructor(
             .map { it.start..it.end }
     }
 
+    // ── backups ──────────────────────────────────────────────────────────────────────────────
+
+    /** The backup step, built from the production graph, reading the templates from [files]. */
+    fun writeMigrationBackup(files: IUlbTemplateFiles = templatesFromDisk): WriteMigrationBackup =
+        WriteMigrationBackup(CompileLegacyChapterTake(koin.get(), koin.get()), koin.get(), files, koin.get())
+
+    /** Imports [backup] the way the app restores a backup. */
+    fun importBackup(backup: File): ImportResult =
+        koin.get<ImportProjectUseCase>().import(backup).blockingGet()
+
+    /** A path under this environment's temp root, for files a test writes. */
+    fun scratch(path: String): File = File(tempRoot, path).also { it.parentFile?.mkdirs() }
+
+    /** Project book [book] in [targetLanguage] as the database has it, with each chapter's chapter takes. */
+    fun importedProject(book: String, targetLanguage: String): ImportedProject {
+        val languageId = db.languageDao.fetchBySlug(targetLanguage)?.id ?: error("no language '$targetLanguage'")
+        val derived = db.resourceMetadataDao.fetchAll()
+            .filter { it.derivedFromFk != null && it.languageFk == languageId }
+            .map { it.id }
+            .toSet()
+        val row = db.collectionDao.fetchByLabel("project").singleOrNull { it.slug == book && it.dublinCoreFk in derived }
+            ?: error("no single project book '$book' in '$targetLanguage'")
+        val metaType = db.contentTypeDao.fetchId(ContentType.META)
+        val chapters = db.collectionDao.fetchChildren(row).associate { chapter ->
+            val takes = db.contentDao.fetchByCollectionId(chapter.id)
+                .filter { it.type_fk == metaType }
+                .flatMap { content ->
+                    db.takeDao.fetchByContentId(content.id).map { ImportedTake(File(it.filepath), it.number, content.selectedTakeFk == it.id) }
+                }
+                .sortedBy { it.number }
+            chapter.sort to takes
+        }.filterValues { it.isNotEmpty() }
+        val mode = db.workbookDescriptorDao.fetchAll().singleOrNull { it.targetFk == row.id }
+            ?.let { db.workbookTypeDao.fetchById(it.typeFk) }
+        return ImportedProject(row, db.collectionDao.fetchSource(row)?.dublinCoreFk, mode, chapters)
+    }
+
     override fun close() {
         stopKoin()
         tempRoot.deleteRecursively()
@@ -159,6 +198,19 @@ class LegacyMigrationEnvironment private constructor(
         val collectionCount: Int,
         val rows: List<String>
     )
+
+    /**
+     * A project book: the edition its source book is in, its mode, and the chapter takes of each
+     * chapter that has any, by take number.
+     */
+    data class ImportedProject(
+        val book: CollectionEntity,
+        val editionId: Int?,
+        val mode: ProjectMode?,
+        val chapterTakes: Map<Int, List<ImportedTake>>
+    )
+
+    data class ImportedTake(val file: File, val number: Int, val selected: Boolean)
 
     companion object {
 

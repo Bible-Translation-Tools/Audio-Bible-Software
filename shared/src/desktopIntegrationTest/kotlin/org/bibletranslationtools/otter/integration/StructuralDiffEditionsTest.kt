@@ -22,18 +22,19 @@ class StructuralDiffEditionsTest {
     private fun environment() = IntegrationEnvironment.create().also { env = it }
 
     /**
-     * The two zips that both say `version: '12'`: the bundled one folds Acts 19:41 into 19:40 and
-     * 2 Cor 13:14 into 13:13, and rewords a good deal besides.
+     * The two editions that both say `version: '12'`: the sibling (the bundled ULB under the
+     * fixture's labels) folds Acts 19:41 into 19:40 and 2 Cor 13:14 into 13:13, its Isaiah 50 differs
+     * too (its 50:4 has a stray `\1` marker), and it rewords a good deal besides.
      */
     @Test
-    fun `the two v12 zips differ in structure in exactly Acts 19 and 2 Corinthians 13`() {
+    fun `the two v12 editions differ in structure in exactly Acts 19, 2 Corinthians 13 and Isaiah 50`() {
         val environment = environment()
         val fixture = environment.editionText(environment.fixture("en_ulb.zip"))
-        val bundled = environment.editionText(environment.bundledSource("en_ulb.zip"))
+        val sibling = environment.editionText(environment.siblingUlb())
 
-        val diff = StructuralDiff.compare(fixture, bundled)
+        val diff = StructuralDiff.compare(fixture, sibling)
 
-        assertEquals(listOf("2co_13", "act_19"), diff.structurallyChanged.map { it.chapterSlug }.sorted())
+        assertEquals(listOf("2co_13", "act_19", "isa_50"), diff.structurallyChanged.map { it.chapterSlug }.sorted())
 
         val acts19 = diff.chapters.getValue("act_19")
         assertEquals(setOf(VerseChange.MERGED), acts19.changes - VerseChange.TEXT_CHANGED)
@@ -50,7 +51,7 @@ class StructuralDiffEditionsTest {
         val renumbered = cor13.groups.single { it.change == VerseChange.RENUMBERED }
         assertEquals(listOf(VerseRange(14)), renumbered.from)
         assertEquals(listOf(VerseRange(13)), renumbered.to)
-        assertTrue(diff.chapters.values.count { it.isTextOnly } > 0, "the bundled zip also rewords verses")
+        assertTrue(diff.chapters.values.count { it.isTextOnly } > 0, "the sibling also rewords verses")
     }
 
     @Test
@@ -71,10 +72,10 @@ class StructuralDiffEditionsTest {
     fun `a whole Bible compares quickly`() {
         val environment = environment()
         val fixture = environment.editionText(environment.fixture("en_ulb.zip"))
-        val bundled = environment.editionText(environment.bundledSource("en_ulb.zip"))
+        val sibling = environment.editionText(environment.siblingUlb())
 
         val started = System.nanoTime()
-        StructuralDiff.compare(fixture, bundled)
+        StructuralDiff.compare(fixture, sibling)
         val millis = (System.nanoTime() - started) / 1_000_000
 
         assertTrue(millis < 5_000, "comparing two Bibles took $millis ms")

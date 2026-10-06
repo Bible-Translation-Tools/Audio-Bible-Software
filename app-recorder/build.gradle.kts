@@ -30,10 +30,13 @@ kotlin {
         // The integration tier, as in :shared: tests that import whole resource containers into a
         // real database (the legacy migration's ULB templates are two full Bibles). Too slow for
         // the `desktopTest` loop, so it runs on demand with `integrationTest`, outside `check`.
+        // It also sees the unit tests' fixtures, such as the legacy WAV writer.
         compilations {
             val main by getting
+            val test by getting
             val integrationTest by creating {
                 associateWith(main)
+                associateWith(test)
                 defaultSourceSet.dependencies {
                     implementation(libs.kotlin.test)
                     implementation(libs.kotlin.test.junit)

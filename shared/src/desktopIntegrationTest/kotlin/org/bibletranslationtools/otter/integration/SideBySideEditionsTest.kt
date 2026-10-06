@@ -11,8 +11,8 @@ import kotlin.test.assertTrue
 
 /**
  * Several editions of one source installed at once, using the two English ULB zips that both say
- * `version: '12'` but differ in Acts 19 and 2 Cor 13: the committed fixture (older) and the one
- * the app bundles (newer).
+ * `version: '12'` but differ in content: the committed fixture (older) and its sibling, the
+ * bundled ULB under the fixture's labels (newer).
  */
 class SideBySideEditionsTest {
 
@@ -28,7 +28,7 @@ class SideBySideEditionsTest {
 
     private fun IntegrationEnvironment.importBoth() = apply {
         import("en_ulb.zip")
-        import(bundledSource("en_ulb.zip"))
+        import(siblingUlb())
     }
 
     @Test
@@ -79,7 +79,7 @@ class SideBySideEditionsTest {
     fun `importing an installed edition again adds nothing`() {
         val environment = environment().importBoth()
 
-        environment.import(environment.bundledSource("en_ulb.zip"))
+        environment.import(environment.siblingUlb())
 
         assertEquals(2, environment.sourceEditions().size)
     }
@@ -87,10 +87,10 @@ class SideBySideEditionsTest {
     @Test
     fun `each edition keeps its own verse structure`() {
         val environment = environment().importBoth()
-        val (fixture, bundled) = environment.sourceEditions()
+        val (fixture, sibling) = environment.sourceEditions()
 
         assertEquals(41, environment.verseCounts("act_19", fixture.id).total)
-        assertEquals(40, environment.verseCounts("act_19", bundled.id).total)
+        assertEquals(40, environment.verseCounts("act_19", sibling.id).total)
     }
 
     @Test
@@ -99,18 +99,18 @@ class SideBySideEditionsTest {
         environment.import("en_ulb.zip")
 
         assertTrue(environment.isAlreadyImported(environment.fixture("en_ulb.zip")))
-        assertFalse(environment.isAlreadyImported(environment.bundledSource("en_ulb.zip")))
+        assertFalse(environment.isAlreadyImported(environment.siblingUlb()))
     }
 
     @Test
     fun `deleting one edition leaves the other`() {
         val environment = environment().importBoth()
-        val (fixture, bundled) = environment.sourceEditions()
+        val (fixture, sibling) = environment.sourceEditions()
 
         assertEquals(DeleteResult.SUCCESS, environment.deleteSource(fixture.path))
 
-        assertEquals(listOf(bundled.id), environment.sourceEditions().map { it.id })
+        assertEquals(listOf(sibling.id), environment.sourceEditions().map { it.id })
         assertFalse(File(fixture.path).exists(), "the deleted edition's files are gone")
-        assertTrue(File(bundled.path).exists(), "the other edition's files remain")
+        assertTrue(File(sibling.path).exists(), "the other edition's files remain")
     }
 }

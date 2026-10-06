@@ -30,7 +30,7 @@ class UpgradeProjectEditionTest {
         val books = environment.derivedProjects()
         val acts = books.single { it.slug == "act" }
         environment.recordTake(acts, sort = 19, verse = 41)
-        environment.import(environment.newerDatesOf(environment.bundledSource("en_ulb.zip"), "24-07"))
+        environment.import(environment.newerDatesOf(environment.siblingUlb(), "24-07"))
         val newer = environment.editionMetadata(environment.sourceEditions().single { it.version == "24-07" }.id)
         val use = environment.upgradeProjectEdition
 
@@ -54,19 +54,19 @@ class UpgradeProjectEditionTest {
         println("Planned ${books.size} books in $planned ms")
     }
 
-    /** The fixture and the bundled ULB both say 12, issued and modified 2017-11-29, with different text. */
+    /** The fixture and the sibling ULB both say 12, issued and modified 2017-11-29, with different text. */
     @Test
     fun `an edition with the same dates is neither newer nor older`() {
         val environment = IntegrationEnvironment.create().also { env = it }
         environment.import("en_ulb.zip")
         val fixture = environment.sourceEditions().single()
         environment.createAllBooks(fixture.id, environment.language("fr"))
-        environment.import(environment.bundledSource("en_ulb.zip"))
-        val bundled = environment.sourceEditions().single { it.id != fixture.id }
+        environment.import(environment.siblingUlb())
+        val sibling = environment.sourceEditions().single { it.id != fixture.id }
 
         val choices = runBlocking { environment.upgradeProjectEdition.choices(listOf(environment.editionMetadata(fixture.id))) }
 
-        assertEquals(listOf(bundled.id to EditionRelation.SAME_DATES), choices.map { it.edition.id to it.relation })
+        assertEquals(listOf(sibling.id to EditionRelation.SAME_DATES), choices.map { it.edition.id to it.relation })
         assertTrue(choices.none { it.newer })
     }
 }

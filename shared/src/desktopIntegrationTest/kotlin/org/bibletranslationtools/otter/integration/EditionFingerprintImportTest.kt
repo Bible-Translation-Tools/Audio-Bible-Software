@@ -11,9 +11,10 @@ import kotlin.test.assertNull
 /**
  * Edition fingerprints stored by a real import, and by the startup backfill.
  *
- * The two English ULB zips in this repo both say `version: '12'`, but the bundled one folds Acts
- * 19:41 into 19:40 and 2 Cor 13:14 into 13:13. Their fingerprints must tell them apart, and must
- * point at exactly those chapters.
+ * The English ULB fixture and its sibling (the bundled ULB under the fixture's labels) both say
+ * `version: '12'`, but the sibling folds Acts 19:41 into 19:40 and 2 Cor 13:14 into 13:13, and its
+ * Isaiah 50 differs too. Their fingerprints must tell them apart, and must point at exactly those
+ * chapters.
  */
 class EditionFingerprintImportTest {
 
@@ -32,12 +33,12 @@ class EditionFingerprintImportTest {
     /** The older "v12", the test fixture. */
     private fun fixtureFingerprint() = fingerprintAfterImport { import("en_ulb.zip") }
 
-    /** The newer "v12", the one the app bundles. */
-    private fun bundledFingerprint() = fingerprintAfterImport { import(bundledSource("en_ulb.zip")) }
+    /** The newer "v12", the fixture's sibling. */
+    private fun siblingFingerprint() = fingerprintAfterImport { import(siblingUlb()) }
 
     @Test
     fun `import stores a fingerprint with the detected versification`() {
-        val fingerprint = bundledFingerprint()
+        val fingerprint = siblingFingerprint()
 
         assertEquals("eng", fingerprint.detectedVersification)
         assertEquals(1189, fingerprint.chapters.size, "one per chapter of the 66 books")
@@ -46,26 +47,26 @@ class EditionFingerprintImportTest {
     @Test
     fun `the two v12 English zips are different editions`() {
         val fixture = fixtureFingerprint()
-        val bundled = bundledFingerprint()
+        val sibling = siblingFingerprint()
 
-        assertNotEquals(fixture.structureFingerprint, bundled.structureFingerprint)
-        assertNotEquals(fixture.textFingerprint, bundled.textFingerprint)
+        assertNotEquals(fixture.structureFingerprint, sibling.structureFingerprint)
+        assertNotEquals(fixture.textFingerprint, sibling.textFingerprint)
     }
 
     @Test
-    fun `their structure differs in exactly Acts 19 and 2 Corinthians 13`() {
+    fun `their structure differs in exactly Acts 19, 2 Corinthians 13 and Isaiah 50`() {
         val fixture = fixtureFingerprint().chapters.associateBy { it.chapterSlug }
-        val bundled = bundledFingerprint().chapters.associateBy { it.chapterSlug }
+        val sibling = siblingFingerprint().chapters.associateBy { it.chapterSlug }
 
-        val differing = fixture.keys.filter { fixture[it]?.structureHash != bundled[it]?.structureHash }
+        val differing = fixture.keys.filter { fixture[it]?.structureHash != sibling[it]?.structureHash }
 
-        assertEquals(listOf("2co_13", "act_19"), differing.sorted())
+        assertEquals(listOf("2co_13", "act_19", "isa_50"), differing.sorted())
     }
 
     @Test
     fun `the backfill gives a source without one the fingerprint import would have`() {
         val environment = environment()
-        val atImport = assertNotNull(environment.import(environment.bundledSource("en_ulb.zip")).storedFingerprint())
+        val atImport = assertNotNull(environment.import(environment.siblingUlb()).storedFingerprint())
         environment.clearFingerprint()
         assertNull(environment.storedFingerprint())
 

@@ -26,7 +26,7 @@ class InstalledResourcesTest {
     fun `each source shows its size and what uses it, and only an unused one can be removed`() {
         val environment = IntegrationEnvironment.create().also { env = it }
         environment.import("en_ulb.zip")
-        environment.import(environment.bundledSource("en_ulb.zip"))
+        environment.import(environment.siblingUlb())
         val (used, unused) = environment.sourceEditions()
         environment.createProject(environment.sourceBook("jud", used.id), environment.language("fr"))
         val resources = environment.koinGet<InstalledResources>()

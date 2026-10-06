@@ -37,7 +37,7 @@ class UpgradeBookEditionTest {
         val project = environment.createProject(
             environment.sourceBook("act", older.id), environment.language("fr"), deriveProjectFromVerses = true
         )
-        environment.import(environment.newerDatesOf(environment.bundledSource("en_ulb.zip"), newerVersion))
+        environment.import(environment.newerDatesOf(environment.siblingUlb(), newerVersion))
         return Setup(environment, project)
     }
 
@@ -137,7 +137,7 @@ class UpgradeBookEditionTest {
         val older = environment.sourceEditions().single()
         val project = environment.createProject(environment.sourceBook("act", older.id), environment.language("fr"))
         environment.addChunk(project, sort = 19, start = 35, end = 41)
-        environment.import(environment.newerDatesOf(environment.bundledSource("en_ulb.zip")))
+        environment.import(environment.newerDatesOf(environment.siblingUlb()))
         val setup = Setup(environment, project)
 
         val plan = setup.plan()

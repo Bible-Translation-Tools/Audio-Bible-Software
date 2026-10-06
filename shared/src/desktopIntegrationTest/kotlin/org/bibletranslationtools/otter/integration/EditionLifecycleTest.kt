@@ -54,7 +54,7 @@ class EditionLifecycleTest {
     fun `sibling editions are both kept`() {
         val environment = environment().import("en_ulb.zip")
 
-        environment.import(environment.bundledSource("en_ulb.zip"))
+        environment.import(environment.siblingUlb())
 
         assertEquals(2, environment.sourceEditions().size)
     }

@@ -182,14 +182,18 @@ class IntegrationEnvironment private constructor(
         withEntriesEdited(rcResourceFile(rcFile), label, edits)
 
     /**
-     * [rc] made strictly newer: issued and modified on 2024-07-12, relabelled [version] when given. Used on the
-     * bundled English ULB, whose Acts 19 has 40 verses where the fixture's has 41.
+     * [rc] made strictly newer: issued and modified on 2024-07-12, relabelled [version] when given. Used on
+     * [siblingUlb], whose Acts 19 has 40 verses where the fixture's has 41.
      */
-    fun newerDatesOf(rc: File, version: String? = null): File {
+    fun newerDatesOf(rc: File, version: String? = null): File =
+        relabelled(rc, "newer-dates-${rc.nameWithoutExtension}-${version ?: "same"}", version, date = "2024-07-12")
+
+    /** [rc] issued and modified on [date], and relabelled [version] when given; its content is untouched. */
+    private fun relabelled(rc: File, label: String, version: String?, date: String): File {
         val manifest = ZipFile(rc).use { zip -> zip.entries().asSequence().first { it.name.endsWith("manifest.yaml") }.name }
-        return withEntriesEdited(rc, "newer-dates-${rc.nameWithoutExtension}-${version ?: "same"}", mapOf(manifest to { text ->
-            text.replace(Regex("issued: '[0-9-]+'"), "issued: '2024-07-12'")
-                .replace(Regex("modified: '[0-9-]+'"), "modified: '2024-07-12'")
+        return withEntriesEdited(rc, label, mapOf(manifest to { text ->
+            text.replace(Regex("issued: '[0-9-]+'"), "issued: '$date'")
+                .replace(Regex("modified: '[0-9-]+'"), "modified: '$date'")
                 .let { if (version == null) it else it.replace(Regex("(?m)^  version: '[^']*'"), "  version: '$version'") }
         }))
     }
@@ -202,8 +206,13 @@ class IntegrationEnvironment private constructor(
             edits.keys.forEach { assertNotNull(zip.getEntry(it), "'$it' is not in $rcFile") }
             ZipOutputStream(target.outputStream().buffered()).use { out ->
                 zip.entries().asSequence().forEach { source ->
-                    if (source.isDirectory) return@forEach
                     out.putNextEntry(ZipEntry(source.name))
+                    // Folders are kept: a container under a top folder (as the bundled ULB is) is
+                    // found by it, and loading it fails without it.
+                    if (source.isDirectory) {
+                        out.closeEntry()
+                        return@forEach
+                    }
                     val edit = edits[source.name]
                     if (edit != null) {
                         val edited = edit(zip.getInputStream(source).bufferedReader().readText())
@@ -253,6 +262,16 @@ class IntegrationEnvironment private constructor(
 
     /** The committed fixture [rcFile], for tests that need the file itself. */
     fun fixture(rcFile: String): File = rcResourceFile(rcFile)
+
+    /**
+     * The fixture's sibling: the bundled English ULB under the fixture's labels, `version: '12'`,
+     * issued and modified 2017-11-29. A different edition that looks the same by its labels.
+     *
+     * Its structure differs from the fixture's in three chapters: Acts 19 folds 19:41 into 19:40,
+     * 2 Cor 13 folds 13:13 into 13:12 (13:14 becoming 13:13), and Isaiah 50, whose 50:4 has a stray
+     * `\1` marker where `\q1` was meant. It rewords a good deal besides.
+     */
+    fun siblingUlb(): File = relabelled(bundledSource("en_ulb.zip"), "sibling-ulb", version = "12", date = "2017-11-29")
 
     /** Every installed source edition (not derived rows), in install order. */
     fun sourceEditions() = db.resourceMetadataDao.fetchAll().filter { it.derivedFromFk == null }.sortedBy { it.id }

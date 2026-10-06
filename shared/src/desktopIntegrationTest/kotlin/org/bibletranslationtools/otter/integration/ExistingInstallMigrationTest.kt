@@ -46,7 +46,7 @@ class ExistingInstallMigrationTest {
     @Test
     fun `projects holding a source's empty verses are reported, with which are recorded`() {
         val environment = environment()
-        environment.import(environment.bundledSource("en_ulb.zip"))
+        environment.import(environment.siblingUlb())
         val source = environment.sourceEditions().single()
         val project = environment.createProject(
             environment.sourceBook("act", source.id), environment.language("fr"),
@@ -68,7 +68,7 @@ class ExistingInstallMigrationTest {
         val environment = environment().import("en_ulb.zip")
         // A project keeps the older edition installed once the newer one arrives.
         environment.createProject(environment.sourceBook("jud"), environment.language("fr"), deriveProjectFromVerses = true)
-        environment.import(environment.newerDatesOf(environment.bundledSource("en_ulb.zip"), "24-07"))
+        environment.import(environment.newerDatesOf(environment.siblingUlb(), "24-07"))
         val older = environment.sourceEditions().single { it.version != "24-07" }
         val newer = environment.sourceEditions().single { it.version == "24-07" }
         val matcher = environment.matchEditionToRecordings

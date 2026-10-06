@@ -90,6 +90,13 @@ class BackupEditions(
         return record to extra
     }
 
+    /**
+     * The record for book [book] on [edition], with no chapter held back: for a backup written from
+     * recordings rather than from a project. [embeddedSourceFile] is where [edition] goes in it.
+     */
+    suspend fun recordFor(book: String, edition: ResourceMetadata, embeddedSourceFile: String?): BackupEditionRecord =
+        BackupEditionRecord(book = book, edition = describe(edition, embeddedSourceFile))
+
     /** Where an edition of a held-back chapter goes in a backup. */
     fun embeddedFileFor(edition: ResourceMetadata): String =
         "${RcConstants.OWN_SOURCE_DIR}/${edition.language.slug}_${edition.identifier}_${edition.id}.zip"
