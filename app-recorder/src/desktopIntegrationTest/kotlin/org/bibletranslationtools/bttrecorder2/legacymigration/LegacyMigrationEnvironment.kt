@@ -157,6 +157,10 @@ class LegacyMigrationEnvironment private constructor(
     fun writeMigrationBackup(files: IUlbTemplateFiles = templatesFromDisk): WriteMigrationBackup =
         WriteMigrationBackup(CompileLegacyChapterTake(koin.get(), koin.get()), koin.get(), files, koin.get())
 
+    /** The import-and-verify step, built from the production graph. */
+    fun importMigrationBackup(): ImportMigrationBackup =
+        ImportMigrationBackup(koin.get(), koin.get(), koin.get(), koin.get())
+
     /** Imports [backup] the way the app restores a backup. */
     fun importBackup(backup: File): ImportResult =
         koin.get<ImportProjectUseCase>().import(backup).blockingGet()

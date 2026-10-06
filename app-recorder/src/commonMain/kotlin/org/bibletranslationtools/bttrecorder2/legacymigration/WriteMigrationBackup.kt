@@ -8,6 +8,7 @@ import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.domain.project.WriteChapterTakesBackup
+import org.bibletranslationtools.otter.common.utils.computeFileChecksum
 import java.io.File
 
 /**
@@ -36,13 +37,18 @@ class WriteMigrationBackup(
         val plan: ChapterTakePlan
         val problems: List<MigrationProblem>
 
-        /** It is in the backup with these [markers]; [selected] says whether it is the chapter's selected take. */
+        /**
+         * It is in the backup with these [markers]; [selected] says whether it is the chapter's
+         * selected take. [checksum] is its file's, as the import compares takes, so it can be found
+         * again once imported.
+         */
         data class Written(
             override val chapter: Int,
             override val plan: ChapterTakePlan,
             val selected: Boolean,
             val totalFrames: Int,
             val markers: List<VerseMarker>,
+            val checksum: String,
             override val problems: List<MigrationProblem>
         ) : ChapterTakeOutcome
 
@@ -76,7 +82,8 @@ class WriteMigrationBackup(
                 results.map { (plan, file, result) ->
                     when (result) {
                         is CompileLegacyChapterTake.Result.Compiled -> ChapterTakeOutcome.Written(
-                            chapter.number, plan, plan === selected, result.totalFrames, result.markers, result.problems
+                            chapter.number, plan, plan === selected, result.totalFrames, result.markers,
+                            checksumOf(file), result.problems
                         ) to file
                         is CompileLegacyChapterTake.Result.NothingUsable ->
                             ChapterTakeOutcome.LeftOut(chapter.number, plan, result.problems) to null
@@ -116,4 +123,7 @@ class WriteMigrationBackup(
      */
     private fun selectedAmong(chapter: ChapterPlan, compiled: List<ChapterTakePlan>): ChapterTakePlan? =
         chapter.selected.takeIf { selected -> compiled.any { it === selected } } ?: compiled.maxByOrNull { it.verseCount }
+
+    private fun checksumOf(file: File): String =
+        computeFileChecksum(file) ?: error("the compiled chapter take $file is gone")
 }
