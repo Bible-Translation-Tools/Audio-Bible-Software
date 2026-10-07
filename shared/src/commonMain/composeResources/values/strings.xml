@@ -276,4 +276,24 @@
     <string name="list_item_bullet">• %1$s</string>
     <!-- java.time pattern for an edition's issue month, e.g. "MMM yyyy" gives "Nov 2017". -->
     <string name="edition_month_pattern">MMM yyyy</string>
+
+    <!-- ───────────── Moving recordings from the old Translation Recorder (Android) ───────────── -->
+    <string name="legacy_migration_progress">Moving your recordings from the old Translation Recorder…</string>
+    <!-- Which book of the run is being moved: "Book 2 of 5". -->
+    <string name="legacy_migration_progress_count">Book %1$d of %2$d</string>
+    <string name="legacy_migration_summary_title">Recordings from the old Translation Recorder</string>
+    <!-- %1$d chapters, %2$d books. -->
+    <string name="legacy_migration_summary_moved">%1$d chapter(s) from %2$d book(s) were moved into this app.</string>
+    <string name="legacy_migration_summary_kept">These stayed in the old app\'s storage:</string>
+    <string name="legacy_migration_summary_waiting">These will be moved later:</string>
+    <!-- One project in the summary: its folder (language/version/book), then why. -->
+    <string name="legacy_migration_summary_entry">%1$s: %2$s</string>
+    <string name="legacy_migration_reason_chunks">It was recorded in chunks, which a later version will move.</string>
+    <string name="legacy_migration_reason_space">There wasn\'t enough storage space. It will be tried again.</string>
+    <string name="legacy_migration_reason_language">Its language isn\'t one this app knows.</string>
+    <string name="legacy_migration_reason_existing">A project for this book is already in this app.</string>
+    <string name="legacy_migration_reason_out_of_scope">Only Bible books can be moved.</string>
+    <string name="legacy_migration_reason_english_udb">English UDB recordings can\'t be moved yet.</string>
+    <string name="legacy_migration_reason_recordings">Some recordings couldn\'t be read or placed.</string>
+    <string name="legacy_migration_reason_failed">The move couldn\'t be finished.</string>
 </resources>

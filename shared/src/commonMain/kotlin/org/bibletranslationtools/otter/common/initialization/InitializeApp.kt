@@ -21,6 +21,8 @@ package org.bibletranslationtools.otter.common.initialization
 import io.reactivex.Observable
 import io.reactivex.schedulers.Schedulers
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
+import org.bibletranslationtools.otter.common.api.persistence.config.AppStartupStep
+import org.bibletranslationtools.otter.common.api.persistence.config.Initializable
 import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.ProgressStatus
@@ -38,7 +40,12 @@ class InitializeApp(
     private val refreshBundledSources: RefreshBundledSources,
     private val auditSourceStructure: AuditSourceStructure,
     private val directoryProvider: ITempFileProvider,
-    private val daoProvider: DaoProvider
+    private val daoProvider: DaoProvider,
+    /**
+     * The app's own steps, run after the shared ones and outside their bulk load: they may import
+     * projects, which want the database in its normal state.
+     */
+    private val appSteps: List<AppStartupStep> = emptyList()
 ) {
 
     private val logger = LoggerFactory.getLogger(InitializeApp::class.java)
@@ -61,26 +68,28 @@ class InitializeApp(
                 )
 
                 var total = 0.0
-                val increment = (1.0).div(initializers.size)
+                val increment = (1.0).div(initializers.size + appSteps.size)
                 val appStart = System.currentTimeMillis()
+                fun run(step: Initializable) {
+                    total += increment
+                    progressStatusEmitter.onNext(
+                        ProgressStatus(percent = total)
+                    )
+                    val stepStart = System.currentTimeMillis()
+                    step
+                        .exec(progressStatusEmitter)
+                        .doOnError { e ->
+                            logger.error("Error in Initialization", e)
+                        }
+                        .blockingAwait()
+                    logger.info("INIT ${step::class.simpleName} took ${System.currentTimeMillis() - stepStart} ms (total ${System.currentTimeMillis() - appStart} ms)")
+                }
                 daoProvider.withBulkLoad {
                     logger.info("INIT withBulkLoad started (${System.currentTimeMillis() - appStart} ms)")
-                    initializers.forEach {
-                        total += increment
-                        progressStatusEmitter.onNext(
-                            ProgressStatus(percent = total)
-                        )
-                        val stepStart = System.currentTimeMillis()
-                        it
-                            .exec(progressStatusEmitter)
-                            .doOnError { e ->
-                                logger.error("Error in Initialization", e)
-                            }
-                            .blockingAwait()
-                        logger.info("INIT ${it::class.simpleName} took ${System.currentTimeMillis() - stepStart} ms (total ${System.currentTimeMillis() - appStart} ms)")
-                    }
+                    initializers.forEach(::run)
                 }
                 logger.info("INIT withBulkLoad complete (${System.currentTimeMillis() - appStart} ms total)")
+                appSteps.forEach(::run)
                 progressStatusEmitter.onComplete()
             }
             .doOnError { e ->

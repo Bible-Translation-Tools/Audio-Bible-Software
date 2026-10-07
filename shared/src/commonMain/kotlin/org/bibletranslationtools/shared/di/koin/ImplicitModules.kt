@@ -62,6 +62,7 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.MatchEdit
 import org.bibletranslationtools.otter.common.initialization.AuditSourceStructure
 import org.bibletranslationtools.otter.common.initialization.BackfillEditionFingerprints
 import org.bibletranslationtools.otter.common.initialization.InitializeApp
+import org.bibletranslationtools.otter.common.api.persistence.config.AppStartupStep
 import org.bibletranslationtools.otter.common.initialization.InitializeLanguages
 import org.bibletranslationtools.otter.common.initialization.InitializeProjects
 import org.bibletranslationtools.otter.common.initialization.InitializeSources
@@ -121,7 +122,13 @@ val implicitCommonModule = module {
     factoryOf(::BurritoImporter)
     factoryOf(::TstudioImporter)
     factoryOf(::RCImporterFactory)
-    factoryOf(::InitializeApp)
+    // The shared steps, then every AppStartupStep the app's own modules bind (none on most graphs).
+    factory {
+        InitializeApp(
+            get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(),
+            appSteps = getAll<AppStartupStep>()
+        )
+    }
 
     // Content
     factoryOf(::ChapterTranslationBuilder)

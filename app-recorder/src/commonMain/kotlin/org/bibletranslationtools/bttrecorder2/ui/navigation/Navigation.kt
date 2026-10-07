@@ -8,9 +8,16 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
+import kotlinx.coroutines.withContext
+import org.bibletranslationtools.bttrecorder2.legacymigration.ILegacyMigrationSummaries
+import org.bibletranslationtools.bttrecorder2.legacymigration.MigrationSummary
+import org.bibletranslationtools.bttrecorder2.ui.components.LegacyMigrationSummaryDialog
 import org.bibletranslationtools.shared.preferences.IAppPreferences
 import org.bibletranslationtools.bttrecorder2.ui.screens.ChapterListScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.MainMenuScreen
@@ -62,7 +69,7 @@ fun Navigation(
                     popUpTo(SplashScreenRoute) { inclusive = true }
                 }
             }
-            SplashScreen()
+            SplashScreen(legacyMigration = vm.legacyMigration)
         }
 
         composable<MainMenuRoute> {
@@ -90,6 +97,20 @@ fun Navigation(
                     }
                 }
             )
+
+            // Once, after startup has moved old BTT-Recorder projects. Only the Android graph
+            // binds the summaries; elsewhere there is nothing to tell.
+            val summaries = remember { getKoin().getOrNull<ILegacyMigrationSummaries>() }
+            var summary by remember { mutableStateOf<MigrationSummary?>(null) }
+            LaunchedEffect(summaries) {
+                summary = summaries?.let { withContext(Dispatchers.IO) { it.pending() } }
+            }
+            summary?.let { shown ->
+                LegacyMigrationSummaryDialog(shown) {
+                    summary = null
+                    scope.launch(Dispatchers.IO) { runCatching { summaries?.markReported(shown) } }
+                }
+            }
         }
 
         composable<ProjectManagementRoute> {

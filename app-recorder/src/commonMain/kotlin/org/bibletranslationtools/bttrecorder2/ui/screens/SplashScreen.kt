@@ -8,13 +8,21 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import org.jetbrains.compose.resources.getString // For string resources from shared module
+import org.bibletranslationtools.shared.resources.Res
+import org.bibletranslationtools.shared.resources.legacy_migration_progress
+import org.bibletranslationtools.shared.resources.legacy_migration_progress_count
+import org.jetbrains.compose.resources.stringResource
 
 
+/**
+ * @param legacyMigration while old BTT-Recorder projects are being moved, how many books are done
+ *   of how many; null otherwise.
+ */
 @Composable
-fun SplashScreen() {
+fun SplashScreen(legacyMigration: Pair<Int, Int>? = null) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -42,6 +50,26 @@ fun SplashScreen() {
                     .padding(16.dp),
                 color = MaterialTheme.colorScheme.onPrimary
             )
+
+            legacyMigration?.let { (done, total) ->
+                Text(
+                    text = stringResource(Res.string.legacy_migration_progress),
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp)
+                        .align(Alignment.CenterHorizontally)
+                )
+                if (total > 0) {
+                    Text(
+                        text = stringResource(Res.string.legacy_migration_progress_count, minOf(done + 1, total), total),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier
+                            .padding(8.dp)
+                            .align(Alignment.CenterHorizontally)
+                    )
+                }
+            }
         }
     }
 }
