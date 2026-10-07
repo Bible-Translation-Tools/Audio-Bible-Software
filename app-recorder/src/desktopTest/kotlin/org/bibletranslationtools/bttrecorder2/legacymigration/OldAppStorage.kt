@@ -25,6 +25,13 @@ internal class OldAppStorage(root: File) : AutoCloseable {
     }
     private val connection: Connection by opened
 
+    /** This storage as the archive and the delete see it. */
+    fun storage(): ILegacyStorage = object : ILegacyStorage {
+        override val databaseFile: File? get() = this@OldAppStorage.databaseFile.takeIf { it.isFile }
+        override val translationsDir: File get() = translations
+        override fun deleteDatabase(): Boolean = this@OldAppStorage.databaseFile.let { it.delete() || !it.exists() }
+    }
+
     /** The reader as the app builds it, over this storage. */
     fun reader(): LegacyProjectReader = LegacyProjectReader(
         openDatabase = { databaseFile.takeIf { it.isFile }?.let(::JdbcLegacyDatabase) },

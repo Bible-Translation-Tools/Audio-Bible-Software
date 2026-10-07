@@ -1,6 +1,8 @@
 package org.bibletranslationtools.bttrecorder2.legacymigration
 
 import io.reactivex.Observable
+import kotlinx.coroutines.runBlocking
+import kotlin.test.assertFalse
 import org.bibletranslationtools.otter.common.api.persistence.IAppDirectories
 import org.bibletranslationtools.otter.common.api.persistence.config.AppStartupStep
 import org.bibletranslationtools.otter.common.data.ProgressStatus
@@ -28,6 +30,7 @@ class LegacyMigrationStartupTest {
             listOf(
                 legacyMigrationModule,
                 module {
+                    single<ILegacyStorage> { old.storage() }
                     single<ILegacyProjectReader> { old.reader() }
                     single<IUlbTemplateFiles> { env.templatesFromDisk }
                 }
@@ -65,6 +68,27 @@ class LegacyMigrationStartupTest {
         assertEquals(1, summary.chaptersMoved)
         summaries.markReported(summary)
         assertNull(summaries.pending())
+    }
+
+    @Test
+    fun `after migrating, the archive is offered, and choosing deletes the old recordings the new app now holds`() {
+        oldVerseProject()
+        val oldTake = old.takeFile("aa", "ulb", "jas", 1, OldAppStorage.takeName("aa", "ulb", 59, "jas", 1, 1..1, 1))
+        Observable.create<ProgressStatus> { emitter ->
+            env.koin.getAll<AppStartupStep>().single().exec(emitter).blockingAwait()
+            emitter.onComplete()
+        }.blockingSubscribe()
+        assertTrue(oldTake.isFile, "nothing is deleted before the choice, not even at startup")
+        val archive = env.koin.get<ILegacyArchive>()
+        assertTrue(archive.offerNeeded())
+
+        val result = runBlocking { archive.choose(saved = false) }
+
+        assertEquals(1, assertIs<DeleteLegacyProjects.Result.Deleted>(result).deleted)
+        assertFalse(oldTake.exists())
+        val take = env.importedProject("jas", "aa").chapterTakes.getValue(1).single()
+        assertTrue(take.file.isFile, "the new app's chapter take is untouched")
+        assertFalse(archive.offerNeeded())
     }
 
     @Test

@@ -15,8 +15,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
+import org.bibletranslationtools.bttrecorder2.legacymigration.ILegacyArchive
 import org.bibletranslationtools.bttrecorder2.legacymigration.ILegacyMigrationSummaries
 import org.bibletranslationtools.bttrecorder2.legacymigration.MigrationSummary
+import org.bibletranslationtools.bttrecorder2.ui.components.LegacyArchiveDialog
 import org.bibletranslationtools.bttrecorder2.ui.components.LegacyMigrationSummaryDialog
 import org.bibletranslationtools.shared.preferences.IAppPreferences
 import org.bibletranslationtools.bttrecorder2.ui.screens.ChapterListScreen
@@ -101,15 +103,24 @@ fun Navigation(
             // Once, after startup has moved old BTT-Recorder projects. Only the Android graph
             // binds the summaries; elsewhere there is nothing to tell.
             val summaries = remember { getKoin().getOrNull<ILegacyMigrationSummaries>() }
+            val archive = remember { getKoin().getOrNull<ILegacyArchive>() }
             var summary by remember { mutableStateOf<MigrationSummary?>(null) }
-            LaunchedEffect(summaries) {
-                summary = summaries?.let { withContext(Dispatchers.IO) { it.pending() } }
+            var offerArchive by remember { mutableStateOf(false) }
+            LaunchedEffect(summaries, archive) {
+                withContext(Dispatchers.IO) {
+                    summary = runCatching { summaries?.pending() }.getOrNull()
+                    offerArchive = runCatching { archive?.offerNeeded() == true }.getOrDefault(false)
+                }
             }
             summary?.let { shown ->
                 LegacyMigrationSummaryDialog(shown) {
                     summary = null
                     scope.launch(Dispatchers.IO) { runCatching { summaries?.markReported(shown) } }
                 }
+            }
+            // Then, before the old recordings are deleted, the offer to save an archive of them.
+            if (summary == null && offerArchive && archive != null) {
+                LegacyArchiveDialog(archive) { offerArchive = false }
             }
         }
 

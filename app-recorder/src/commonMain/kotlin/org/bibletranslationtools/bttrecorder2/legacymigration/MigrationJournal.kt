@@ -14,7 +14,7 @@ import java.io.IOException
  * disk is always a whole one. A write that fails throws [JournalWriteFailed]; the migration stops
  * there, and nothing is deleted on the strength of an unrecorded state (fail closed).
  */
-class MigrationJournal(private val file: File) {
+class MigrationJournal(val file: File) {
 
     private val logger = LoggerFactory.getLogger(MigrationJournal::class.java)
 
@@ -61,13 +61,15 @@ class MigrationJournal(private val file: File) {
 data class JournalData(
     val formatVersion: Int = FORMAT_VERSION,
     /** By [LegacyProject.journalKey]. */
-    val projects: Map<String, JournalEntry> = emptyMap()
+    val projects: Map<String, JournalEntry> = emptyMap(),
+    /** What the user chose when offered an archive of the old recordings; null until they choose. */
+    val archive: ArchiveChoice? = null
 ) {
     fun entryFor(project: LegacyProject): JournalEntry? = projects[project.journalKey]
 
     fun with(entry: JournalEntry): JournalData = copy(projects = projects + (entry.key to entry))
 
-    /** The legacy projects whose files may now be deleted: verified, or with nothing recorded. */
+    /** The legacy projects whose files may be deleted once the archive is chosen (M10-5). */
     val deletable: List<JournalEntry> get() = projects.values.filter { it.state.deletable }
 
     companion object {
@@ -114,12 +116,19 @@ enum class JournalState(val terminal: Boolean, val deletable: Boolean) {
     /** It held no recordings, so there was nothing to carry over. */
     NOTHING_RECORDED(terminal = true, deletable = true),
 
-    /** Kept in the old app's storage for [JournalEntry.reasons]. Never tried again. */
-    KEPT(terminal = true, deletable = false),
+    /**
+     * Not migrated, for [JournalEntry.reasons], and never tried again. Its files are deleted after
+     * the archive choice like the rest (M10-5): the archive is where they can be kept.
+     */
+    KEPT(terminal = true, deletable = true),
 
     /** Its files were deleted (M10). */
     LEGACY_DELETED(terminal = true, deletable = false)
 }
+
+/** The user's answer to the archive offer: [saved] an archive, or declined, at [at] (epoch ms). */
+@Serializable
+data class ArchiveChoice(val saved: Boolean, val at: Long)
 
 /**
  * Why a project is kept or waiting, by a stable [code] (the summary words it), with where it

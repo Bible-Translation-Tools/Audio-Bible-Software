@@ -16,7 +16,11 @@ import org.slf4j.LoggerFactory
  * has been deleted on its strength (that needs a verified state in the journal), and the next
  * launch tries again.
  */
-class LegacyMigrationStartupStep(private val migrate: MigrateLegacyProjects) : AppStartupStep {
+class LegacyMigrationStartupStep(
+    private val migrate: MigrateLegacyProjects,
+    /** Run after it: deletes nothing before the archive choice, and retries what failed to delete since. */
+    private val deleteProjects: DeleteLegacyProjects
+) : AppStartupStep {
 
     private val logger = LoggerFactory.getLogger(LegacyMigrationStartupStep::class.java)
 
@@ -30,6 +34,9 @@ class LegacyMigrationStartupStep(private val migrate: MigrateLegacyProjects) : A
                 progressEmitter.onNext(ProgressStatus(titleKey = PROGRESS_KEY, titleMessage = "$done/$total"))
             }
             logger.info("Legacy migration: {}", describe(result))
+            if (result is MigrateLegacyProjects.Result.Ran) {
+                logger.info("Legacy delete: {}", deleteProjects.execute())
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

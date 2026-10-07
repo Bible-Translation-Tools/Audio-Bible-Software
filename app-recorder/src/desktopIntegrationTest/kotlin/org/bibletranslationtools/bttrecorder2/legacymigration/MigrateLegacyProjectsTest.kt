@@ -86,7 +86,7 @@ class MigrateLegacyProjectsTest {
         val entry = second.journal.projects.values.single()
         assertEquals(JournalState.KEPT, entry.state)
         assertEquals(listOf(JournalReasons.FAILED_REPEATEDLY), entry.reasons.map { it.code })
-        assertTrue(second.journal.deletable.isEmpty())
+        assertEquals(listOf(entry), second.journal.deletable, "after the archive choice, like the rest (M10-5)")
     }
 
     @Test
@@ -124,7 +124,7 @@ class MigrateLegacyProjectsTest {
         val entry = ran.journal.projects.values.single()
         assertEquals(JournalState.DEFERRED, entry.state)
         assertEquals(JournalReasons.TEMPLATE_NOT_ENABLED, entry.reasons.single().code)
-        assertTrue(ran.journal.deletable.isEmpty())
+        assertTrue(ran.journal.deletable.isEmpty(), "never deleted while it waits")
         assertEquals(listOf(entry), MigrationSummaries.pending(ran.journal)?.waiting)
     }
 
@@ -138,7 +138,7 @@ class MigrateLegacyProjectsTest {
         assertEquals(JournalState.KEPT, entry.state)
         assertTrue(entry.imported)
         assertTrue(JournalReasons.TAKE_FILE_MISSING in entry.reasons.map { it.code })
-        assertTrue(ran.journal.deletable.isEmpty())
+        assertEquals(listOf(entry), ran.journal.deletable, "after the archive choice, like the rest (M10-5)")
         assertEquals(1, env.importedProject("jas", "aa").chapterTakes.getValue(1).size)
         assertEquals(listOf(entry), MigrationSummaries.pending(ran.journal)?.moved)
     }

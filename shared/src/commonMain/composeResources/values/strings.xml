@@ -296,4 +296,13 @@
     <string name="legacy_migration_reason_english_udb">English UDB recordings can\'t be moved yet.</string>
     <string name="legacy_migration_reason_recordings">Some recordings couldn\'t be read or placed.</string>
     <string name="legacy_migration_reason_failed">The move couldn\'t be finished.</string>
+    <string name="legacy_archive_title">Save a copy of the old recordings?</string>
+    <string name="legacy_archive_body">The old Translation Recorder\'s recordings will now be removed from this device to free space, including any that couldn\'t be moved. You can save a copy of all of them first, as one file.</string>
+    <string name="legacy_archive_save">Save a copy…</string>
+    <string name="legacy_archive_skip">Don\'t save</string>
+    <string name="legacy_archive_saving">Saving the copy…</string>
+    <string name="legacy_archive_removing">Removing the old recordings…</string>
+    <string name="legacy_archive_failed">The copy couldn\'t be saved. Nothing was removed. Try again, or choose another place.</string>
+    <!-- The suggested name of the archive file (without its extension). -->
+    <string name="legacy_archive_file_name">old-translation-recorder-recordings</string>
 </resources>

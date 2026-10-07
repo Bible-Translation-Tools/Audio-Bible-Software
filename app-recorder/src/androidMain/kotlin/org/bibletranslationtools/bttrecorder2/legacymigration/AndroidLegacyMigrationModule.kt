@@ -17,7 +17,8 @@ class AndroidUlbTemplateFiles(private val context: Context) : IUlbTemplateFiles 
 val androidLegacyMigrationModules = listOf(
     legacyMigrationModule,
     module {
-        single<ILegacyProjectReader> { AndroidLegacyProjectReader(androidContext()) }
+        single<ILegacyStorage> { AndroidLegacyStorage(androidContext()) }
+        single<ILegacyProjectReader> { AndroidLegacyProjectReader(get()) }
         single<IUlbTemplateFiles> { AndroidUlbTemplateFiles(androidContext()) }
     }
 )
