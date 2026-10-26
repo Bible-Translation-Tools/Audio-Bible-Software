@@ -431,6 +431,31 @@ class IntegrationEnvironment private constructor(
         return target
     }
 
+    /** A copy of zip [file] with one more entry, [name], holding [bytes]. */
+    fun withEntryAdded(file: File, name: String, bytes: ByteArray): File {
+        val target = File(tempRoot, "${file.nameWithoutExtension}-added-${System.nanoTime()}.${file.extension}")
+        ZipFile(file).use { zip ->
+            assertTrue(zip.getEntry(name) == null, "'$name' is already in ${file.name}")
+            ZipOutputStream(target.outputStream().buffered()).use { out ->
+                zip.entries().asSequence().forEach { entry ->
+                    out.putNextEntry(ZipEntry(entry.name))
+                    if (!entry.isDirectory) zip.getInputStream(entry).use { it.copyTo(out) }
+                    out.closeEntry()
+                }
+                out.putNextEntry(ZipEntry(name))
+                out.write(bytes)
+                out.closeEntry()
+            }
+        }
+        return target
+    }
+
+    /** The bytes of entry [name] of zip [file]. */
+    fun entryBytes(file: File, name: String): ByteArray = ZipFile(file).use { zip ->
+        val entry = assertNotNull(zip.getEntry(name), "'$name' is not in ${file.name}")
+        zip.getInputStream(entry).use { it.readBytes() }
+    }
+
     /** The live and deleted takes on verse [verse] of chapter [sort] of [project]. */
     fun takesOn(project: Collection, sort: Int, verse: Int): List<TakeEntity> {
         val textType = db.contentTypeDao.fetchId(ContentType.TEXT)

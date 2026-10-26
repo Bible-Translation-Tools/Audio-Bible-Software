@@ -419,23 +419,38 @@ class ProjectFilesAccessor(
     }
 
     /**
+     * A take file staged out of an import, and the folder it was staged under. Its path relative
+     * to [root] (`c03/en_ulb_tit_c03_meta_t1.wav`) is the name the import records its selection
+     * and checking status under.
+     */
+    data class StagedTake(val root: File, val file: File)
+
+    /**
      * Copies the take files in [fileReader]'s project into [destination], keeping their folders
      * (`c19/...`). An import copies them to a staging folder first, so that none overwrites a take
      * already in the project (see OngoingProjectImporter).
+     *
+     * A backup keeps takes in two folders, the app's takes folder and the manifest project's own,
+     * and the same take can be in both: older exports wrote a selected chapter take to each. Each
+     * folder is staged under its own subfolder of [destination], so no copy overwrites another and
+     * both reach the importer. Deciding what a duplicate means is the importer's job.
      */
     fun copyTakeFiles(
         fileReader: IFileReader,
         manifestProject: Project,
         filter: (String) -> Boolean = { true },
-        destination: File = audioDir
-    ): Observable<String> {
-        return Observable.just(RcConstants.TAKE_DIR, manifestProject.path)
+        destination: File
+    ): Observable<StagedTake> {
+        val audioDirsInRc = listOf(RcConstants.TAKE_DIR, manifestProject.path)
             .filter(fileReader::exists)
-            .flatMap { audioDirInRc ->
-                val normalized = File(audioDirInRc).normalize().path
-                fileReader.copyDirectory(normalized, destination) {
+            .map { File(it).normalize().path }
+            .distinct()
+        return Observable.fromIterable(audioDirsInRc.withIndex())
+            .concatMap { (index, audioDirInRc) ->
+                val root = File(destination, index.toString())
+                fileReader.copyDirectory(audioDirInRc, root) {
                     isAudioFile(it) && filter(it)
-                }
+                }.map { StagedTake(root, File(it)) }
             }
     }
 

@@ -110,9 +110,12 @@ class OngoingProjectImporter(
     private var completedChapters = listOf<Int>() // for Ot1 projects
     private var takesToCompile = mutableMapOf<Int, List<File>>() // for compiling verses of incomplete chapter in Ot1
     private var migratedSelectedTakes = listOf<String>() // list of all selected take paths extracted from Ot1 database
-    /** Takes this import added, and those it found already in the project (byte-for-byte). */
+    /** Takes this import added to the project. */
     private var takesAdded = 0
-    private var takesAlreadyThere = 0
+    /** Takes already in the project that this import found byte-for-byte, counted once each. */
+    private val takesFoundAlreadyThere = mutableSetOf<Int>()
+    /** Takes this import placed: a second copy of one in the same backup isn't "already there". */
+    private val takesPlacedThisImport = mutableSetOf<Int>()
     /** The source book of the project already here that the backup is merged into, if there is one. */
     private var existingProjectSource: Collection? = null
 
@@ -134,7 +137,8 @@ class OngoingProjectImporter(
         migratedSelectedTakes = listOf()
         existingProjectSource = null
         takesAdded = 0
-        takesAlreadyThere = 0
+        takesFoundAlreadyThere.clear()
+        takesPlacedThisImport.clear()
         contentCache.clear()
 
         return Single
@@ -150,7 +154,7 @@ class OngoingProjectImporter(
 
                 importResumableProject(file, callback).doOnSuccess { result ->
                     if (result == ImportResult.SUCCESS) {
-                        callback?.onNotifyTakesImported(merged = exists, added = takesAdded, alreadyThere = takesAlreadyThere)
+                        callback?.onNotifyTakesImported(merged = exists, added = takesAdded, alreadyThere = takesFoundAlreadyThere.size)
                     }
                 }
             }
@@ -550,10 +554,14 @@ class OngoingProjectImporter(
                     logger.error("metadata: $metadata, sourceMetadata: $sourceMetadata")
                     logger.error("sourceCollection: $sourceCollection", e)
                 }
-                .blockingSubscribe { stagedTakeFile ->
+                // blockingForEach rethrows, so a take that can't be placed fails the import. A
+                // blockingSubscribe with no error handler sent the exception to the uncaught-
+                // exception log instead: the remaining takes were dropped and the import still
+                // reported SUCCESS.
+                .blockingForEach { staged ->
                     insertTake(
-                        File(stagedTakeFile),
-                        staging,
+                        staged.file,
+                        staged.root,
                         projectFilesAccessor.audioDir,
                         collectionForTakes,
                         sourceMetadata,
@@ -619,18 +627,19 @@ class OngoingProjectImporter(
      * It never overwrites a take already there: it comes in as a new take, numbered after the
      * content's existing takes and renamed to match when its own number is taken. Only a file
      * byte-for-byte the same as an existing take of that content is not added again (re-importing
-     * one's own backup); the existing take is selected instead if the import selects it.
+     * one's own backup, or a backup holding the same take in both of its take folders); the
+     * existing take is selected instead if the import selects it.
      */
     private fun insertTake(
         staged: File,
-        staging: File,
+        stagedRoot: File,
         projectAudioDir: File,
         project: Collection,
         metadata: ResourceMetadata,
         selectedTakes: Set<String>
     ) {
         // Selection and checking status are recorded under the take's name in the import.
-        val importedPath = staged.relativeTo(staging).invariantSeparatorsPath
+        val importedPath = staged.relativeTo(stagedRoot).invariantSeparatorsPath
         val parsed = parseNumbers(importedPath)
         val chunk = parsed?.let { (sig, _) -> getContent(sig, project, metadata) }
         if (parsed == null || chunk == null) {
@@ -655,7 +664,9 @@ class OngoingProjectImporter(
         val checksum = computeFileChecksum(staged)
         existing.firstOrNull { it.path.exists() && computeFileChecksum(it.path) == checksum }?.let { same ->
             staged.delete()
-            takesAlreadyThere++
+            // Counted per take, not per copy: a backup can hold the same take in both of its take
+            // folders, and a second copy of a take this import just placed was never "already there".
+            if (same.id !in takesPlacedThisImport) takesFoundAlreadyThere += same.id
             if (isSelected && same.deleted == null) {
                 chunk.selectedTake = same
                 contentRepository.update(chunk).blockingAwait()
@@ -695,6 +706,7 @@ class OngoingProjectImporter(
         )
         val insertedId = takeRepository.insertForContent(take, chunk).blockingGet()
         take.id = insertedId
+        takesPlacedThisImport += insertedId
         takesAdded++
 
         if (isSelected) {
