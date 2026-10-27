@@ -1,4 +1,4 @@
-appId: org.bibletranslationtools.recorder2
+appId: bible.translationtools.recorder
 ---
 # Files → New Project → English → Afar → Genesis → Project Management.
 # Paths are relative to this file (shared/), not the workspace root.

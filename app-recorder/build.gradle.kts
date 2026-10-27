@@ -17,6 +17,10 @@ plugins {
 // for local builds. Sets extra["appVersionName"], ["appVersionCode"], ["desktopPackageVersion"].
 apply(from = rootProject.file("gradle/release-version.gradle.kts"))
 
+// Added to the Android versionCode so this app installs over the old BTT-Recorder: its source's last
+// versionCode is 56. If Play Console shows a higher one published (check C1), raise this above it.
+val LEGACY_RECORDER_VERSION_CODE_OFFSET = 100
+
 
 kotlin {
     androidTarget {
@@ -116,10 +120,17 @@ android {
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {
-        applicationId = "org.bibletranslationtools.recorder2"
+        // The old BTT-Recorder's id, so this app installs over it and Android hands it the old app's
+        // data, which the legacy migration then moves (M0). The code's package (the namespace above)
+        // stays as it is. Builds made under the earlier id, org.bibletranslationtools.recorder2, were
+        // pre-releases; they remain a separate app.
+        applicationId = "bible.translationtools.recorder"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = (project.extra["appVersionCode"] as Int)
+        // Above every code the old app published, so this installs as its update. An offset rather
+        // than a floor keeps every release's code unique, and lifts a local build (code 1) above the
+        // old app's too, so the migration can be tried by installing over it.
+        versionCode = (project.extra["appVersionCode"] as Int) + LEGACY_RECORDER_VERSION_CODE_OFFSET
         versionName = (project.extra["appVersionName"] as String)
     }
     packaging {

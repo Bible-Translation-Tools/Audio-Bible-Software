@@ -22,6 +22,7 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IWork
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.DateHolder
+import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnection
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
@@ -49,13 +50,23 @@ data class ChapterUiModel(
     val hasContent: Boolean = false,
     /** Fraction of verses with a selected take (0f..1f). */
     val progress: Float = 0f,
-    /** True when [ChapterTranslationBuilder] has produced a compiled chapter take. */
-    val hasChapterTake: Boolean = false,
-    /** The selected chapter take's number, when one exists (for opening in playback). */
-    val chapterTakeNumber: Int? = null,
+    /**
+     * The chapter's takes, oldest first, deleted ones left out: compiled here, recorded as a whole,
+     * or brought in by an import (a migrated book can have one per version label it was recorded
+     * under).
+     */
+    val takes: List<Take> = emptyList(),
+    /**
+     * The chapter's selected take. Kept in UI state (not read off `chapter.audio` while composing)
+     * so the select checkmark repaints when it changes.
+     */
+    val selectedTake: Take? = null,
     /** True only when every verse has a selected take, i.e., compile is allowed. */
     val canCompile: Boolean = false
-)
+) {
+    /** The chapter has a take to play, select or delete; the card can expand. */
+    val hasChapterTake: Boolean get() = takes.isNotEmpty()
+}
 
 data class ChapterListUiState(
     val isLoading: Boolean = false,
@@ -68,11 +79,17 @@ data class ChapterListUiState(
     // Compile flow state — keyed by chapter.sort.
     val compilingChapterSort: Int? = null,
 
+    /**
+     * The take each chapter's card is showing, as an index into its [ChapterUiModel.takes]; keyed
+     * by chapter sort. Browsing doesn't change which take is selected.
+     */
+    val currentTakeIndices: Map<Int, Int> = emptyMap(),
+
     // Expanded-card playback. Only one chapter take can be loaded at a time,
-    // just like the original BTT-Recorder. `loadedChapterSort` tracks which
-    // take is currently in the player (so duration/elapsed survive a pause),
-    // while `isChapterPlaying` is the live play/pause status of *that* take.
-    val loadedChapterSort: Int? = null,
+    // just like the original BTT-Recorder. `loadedTakePath` is the take
+    // currently in the player (so duration/elapsed survive a pause), while
+    // `isChapterPlaying` is the live play/pause status of *that* take.
+    val loadedTakePath: String? = null,
     val isChapterPlaying: Boolean = false,
     val playbackProgress: Float = 0f,
     val elapsedText: String = "00:00:00",
@@ -190,20 +207,13 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
                                 }
                             }
                         }
+                        // The chapter's takes: a new one (compiled, recorded, imported) or a
+                        // change of selection both refresh the row's take list. A new selection
+                        // (a compile or a recording selects its take) moves the card to it.
+                        launch { chapter.audio.takesFlow.collect { refreshChapterTakes(chapter) } }
                         launch {
-                            chapter.audio.selectedFlow.collect { holder ->
-                                // A deleted take is sometimes still referenced by the
-                                // selectedFlow holder (the relay doesn't auto-clear on
-                                // delete), so treat a tombstoned take as "no chapter take"
-                                // for UI purposes.
-                                val take = holder.value
-                                val hasChapterTake = take != null && !take.isDeleted()
-                                updateChapterRow(chapter) { existing ->
-                                    existing.copy(
-                                        hasChapterTake = hasChapterTake,
-                                        chapterTakeNumber = if (hasChapterTake) take?.number else null
-                                    )
-                                }
+                            chapter.audio.selectedFlow.collect {
+                                refreshChapterTakes(chapter, showSelected = true)
                             }
                         }
                     }
@@ -222,7 +232,7 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
      * source, and the verses of the chapters that took on the new structure, are different.
      */
     fun reload() {
-        if (_uiState.value.loadedChapterSort != null) runCatching { audioPlayer.pause() }
+        if (_uiState.value.loadedTakePath != null) runCatching { audioPlayer.pause() }
         stopProgressTicker()
         loadingJob?.cancel()
         loadingJob = null
@@ -254,6 +264,55 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
                 }
             }
         }
+    }
+
+    /**
+     * Re-reads [chapter]'s takes and selection into its row. The card keeps showing the take at
+     * the position it was showing, unless [showSelected]; one it hasn't shown yet starts at the
+     * selected take.
+     */
+    private fun refreshChapterTakes(chapter: Chapter, showSelected: Boolean = false) {
+        val takes = chapter.audio.getAllTakes().filter { !it.isDeleted() }.sortedBy { it.number }
+        // A deleted take can still be held as selected (the relay doesn't clear on delete).
+        val selected = chapter.audio.getSelectedTake()?.takeIf { !it.isDeleted() }
+        updateChapterRow(chapter) { it.copy(takes = takes, selectedTake = selected) }
+        _uiState.update { state ->
+            val selectedIndex = selected?.let { takes.indexOf(it) }?.takeIf { it >= 0 }
+            val index = (if (showSelected) selectedIndex else null)
+                ?: state.currentTakeIndices[chapter.sort]
+                ?: selectedIndex
+                ?: 0
+            state.copy(
+                currentTakeIndices = state.currentTakeIndices +
+                    (chapter.sort to index.coerceIn(0, (takes.size - 1).coerceAtLeast(0)))
+            )
+        }
+    }
+
+    /** The take [chapter]'s card is showing, or null when it has none. */
+    private fun viewedTake(chapter: Chapter): Take? {
+        val state = _uiState.value
+        val row = state.chapters.firstOrNull { it.chapter.sort == chapter.sort } ?: return null
+        return row.takes.getOrNull(state.currentTakeIndices[chapter.sort] ?: 0)
+    }
+
+    /** Shows the next ([direction] 1) or previous (-1) of [chapter]'s takes, without selecting it. */
+    fun cycleChapterTake(chapter: Chapter, direction: Int) {
+        val takes = _uiState.value.chapters.firstOrNull { it.chapter.sort == chapter.sort }?.takes.orEmpty()
+        if (takes.isEmpty()) return
+        val current = _uiState.value.currentTakeIndices[chapter.sort] ?: 0
+        val next = (current + direction + takes.size) % takes.size
+        _uiState.update { it.copy(currentTakeIndices = it.currentTakeIndices + (chapter.sort to next)) }
+        // Load it, so its duration shows straight away, as on expanding.
+        prepareChapterPlayback(chapter)
+    }
+
+    /** Makes the take [chapter]'s card is showing its selected take. */
+    fun selectChapterTake(chapter: Chapter) {
+        val take = viewedTake(chapter) ?: return
+        // Persisted by the workbook's selection relay; selectedFlow then refreshes the row.
+        chapter.audio.selectTake(take)
+        refreshChapterTakes(chapter)
     }
 
     /**
@@ -324,17 +383,17 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
     // -------------------------------------------------------------------------
 
     /**
-     * Idempotently loads the chapter's selected take into the player so duration
-     * shows up the moment the user expands the row — without starting playback.
-     * Safe to call multiple times; loading the same take twice is a no-op.
+     * Idempotently loads the take the chapter's card is showing into the player so
+     * duration shows up the moment the user expands the row (or steps to another
+     * take) — without starting playback. Loading the same take twice is a no-op.
      */
     fun prepareChapterPlayback(chapter: Chapter) {
-        val take = chapter.audio.getSelectedTake() ?: return
-        if (_uiState.value.loadedChapterSort == chapter.sort) return
+        val take = viewedTake(chapter) ?: return
+        if (_uiState.value.loadedTakePath == take.file.absolutePath) return
         launchLogged(Dispatchers.IO) {
             try {
-                // If a different chapter is currently in the player, stop it first
-                // so its duration/elapsed don't bleed into the new row.
+                // If a different take is currently in the player, stop it first
+                // so its duration/elapsed don't bleed into this one.
                 if (runCatching { audioPlayer.isPlaying() }.getOrDefault(false)) {
                     runCatching { audioPlayer.pause() }
                 }
@@ -345,7 +404,7 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
                 val durationMs = runCatching { audioPlayer.getDurationMs() }.getOrDefault(0)
                 _uiState.update {
                     it.copy(
-                        loadedChapterSort = chapter.sort,
+                        loadedTakePath = take.file.absolutePath,
                         isChapterPlaying = false,
                         playbackProgress = 0f,
                         elapsedText = "00:00:00",
@@ -360,19 +419,24 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
     }
 
     fun toggleChapterPlayback(chapter: Chapter) {
-        val take = chapter.audio.getSelectedTake() ?: return
+        val take = viewedTake(chapter) ?: return
         launchLogged(Dispatchers.IO) {
             try {
                 val state = _uiState.value
-                // Ensure the player is holding *this* chapter's take. If it is
+                // Ensure the player is holding the take this card shows. If it is
                 // already loaded we just toggle; otherwise we load before play.
-                if (state.loadedChapterSort != chapter.sort) {
+                if (state.loadedTakePath != take.file.absolutePath) {
+                    if (state.isChapterPlaying) {
+                        runCatching { audioPlayer.pause() }
+                        stopProgressTicker()
+                        _uiState.update { it.copy(isChapterPlaying = false) }
+                    }
                     val reader = OratureAudioFile(take.file).reader()
                     audioPlayer.load(reader)
                     val durationMs = runCatching { audioPlayer.getDurationMs() }.getOrDefault(0)
                     _uiState.update {
                         it.copy(
-                            loadedChapterSort = chapter.sort,
+                            loadedTakePath = take.file.absolutePath,
                             playbackProgress = 0f,
                             elapsedText = "00:00:00",
                             durationText = formatTime(durationMs)
@@ -396,15 +460,16 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
         }
     }
 
+    /** Deletes the take [chapter]'s card is showing; deleting the selected one leaves none selected. */
     fun deleteChapterTake(chapter: Chapter) {
-        val take = chapter.audio.getSelectedTake() ?: return
+        val take = viewedTake(chapter) ?: return
         // Stop playback if this take is what's currently loaded.
-        if (_uiState.value.loadedChapterSort == chapter.sort) {
+        if (_uiState.value.loadedTakePath == take.file.absolutePath) {
             runCatching { audioPlayer.pause() }
             stopProgressTicker()
             _uiState.update {
                 it.copy(
-                    loadedChapterSort = null,
+                    loadedTakePath = null,
                     isChapterPlaying = false,
                     playbackProgress = 0f,
                     elapsedText = "00:00:00",
@@ -413,11 +478,10 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
             }
         }
         take.deletedTimestamp.accept(DateHolder.now())
-        // selectedFlow doesn't always fire on take deletion (the selected
-        // reference itself doesn't change). Update the row directly so the
-        // layers icon switches back from "view chapter take" to "ready to
-        // compile" without requiring an external refresh.
-        updateChapterRow(chapter) { it.copy(hasChapterTake = false, chapterTakeNumber = null) }
+        // Neither takesFlow nor selectedFlow fires on a deletion (the take and the selected
+        // reference are both unchanged), so refresh the row here: the take leaves the list, and
+        // the card stays on the take at the same position, or the new last one.
+        refreshChapterTakes(chapter)
     }
 
     /**

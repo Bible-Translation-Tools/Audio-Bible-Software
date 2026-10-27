@@ -6,27 +6,19 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import org.bibletranslationtools.bttrecorder2.ui.components.LazyColumnWithScrollbar
+import org.bibletranslationtools.bttrecorder2.ui.components.TakeBrowserPanel
+import org.bibletranslationtools.bttrecorder2.ui.components.TakeCount
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Take
@@ -44,19 +36,10 @@ import org.bibletranslationtools.shared.resources.action_back
 import org.bibletranslationtools.shared.resources.cd_record_chapter
 import org.bibletranslationtools.shared.resources.cd_record
 import org.bibletranslationtools.shared.resources.cd_delete_take
-import org.bibletranslationtools.shared.resources.cd_open_in_playback
-import org.bibletranslationtools.shared.resources.cd_select_take
-import org.bibletranslationtools.shared.resources.cd_previous_take
-import org.bibletranslationtools.shared.resources.cd_next_take
 import org.bibletranslationtools.shared.resources.error_prefix
 import org.bibletranslationtools.shared.resources.unit_verse_label
 import org.bibletranslationtools.shared.resources.action_collapse
 import org.bibletranslationtools.shared.resources.action_expand
-import org.bibletranslationtools.shared.resources.action_pause
-import org.bibletranslationtools.shared.resources.action_play
-import org.bibletranslationtools.shared.resources.unit_take_position
-
-private val GreenPlay = Color(0xFF4CAF50)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -270,11 +253,7 @@ fun UnitCard(
             )
 
             if (hasTakes) {
-                Text(
-                    text = "×${takes.size}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                TakeCount(takes.size)
                 Spacer(modifier = Modifier.width(8.dp))
             }
 
@@ -300,128 +279,21 @@ fun UnitCard(
 
         // Expanded body
         if (isExpanded && currentTake != null) {
-            HorizontalDivider()
-
-            // Seekbar row
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp)
-            ) {
-                Text(
-                    text = elapsedText,
-                    style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Slider(
-                    value = playbackProgress,
-                    onValueChange = {},
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 4.dp),
-                    colors = SliderDefaults.colors(
-                        thumbColor = GreenPlay,
-                        activeTrackColor = GreenPlay,
-                        inactiveTrackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-                    )
-                )
-                Text(
-                    text = durationText,
-                    style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-
-            // Action row: delete | waveform | play | select-take
-            Row(
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp)
-            ) {
-                IconButton(onClick = onDelete) {
-                    Icon(
-                        Icons.Default.Delete,
-                        contentDescription = stringResource(Res.string.cd_delete_take),
-                        tint = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-
-                IconButton(onClick = onOpenPlayback) {
-                    Icon(
-                        Icons.Default.GraphicEq,
-                        contentDescription = stringResource(Res.string.cd_open_in_playback),
-                        tint = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-
-                // Play/pause is larger and green
-                IconButton(
-                    onClick = onPlayPause,
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) stringResource(Res.string.action_pause) else stringResource(Res.string.action_play),
-                        tint = GreenPlay,
-                        modifier = Modifier.size(36.dp)
-                    )
-                }
-
-                IconButton(onClick = onSelectTake) {
-                    Icon(
-                        Icons.Default.Check,
-                        contentDescription = stringResource(Res.string.cd_select_take),
-                        tint = if (currentTake == selectedTake)
-                            MaterialTheme.colorScheme.primary
-                        else
-                            MaterialTheme.colorScheme.onSurface
-                    )
-                }
-            }
-
-            // Footer — grey background, "Take X of Y" + date
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .padding(vertical = 2.dp)
-            ) {
-                IconButton(onClick = { onCycle(-1) }) {
-                    Icon(Icons.Default.KeyboardArrowLeft, contentDescription = stringResource(Res.string.cd_previous_take))
-                }
-
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = stringResource(Res.string.unit_take_position, currentIndex + 1, takes.size),
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Normal
-                    )
-                    val dateText = try {
-                        val ts = currentTake.createdTimestamp
-                        val monthName = ts.month.getDisplayName(
-                            java.time.format.TextStyle.FULL,
-                            java.util.Locale.getDefault()
-                        )
-                        "$monthName ${ts.dayOfMonth}, ${ts.year}"
-                    } catch (_: Exception) { "" }
-                    if (dateText.isNotEmpty()) {
-                        Text(
-                            text = dateText,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                IconButton(onClick = { onCycle(1) }) {
-                    Icon(Icons.Default.KeyboardArrowRight, contentDescription = stringResource(Res.string.cd_next_take))
-                }
-            }
+            TakeBrowserPanel(
+                takes = takes,
+                currentIndex = currentIndex,
+                selectedTake = selectedTake,
+                isPlaying = isPlaying,
+                playbackProgress = playbackProgress,
+                elapsedText = elapsedText,
+                durationText = durationText,
+                deleteDescription = Res.string.cd_delete_take,
+                onPlayPause = onPlayPause,
+                onDelete = onDelete,
+                onOpenPlayback = onOpenPlayback,
+                onSelectTake = onSelectTake,
+                onCycle = onCycle
+            )
         }
     }
 }

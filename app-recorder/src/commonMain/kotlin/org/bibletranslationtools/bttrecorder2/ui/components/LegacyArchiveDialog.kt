@@ -22,8 +22,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.io.Buffer
-import kotlinx.io.RawSink
 import org.bibletranslationtools.bttrecorder2.legacymigration.ILegacyArchive
 import org.bibletranslationtools.shared.resources.Res
 import org.bibletranslationtools.shared.resources.legacy_archive_body
@@ -37,7 +35,6 @@ import org.bibletranslationtools.shared.resources.legacy_archive_title
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 import org.slf4j.LoggerFactory
-import java.io.OutputStream
 
 private enum class ArchiveStep { OFFER, SAVING, REMOVING, FAILED }
 
@@ -88,7 +85,7 @@ fun LegacyArchiveDialog(archive: ILegacyArchive, onDone: () -> Unit) {
                     ) ?: return@launch
                     step = ArchiveStep.SAVING
                     val saved = try {
-                        withContext(Dispatchers.IO) { archive.save(SinkOutputStream(destination.sink())) }
+                        withContext(Dispatchers.IO) { archive.save(destination.sink()) }
                         true
                     } catch (e: CancellationException) {
                         throw e
@@ -113,36 +110,3 @@ fun LegacyArchiveDialog(archive: ILegacyArchive, onDone: () -> Unit) {
 }
 
 private val logger = LoggerFactory.getLogger("LegacyArchiveDialog")
-
-/** A kotlinx-io sink as an [OutputStream], for the archive writer; buffered, and closes the sink. */
-private class SinkOutputStream(private val sink: RawSink) : OutputStream() {
-    private val buffer = Buffer()
-
-    override fun write(b: Int) {
-        buffer.writeByte(b.toByte())
-        emitIfFull()
-    }
-
-    override fun write(b: ByteArray, off: Int, len: Int) {
-        buffer.write(b, off, off + len)
-        emitIfFull()
-    }
-
-    override fun flush() {
-        if (buffer.size > 0) sink.write(buffer, buffer.size)
-        sink.flush()
-    }
-
-    override fun close() {
-        flush()
-        sink.close()
-    }
-
-    private fun emitIfFull() {
-        if (buffer.size >= CHUNK) sink.write(buffer, buffer.size)
-    }
-
-    private companion object {
-        const val CHUNK = 64L * 1024
-    }
-}

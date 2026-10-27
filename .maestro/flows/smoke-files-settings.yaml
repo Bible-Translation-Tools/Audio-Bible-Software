@@ -1,4 +1,4 @@
-appId: org.bibletranslationtools.recorder2
+appId: bible.translationtools.recorder
 ---
 # MainMenuNavigationFlowTest.filesOpensProjectManagementAndSettings
 # Assumes main menu. Leaves app on main menu.

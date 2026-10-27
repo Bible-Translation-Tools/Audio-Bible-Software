@@ -1,6 +1,8 @@
 package org.bibletranslationtools.recorder2
 
 import android.os.Bundle
+import io.github.vinceglb.filekit.FileKit
+import io.github.vinceglb.filekit.dialogs.init
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -54,6 +56,10 @@ class MainActivity : ComponentActivity() {
         // the system inset is non-zero and our content would otherwise overlap.
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // FileKit's suspend dialogs (FileKit.openFileSaver, used by export and the old-recordings
+        // archive) launch through this activity's result registry; without it they throw
+        // FileKitNotInitializedException. Must run before the activity is STARTED.
+        FileKit.init(this)
 
         // Warm the Koin DaoProvider off the main thread so first-run schema creation /
         // migration doesn't jank the UI thread.

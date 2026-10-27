@@ -1,12 +1,12 @@
 package org.bibletranslationtools.bttrecorder2.legacymigration
 
+import kotlinx.io.RawSink
 import org.bibletranslationtools.otter.common.api.persistence.IAppDirectories
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.api.persistence.config.AppStartupStep
 import org.koin.core.module.dsl.factoryOf
 import org.koin.dsl.bind
 import org.koin.dsl.module
-import java.io.OutputStream
 
 /** The migration journal's file, among the app's logs so it travels with them. */
 const val LEGACY_MIGRATION_JOURNAL_FILE = "legacy_migration_journal.json"
@@ -38,8 +38,8 @@ interface ILegacyArchive {
     /** Whether to offer it now: something waits to be deleted, and the user hasn't chosen. */
     fun offerNeeded(): Boolean
 
-    /** Writes the archive to [destination], and closes it. */
-    suspend fun save(destination: OutputStream): WriteLegacyArchive.Result
+    /** Writes the archive to [destination] (such as a file the user picked), and closes it. */
+    suspend fun save(destination: RawSink): WriteLegacyArchive.Result
 
     /** Records the user's choice, then deletes what may now go. */
     suspend fun choose(saved: Boolean): DeleteLegacyProjects.Result
@@ -54,7 +54,7 @@ class JournalLegacyArchive(
         data.archive == null && data.projects.values.any { it.state.deletable }
     }
 
-    override suspend fun save(destination: OutputStream) = writeArchive.execute(destination)
+    override suspend fun save(destination: RawSink) = writeArchive.execute(SinkOutputStream(destination))
 
     override suspend fun choose(saved: Boolean): DeleteLegacyProjects.Result {
         val data = journal.load()

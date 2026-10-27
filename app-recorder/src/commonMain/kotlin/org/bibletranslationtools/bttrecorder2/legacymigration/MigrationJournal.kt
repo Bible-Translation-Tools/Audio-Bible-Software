@@ -89,15 +89,23 @@ data class JournalEntry(
     val location: String,
     val state: JournalState,
     val attempts: Int = 0,
-    /** Chapters it contributed to verified chapter takes. */
-    val chaptersMoved: Int = 0,
+    /** The chapters it contributed chapter takes to. */
+    val movedChapters: List<Int> = emptyList(),
     /** Its recordings are in the new app, even if it was kept for something left out. */
     val imported: Boolean = false,
     val reasons: List<JournalReason> = emptyList(),
     /** Whether the summary has told the user about [state]. */
     val reported: Boolean = false,
     val updatedAt: Long = 0
-)
+) {
+    val chaptersMoved: Int get() = movedChapters.size
+
+    /**
+     * The book in its target language, `<lang>/<book>`: the same for every version label of it, which
+     * the migration combines into one project.
+     */
+    val book: String get() = location.split('/').let { "${it.first()}/${it.last()}" }
+}
 
 @Serializable
 enum class JournalState(val terminal: Boolean, val deletable: Boolean) {

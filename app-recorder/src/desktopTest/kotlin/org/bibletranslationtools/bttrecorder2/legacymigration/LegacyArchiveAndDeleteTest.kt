@@ -1,7 +1,8 @@
 package org.bibletranslationtools.bttrecorder2.legacymigration
 
 import kotlinx.coroutines.runBlocking
-import java.io.ByteArrayOutputStream
+import kotlinx.io.Buffer
+import kotlinx.io.readByteArray
 import java.io.File
 import java.nio.file.Files
 import java.util.zip.ZipInputStream
@@ -40,10 +41,10 @@ class LegacyArchiveAndDeleteTest {
         val stray = old.takeFile("aa", "ulb", "jas", 1, "stray.wav").also { it.writeText("audio") }
         journal.write(JournalData())
 
-        val bytes = ByteArrayOutputStream()
+        val bytes = Buffer()
         val result = archive.save(bytes)
 
-        val entries = ZipInputStream(bytes.toByteArray().inputStream()).use { zip ->
+        val entries = ZipInputStream(bytes.readByteArray().inputStream()).use { zip ->
             generateSequence { zip.nextEntry }.map { it.name }.toSet()
         }
         val expected = (james.files + obs.files + stray).map { "translations/${it.relativeTo(old.translations).invariantSeparatorsPath}" } +

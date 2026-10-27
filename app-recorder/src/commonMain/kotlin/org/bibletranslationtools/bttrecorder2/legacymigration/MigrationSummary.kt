@@ -13,8 +13,11 @@ data class MigrationSummary(
     /** Projects not done yet, which a later launch or version tries again. */
     val waiting: List<JournalEntry>
 ) {
-    val chaptersMoved: Int get() = moved.sumOf { it.chaptersMoved }
-    val booksMoved: Int get() = moved.map { it.location }.distinct().size
+    /** Each chapter once, though several version labels of a book may each have moved a take of it. */
+    val chaptersMoved: Int get() = moved.flatMap { entry -> entry.movedChapters.map { entry.book to it } }.distinct().size
+
+    /** Each book in each target language once, whatever version labels it was recorded under. */
+    val booksMoved: Int get() = moved.map { it.book }.distinct().size
     val isEmpty: Boolean get() = moved.isEmpty() && kept.isEmpty() && waiting.isEmpty()
 }
 

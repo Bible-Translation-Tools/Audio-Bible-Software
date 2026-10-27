@@ -9,13 +9,9 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,6 +22,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import org.bibletranslationtools.bttrecorder2.ui.components.LazyColumnWithScrollbar
 import org.bibletranslationtools.bttrecorder2.ui.components.ProgressPieView
 import org.bibletranslationtools.bttrecorder2.ui.components.EditionChangeDialog
+import org.bibletranslationtools.bttrecorder2.ui.components.TakeBrowserPanel
+import org.bibletranslationtools.bttrecorder2.ui.components.TakeCount
 import org.bibletranslationtools.bttrecorder2.ui.components.sourceEditionText
 import org.bibletranslationtools.otter.common.domain.collections.BookEditionState
 import org.bibletranslationtools.shared.resources.edition_banner_review
@@ -50,7 +48,6 @@ import org.bibletranslationtools.shared.resources.action_delete
 import org.bibletranslationtools.shared.resources.action_back
 import org.bibletranslationtools.shared.resources.cd_record_chapter
 import org.bibletranslationtools.shared.resources.cd_delete_chapter_take
-import org.bibletranslationtools.shared.resources.cd_open_in_playback
 import org.bibletranslationtools.shared.resources.action_loading
 import org.bibletranslationtools.shared.resources.error_prefix
 import org.bibletranslationtools.shared.resources.cd_chapter_compiled
@@ -58,8 +55,6 @@ import org.bibletranslationtools.shared.resources.cd_compile_chapter
 import org.bibletranslationtools.shared.resources.cd_compile_chapter_not_ready
 import org.bibletranslationtools.shared.resources.action_collapse
 import org.bibletranslationtools.shared.resources.cd_expand_chapter_take
-import org.bibletranslationtools.shared.resources.action_pause
-import org.bibletranslationtools.shared.resources.action_play
 import org.bibletranslationtools.shared.resources.main_chapter_label
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -93,6 +88,8 @@ fun ChapterListScreen(
         onChapterExpand = viewModel::prepareChapterPlayback,
         onChapterPlayPause = viewModel::toggleChapterPlayback,
         onChapterDeleteRequest = { chapter -> pendingDeleteChapter = chapter },
+        onChapterSelectTake = viewModel::selectChapterTake,
+        onChapterCycleTake = viewModel::cycleChapterTake,
         onOpenChapterPlayback = onOpenChapterPlayback
     )
 
@@ -152,6 +149,8 @@ fun ChapterListContent(
     onChapterExpand: (Chapter) -> Unit = {},
     onChapterPlayPause: (Chapter) -> Unit = {},
     onChapterDeleteRequest: (Chapter) -> Unit = {},
+    onChapterSelectTake: (Chapter) -> Unit = {},
+    onChapterCycleTake: (Chapter, Int) -> Unit = { _, _ -> },
     onOpenChapterPlayback: (chapterSort: Int, takeNumber: Int) -> Unit = { _, _ -> },
     onReviewEdition: () -> Unit = {}
 ) {
@@ -210,8 +209,11 @@ fun ChapterListContent(
                             }
                         }
                         items(uiState.chapters, key = { it.chapter.sort }) { uiModel ->
-                            val isLoadedHere =
-                                uiState.loadedChapterSort == uiModel.chapter.sort
+                            val currentTakeIndex = uiState.currentTakeIndices[uiModel.chapter.sort] ?: 0
+                            val currentTake = uiModel.takes.getOrNull(currentTakeIndex)
+                            // The player holds the take this card is showing.
+                            val isLoadedHere = currentTake != null &&
+                                uiState.loadedTakePath == currentTake.file.absolutePath
                             val isPlayingThis = isLoadedHere && uiState.isChapterPlaying
                             val isCompilingThis =
                                 uiState.compilingChapterSort == uiModel.chapter.sort
@@ -222,12 +224,13 @@ fun ChapterListContent(
                             ChapterItem(
                                 uiModel = uiModel,
                                 heldBack = uiState.editionState?.heldBackChapters?.contains(uiModel.chapter.sort) == true,
+                                currentTakeIndex = currentTakeIndex,
                                 isExpanded = isExpanded,
                                 isCompiling = isCompilingThis,
                                 isPlaying = isPlayingThis,
                                 // Use the loaded-here values so the slider /
                                 // duration label survive a pause (the take is
-                                // still in the player). When a different chapter
+                                // still in the player). When a different take
                                 // is loaded, fall back to zeros.
                                 playbackProgress = if (isLoadedHere) uiState.playbackProgress else 0f,
                                 elapsedText = if (isLoadedHere) uiState.elapsedText else "00:00:00",
@@ -260,10 +263,12 @@ fun ChapterListContent(
                                 onPlayPause = { onChapterPlayPause(uiModel.chapter) },
                                 onDelete = { onChapterDeleteRequest(uiModel.chapter) },
                                 onOpenPlayback = {
-                                    uiModel.chapterTakeNumber?.let { takeNumber ->
-                                        onOpenChapterPlayback(uiModel.chapter.sort, takeNumber)
+                                    currentTake?.let { take ->
+                                        onOpenChapterPlayback(uiModel.chapter.sort, take.number)
                                     }
-                                }
+                                },
+                                onSelectTake = { onChapterSelectTake(uiModel.chapter) },
+                                onCycleTake = { direction -> onChapterCycleTake(uiModel.chapter, direction) }
                             )
                             HorizontalDivider()
                         }
@@ -312,6 +317,8 @@ fun ChapterItem(
     uiModel: ChapterUiModel,
     /** The chapter keeps an earlier edition's verse structure (held back on an upgrade). */
     heldBack: Boolean = false,
+    /** Which of [ChapterUiModel.takes] the expanded card shows. */
+    currentTakeIndex: Int = 0,
     isExpanded: Boolean,
     isCompiling: Boolean,
     isPlaying: Boolean,
@@ -324,7 +331,9 @@ fun ChapterItem(
     onExpandToggle: () -> Unit,
     onPlayPause: () -> Unit,
     onDelete: () -> Unit,
-    onOpenPlayback: () -> Unit = {}
+    onOpenPlayback: () -> Unit = {},
+    onSelectTake: () -> Unit = {},
+    onCycleTake: (Int) -> Unit = {}
 ) {
     // Un-gray the chapter when it has any recorded audio — either a compiled/recorded
     // chapter take or at least one verse take.
@@ -364,6 +373,11 @@ fun ChapterItem(
                         color = MaterialTheme.colorScheme.tertiary
                     )
                 }
+            }
+
+            if (uiModel.hasChapterTake) {
+                TakeCount(uiModel.takes.size)
+                Spacer(modifier = Modifier.width(8.dp))
             }
 
             ProgressPieView(
@@ -439,83 +453,24 @@ fun ChapterItem(
             }
         }
 
-        // Expanded body — playback row for the compiled chapter take. Visible
+        // Expanded body — the chapter's takes, browsed like a verse card's. Visible
         // only when the user toggled it open and a chapter take exists.
         if (isExpanded) {
-            ChapterTakePlaybackRow(
+            TakeBrowserPanel(
+                takes = uiModel.takes,
+                currentIndex = currentTakeIndex,
+                selectedTake = uiModel.selectedTake,
                 isPlaying = isPlaying,
                 playbackProgress = playbackProgress,
                 elapsedText = elapsedText,
                 durationText = durationText,
+                deleteDescription = Res.string.cd_delete_chapter_take,
                 onPlayPause = onPlayPause,
                 onDelete = onDelete,
-                onOpenPlayback = onOpenPlayback
+                onOpenPlayback = onOpenPlayback,
+                onSelectTake = onSelectTake,
+                onCycle = onCycleTake
             )
-        }
-    }
-}
-
-@Composable
-private fun ChapterTakePlaybackRow(
-    isPlaying: Boolean,
-    playbackProgress: Float,
-    elapsedText: String,
-    durationText: String,
-    onPlayPause: () -> Unit,
-    onDelete: () -> Unit,
-    onOpenPlayback: () -> Unit = {}
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 12.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = elapsedText,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.width(64.dp)
-            )
-            Slider(
-                value = playbackProgress.coerceIn(0f, 1f),
-                onValueChange = {},
-                modifier = Modifier.weight(1f),
-                enabled = false
-            )
-            Text(
-                text = durationText,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.width(64.dp)
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onDelete) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = stringResource(Res.string.cd_delete_chapter_take),
-                    tint = MaterialTheme.colorScheme.onSurface
-                )
-            }
-            IconButton(onClick = onOpenPlayback) {
-                Icon(
-                    Icons.Default.GraphicEq,
-                    contentDescription = stringResource(Res.string.cd_open_in_playback),
-                    tint = MaterialTheme.colorScheme.onSurface
-                )
-            }
-            Spacer(modifier = Modifier.weight(1f))
-            FilledIconButton(onClick = onPlayPause) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (isPlaying) stringResource(Res.string.action_pause) else stringResource(Res.string.action_play)
-                )
-            }
-            Spacer(modifier = Modifier.weight(1f))
         }
     }
 }
@@ -529,7 +484,6 @@ fun ChapterItemPreview() {
                 chapter = MockData.createMockChapter(1, "Chapter 1", "1"),
                 hasContent = true,
                 progress = 0.08f,
-                hasChapterTake = false,
                 canCompile = false
             ),
             isExpanded = false,
@@ -551,7 +505,6 @@ fun ChapterItemPreview() {
                 chapter = MockData.createMockChapter(2, "Chapter 2", "2"),
                 hasContent = false,
                 progress = 0f,
-                hasChapterTake = false,
                 canCompile = false
             ),
             isExpanded = false,

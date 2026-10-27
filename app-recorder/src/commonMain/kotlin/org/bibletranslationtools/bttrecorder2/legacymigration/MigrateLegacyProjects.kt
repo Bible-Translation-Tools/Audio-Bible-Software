@@ -197,13 +197,13 @@ class MigrateLegacyProjects(
         val id = member.legacyProject.id
         val ownTakes = backup.takes.filter { it.plan.legacyProjectId == id }
         val problems = member.problems + ownTakes.flatMap { it.problems }
-        val chapters = ownTakes.filterIsInstance<ChapterTakeOutcome.Written>().map { it.chapter }.distinct().size
+        val chapters = ownTakes.filterIsInstance<ChapterTakeOutcome.Written>().map { it.chapter }.distinct().sorted()
         val leftOut = ownTakes.any { it is ChapterTakeOutcome.LeftOut } || problems.any { it.blocksDeletion }
         run.record(
             member.legacyProject,
             if (leftOut) JournalState.KEPT else JournalState.VERIFIED,
             problems.map(JournalReasons::of)
-        ) { it.copy(imported = true, chaptersMoved = chapters) }
+        ) { it.copy(imported = true, movedChapters = chapters) }
     }
 
     private fun reasonsFor(member: LegacyProjectPlan, backup: WriteMigrationBackup.Result): List<JournalReason> =

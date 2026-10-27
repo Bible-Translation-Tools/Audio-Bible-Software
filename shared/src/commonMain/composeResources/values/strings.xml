@@ -167,7 +167,7 @@
     <string name="chapter_compile_warning_title">Warning</string>
     <string name="chapter_compile_warning_message">Compile all units into one chapter audio?</string>
     <string name="chapter_delete_take_title">Delete chapter take?</string>
-    <string name="chapter_delete_take_message">This will remove the compiled audio for %1$s. The verse takes are not affected.</string>
+    <string name="chapter_delete_take_message">This will delete the take of %1$s you\'re viewing. The verse takes are not affected.</string>
     <string name="cd_record_chapter">Record Chapter</string>
     <string name="cd_delete_chapter_take">Delete chapter take</string>
     <string name="cd_chapter_compiled">Chapter compiled</string>
@@ -185,6 +185,8 @@
     <string name="cd_next_take">Next Take</string>
     <string name="unit_verse_label">Verse %1$s</string>
     <string name="unit_take_position">Take %1$d of %2$d</string>
+    <!-- How many takes a verse or chapter has, beside its title: "×3". -->
+    <string name="take_count_short">×%1$d</string>
 
     <!-- ───────────── Recorder ───────────── -->
     <string name="recorder_label_chapter">Chapter</string>
