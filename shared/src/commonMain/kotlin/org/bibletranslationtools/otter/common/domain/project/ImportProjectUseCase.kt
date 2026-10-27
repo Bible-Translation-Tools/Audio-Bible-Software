@@ -42,8 +42,6 @@ import org.bibletranslationtools.otter.common.api.persistence.IFileIOFactory
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import java.io.File
 import java.lang.IllegalArgumentException
-import kotlinx.serialization.builtins.ListSerializer
-import org.bibletranslationtools.otter.common.OTTER_JSON
 
 // Packaged resource paths, resolved through IBundledContentSource. They are relative to the
 // resources root with no leading prefix; how that root is packaged (today: Compose
@@ -112,25 +110,34 @@ class ImportProjectUseCase(
             .ignoreElement()
     }
 
+    /**
+     * M5(d) fix: was reading through `javaClass.classLoader.getResource(...)`, a plain JVM
+     * classpath lookup — but the bundled GL zips are Compose Multiplatform resources, which
+     * [ComposeBundledContentSource][org.bibletranslationtools.shared.content.ComposeBundledContentSource]'s
+     * own KDoc spells out are deliberately NOT on the JVM classpath (`ClassLoader.getResource`
+     * returns null for them; only [IBundledContentSource.readBlocking] reaches them). That made
+     * [sideloadSource] throw a `NullPointerException` the moment anything actually called it —
+     * dead code in practice, only ever exercised by a mocked unit test
+     * ([org.bibletranslationtools.orature.ui.viewmodels.OratureProjectWizardViewModelTest]) that
+     * never touched a real bundle. Discovered while building `CreateProjectFromWacs` (M5(d)), which
+     * needs this path to actually work to sideload a bundled source on demand. Fixed by routing
+     * through the [bundledContent]/[glSourceCatalog] ports this class already took as constructor
+     * parameters but never used — the same pattern [GlSourceCatalog] already established, not a new
+     * one.
+     */
     private fun getEmbeddedSource(language: Language): File {
-        val resourceName = glSources.find { it.languageCode == language.slug }?.name
-        val pathToSource = org.bibletranslationtools.otter.common.domain.project.SOURCE_PATH_TEMPLATE.format(resourceName)
+        val resourceName = glSourceCatalog.sources.find { it.languageCode == language.slug }?.name
+            ?: throw IllegalArgumentException("No bundled gateway-language source for '${language.slug}'")
+        val pathToSource = SOURCE_PATH_TEMPLATE.format(resourceName)
+        val bytes = bundledContent.readBlocking(pathToSource)
 
-        val sourceFile = javaClass
-            .classLoader
-            .getResource(pathToSource)
-            .openStream()
-            .use { input ->
-                val tempFile = File.createTempFile(
-                    resourceName,
-                    ".zip",
-                    tempFiles.tempDirectory
-                )
-                tempFile.outputStream().use { output ->
-                    input.copyTo(output)
-                }
-                tempFile
-            }
+        val sourceFile = File.createTempFile(
+            resourceName,
+            ".zip",
+            tempFiles.tempDirectory
+        ).also { tempFile ->
+            tempFile.outputStream().use { output -> output.write(bytes) }
+        }
 
         return sourceFile
     }
@@ -169,18 +176,6 @@ class ImportProjectUseCase(
             else -> throw Exception("Unsupported project format.")
         }
         return factory.makeImporter()
-    }
-
-    companion object {
-        val glSources: List<ResourceInfoSerializable> by lazy {
-            javaClass.classLoader.getResource(org.bibletranslationtools.otter.common.domain.project.SOURCES_JSON_FILE)!!
-                .openStream().use { stream ->
-                    val sources: List<ResourceInfoSerializable> = OTTER_JSON.decodeFromString(
-                        ListSerializer(ResourceInfoSerializable.serializer()), stream.readBytes().decodeToString()
-                    )
-                    sources
-                }
-        }
     }
 }
 
