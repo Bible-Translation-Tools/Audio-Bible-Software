@@ -13,6 +13,7 @@ import org.bibletranslationtools.otter.common.domain.wacs.git.IWacsGitClient
 import org.bibletranslationtools.otter.common.domain.wacs.git.JGitWacsGitClient
 import org.bibletranslationtools.otter.common.domain.wacs.lfs.LfsBatchClient
 import org.bibletranslationtools.otter.common.domain.wacs.usecase.CloneWacsRepo
+import org.bibletranslationtools.otter.common.domain.wacs.usecase.CreateProjectFromWacs
 import org.bibletranslationtools.otter.common.domain.wacs.usecase.ImportPulledChapterAsSource
 import org.bibletranslationtools.otter.common.domain.wacs.usecase.ListWacsRepos
 import org.bibletranslationtools.otter.common.domain.wacs.usecase.PublishChapterToWacs
@@ -83,4 +84,10 @@ val wacsModule = module {
     // the matching local project instead of as source audio; see its KDoc for the take-model and
     // checksum/dedup reconciliation this was designed against.
     single { RestoreChapterFromWacs(get(), get(), get(), get(), get()) }
+
+    // M5(d): the device-loss restore case — create the matching local project (source-text
+    // resolution + the existing CreateProject machinery, never reinvented) then restore every
+    // chapter into it via the RestoreChapterFromWacs single above. See its KDoc for the resolution
+    // boundary (NARRATION only, bundled/already-imported source only, no guessing).
+    single { CreateProjectFromWacs(get(), get(), get(), get(), get(), get(), get()) }
 }

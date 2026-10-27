@@ -17,6 +17,7 @@ import org.bibletranslationtools.otter.common.domain.project.importer.RCImporter
 import org.bibletranslationtools.otter.common.domain.wacs.auth.WacsSession
 import org.bibletranslationtools.otter.common.domain.wacs.git.IWacsGitClient
 import org.bibletranslationtools.otter.common.domain.wacs.usecase.CloneWacsRepo
+import org.bibletranslationtools.otter.common.domain.wacs.usecase.CreateProjectFromWacs
 import org.bibletranslationtools.otter.common.domain.wacs.usecase.RestoreChapterFromWacs
 import io.reactivex.Observable
 import org.bibletranslationtools.otter.common.data.ProgressStatus
@@ -104,6 +105,9 @@ class IntegrationEnvironment private constructor(
     val wacsGitClient: IWacsGitClient = koin.get()
     val cloneWacsRepo: CloneWacsRepo = koin.get()
     val restoreChapterFromWacs: RestoreChapterFromWacs = koin.get()
+
+    /** M5(d): device-loss project creation — see `wacs/CreateProjectFromWacsIntegrationTest`. */
+    val createProjectFromWacs: CreateProjectFromWacs = koin.get()
 
     private val importerFactory: RCImporterFactory = koin.get()
 

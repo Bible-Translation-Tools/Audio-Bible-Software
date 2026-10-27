@@ -70,6 +70,8 @@ import org.bibletranslationtools.shared.resources.wacs_pull_back_to_repos
 import org.bibletranslationtools.shared.resources.wacs_pull_book_chapters_label
 import org.bibletranslationtools.shared.resources.wacs_pull_chapter_button
 import org.bibletranslationtools.shared.resources.wacs_pull_chapter_label
+import org.bibletranslationtools.shared.resources.wacs_pull_create_and_restore_button
+import org.bibletranslationtools.shared.resources.wacs_pull_creating_project
 import org.bibletranslationtools.shared.resources.wacs_pull_matched_project
 import org.bibletranslationtools.shared.resources.wacs_pull_no_matching_project
 import org.bibletranslationtools.shared.resources.wacs_pull_no_scope
@@ -251,7 +253,7 @@ private fun RepoListSection(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(repo.name, style = MaterialTheme.typography.bodyMedium)
+                        Text(repo.fullName, style = MaterialTheme.typography.bodyMedium)
                         TextButton(onClick = { onSelectRepo(repo) }) {
                             Text(stringResource(Res.string.wacs_pull_repo_select_button))
                         }
@@ -307,6 +309,11 @@ private fun RepoScopeSection(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.error
                         )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        CreateProjectAndRestoreButton(
+                            isCreating = state.isCreatingProject,
+                            onClick = viewModel::createProjectAndRestore,
+                        )
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                 }
@@ -337,6 +344,32 @@ private fun RepoScopeSection(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * M5(d): shown next to [Res.string.wacs_pull_no_matching_project] — the device-loss follow-up.
+ * Runs [org.bibletranslationtools.bttrecorder2.ui.viewmodels.WacsPullViewModel.createProjectAndRestore],
+ * which may fail cleanly with [org.bibletranslationtools.otter.common.domain.wacs.usecase.WacsPullException.Reason.SOURCE_UNAVAILABLE]
+ * rather than guessing a source — see that use case's KDoc.
+ */
+@Composable
+private fun CreateProjectAndRestoreButton(isCreating: Boolean, onClick: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        if (isCreating) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(16.dp).padding(end = 8.dp),
+                strokeWidth = 2.dp
+            )
+            Text(
+                text = stringResource(Res.string.wacs_pull_creating_project),
+                style = MaterialTheme.typography.bodyMedium
+            )
+        } else {
+            Button(onClick = onClick) {
+                Text(stringResource(Res.string.wacs_pull_create_and_restore_button))
             }
         }
     }

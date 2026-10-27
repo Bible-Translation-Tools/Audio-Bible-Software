@@ -83,6 +83,37 @@ object WacsRepoLayout {
     fun alignmentIngredientPath(bookSlug: String, chapterNumber: Int): String =
         "ingredients/$bookSlug/${chapterSegment(chapterNumber)}.alignment.json"
 
+    /**
+     * The reverse of [repoName]/[repoNameOrNull]: given [repoName] plus the target-language slug
+     * and book slug **already known independently of parsing this same string** (from
+     * `metadata.json`'s `languages[].tag` — see [WacsScopeReader.readLanguageTags] — and the
+     * `ingredients{}` scope — see [WacsScopeReader.read]), extracts the middle "edition"
+     * (resource-identifier) segment, e.g. `"ulb"` out of `"audio-en-ulb-mrk"`.
+     *
+     * This is deliberately NOT a general `"audio-<lang>-<edition>-<book>".split('-')` parser:
+     * several real gateway-language slugs in this app's own catalog contain hyphens themselves
+     * (`es-419`, `pt-br`, `ar-x-dcv`, ...), so the naming rule is ambiguous to parse in isolation —
+     * `audio-es-419-ulb-mrk` could just as easily be lang `es` + edition `419-ulb` as lang `es-419`
+     * + edition `ulb`. Requiring the caller to already know [languageSlug] and [bookSlug] from a
+     * source *other than this string* (metadata.json's own fields) removes the ambiguity: what's
+     * left in the middle once the known prefix/suffix are stripped IS the edition, unambiguously.
+     *
+     * Returns null if [repoName] doesn't actually start with `audio-$languageSlug-` and end with
+     * `-$bookSlug` (case-insensitively) — e.g. a metadata.json whose `languages` tag disagrees with
+     * the repo's own name, which should not be trusted to guess a source from either.
+     */
+    fun editionFromRepoName(repoName: String, languageSlug: String, bookSlug: String): String? {
+        val lang = languageSlug.lowercase(Locale.US)
+        val book = bookSlug.lowercase(Locale.US)
+        val name = repoName.lowercase(Locale.US)
+        val prefix = "audio-$lang-"
+        val suffix = "-$book"
+        if (!name.startsWith(prefix) || !name.endsWith(suffix) || name.length <= prefix.length + suffix.length) {
+            return null
+        }
+        return name.removePrefix(prefix).removeSuffix(suffix).takeIf { it.isNotBlank() }
+    }
+
     const val METADATA_PATH = "metadata.json"
     const val GITATTRIBUTES_PATH = ".gitattributes"
 

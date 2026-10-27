@@ -33,6 +33,7 @@ import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoRepo
 import org.bibletranslationtools.otter.common.domain.wacs.layout.WacsChapterIngredient
 import org.bibletranslationtools.otter.common.domain.wacs.layout.WacsRepoLayout
 import org.bibletranslationtools.otter.common.domain.wacs.usecase.CloneWacsRepo
+import org.bibletranslationtools.otter.common.domain.wacs.usecase.CreateProjectFromWacs
 import org.bibletranslationtools.otter.common.domain.wacs.usecase.ListWacsRepos
 import org.bibletranslationtools.otter.common.domain.wacs.usecase.RestoreChapterFromWacs
 import org.bibletranslationtools.otter.common.domain.wacs.usecase.WacsPullException
@@ -47,6 +48,7 @@ import org.bibletranslationtools.shared.resources.wacs_pull_error_no_matching_pr
 import org.bibletranslationtools.shared.resources.wacs_pull_error_no_scope
 import org.bibletranslationtools.shared.resources.wacs_pull_error_not_authenticated
 import org.bibletranslationtools.shared.resources.wacs_pull_error_repo_not_found
+import org.bibletranslationtools.shared.resources.wacs_pull_error_source_unavailable
 
 /**
  * M3.1: drives the "Restore from WACS" flow — list the `AudioTranslation` org's repos, open (clone +
@@ -54,9 +56,11 @@ import org.bibletranslationtools.shared.resources.wacs_pull_error_repo_not_found
  * restore chapters into it one at a time as new **takes** via [RestoreChapterFromWacs] — see that
  * class's KDoc for the take-model/checksum reconciliation this was built against.
  *
- * v1 restores into an EXISTING matching project only ([WacsRepoLayout.repoNameOrNull] vs each local
- * project's own computed repo name) — there is deliberately no "create a project from this repo"
- * path here (needs a source *text* to pair with, which this milestone does not resolve).
+ * [WacsRepoLayout.repoNameOrNull] matches a repo against each local project's own computed repo
+ * name; when none matches (the device-loss case — no local project at all), M5(d)'s
+ * [createProjectAndRestore] offers [CreateProjectFromWacs] as a follow-up action instead — see that
+ * class's KDoc for exactly when it can (bundled/already-imported NARRATION source only) and cannot
+ * (anything else) succeed.
  *
  * Kept deliberately separate from [WacsPublishViewModel] (a different direction of the same sync
  * feature) but shares the same login gate: [org.bibletranslationtools.bttrecorder2.ui.screens.WacsPullScreen]
@@ -67,6 +71,7 @@ class WacsPullViewModel(
     private val listWacsRepos: ListWacsRepos,
     private val cloneWacsRepo: CloneWacsRepo,
     private val restoreChapterFromWacs: RestoreChapterFromWacs,
+    private val createProjectFromWacs: CreateProjectFromWacs,
     private val workbookDescriptorRepository: IWorkbookDescriptorRepository,
 ) : ViewModel() {
 
@@ -103,16 +108,18 @@ class WacsPullViewModel(
                 scope = emptyMap(),
                 matchedProject = null,
                 projectResolved = false,
+                isCreatingProject = false,
                 chapterResults = emptyMap(),
             )
         }
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val opened = cloneWacsRepo.open(repo.name)
+                val opened = cloneWacsRepo.open(repo)
                 openedRepo = opened
                 val scopeForUi = opened.scope.books.mapValues { (_, chapters) -> chapters.map { it.chapterNumber } }
 
-                // v1: restore into an existing matching project only — no project creation here.
+                // If no local project matches, createProjectAndRestore() offers a follow-up action
+                // (see this class's KDoc) rather than creating one eagerly here.
                 val matched = workbookDescriptorRepository.getAllSuspend(computeSourceAudio = false)
                     .firstOrNull { WacsRepoLayout.repoNameOrNull(it) == repo.name }
 
@@ -142,6 +149,7 @@ class WacsPullViewModel(
                 scope = emptyMap(),
                 matchedProject = null,
                 projectResolved = false,
+                isCreatingProject = false,
                 restoringChapter = null,
                 chapterResults = emptyMap(),
                 error = null,
@@ -200,6 +208,53 @@ class WacsPullViewModel(
         }
     }
 
+    /**
+     * M5(d): the device-loss follow-up — no local project matched [selectRepo]'s repo, so create
+     * one via [CreateProjectFromWacs] and restore every chapter currently in scope into it. Only
+     * callable once a repo is opened and confirmed unmatched (mirrors [restoreChapter]'s own guards);
+     * see [CreateProjectFromWacs]'s KDoc for exactly when this can succeed vs. fail with
+     * [WacsPullException.Reason.SOURCE_UNAVAILABLE].
+     */
+    fun createProjectAndRestore() {
+        val opened = openedRepo ?: return
+        if (_state.value.matchedProject != null) return
+        if (_state.value.isCreatingProject || _state.value.restoringChapter != null) return
+
+        _state.update { it.copy(isCreatingProject = true, error = null, chapterResults = emptyMap()) }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val result = createProjectFromWacs.create(
+                    opened.repo, opened.workDir, opened.scope, _state.value.selectionPolicy,
+                )
+                val bookSlug = bookSlugOf(result.descriptor)
+                val chapterResults = result.chapterOutcomes.mapKeys { (chapterNumber, _) ->
+                    bookSlug to chapterNumber
+                }.mapValues { (_, outcome) ->
+                    when (outcome) {
+                        is CreateProjectFromWacs.ChapterOutcome.Restored -> ChapterRestoreResult.Restored
+                        CreateProjectFromWacs.ChapterOutcome.AlreadyPresent -> ChapterRestoreResult.AlreadyPresent
+                        is CreateProjectFromWacs.ChapterOutcome.Failed -> ChapterRestoreResult.Failed(localize(outcome.reason))
+                    }
+                }
+                _state.update {
+                    it.copy(
+                        isCreatingProject = false,
+                        matchedProject = result.descriptor,
+                        chapterResults = chapterResults,
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: WacsPullException) {
+                _state.update { it.copy(isCreatingProject = false, error = localize(e.reason)) }
+            } catch (e: Exception) {
+                _state.update { it.copy(isCreatingProject = false, error = getString(Res.string.wacs_pull_error_generic)) }
+            }
+        }
+    }
+
+    private fun bookSlugOf(descriptor: WorkbookDescriptor): String = descriptor.targetCollection.slug.uppercase()
+
     /** How restoring should treat the selected take when a chapter already has takes (see [RestoreChapterFromWacs.SelectionPolicy]). */
     fun setSelectionPolicy(policy: RestoreChapterFromWacs.SelectionPolicy) =
         _state.update { it.copy(selectionPolicy = policy) }
@@ -215,6 +270,7 @@ class WacsPullViewModel(
         WacsPullException.Reason.CHAPTER_NOT_FOUND -> getString(Res.string.wacs_pull_error_chapter_not_found)
         WacsPullException.Reason.INTEGRITY -> getString(Res.string.wacs_pull_error_integrity)
         WacsPullException.Reason.NO_MATCHING_PROJECT -> getString(Res.string.wacs_pull_error_no_matching_project)
+        WacsPullException.Reason.SOURCE_UNAVAILABLE -> getString(Res.string.wacs_pull_error_source_unavailable)
         WacsPullException.Reason.UNKNOWN -> getString(Res.string.wacs_pull_error_generic)
     }
 }
@@ -237,6 +293,8 @@ data class WacsPullUiState(
     val projectResolved: Boolean = false,
     /** The local project this repo restores into, or null if none matches (see [projectResolved]). */
     val matchedProject: WorkbookDescriptor? = null,
+    /** True while [WacsPullViewModel.createProjectAndRestore] is running. */
+    val isCreatingProject: Boolean = false,
     val restoringChapter: Pair<String, Int>? = null,
     val chapterResults: Map<Pair<String, Int>, ChapterRestoreResult> = emptyMap(),
     /** User choice: what restoring does to the selected take when a chapter already has takes. */

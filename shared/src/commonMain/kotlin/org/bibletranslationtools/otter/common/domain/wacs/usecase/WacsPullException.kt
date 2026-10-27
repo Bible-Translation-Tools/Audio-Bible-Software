@@ -22,10 +22,11 @@ package org.bibletranslationtools.otter.common.domain.wacs.usecase
  * A pull-as-source failure, classified into a small domain vocabulary the UI can localize — the M3
  * counterpart of [WacsPublishException] (which itself mirrors
  * [org.bibletranslationtools.otter.common.domain.wacs.auth.WacsAuthException]). [ListWacsRepos],
- * [CloneWacsRepo], and [PullChapter] are the only things that throw this; every JGit exception,
- * `retrofit2.HttpException`, and `java.io.IOException`/LFS transfer failure they can encounter is
- * caught and mapped to a [Reason] here, so the app/UI layer never depends on those transport types —
- * see the plan doc's "error-boundary rule".
+ * [CloneWacsRepo], [PullChapter], [RestoreChapterFromWacs], and (M5(d)) [CreateProjectFromWacs] are
+ * the only things that throw this; every JGit exception, `retrofit2.HttpException`, and
+ * `java.io.IOException`/LFS transfer failure they can encounter is caught and mapped to a [Reason]
+ * here, so the app/UI layer never depends on those transport types — see the plan doc's
+ * "error-boundary rule".
  */
 class WacsPullException(
     val reason: Reason,
@@ -56,11 +57,21 @@ class WacsPullException(
         /**
          * M3.1: no local project's target language/edition/book matches this repo's name (see
          * [org.bibletranslationtools.otter.common.domain.wacs.layout.WacsRepoLayout.repoNameOrNull]).
-         * v1 restores into an existing project only — creating one from a WACS repo needs a source
-         * *text* to pair it with, which this milestone does not resolve (see
-         * [org.bibletranslationtools.otter.common.domain.wacs.usecase.RestoreChapterFromWacs]'s KDoc).
+         * M5(d): the Restore UI offers [org.bibletranslationtools.otter.common.domain.wacs.usecase.CreateProjectFromWacs]
+         * as a follow-up action for this case — see its KDoc for when that can (and cannot) succeed.
          */
         NO_MATCHING_PROJECT,
+
+        /**
+         * M5(d): [org.bibletranslationtools.otter.common.domain.wacs.usecase.CreateProjectFromWacs]
+         * could not cleanly resolve or obtain the source *text* (RC) a new project would need to pair
+         * with this repo's audio — the repo's `metadata.json` doesn't identify a single
+         * language/book cleanly, the resolved language has no bundled or already-imported source at
+         * the resolved edition, or sideloading the bundled source failed. See that class's KDoc for
+         * the exact preconditions this covers; deliberately does NOT guess or fall back to a
+         * different edition/source.
+         */
+        SOURCE_UNAVAILABLE,
 
         /** Anything else. */
         UNKNOWN,

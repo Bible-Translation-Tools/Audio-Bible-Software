@@ -297,7 +297,10 @@
     <string name="wacs_pull_restore_failed">Couldn\'t restore chapter %1$d: %2$s</string>
     <string name="wacs_pull_no_scope">This repository has no chapters available yet.</string>
     <string name="wacs_pull_matched_project">Restoring into: %1$s</string>
-    <string name="wacs_pull_no_matching_project">No local project matches this repository yet. Create the project first (matching its language, edition and book), then come back here to restore into it.</string>
+    <string name="wacs_pull_no_matching_project">No local project matches this repository yet.</string>
+    <string name="wacs_pull_create_and_restore_button">Create project and restore</string>
+    <string name="wacs_pull_creating_project">Creating project…</string>
+    <string name="wacs_pull_project_created">Project created — restoring its chapters…</string>
     <string name="wacs_pull_selection_policy_label">When a chapter already has takes:</string>
     <string name="wacs_pull_selection_select_restored">Select the restored take</string>
     <string name="wacs_pull_selection_keep_current">Keep my current selection</string>
@@ -309,5 +312,6 @@
     <string name="wacs_pull_error_chapter_not_found">That chapter isn\'t available in this repository.</string>
     <string name="wacs_pull_error_integrity">The downloaded audio didn\'t verify correctly. Try again.</string>
     <string name="wacs_pull_error_no_matching_project">No local project matches this repository yet.</string>
+    <string name="wacs_pull_error_source_unavailable">Can\'t create a project for this repository automatically — its source text isn\'t available on this device.</string>
     <string name="wacs_pull_error_generic">Couldn\'t restore from WACS. Try again.</string>
 </resources>

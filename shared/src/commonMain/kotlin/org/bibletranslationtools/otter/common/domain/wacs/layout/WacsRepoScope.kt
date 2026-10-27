@@ -104,4 +104,26 @@ object WacsScopeReader {
 
         return WacsRepoScope(books)
     }
+
+    /**
+     * The repo's recorded-language slug(s), from `metadata.json`'s top-level `languages[].tag` —
+     * a Scripture-Burrito-**required** field (unlike `type`/`type_specific`'s `currentScope`, see
+     * this object's class KDoc) so it survives the same schema split unaffected: confirmed live
+     * against the prototype's `AudioTranslation/audio-en-ulb-mrk` manifest, whose `languages` array
+     * (`[{"tag": "en", ...}]`) is present and correct even though its `type_specific` wrapper is not
+     * what the vendored Burrito model expects.
+     *
+     * Used by [org.bibletranslationtools.otter.common.domain.wacs.usecase.CreateProjectFromWacs] to
+     * learn the target language independently of parsing the repo's own name (see
+     * [WacsRepoLayout.editionFromRepoName]'s KDoc for why that split matters) — not by
+     * [read]/[RestoreChapterFromWacs][org.bibletranslationtools.otter.common.domain.wacs.usecase.RestoreChapterFromWacs],
+     * which never needs to identify a project from scratch.
+     *
+     * @throws Exception if [metadataFile] isn't valid JSON — callers classify, same as [read].
+     */
+    fun readLanguageTags(metadataFile: File): List<String> {
+        val root = json.parseToJsonElement(metadataFile.readText()).jsonObject
+        val languages = root["languages"]?.jsonArray ?: return emptyList()
+        return languages.mapNotNull { it.jsonObject["tag"]?.jsonPrimitive?.contentOrNull }
+    }
 }
