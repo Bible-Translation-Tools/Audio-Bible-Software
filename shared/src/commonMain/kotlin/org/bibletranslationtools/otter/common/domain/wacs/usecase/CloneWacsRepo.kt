@@ -62,25 +62,17 @@ class CloneWacsRepo(
         val scope: WacsRepoScope,
     )
 
-    suspend fun open(repoName: String): Result {
+    /**
+     * Open (clone or refresh) the given [repo] — which may be an `AudioTranslation` org repo OR the
+     * user's OWN repo (see [ListWacsRepos]); the caller already has it from the picker, so we clone
+     * from ITS owner/URL rather than assuming the org. The cache dir is keyed by owner+name so an
+     * org repo and a same-named own repo don't collide.
+     */
+    suspend fun open(repo: ForgejoRepo): Result {
         val credential = session.credential
             ?: throw WacsPullException(WacsPullException.Reason.NOT_AUTHENTICATED)
-        val host = session.host ?: config.baseUrl
-        val api = apiFactory.create(host)
-        val auth = credential.authorizationHeader()
 
-        val repo = try {
-            api.getRepo(config.org, repoName, auth)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: HttpException) {
-            if (e.code() == 404) throw WacsPullException(WacsPullException.Reason.REPO_NOT_FOUND, e)
-            throw classifyHttp(e)
-        } catch (e: IOException) {
-            throw WacsPullException(WacsPullException.Reason.NETWORK, e)
-        }
-
-        val workDir = File(appDirectories.cacheDirectory, "wacs-pull/${config.org}/$repoName")
+        val workDir = File(appDirectories.cacheDirectory, "wacs-pull/${repo.owner.login}/${repo.name}")
         try {
             if (File(workDir, ".git").isDirectory) {
                 gitClient.fetchAndFastForward(workDir, credential, repo.defaultBranch)

@@ -27,9 +27,11 @@ import retrofit2.HttpException
 import java.io.IOException
 
 /**
- * M3: page through every repo in the `AudioTranslation` org (see [WacsConfig.org]) for the
- * repo-picker UI — the first step of "pull as source" (the plan doc, §8, M3). No fork/clone here;
- * this is a pure REST list, driving the picker before the user commits to cloning anything.
+ * Lists the repos the Restore picker offers: the `AudioTranslation` org's repos (see [WacsConfig.org])
+ * AND the authenticated user's own repos (owned + forks). The latter matters because publishing when
+ * no official repo exists yet lands under `<user>/<repo>`, and the user must be able to restore that;
+ * it also surfaces the user's forks. Merged and de-duplicated by full name (owner/name). Pure REST —
+ * no fork/clone here.
  */
 class ListWacsRepos(
     private val apiFactory: WacsApiFactory,
@@ -43,11 +45,19 @@ class ListWacsRepos(
         val api = apiFactory.create(host)
         val auth = credential.authorizationHeader()
 
+        // The user's own repos first (what they most likely came to restore), then the org's;
+        // de-dup by full name so a repo reachable via both paths appears once.
+        val own = pageAll { page -> api.listMyRepos(auth, page, PAGE_SIZE) }
+        val org = pageAll { page -> api.listOrgRepos(config.org, auth, page, PAGE_SIZE) }
+        return (own + org).distinctBy { it.fullName }
+    }
+
+    private suspend fun pageAll(fetch: suspend (Int) -> List<ForgejoRepo>): List<ForgejoRepo> {
         val all = mutableListOf<ForgejoRepo>()
         var page = 1
         while (true) {
             val batch = try {
-                api.listOrgRepos(config.org, auth, page, PAGE_SIZE)
+                fetch(page)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: HttpException) {

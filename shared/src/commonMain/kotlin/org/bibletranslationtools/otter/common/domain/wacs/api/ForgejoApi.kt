@@ -103,6 +103,18 @@ interface ForgejoApi {
         @Query("limit") limit: Int = 50,
     ): List<ForgejoRepo>
 
+    /**
+     * The authenticated user's own repos (owned + forks). Needed by the Restore picker so a user can
+     * restore work they published to their OWN repo (when no official `AudioTranslation/<repo>`
+     * existed yet), not only the org's repos.
+     */
+    @GET("api/v1/user/repos")
+    suspend fun listMyRepos(
+        @Header("Authorization") auth: String,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 50,
+    ): List<ForgejoRepo>
+
     companion object {
         /** WACS bot-blocks unknown clients (403); this header is on the allowlist (see build.gradle.kts). */
         const val WA_TOOL_HEADER = "X-Requested-With"
