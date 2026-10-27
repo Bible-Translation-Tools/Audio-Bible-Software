@@ -29,6 +29,8 @@ import org.bibletranslationtools.otter.common.device.AudioPlayerEvent
 import org.bibletranslationtools.otter.common.device.IAudioPlayer
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.content.ChapterTranslationBuilder
+import org.bibletranslationtools.otter.common.domain.collections.BookEditionState
+import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
 import org.jetbrains.compose.resources.getString
 import org.bibletranslationtools.shared.resources.Res
 import org.bibletranslationtools.shared.resources.err_no_active_project
@@ -60,6 +62,8 @@ data class ChapterListUiState(
     val chapters: List<ChapterUiModel> = emptyList(),
     val workbook: Workbook? = null,
     val error: String? = null,
+    /** The book's source edition, the editions it can move to, and its held-back chapters. */
+    val editionState: BookEditionState? = null,
 
     // Compile flow state — keyed by chapter.sort.
     val compilingChapterSort: Int? = null,
@@ -82,6 +86,7 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
     private val appPreferences: IAppPreferences by inject()
     private val audioConnectionFactory: AudioPlayerConnectionFactory by inject()
     private val chapterTranslationBuilder: ChapterTranslationBuilder by inject()
+    private val upgradeBookEdition: UpgradeBookEdition by inject()
 
     private val _uiState = MutableStateFlow(ChapterListUiState())
     val uiState: StateFlow<ChapterListUiState> = _uiState.asStateFlow()
@@ -151,6 +156,12 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
                 }
 
                 _uiState.update { it.copy(workbook = workbook) }
+                launchLogged(Dispatchers.IO) {
+                    val editions = runCatching { upgradeBookEdition.editionState(targetC.id) }
+                        .onFailure { logFailure("loading the book's editions", it) }
+                        .getOrNull()
+                    _uiState.update { it.copy(editionState = editions) }
+                }
 
                 coroutineScope {
                     workbook.target.chaptersFlow.collect { chapter ->
@@ -204,6 +215,19 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
                 _uiState.update { it.copy(isLoading = false, error = e.message ?: getString(Res.string.err_unknown)) }
             }
         }
+    }
+
+    /**
+     * Loads the list again from scratch, for after the book moved to another edition: its
+     * source, and the verses of the chapters that took on the new structure, are different.
+     */
+    fun reload() {
+        if (_uiState.value.loadedChapterSort != null) runCatching { audioPlayer.pause() }
+        stopProgressTicker()
+        loadingJob?.cancel()
+        loadingJob = null
+        _uiState.update { ChapterListUiState() }
+        loadChapters()
     }
 
     /**

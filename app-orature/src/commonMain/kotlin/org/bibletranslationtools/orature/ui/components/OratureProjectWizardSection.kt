@@ -1,5 +1,12 @@
 package org.bibletranslationtools.orature.ui.components
 
+import org.bibletranslationtools.otter.common.domain.collections.EditionRelation
+import org.bibletranslationtools.orature.resources.sameDateEdition
+import org.bibletranslationtools.orature.ui.viewmodels.OratureEditionOption
+import org.bibletranslationtools.orature.resources.selectSourceEditionStep
+import org.bibletranslationtools.orature.resources.selectSourceEditionHint
+import org.bibletranslationtools.orature.resources.newestEdition
+import org.bibletranslationtools.orature.resources.olderEdition
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -71,6 +78,7 @@ fun OratureProjectWizardSection(
     onLanguageSelected: (Language) -> Unit,
     onResourceVersionSelected: (OratureResourceVersion) -> Unit,
     onSourceSearchQueryChange: (String) -> Unit,
+    onEditionSelected: (OratureEditionOption) -> Unit = {},
     onTargetSearchQueryChange: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -122,6 +130,19 @@ fun OratureProjectWizardSection(
                         versions = state.resourceVersions,
                         onVersionSelected = onResourceVersionSelected
                     )
+                }
+
+                WizardStep.SELECT_EDITION -> {
+                    WizardHeader(title = Res.string.selectSourceEditionStep, onBack = onBack)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = stringResource(Res.string.selectSourceEditionHint),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    EditionTable(options = state.editionOptions, onEditionSelected = onEditionSelected)
                 }
             }
         }
@@ -322,6 +343,51 @@ private fun ResourceVersionTable(
                     )
                     Text(
                         text = version.slug.uppercase(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+            }
+        }
+    }
+}
+
+/**
+ * The edition step: every installed edition of the chosen resource, newest first. Clicking one
+ * creates the project from it.
+ */
+@Composable
+private fun EditionTable(
+    options: List<OratureEditionOption>,
+    onEditionSelected: (OratureEditionOption) -> Unit
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
+            items(options, key = { it.edition.id }) { option ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surface)
+                        .clickable { onEditionSelected(option) }
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = sourceEditionText(option.edition, option.code),
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = stringResource(
+                            when (option.relation) {
+                                EditionRelation.NEWER -> Res.string.newestEdition
+                                EditionRelation.OLDER -> Res.string.olderEdition
+                                EditionRelation.SAME_DATES -> Res.string.sameDateEdition
+                            }
+                        ),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

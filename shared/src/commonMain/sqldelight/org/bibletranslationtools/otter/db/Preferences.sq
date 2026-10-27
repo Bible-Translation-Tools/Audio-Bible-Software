@@ -1,4 +1,4 @@
--- Mirrors sql/CreateAppDb.sql `preferences`.
+-- Ported from the legacy (jOOQ) CreateAppDb.sql `preferences`.
 CREATE TABLE preferences (
     key                 TEXT NOT NULL UNIQUE,
     value               TEXT

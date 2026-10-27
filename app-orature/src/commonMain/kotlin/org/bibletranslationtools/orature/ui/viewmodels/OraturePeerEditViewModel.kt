@@ -1,5 +1,8 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
+import org.jetbrains.compose.resources.getString
+import org.bibletranslationtools.orature.resources.Res
+import org.bibletranslationtools.orature.resources.errUnknown
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -233,7 +236,7 @@ class OraturePeerEditViewModel(
                 throw e
             } catch (e: Exception) {
                 logFailure("loading the peer-edit chunk", e)
-                _uiState.value = OraturePeerEditUiState(hasChunk = true, error = e.message ?: "Unknown error")
+                _uiState.value = OraturePeerEditUiState(hasChunk = true, error = e.message ?: getString(Res.string.errUnknown))
             }
         }
     }

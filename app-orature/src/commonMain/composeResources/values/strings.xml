@@ -410,4 +410,103 @@
          Orature's first localized error string: until now every failure in these ViewModels went
          to stderr, so there was nothing to translate. Not yet present in the other locales. -->
     <string name="errOpenProject">Could not prepare this project\'s files, so it cannot be opened. See the log for details.</string>
+
+    <!-- Source editions (several installed editions of one source, such as ULB 12 and ULB 24-07).
+         English only for now; the other locales fall back to these. -->
+    <string name="selectSourceEditionStep">Pick an Edition</string>
+    <string name="selectSourceEditionHint">More than one edition of this source is installed. The newest is listed first.</string>
+    <!-- A source edition: identifier, version label, issue month and year, e.g. "ULB 12 · Nov 2017". -->
+    <string name="sourceEdition">%1$s %2$s · %3$s</string>
+    <!-- The same, with a short code telling apart two editions that would otherwise look the same. -->
+    <string name="sourceEditionWithCode">%1$s %2$s · %3$s · %4$s</string>
+    <string name="mixedEditions">Mixed editions</string>
+    <string name="newestEdition">Newest</string>
+    <string name="olderEdition">Older</string>
+    <string name="newerEdition">Newer</string>
+    <!-- Two editions with the same issued and modified dates but different content: neither is newer. -->
+    <string name="sameDateEdition">Same date, different content</string>
+    <string name="editionUpdateAvailable">Update available</string>
+    <string name="updateEdition">Update Edition</string>
+    <string name="changeEdition">Change Edition</string>
+    <string name="editionChangeTitle">Source Edition</string>
+    <string name="editionCurrent">Current: %1$s</string>
+    <string name="editionChangeHint">Choose the edition to use. Recordings are never deleted, and you can move back to an older edition later.</string>
+    <string name="editionNoOther">No other edition of this source is installed.</string>
+    <string name="editionChecking">Checking %1$d of %2$d books…</string>
+    <string name="editionPreviewTitle">Move to %1$s</string>
+    <string name="editionPreviewNothing">No chapter changes. The books will refer to the new edition.</string>
+    <string name="editionPreviewBooks">%1$d books move to this edition.</string>
+    <string name="editionPreviewWordingOnly">%1$d of them only have wording changes; their recordings stay as they are.</string>
+    <string name="editionPreviewUnavailable">Not in this edition, so left as they are: %1$s</string>
+    <string name="editionOutcomeTextOnly">Wording changed in %1$d verses. Recordings stay.</string>
+    <string name="editionOutcomeAdopts">Takes the new verse structure.</string>
+    <string name="editionOutcomeHeldBack">Keeps its current verse structure, because it has recordings.</string>
+    <string name="editionOutcomeMissing">Keeps its current verses. The new edition has no such chapter.</string>
+    <string name="editionOutcomeAdded">Added.</string>
+    <string name="editionOutcomeChunksReset">Its chunks will be removed; mark them again.</string>
+    <string name="editionChangeMerged">Verses %1$s combined into %2$s</string>
+    <string name="editionChangeSplit">Verse %1$s split into %2$s</string>
+    <string name="editionChangeRegrouped">Verses %1$s regrouped as %2$s</string>
+    <string name="editionChangeRenumbered">Verse %1$s is now %2$s</string>
+    <string name="editionChangeAdded">Verse %1$s added</string>
+    <string name="editionChangeRemoved">Verse %1$s removed</string>
+    <string name="editionChangeMovedOut">Verse %1$s moved to chapter %2$s</string>
+    <string name="editionChangeMovedIn">Verse %1$s moved here from chapter %2$s</string>
+    <string name="chapterNumber">Chapter %1$s</string>
+    <string name="editionApplying">Moving %1$d of %2$d books…</string>
+    <string name="editionDoneTitle">Edition Changed</string>
+    <string name="editionDoneMessage">Now using %1$s.</string>
+    <string name="editionHeldBackBook">%1$s: chapters %2$s keep the verse structure they were recorded with.</string>
+    <string name="editionHeldBackChapters">Chapters %1$s keep the verse structure they were recorded with.</string>
+    <string name="editionChangeFailed">The edition could not be changed: %1$s</string>
+    <string name="editionBannerUpdate">A newer edition of this source is installed: %1$s. Change it from the home screen.</string>
+    <string name="earlierVerses">Earlier verses</string>
+    <string name="exportMixedEditionsWarning">Chapters %1$s keep an earlier source edition\'s verses, so this export mixes verse structures.</string>
+    <string name="apply">Apply</string>
+
+    <!-- Resources drawer: installed source texts and source audio. English only for now. -->
+    <string name="resourcesTitle">Resources</string>
+    <string name="resourcesDescription">Source texts and source audio installed on this device. A resource can be removed when no project uses it.</string>
+    <string name="resourcesSummary">%1$d installed · %2$s</string>
+    <string name="resourcesEmpty">No resources are installed yet.</string>
+    <string name="resourceSize">%1$s</string>
+    <string name="resourceSizeWithAudio">%1$s, including %2$s of source audio</string>
+    <string name="resourceTypeBible">Bible</string>
+    <string name="resourceTypeHelp">Translation help</string>
+    <string name="resourceUsedBy">Used by projects in %1$s</string>
+    <string name="resourceHeldBack">%1$d project chapters keep its verses</string>
+    <string name="resourceLinkedTo">Linked to %1$s</string>
+    <string name="resourceUnused">Not used by any project</string>
+    <string name="removeResource">Remove</string>
+    <string name="removeResourceInUse">In use, so it can\'t be removed</string>
+    <string name="removeResourceTitle">Remove %1$s?</string>
+    <string name="removeResourceMessage">Its files (%1$s) will be deleted from this device. You can import it again later.</string>
+    <string name="resourceRemoved">Removed %1$s.</string>
+    <string name="resourceRemoveFailed">%1$s could not be removed.</string>
+    <string name="getResourcesTitle">Get More Resources</string>
+    <string name="getResourcesComingSoon">Finding and downloading resources is coming in a later version. For now, add them with Import.</string>
+    <string name="findResources">Find Resources</string>
+
+    <!-- Shown when something failed without a message of its own. -->
+    <string name="errUnknown">Unknown error</string>
+    <!-- Joins two items of a list; applied repeatedly for longer lists ("Genesis, Exodus, Leviticus"). -->
+    <string name="listJoin">%1$s, %2$s</string>
+    <string name="listItemBullet">• %1$s</string>
+    <!-- A language shown with its own name, e.g. "Russian (Русский)". -->
+    <string name="languageWithNativeName">%1$s (%2$s)</string>
+    <string name="resourceTitleWithType">%1$s · %2$s</string>
+    <string name="sizeMegabytes">%1$s MB</string>
+    <string name="sizeUnderOneMegabyte">under 1 MB</string>
+    <!-- java.time pattern for an edition's issue month, e.g. "MMM yyyy" gives "Nov 2017". -->
+    <string name="editionMonthPattern">MMM yyyy</string>
+    <string name="exportResourceDone">Exported %1$s to %2$s.</string>
+    <string name="exportResourceFailed">%1$s could not be exported.</string>
+    <!-- A backup of a book already on this device was merged into it. -->
+    <string name="importMergedMessage">%1$s (%2$s): %3$d recordings added as new takes.</string>
+    <string name="importMergedWithExistingMessage">%1$s (%2$s): %3$d recordings added as new takes; %4$d were already there.</string>
+    <!-- Why an import failed: %1$s is the generic "Import Failed", %2$s the importer's result code. -->
+    <string name="importFailedInvalidContent">%1$s (%2$s): the file\'s content is invalid or unreadable.</string>
+    <string name="importFailedUnsupported">%1$s (%2$s): this file type isn\'t supported.</string>
+    <string name="importFailedCannotOpen">%1$s (%2$s): the project could not be opened.</string>
+    <string name="importFailedWithCode">%1$s (%2$s)</string>
 </resources>

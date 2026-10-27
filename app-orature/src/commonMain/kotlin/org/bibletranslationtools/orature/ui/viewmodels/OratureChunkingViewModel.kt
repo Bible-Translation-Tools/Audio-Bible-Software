@@ -1,5 +1,8 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
+import org.jetbrains.compose.resources.getString
+import org.bibletranslationtools.orature.resources.Res
+import org.bibletranslationtools.orature.resources.errUnknown
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -217,7 +220,7 @@ class OratureChunkingViewModel(
                 throw e
             } catch (e: Exception) {
                 logFailure("loading the chunking screen", e)
-                _uiState.value = OratureChunkingUiState(isLoading = false, error = e.message ?: "Unknown error")
+                _uiState.value = OratureChunkingUiState(isLoading = false, error = e.message ?: getString(Res.string.errUnknown))
             }
         }
     }

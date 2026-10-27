@@ -1,5 +1,7 @@
 package org.bibletranslationtools.orature.ui.components
 
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import org.bibletranslationtools.orature.resources.resources
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -36,12 +38,12 @@ import org.bibletranslationtools.orature.resources.settings
 
 /** Which nav-rail destination is currently active, so the rail can highlight it. */
 enum class OratureNavDestination {
-    HOME, SETTINGS, INFO
+    HOME, RESOURCES, SETTINGS, INFO
 }
 
 /**
- * Orature's persistent left nav rail: Home pinned at the top, Settings + Info pinned at
- * the bottom, matching the real app's AppBar (VBox, primary-colored, icon+label toggle
+ * Orature's persistent left nav rail: Home pinned at the top, Resources, Settings + Info pinned
+ * at the bottom, matching the real app's AppBar (VBox, primary-colored, icon+label toggle
  * buttons, spacer pushing Settings/Info down). Lives in the home screen's Scaffold for
  * Phase 1; a fuller RootView shell will host it across all screens later.
  */
@@ -53,6 +55,7 @@ fun OratureNavRail(
     onHomeClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onInfoClick: () -> Unit,
+    onResourcesClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -72,6 +75,13 @@ fun OratureNavRail(
 
         Spacer(modifier = Modifier.weight(1f))
 
+        // Installed source texts and source audio: sizes, what uses them, removing unused ones.
+        OratureNavRailItem(
+            icon = Icons.AutoMirrored.Filled.MenuBook,
+            label = stringResource(Res.string.resources),
+            selected = selected == OratureNavDestination.RESOURCES,
+            onClick = onResourcesClick
+        )
         OratureNavRailItem(
             icon = Icons.Filled.Settings,
             label = stringResource(Res.string.settings),

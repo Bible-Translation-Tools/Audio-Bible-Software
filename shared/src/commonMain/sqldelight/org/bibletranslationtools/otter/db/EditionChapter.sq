@@ -1,0 +1,20 @@
+-- Per-chapter fingerprints of a source edition (schema v15). See EditionFingerprint.
+CREATE TABLE edition_chapter (
+    dublin_core_fk  INTEGER AS kotlin.Int NOT NULL REFERENCES dublin_core_entity(id) ON DELETE CASCADE,
+    chapter_slug    TEXT NOT NULL,
+    structure_hash  TEXT NOT NULL,
+    text_hash       TEXT NOT NULL,
+    PRIMARY KEY (dublin_core_fk, chapter_slug)
+);
+
+-- Queries for EditionChapterDao. -----------------------------------------------------------------
+
+insert:
+INSERT INTO edition_chapter (dublin_core_fk, chapter_slug, structure_hash, text_hash)
+VALUES (?, ?, ?, ?);
+
+deleteForEdition:
+DELETE FROM edition_chapter WHERE dublin_core_fk = ?;
+
+fetchForEdition:
+SELECT * FROM edition_chapter WHERE dublin_core_fk = ? ORDER BY chapter_slug;

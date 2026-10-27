@@ -1,5 +1,11 @@
 package org.bibletranslationtools.shared.di.koin
 
+import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
+import org.bibletranslationtools.otter.common.domain.collections.UpgradeProjectEdition
+import org.bibletranslationtools.otter.common.initialization.RefreshBundledSources
+import org.bibletranslationtools.otter.common.initialization.ReconcileEditionLabels
+import org.bibletranslationtools.otter.common.domain.project.BundledSourceStamps
+import org.bibletranslationtools.otter.common.domain.project.BackupEditions
 import org.bibletranslationtools.otter.common.audio.wav.IWaveFileCreator
 import org.bibletranslationtools.otter.common.audio.wav.WaveFileCreator
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
@@ -44,6 +50,16 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.DeleteRes
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito.BurritoToResourceContainerConverter
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito.ScriptureBurritoUtils
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.VersificationTreeBuilder
+import org.bibletranslationtools.otter.common.domain.project.importer.SourceStructurePlanner
+import org.bibletranslationtools.otter.common.domain.project.importer.EditionFingerprinter
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.InstalledSourceEditions
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionLifecycle
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.InstalledResources
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.ExportSourceEdition
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.DescribeSourceEditions
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.MatchEditionToRecordings
+import org.bibletranslationtools.otter.common.initialization.AuditSourceStructure
+import org.bibletranslationtools.otter.common.initialization.BackfillEditionFingerprints
 import org.bibletranslationtools.otter.common.initialization.InitializeApp
 import org.bibletranslationtools.otter.common.initialization.InitializeLanguages
 import org.bibletranslationtools.otter.common.initialization.InitializeProjects
@@ -117,6 +133,17 @@ val implicitCommonModule = module {
     // Resource Container
     factoryOf(::DeleteResourceContainer)
     factoryOf(::VersificationTreeBuilder)
+    factoryOf(::SourceStructurePlanner)
+    factoryOf(::EditionFingerprinter)
+    factoryOf(::InstalledSourceEditions)
+    factoryOf(::EditionLifecycle)
+    factoryOf(::InstalledResources)
+    factoryOf(::ExportSourceEdition)
+    factoryOf(::DescribeSourceEditions)
+    factoryOf(::MatchEditionToRecordings)
+    factoryOf(::UpgradeBookEdition)
+    factoryOf(::UpgradeProjectEdition)
+    factoryOf(::BackupEditions)
     factoryOf(::BurritoToResourceContainerConverter)
     factoryOf(::ScriptureBurritoUtils)
 
@@ -145,6 +172,11 @@ val implicitCommonModule = module {
     factoryOf(::InitializeTakeRepository)
     factoryOf(::InitializeProjects)
     factoryOf(::InitializeTranslations)
+    factoryOf(::AuditSourceStructure)
+    factoryOf(::BackfillEditionFingerprints)
+    factoryOf(::RefreshBundledSources)
+    factoryOf(::ReconcileEditionLabels)
+    factoryOf(::BundledSourceStamps)
 }
 
 // implicitViewModelModule (recorder ViewModels) lives in :app-recorder — each app owns

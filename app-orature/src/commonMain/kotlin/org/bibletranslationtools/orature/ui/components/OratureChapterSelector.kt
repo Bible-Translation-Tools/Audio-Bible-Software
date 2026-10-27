@@ -1,5 +1,9 @@
 package org.bibletranslationtools.orature.ui.components
 
+import androidx.compose.material.icons.filled.History
+import org.bibletranslationtools.orature.resources.Res
+import org.bibletranslationtools.orature.resources.earlierVerses
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -200,6 +204,18 @@ private fun ChapterCell(
         contentAlignment = Alignment.Center
     ) {
         Text(text = item.title, color = contentColor, fontWeight = FontWeight.SemiBold)
+        // Keeps an earlier source edition's verses (held back on an upgrade, O1-Q2).
+        if (item.heldBack) {
+            Icon(
+                Icons.Filled.History,
+                contentDescription = stringResource(Res.string.earlierVerses),
+                tint = if (item.selected) OratureColors.OnPrimary else OratureColors.Primary,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .size(12.dp)
+                    .background(background, CircleShape)
+            )
+        }
         if (item.completed) {
             Icon(
                 Icons.Filled.CheckCircle,

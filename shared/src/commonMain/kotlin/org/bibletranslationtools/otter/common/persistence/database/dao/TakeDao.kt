@@ -31,6 +31,10 @@ interface TakeDao {
     fun fetchByContentId(id: Int, includeDeleted: Boolean = false): List<TakeEntity>
     fun insert(entity: TakeEntity): Int
     fun fetchById(id: Int): TakeEntity
+    /** Moves take [id] to content row [contentId]. */
+    fun moveToContent(id: Int, contentId: Int)
+    /** Rewrites project [projectId]'s take paths under [oldPrefix] to start with [newPrefix]. */
+    fun rewritePathPrefix(projectId: Int, oldPrefix: String, newPrefix: String)
     fun fetchAll(): List<TakeEntity>
     fun update(entity: TakeEntity)
     fun delete(entity: TakeEntity)

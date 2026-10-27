@@ -1,5 +1,6 @@
 package org.bibletranslationtools.bttrecorder2.ui.viewmodels
 
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.structure.ReferenceAlignment
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -84,7 +85,8 @@ class PlaybackViewModel(
     private val saveAudioAsNewTake: SaveAudioAsNewTake,
     private val writeTakeMarkers: WriteTakeMarkers,
     private val audioBouncer: AudioBouncer,
-    private val audioRecorderFactory: AudioRecorderConnectionFactory
+    private val audioRecorderFactory: AudioRecorderConnectionFactory,
+    referenceAlignment: ReferenceAlignment
 ) : ViewModel() {
 
     data class TargetUiState(
@@ -178,7 +180,8 @@ class PlaybackViewModel(
 
     private val sourceAudioController = SourceAudioPlayerController(
         factory = audioPlayerFactory,
-        scope = viewModelScope
+        scope = viewModelScope,
+        referenceAlignment = referenceAlignment
     )
 
     val sourceAudioState: StateFlow<SourceAudioPlayerController.UiState> = sourceAudioController.uiState

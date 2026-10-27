@@ -23,7 +23,7 @@ import kotlin.test.assertEquals
 
 /**
  * Characterizes
- * [org.bibletranslationtools.otter.common.persistence.database.daos.SubtreeHasResourceDao].
+ * [org.bibletranslationtools.otter.common.persistence.database.dao.SubtreeHasResourceDao].
  * Both inserts return the affected-row count from `execute()`, NOT a generated id.
  */
 abstract class SubtreeHasResourceDaoCharacterization : AbstractDatabaseCharacterizationTest() {
@@ -58,8 +58,4 @@ abstract class SubtreeHasResourceDaoCharacterization : AbstractDatabaseCharacter
     fun `fetchDublinCoreIdsByCollectionId returns empty for an unknown collection`() {
         assertEquals(emptyList(), db.subtreeHasResourceDao.fetchDublinCoreIdsByCollectionId(9999))
     }
-}
-
-class JooqSubtreeHasResourceDaoCharacterizationTest : SubtreeHasResourceDaoCharacterization() {
-    override val backend = JooqBackend
 }

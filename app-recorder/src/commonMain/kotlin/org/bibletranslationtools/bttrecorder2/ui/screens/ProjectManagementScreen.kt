@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -51,6 +52,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import org.bibletranslationtools.shared.resources.label_update_available
 import org.bibletranslationtools.shared.resources.Res
 import org.bibletranslationtools.shared.resources.cd_book_sort
 import org.bibletranslationtools.shared.resources.cd_info
@@ -98,6 +100,7 @@ import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SortDirection
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SortField
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SortState
 import org.bibletranslationtools.bttrecorder2.ui.components.ProjectInfoDialog
+import org.bibletranslationtools.bttrecorder2.ui.components.EditionChangeDialog
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportType
@@ -137,6 +140,7 @@ fun ProjectManagementScreen(
         onSettingsClick = onSettingsClick,
         onImportProject = viewModel::importProject,
         onSort = viewModel::toggleSort,
+        onEditionChanged = viewModel::loadWorkbooks,
         onPullFromWacsClick = onPullFromWacsClick
     )
 
@@ -224,12 +228,14 @@ fun ProjectManagementContent(
     onDeleteWorkbook: (WorkbookDescriptor) -> Unit = {},
     exportingWorkbookId: Int? = null,
     onBackupRequest: (WorkbookDescriptor) -> Unit = {},
+    onEditionChanged: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onImportProject: (PlatformFile) -> Unit = {},
     onSort: (SortField) -> Unit = {},
     onPullFromWacsClick: () -> Unit = {}
 ) {
     var infoDialogTarget by remember { mutableStateOf<WorkbookDescriptor?>(null) }
+    var editionDialogTarget by remember { mutableStateOf<WorkbookDescriptor?>(null) }
     var menuExpanded by remember { mutableStateOf(false) }
     // Set of group IDs that are currently collapsed.
     var collapsedGroups by remember { mutableStateOf(emptySet<String>()) }
@@ -252,7 +258,19 @@ fun ProjectManagementContent(
                 onBackupRequest(target)
                 infoDialogTarget = null
             },
-            isExportingThisWorkbook = exportingWorkbookId == target.id
+            isExportingThisWorkbook = exportingWorkbookId == target.id,
+            onChangeEdition = {
+                infoDialogTarget = null
+                editionDialogTarget = target
+            }
+        )
+    }
+
+    editionDialogTarget?.let { target ->
+        EditionChangeDialog(
+            projectBookId = target.targetCollection.id,
+            onDismiss = { editionDialogTarget = null },
+            onChanged = onEditionChanged
         )
     }
 
@@ -364,9 +382,11 @@ fun ProjectManagementContent(
                                             BookRow(
                                                 workbook = workbook,
                                                 isExporting = exportingWorkbookId == workbook.id,
+                                                updateAvailable = workbook.id in state.updatesAvailable,
                                                 onClick = { onProjectClick(workbook) },
                                                 onInfoClick = { infoDialogTarget = workbook },
-                                                onRecordClick = { onRecordClick(workbook) }
+                                                onRecordClick = { onRecordClick(workbook) },
+                                                onUpdateClick = { editionDialogTarget = workbook }
                                             )
                                             if (index < group.books.lastIndex) {
                                                 HorizontalDivider(
@@ -527,9 +547,11 @@ private fun ProjectGroupHeader(
 private fun BookRow(
     workbook: WorkbookDescriptor,
     isExporting: Boolean,
+    updateAvailable: Boolean,
     onClick: () -> Unit,
     onInfoClick: () -> Unit,
-    onRecordClick: () -> Unit
+    onRecordClick: () -> Unit,
+    onUpdateClick: () -> Unit = {}
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
     val disabledColor = MaterialTheme.colorScheme.outlineVariant
@@ -542,12 +564,24 @@ private fun BookRow(
             .padding(start = 32.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = workbook.title,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = workbook.title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            if (updateAvailable) {
+                // A newer edition of this book's source is installed.
+                Text(
+                    text = stringResource(Res.string.label_update_available),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .clickable(enabled = !isExporting, role = Role.Button, onClick = onUpdateClick)
+                        .padding(vertical = 2.dp)
+                )
+            }
+        }
         ProgressPieView(
             progress = 0,
             modifier = Modifier.size(36.dp),

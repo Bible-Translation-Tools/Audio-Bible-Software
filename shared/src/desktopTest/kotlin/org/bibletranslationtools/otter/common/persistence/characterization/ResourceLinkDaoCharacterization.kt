@@ -24,7 +24,7 @@ import kotlin.test.assertEquals
 
 /**
  * Characterizes the non-jOOQ-Select surface of
- * [org.bibletranslationtools.otter.common.persistence.database.daos.ResourceLinkDao].
+ * [org.bibletranslationtools.otter.common.persistence.database.dao.ResourceLinkDao].
  *
  * NOT covered here (they take a raw jOOQ `Select<Record3<Int,Int,Int>>` and can only be exercised
  * through the resource-container import path): `insertContentResourceNoReturn`,
@@ -100,8 +100,4 @@ abstract class ResourceLinkDaoCharacterization : AbstractDatabaseCharacterizatio
         dao.delete(dao.fetchById(id))
         assertEquals(0, dao.fetchAll().size)
     }
-}
-
-class JooqResourceLinkDaoCharacterizationTest : ResourceLinkDaoCharacterization() {
-    override val backend = JooqBackend
 }

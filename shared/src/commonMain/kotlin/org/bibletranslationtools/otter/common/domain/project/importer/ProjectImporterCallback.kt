@@ -64,6 +64,13 @@ interface ProjectImporterCallback {
     )
 
     /**
+     * After a project import: how many recordings it [added] as new takes, and how many it found
+     * already in the project ([alreadyThere], the same files). [merged] is true when the book was
+     * already on this device and the import merged into it.
+     */
+    fun onNotifyTakesImported(merged: Boolean, added: Int, alreadyThere: Int) {}
+
+    /**
      * Called when the importer encounters an error that needs to alert the user.
      *
      * @param filePath path to the import file that caused an error while importing.

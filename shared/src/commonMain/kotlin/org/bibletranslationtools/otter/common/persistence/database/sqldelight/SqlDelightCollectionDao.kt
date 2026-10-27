@@ -97,4 +97,18 @@ internal class SqlDelightCollectionDao(private val db: OtterDatabase) : Collecti
 
     override fun selectSourceLinkedRc2Fks(projectId: Int): List<Int> =
         queries.selectSourceLinkedRc2Fks(projectId).executeAsList()
+
+    override fun fetchStructureEdition(id: Int): Int? =
+        queries.fetchStructureEdition(id).executeAsOneOrNull()?.structure_edition_fk
+
+    override fun setStructureEdition(id: Int, editionId: Int?) {
+        queries.setStructureEdition(editionId = editionId, id = id)
+    }
+
+    override fun rebase(id: Int, sourceFk: Int?, dublinCoreFk: Int) {
+        queries.rebase(sourceFk = sourceFk, dublinCoreFk = dublinCoreFk, id = id)
+    }
+
+    override fun countEditionUsage(editionId: Int): Int =
+        queries.countEditionUsage(editionId).executeAsOne().toInt()
 }

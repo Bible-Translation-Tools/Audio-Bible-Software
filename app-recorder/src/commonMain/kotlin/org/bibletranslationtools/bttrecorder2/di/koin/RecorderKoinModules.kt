@@ -2,6 +2,7 @@ package org.bibletranslationtools.bttrecorder2.di.koin
 
 import org.bibletranslationtools.bttrecorder2.services.UnitTargetLoader
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterListViewModel
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.EditionChangeViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportProjectViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.PlaybackViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectCreationViewModel
@@ -46,6 +47,8 @@ val recorderViewModelModule = module {
     // M3.1: restore from WACS (as takes). No nav-arg parameters (unlike WacsPublishViewModel) —
     // the flow starts from a repo picker, not an existing project.
     factoryOf(::WacsPullViewModel)
+    // One per opening of the edition change dialog, for the book it was opened on.
+    factory { (projectBookId: Int) -> EditionChangeViewModel(projectBookId, get(), get()) }
     // Process-lifetime singleton so the ProjectManagement + Recorder routes share the
     // same export state (isCurrentlyExporting gates UI); auto-cleans temp dirs on init.
     single { ExportProjectViewModel() }

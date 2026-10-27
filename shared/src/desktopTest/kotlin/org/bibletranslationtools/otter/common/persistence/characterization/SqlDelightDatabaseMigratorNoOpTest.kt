@@ -21,6 +21,7 @@ package org.bibletranslationtools.otter.common.persistence.characterization
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import io.mockk.mockk
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
+import org.bibletranslationtools.otter.common.persistence.database.SCHEMA_VERSION
 import org.bibletranslationtools.otter.common.persistence.database.sqldelight.SqlDelightAppDatabase
 import org.bibletranslationtools.otter.common.persistence.database.sqldelight.SqlDelightDatabaseMigrator
 import org.bibletranslationtools.otter.common.persistence.entities.LanguageEntity
@@ -31,15 +32,13 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Phase 5a fast sanity check (docs/phase5a-handoff.md): [SqlDelightDatabaseMigrator.migrate] must be
- * a no-op on an already-current (v14) database — proving the harness + version read work before the
- * real gate, the differential test in [SqlDelightDatabaseMigratorDifferentialTest], exercises the
- * actual v0->14 upgrade steps.
+ * [SqlDelightDatabaseMigrator.migrate] must be a no-op on an already-current database: a fresh one
+ * is created at [SCHEMA_VERSION] and must be left there with its rows intact.
  */
 class SqlDelightDatabaseMigratorNoOpTest {
 
     @Test
-    fun `migrate is a no-op on a fresh v14 database`() {
+    fun `migrate is a no-op on a fresh database`() {
         val file = File.createTempFile("migrator-noop-", ".sqlite")
         try {
             val driver = JdbcSqliteDriver("jdbc:sqlite:${file.absolutePath}")
@@ -56,7 +55,7 @@ class SqlDelightDatabaseMigratorNoOpTest {
                 conn.createStatement().use { st ->
                     st.executeQuery("SELECT version FROM installed_entity WHERE name = 'DATABASE'").use { rs ->
                         assertTrue(rs.next(), "installed_entity row for DATABASE is missing")
-                        assertEquals(14, rs.getInt("version"), "version must remain 14 after a no-op migrate")
+                        assertEquals(SCHEMA_VERSION, rs.getInt("version"), "version must not change on a no-op migrate")
                     }
                 }
                 conn.createStatement().use { st ->

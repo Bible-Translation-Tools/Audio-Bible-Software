@@ -255,6 +255,23 @@ internal class ChapterRepresentation(
         } else 0.0
     }
 
+    /**
+     * Completion derived from a compiled chapter take's embedded markers instead of the serialized
+     * working file. Used for imported chapters whose active_verses.json has not been reconstructed yet.
+     * Markers are read via OratureAudioFile so this stays audio-format agnostic, and matched to this
+     * chapter's verses by the same formattedLabel rule loadFromSerializedVerses uses — so a take that is
+     * missing markers yields < 1.0 and is not counted complete.
+     */
+    fun getCompletionProgressFromTake(takeFile: File): Double {
+        if (totalVerses.isEmpty()) return 0.0
+        val cueLabels = OratureAudioFile(takeFile)
+            .getVerseAndTitleMarkers()          // returns List<AudioMarker>; AudioMarker has .formattedLabel directly
+            .map { it.formattedLabel }
+            .toSet()
+        val covered = totalVerses.count { it.marker.formattedLabel in cueLabels }
+        return covered.toDouble() / totalVerses.size
+    }
+
     private fun initializeSerializedVersesFile() {
         val projectChapterDir = workbook.projectFilesAccessor.getChapterAudioDir(workbook, chapter)
         serializedVersesFile = File(projectChapterDir, ACTIVE_VERSES_FILE_NAME).also {

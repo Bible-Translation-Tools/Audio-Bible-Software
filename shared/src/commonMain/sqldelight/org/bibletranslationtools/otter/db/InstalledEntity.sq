@@ -1,4 +1,4 @@
--- Mirrors sql/CreateAppDb.sql `installed_entity`.
+-- Ported from the legacy (jOOQ) CreateAppDb.sql `installed_entity`.
 CREATE TABLE installed_entity (
     name                TEXT PRIMARY KEY NOT NULL,
     version             INTEGER AS kotlin.Int NOT NULL

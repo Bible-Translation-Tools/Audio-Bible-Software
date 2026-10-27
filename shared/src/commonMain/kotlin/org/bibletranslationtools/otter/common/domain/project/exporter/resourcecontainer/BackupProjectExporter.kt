@@ -20,6 +20,7 @@ package org.bibletranslationtools.otter.common.domain.project.exporter.resourcec
 
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.runBlocking
 import org.apache.commons.io.FileUtils
 import org.bibletranslationtools.otter.common.api.io.zip.IFileWriter
 import org.slf4j.LoggerFactory
@@ -27,6 +28,7 @@ import org.bibletranslationtools.otter.common.data.OratureFileFormat
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.domain.content.FileNamer.Companion.inProgressNarrationPattern
 import org.bibletranslationtools.otter.common.domain.content.FileNamer.Companion.takeFilenamePattern
+import org.bibletranslationtools.otter.common.domain.project.BackupEditions
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportOptions
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportResult
 import org.bibletranslationtools.otter.common.domain.project.exporter.ProjectExporterCallback
@@ -43,7 +45,8 @@ import java.util.zip.ZipFile
 class BackupProjectExporter(
     fileIO: IFileIOFactory,
     tempFiles: ITempFileProvider,
-    private val workbookRepository: IWorkbookRepository
+    private val workbookRepository: IWorkbookRepository,
+    private val backupEditions: BackupEditions
 ) : RCProjectExporter(fileIO, tempFiles) {
 
     private val logger = LoggerFactory.getLogger(this.javaClass)
@@ -93,9 +96,10 @@ class BackupProjectExporter(
                     val linkedResource = workbook.source.linkedResources
                         .firstOrNull { it.identifier == resourceMetadata.identifier }
 
-                    projectAccessor.copySourceFilesWithRelatedMedia(
+                    val embeddedSource = projectAccessor.copySourceFilesWithRelatedMedia(
                         fileWriter, tempFiles.tempDirectory, linkedResource
                     )
+                    writeSourceEditions(fileWriter, workbook, embeddedSource)
                     callback?.onNotifyProgress(99.0)
 
                     projectAccessor.writeSelectedTakesFile(
@@ -122,6 +126,25 @@ class BackupProjectExporter(
             }
             .onErrorReturnItem(ExportResult.FAILURE)
             .subscribeOn(Schedulers.io())
+    }
+
+    /**
+     * Records which edition the book and each held-back chapter use, and embeds the held-back
+     * chapters' editions, so a restore can rebuild them (step 11). A backup is still worth having
+     * without it, so a failure here is logged rather than failing the export.
+     */
+    private fun writeSourceEditions(fileWriter: IFileWriter, workbook: Workbook, embeddedSource: String) {
+        runCatching {
+            val (record, heldEditions) = runBlocking {
+                backupEditions.recordFor(workbook.target.collectionId, embeddedSource)
+            } ?: return
+            heldEditions.forEach { edition ->
+                workbook.projectFilesAccessor.copyEditionWithRelatedMedia(
+                    fileWriter, tempFiles.tempDirectory, edition, backupEditions.embeddedFileFor(edition)
+                )
+            }
+            backupEditions.write(fileWriter, record)
+        }.onFailure { logger.error("Could not record the source editions of ${workbook.target.slug}", it) }
     }
 
     override fun estimateExportSize(workbook: Workbook, chapterFilter: List<Int>): Long {

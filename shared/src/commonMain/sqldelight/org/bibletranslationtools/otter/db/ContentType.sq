@@ -1,4 +1,4 @@
--- Mirrors sql/CreateAppDb.sql `content_type`.
+-- Ported from the legacy (jOOQ) CreateAppDb.sql `content_type`.
 CREATE TABLE content_type (
     id               INTEGER AS kotlin.Int PRIMARY KEY AUTOINCREMENT,
     name             TEXT NOT NULL,
