@@ -142,7 +142,9 @@ class OratureWacsPublishViewModel(
                 // here means every selected chapter succeeded and `lastResult` is non-null.
                 var pullRequestUrl: String? = null
                 var pullRequestError: String? = null
-                lastResult?.let { result ->
+                // Only when the chapters went to a fork of an existing official repo. If they were
+                // published to the user's own repo (no official repo yet), there is nothing to PR.
+                lastResult?.takeIf { it.contributesToOfficial }?.let { result ->
                     _state.update { it.copy(progress = PublishChapterToWacs.Progress.OpeningPullRequest) }
                     try {
                         pullRequestUrl = publishChapterToWacs.openContributionPullRequest(result).htmlUrl

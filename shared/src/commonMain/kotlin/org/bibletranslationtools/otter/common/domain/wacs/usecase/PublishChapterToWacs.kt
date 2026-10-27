@@ -27,6 +27,7 @@ import org.bibletranslationtools.otter.common.domain.audio.metadata.BurritoAlign
 import org.bibletranslationtools.kotlinscripturealignment.model.BurritoAudioAlignment
 import org.bibletranslationtools.otter.common.domain.wacs.WacsConfig
 import org.bibletranslationtools.otter.common.domain.wacs.api.CreatePullRequestRequest
+import org.bibletranslationtools.otter.common.domain.wacs.api.CreateRepoRequest
 import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoApi
 import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoPullRequest
 import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoRepo
@@ -94,6 +95,13 @@ class PublishChapterToWacs(
         val forkOwner: String,
         val branch: String,
         val officialDefaultBranch: String,
+        /**
+         * True when this published to a fork of an existing official `AudioTranslation/<repo>` (a
+         * contribution PR applies — call [openContributionPullRequest]). False when the official
+         * repo didn't exist yet and this published straight to the user's OWN repo instead (nothing
+         * to PR into — the user chose "create under my own account").
+         */
+        val contributesToOfficial: Boolean,
     )
 
     /** The pull request [openContributionPullRequest] found or opened. */
@@ -130,10 +138,21 @@ class PublishChapterToWacs(
         val repoName = WacsRepoLayout.repoName(request.workbook)
 
         onProgress(Progress.CheckingOfficialRepo)
-        val officialRepo = ensureOfficialRepoExists(api, repoName, auth)
+        val officialRepo = getOfficialRepoOrNull(api, repoName, auth)
 
+        // If the official AudioTranslation/<repo> exists, contribute the normal way: fork it + (later)
+        // PR. If it does NOT exist yet, the user chose to publish to their OWN repo — create it if
+        // missing and push straight to it (no fork, no upstream sync, no PR).
         onProgress(Progress.Forking)
-        val fork = forkOrGetExisting(api, repoName, auth, username)
+        val fork: ForgejoRepo
+        val contributesToOfficial: Boolean
+        if (officialRepo != null) {
+            fork = forkOrGetExisting(api, repoName, auth, username)
+            contributesToOfficial = true
+        } else {
+            fork = getOrCreateOwnRepo(api, repoName, auth, username)
+            contributesToOfficial = false
+        }
 
         val chapter = try {
             request.workbook.target.chapters.toList().await()
@@ -164,13 +183,16 @@ class PublishChapterToWacs(
             // M4: catch the fork up to the official repo BEFORE writing/committing anything, so a
             // fork left behind by someone else's merged contribution can't turn this session's
             // push into a rejected non-fast-forward. Pointer-only, and a no-op on a fresh fork.
-            onProgress(Progress.SyncingUpstream)
-            try {
-                gitClient.syncFromUpstream(workDir, officialRepo.cloneUrl, credential, officialRepo.defaultBranch)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                throw classifyGitFailure(e)
+            // Only when contributing to an existing official repo — the own-repo path has no upstream.
+            if (officialRepo != null) {
+                onProgress(Progress.SyncingUpstream)
+                try {
+                    gitClient.syncFromUpstream(workDir, officialRepo.cloneUrl, credential, officialRepo.defaultBranch)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    throw classifyGitFailure(e)
+                }
             }
 
             onProgress(Progress.PreparingFiles)
@@ -285,7 +307,8 @@ class PublishChapterToWacs(
                 forkId = fork.id,
                 forkOwner = username,
                 branch = fork.defaultBranch,
-                officialDefaultBranch = officialRepo.defaultBranch,
+                officialDefaultBranch = officialRepo?.defaultBranch ?: fork.defaultBranch,
+                contributesToOfficial = contributesToOfficial,
             )
         } finally {
             runCatching { stagingDir?.deleteRecursively() }
@@ -375,14 +398,47 @@ class PublishChapterToWacs(
         }
     }
 
-    private suspend fun ensureOfficialRepoExists(api: ForgejoApi, repoName: String, auth: String): ForgejoRepo {
+    /** The official `AudioTranslation/<repo>`, or null if it doesn't exist yet (404 — not an error here). */
+    private suspend fun getOfficialRepoOrNull(api: ForgejoApi, repoName: String, auth: String): ForgejoRepo? {
         return try {
             api.getRepo(config.org, repoName, auth)
         } catch (e: CancellationException) {
             throw e
         } catch (e: HttpException) {
-            if (e.code() == 404) throw WacsPublishException(WacsPublishException.Reason.NO_OFFICIAL_REPO, e)
-            throw classifyHttp(e)
+            if (e.code() == 404) null else throw classifyHttp(e)
+        } catch (e: IOException) {
+            throw WacsPublishException(WacsPublishException.Reason.NETWORK, e)
+        }
+    }
+
+    /**
+     * The user's own `<username>/<repo>`, creating it if it doesn't exist. Used when no official repo
+     * exists yet and the user chose to publish to their own account (a personal/working repo, not a
+     * contribution). Any user can create repos under their own account, so this needs no org rights.
+     */
+    private suspend fun getOrCreateOwnRepo(api: ForgejoApi, repoName: String, auth: String, username: String): ForgejoRepo {
+        return try {
+            api.getRepo(username, repoName, auth)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: HttpException) {
+            if (e.code() == 404) createOwnRepo(api, repoName, auth, username) else throw classifyHttp(e)
+        } catch (e: IOException) {
+            throw WacsPublishException(WacsPublishException.Reason.NETWORK, e)
+        }
+    }
+
+    private suspend fun createOwnRepo(api: ForgejoApi, repoName: String, auth: String, username: String): ForgejoRepo {
+        return try {
+            api.createRepo(
+                auth,
+                CreateRepoRequest(name = repoName, autoInit = true, defaultBranch = config.defaultBranch),
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: HttpException) {
+            // 409 = created concurrently (a racing publish) — just fetch it.
+            if (e.code() == 409) api.getRepo(username, repoName, auth) else throw classifyHttp(e)
         } catch (e: IOException) {
             throw WacsPublishException(WacsPublishException.Reason.NETWORK, e)
         }
