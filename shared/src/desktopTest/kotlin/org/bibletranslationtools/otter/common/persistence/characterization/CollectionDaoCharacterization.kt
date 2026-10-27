@@ -24,7 +24,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Characterizes [org.bibletranslationtools.otter.common.persistence.database.daos.CollectionDao].
+ * Characterizes [org.bibletranslationtools.otter.common.persistence.database.dao.CollectionDao].
  * Backend-agnostic; a concrete subclass supplies the backend.
  */
 abstract class CollectionDaoCharacterization : AbstractDatabaseCharacterizationTest() {
@@ -218,9 +218,4 @@ abstract class CollectionDaoCharacterization : AbstractDatabaseCharacterizationT
         assertEquals(listOf(chapterWithoutTake.id), result.map { it.id })
         assertEquals(listOf("ch2"), result.map { it.slug })
     }
-}
-
-/** jOOQ backend binding for [CollectionDaoCharacterization]. */
-class JooqCollectionDaoCharacterizationTest : CollectionDaoCharacterization() {
-    override val backend = JooqBackend
 }

@@ -23,7 +23,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Characterizes [org.bibletranslationtools.otter.common.persistence.database.daos.TakeDao].
+ * Characterizes [org.bibletranslationtools.otter.common.persistence.database.dao.TakeDao].
  */
 abstract class TakeDaoCharacterization : AbstractDatabaseCharacterizationTest() {
 
@@ -119,8 +119,4 @@ abstract class TakeDaoCharacterization : AbstractDatabaseCharacterizationTest() 
         assertEquals(listOf(1), dao.fetchByCollectionId(chain.project.id).map { it.number })
         assertEquals(setOf(1, 2), dao.fetchByCollectionId(chain.project.id, includeDeleted = true).map { it.number }.toSet())
     }
-}
-
-class JooqTakeDaoCharacterizationTest : TakeDaoCharacterization() {
-    override val backend = JooqBackend
 }

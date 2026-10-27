@@ -9,15 +9,15 @@ import kotlin.test.fail
  * Guards the dependency direction of the ports package.
  *
  * `api/` holds the interfaces the inner layers own and the adapters implement. It must not
- * know anything about how those interfaces are satisfied: no jOOQ, no generated `otter-db`
+ * know anything about how those interfaces are satisfied: no database library, no generated
  * schema, and no imports reaching back into the `persistence/` adapter layer. Violating that
  * makes the whole codebase compile-time coupled to the database library through the very
  * package whose job is to prevent it.
  *
  * This is enforced as a source-scanning test rather than a convention because the previous
- * violation ([IAppDatabase][org.bibletranslationtools.otter.common.persistence.database.IAppDatabase],
- * which exposed a `DSLContext`, 15 jOOQ DAOs, and executable jOOQ in interface default
- * bodies) survived for the whole port from the JavaFX app without anyone noticing.
+ * violation (`IAppDatabase`, which exposed a jOOQ `DSLContext`, 15 jOOQ DAOs, and executable
+ * jOOQ in interface default bodies) survived for the whole port from the JavaFX app without
+ * anyone noticing.
  *
  * Depending on `data/` and on `domain/` is allowed and expected — ports are declared in terms
  * of domain types (e.g. `IVersificationRepository` returns a `Versification`).
@@ -69,16 +69,16 @@ class PortBoundaryTest {
     }
 
     @Test
-    fun `ports do not depend on jOOQ`() = assertNoImportMatching(
-        forbidden = "jOOQ",
+    fun `ports do not depend on the database library`() = assertNoImportMatching(
+        forbidden = "SQLDelight",
         rationale = "the database library belongs to the persistence adapter layer."
-    ) { it.startsWith("org.jooq") }
+    ) { it.startsWith("app.cash.sqldelight") }
 
     @Test
     fun `ports do not depend on the generated database schema`() = assertNoImportMatching(
-        forbidden = "the generated otter-db schema",
-        rationale = "generated table/record types are an adapter detail."
-    ) { it.startsWith("org.bibletranslationtools.otter_db") }
+        forbidden = "the generated SQLDelight schema",
+        rationale = "generated table/query types are an adapter detail."
+    ) { it.startsWith("org.bibletranslationtools.otter.db.") }
 
     @Test
     fun `ports do not depend on the persistence adapter layer`() = assertNoImportMatching(

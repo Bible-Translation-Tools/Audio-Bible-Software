@@ -24,7 +24,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Characterizes [org.bibletranslationtools.otter.common.persistence.database.daos.LanguageDao].
+ * Characterizes [org.bibletranslationtools.otter.common.persistence.database.dao.LanguageDao].
  * Backend-agnostic; a concrete subclass supplies the backend.
  */
 abstract class LanguageDaoCharacterization : AbstractDatabaseCharacterizationTest() {
@@ -139,9 +139,4 @@ abstract class LanguageDaoCharacterization : AbstractDatabaseCharacterizationTes
         assertEquals("Spanish", dao.fetchBySlug("es")!!.name)
         assertEquals(2, dao.fetchAll().size)
     }
-}
-
-/** jOOQ backend binding for [LanguageDaoCharacterization]. */
-class JooqLanguageDaoCharacterizationTest : LanguageDaoCharacterization() {
-    override val backend = JooqBackend
 }

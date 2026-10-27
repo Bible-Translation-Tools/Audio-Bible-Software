@@ -25,7 +25,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * Characterizes [org.bibletranslationtools.otter.common.persistence.database.daos.ContentDao].
+ * Characterizes [org.bibletranslationtools.otter.common.persistence.database.dao.ContentDao].
  * Backend-agnostic; a concrete subclass supplies the backend.
  *
  * NOT characterized here (they return raw jOOQ `Select`/`SelectConditionStep` builders that only
@@ -283,9 +283,4 @@ abstract class ContentDaoCharacterization : AbstractDatabaseCharacterizationTest
 
         assertEquals(listOf(source.id), dao.fetchSources(content).map { it.id })
     }
-}
-
-/** jOOQ backend binding for [ContentDaoCharacterization]. */
-class JooqContentDaoCharacterizationTest : ContentDaoCharacterization() {
-    override val backend = JooqBackend
 }

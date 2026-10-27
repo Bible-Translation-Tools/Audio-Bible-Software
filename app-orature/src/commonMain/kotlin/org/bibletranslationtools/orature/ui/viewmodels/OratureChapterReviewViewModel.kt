@@ -1,5 +1,8 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
+import org.jetbrains.compose.resources.getString
+import org.bibletranslationtools.orature.resources.Res
+import org.bibletranslationtools.orature.resources.errUnknown
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -206,7 +209,7 @@ class OratureChapterReviewViewModel(
             } catch (e: Exception) {
                 logFailure("loading the chapter take for review", e)
                 _uiState.value = OratureChapterReviewUiState(
-                    hasChapter = true, isLoading = false, error = e.message ?: "Unknown error"
+                    hasChapter = true, isLoading = false, error = e.message ?: getString(Res.string.errUnknown)
                 )
             }
         }
@@ -454,7 +457,7 @@ class OratureChapterReviewViewModel(
                 throw e
             } catch (e: Exception) {
                 logFailure("reloading chapter review from the selected take", e)
-                _uiState.value = _uiState.value.copy(error = e.message ?: "Unknown error")
+                _uiState.value = _uiState.value.copy(error = e.message ?: getString(Res.string.errUnknown))
             }
         }
     }

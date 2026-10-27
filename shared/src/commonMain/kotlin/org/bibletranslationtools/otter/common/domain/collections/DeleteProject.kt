@@ -75,7 +75,8 @@ class DeleteProject(
     }
 
     /**
-     * Deletes all the projects/workbooks including the derived collections & content.
+     * Deletes all the projects/workbooks including the derived collections & content. The source
+     * editions they used stay installed (O1-Q5).
      */
     fun deleteProjects(list: List<WorkbookDescriptor>): Completable {
         return Completable

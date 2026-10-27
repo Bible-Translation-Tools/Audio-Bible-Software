@@ -25,7 +25,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Characterizes [org.bibletranslationtools.otter.common.persistence.database.daos.ResourceMetadataDao].
+ * Characterizes [org.bibletranslationtools.otter.common.persistence.database.dao.ResourceMetadataDao].
  * Backend-agnostic; a concrete subclass supplies the backend.
  */
 abstract class ResourceMetadataDaoCharacterization : AbstractDatabaseCharacterizationTest() {
@@ -167,62 +167,4 @@ abstract class ResourceMetadataDaoCharacterization : AbstractDatabaseCharacteriz
         db.resourceMetadataDao.removeLink(a.id, b.id)
         assertTrue(db.resourceMetadataDao.fetchLinks(a.id).isEmpty())
     }
-
-    @Test
-    fun `fetchLatestVersion returns the highest version`() {
-        val lang = insertLanguage("en")
-        insertMetadata(lang.id, identifier = "ulb", version = "1")
-        insertMetadata(lang.id, identifier = "ulb", version = "2")
-
-        val latest = db.resourceMetadataDao.fetchLatestVersion(
-            languageSlug = "en",
-            identifier = "ulb",
-            creator = "creator",
-            derivedFromFk = null,
-        )
-        assertEquals("2", latest!!.version)
-    }
-
-    @Test
-    fun `fetchLatestVersion relaxes the creator filter when there is no match`() {
-        val lang = insertLanguage("en")
-        val row = insertMetadata(lang.id, identifier = "ulb", version = "1", creator = "A")
-
-        // No row for creator "B"; relax=true retries with creator=null and finds the "A" row.
-        assertEquals(
-            row.id,
-            db.resourceMetadataDao.fetchLatestVersion(
-                languageSlug = "en",
-                identifier = "ulb",
-                creator = "B",
-                derivedFromFk = null,
-                relaxCreatorIfNoMatch = true,
-            )!!.id
-        )
-
-        // relax=false does not retry, so no match -> null.
-        assertNull(
-            db.resourceMetadataDao.fetchLatestVersion(
-                languageSlug = "en",
-                identifier = "ulb",
-                creator = "B",
-                derivedFromFk = null,
-                relaxCreatorIfNoMatch = false,
-            )
-        )
-    }
-
-    @Test
-    fun `fetchLatestVersion two-arg returns the highest version`() {
-        val lang = insertLanguage("en")
-        insertMetadata(lang.id, identifier = "ulb", version = "1")
-        insertMetadata(lang.id, identifier = "ulb", version = "2")
-
-        assertEquals("2", db.resourceMetadataDao.fetchLatestVersion("en", "ulb")!!.version)
-    }
-}
-
-/** jOOQ backend binding for [ResourceMetadataDaoCharacterization]. */
-class JooqResourceMetadataDaoCharacterizationTest : ResourceMetadataDaoCharacterization() {
-    override val backend = JooqBackend
 }

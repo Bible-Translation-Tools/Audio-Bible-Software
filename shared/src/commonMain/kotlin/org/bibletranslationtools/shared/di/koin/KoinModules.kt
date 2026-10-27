@@ -1,5 +1,8 @@
 package org.bibletranslationtools.shared.di.koin
 
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.structure.ReferenceAlignment
+import org.bibletranslationtools.otter.common.persistence.repositories.EditionUpgradeRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IEditionUpgradeRepository
 import org.bibletranslationtools.otter.common.api.io.IBundledContentSource
 import org.bibletranslationtools.otter.common.api.persistence.ILanguageDataSource
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
@@ -8,6 +11,8 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IInst
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ILanguageRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceContainerRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IEditionFingerprintRepository
+import org.bibletranslationtools.otter.common.persistence.repositories.EditionFingerprintRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ITakeRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
@@ -58,6 +63,10 @@ val appRepositoriesModule = module {
     singleOf(::ResourceRepository) { bind<IResourceRepository>() }
     singleOf(::ResourceContainerRepository) { bind<IResourceContainerRepository>() }
     singleOf(::ResourceMetadataRepository) { bind<IResourceMetadataRepository>() }
+    singleOf(::EditionFingerprintRepository) { bind<IEditionFingerprintRepository>() }
+    singleOf(::EditionUpgradeRepository) { bind<IEditionUpgradeRepository>() }
+    // A single: it caches each held-back chapter's alignment.
+    singleOf(::ReferenceAlignment)
     singleOf(::TakeRepository) { bind<ITakeRepository>() }
     // Explicitly defined to disambiguate WorkbookRepository's constructors.
     single<IWorkbookRepository> {

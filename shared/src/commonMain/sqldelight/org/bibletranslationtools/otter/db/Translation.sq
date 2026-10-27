@@ -1,4 +1,4 @@
--- Mirrors sql/CreateAppDb.sql `translation_entity`.
+-- Ported from the legacy (jOOQ) CreateAppDb.sql `translation_entity`.
 -- The original declares the rate columns `DOUBLE`; REAL is affinity-equivalent (both REAL affinity).
 CREATE TABLE translation_entity (
     id               INTEGER AS kotlin.Int PRIMARY KEY AUTOINCREMENT,

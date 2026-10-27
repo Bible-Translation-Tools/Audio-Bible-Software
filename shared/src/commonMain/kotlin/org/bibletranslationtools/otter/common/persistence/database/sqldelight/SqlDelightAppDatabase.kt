@@ -26,6 +26,7 @@ import org.bibletranslationtools.otter.common.persistence.database.dao.Collectio
 import org.bibletranslationtools.otter.common.persistence.database.dao.ContentDao
 import org.bibletranslationtools.otter.common.persistence.database.dao.ContentTypeDao
 import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
+import org.bibletranslationtools.otter.common.persistence.database.dao.EditionChapterDao
 import org.bibletranslationtools.otter.common.persistence.database.dao.InstalledEntityDao
 import org.bibletranslationtools.otter.common.persistence.database.dao.LanguageDao
 import org.bibletranslationtools.otter.common.persistence.database.dao.MarkerDao
@@ -64,6 +65,7 @@ class SqlDelightAppDatabase(
     override val translationDao: TranslationDao = SqlDelightTranslationDao(database)
     override val versificationDao: VersificationDao = SqlDelightVersificationDao(database)
     override val workbookDescriptorDao: WorkbookDescriptorDao = SqlDelightWorkbookDescriptorDao(database)
+    override val editionChapterDao: EditionChapterDao = SqlDelightEditionChapterDao(database)
 
     override fun transaction(block: () -> Unit) = database.transaction { block() }
     override fun <T> transactionResult(block: () -> T): T = database.transactionWithResult { block() }

@@ -1,4 +1,4 @@
--- Mirrors sql/CreateAppDb.sql `marker_entity`.
+-- Ported from the legacy (jOOQ) CreateAppDb.sql `marker_entity`.
 CREATE TABLE marker_entity (
     id               INTEGER AS kotlin.Int PRIMARY KEY AUTOINCREMENT,
     take_fk          INTEGER AS kotlin.Int NOT NULL REFERENCES take_entity(id) ON DELETE CASCADE,

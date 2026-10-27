@@ -1,5 +1,6 @@
 package org.bibletranslationtools.orature.ui.screens
 
+import org.bibletranslationtools.orature.ui.components.OratureEditionBanner
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -179,6 +180,7 @@ fun OratureTranslationScreen(
                     onNext = viewModel::selectNextChapter,
                     onSelectChapter = viewModel::selectChapter
                 )
+                uiState.editionNotice?.let { OratureEditionBanner(it) }
 
                 Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     when {

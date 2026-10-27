@@ -23,7 +23,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Characterizes [org.bibletranslationtools.otter.common.persistence.database.daos.MarkerDao].
+ * Characterizes [org.bibletranslationtools.otter.common.persistence.database.dao.MarkerDao].
  */
 abstract class MarkerDaoCharacterization : AbstractDatabaseCharacterizationTest() {
 
@@ -78,8 +78,4 @@ abstract class MarkerDaoCharacterization : AbstractDatabaseCharacterizationTest(
         db.markerDao.delete(reloaded)
         assertTrue(db.markerDao.fetchAll().isEmpty())
     }
-}
-
-class JooqMarkerDaoCharacterizationTest : MarkerDaoCharacterization() {
-    override val backend = JooqBackend
 }

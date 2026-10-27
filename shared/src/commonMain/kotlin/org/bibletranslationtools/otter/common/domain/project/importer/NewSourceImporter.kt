@@ -29,62 +29,30 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.OtterReso
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.castOrFindImportException
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.IProjectReader
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.IZipEntryTreeBuilder
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.VersificationTreeBuilder
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.toCollection
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionFingerprint
+import org.bibletranslationtools.otter.common.domain.versification.StandardVersifications
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceContainerRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import java.io.File
 import java.io.IOException
+import java.util.UUID
+import io.reactivex.Completable
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
 import org.bibletranslationtools.otter.common.OTTER_JSON
-
-/**
- * Which tree a source import writes, and whether the parsed text still has to be applied on top.
- *
- * @param treeToImport what [IResourceContainerRepository.importResourceContainer] receives
- * @param applyParsedTextAfter whether the imported structure still needs the source text filled in
- */
-internal data class ImportPlan(
-    val treeToImport: OtterTree<CollectionOrContent>,
-    val applyParsedTextAfter: Boolean
-)
-
-/**
- * Decides what a source resource container import should write.
- *
- * With a versification available, the structure comes from the *versification* — every chapter and
- * verse it declares, seeded onto [containerCollection] — and the source text is applied afterwards.
- * That is what makes a verse the source text happens to omit still recordable. Without one, the only
- * structure available is what the text itself contains.
- *
- * Split out from [NewSourceImporter.importContainer] because reaching this decision through the
- * importer requires a real resource container on disk, and the decision is the part worth pinning.
- */
-internal fun planImport(
-    containerCollection: CollectionOrContent,
-    parsedTree: OtterTree<CollectionOrContent>,
-    versificationTrees: List<OtterTree<CollectionOrContent>>?
-): ImportPlan {
-    if (versificationTrees.isNullOrEmpty()) {
-        return ImportPlan(treeToImport = parsedTree, applyParsedTextAfter = false)
-    }
-    val preallocation = OtterTree<CollectionOrContent>(containerCollection)
-    versificationTrees.forEach { preallocation.addChild(it) }
-    return ImportPlan(treeToImport = preallocation, applyParsedTextAfter = true)
-}
 
 class NewSourceImporter(
     private val directoryProvider: IDirectoryProvider,
     private val resourceContainerRepository: IResourceContainerRepository,
-    resourceMetadataRepository: IResourceMetadataRepository,
-    private val versificationTreeBuilder: VersificationTreeBuilder,
-    // Kept alongside the tree builder: getVersification() below reads "ulb" directly to synthesize
-    // USFM for audio-only containers, which the tree builder has no entry point for.
+    private val metadataRepository: IResourceMetadataRepository,
+    private val structurePlanner: SourceStructurePlanner,
+    private val fingerprinter: EditionFingerprinter,
+    // getVersification() below reads a versification directly to synthesize USFM for audio-only
+    // containers.
     private val versificationRepository: IVersificationRepository,
     private val zipEntryTreeBuilder: IZipEntryTreeBuilder
-) : RCImporter(directoryProvider, resourceMetadataRepository) {
+) : RCImporter(directoryProvider, metadataRepository) {
 
     private val logger = LoggerFactory.getLogger(this.javaClass)
     private var sourceLanguageName = ""
@@ -107,7 +75,14 @@ class NewSourceImporter(
             callback?.onNotifyProgress(
                 localizeKey = "loadingSomething", message = "${file.name}", percent = 10.0
             )
-            val fileToImport = prepareFileToImport(file)
+            val staged = try {
+                stage(file)
+            } catch (e: Exception) {
+                logger.error("Could not unpack ${file.name}", e)
+                emitter.onSuccess(ImportResult.LOAD_RC_ERROR)
+                return@create
+            }
+            val fileToImport = staged.rcFile
 
             val container = try {
                 val rc = ResourceContainer.load(fileToImport, OtterResourceContainerConfig())
@@ -129,7 +104,9 @@ class NewSourceImporter(
                                 (rc.manifest.projects as MutableList).add(
                                     org.wycliffeassociates.resourcecontainer.entity.Project(
                                         title = bookSlug,
-                                        versification = "ulb",
+                                        // A code the versification table knows, so later lookups by
+                                        // the manifest's versification resolve.
+                                        versification = StandardVersifications.DEFAULT,
                                         identifier = bookSlug,
                                         sort = 0,
                                         path = "./${usfmFile.name}",
@@ -145,7 +122,7 @@ class NewSourceImporter(
                 rc
             } catch (e: Exception) {
                 logger.error("Error loading rc in importFromInternalDir, file: $fileToImport", e)
-                cleanUp(fileToImport, ImportResult.LOAD_RC_ERROR).subscribe(emitter::onSuccess)
+                emitter.onSuccess(staged.discard(ImportResult.LOAD_RC_ERROR))
                 return@create
             }
 
@@ -155,7 +132,7 @@ class NewSourceImporter(
                 logger.error("Error constructing container tree, file: $fileToImport", e)
                 logger.error("Container had format: ${container.manifest.dublinCore.format}")
                 container.close()
-                cleanUp(fileToImport, e.result).subscribe(emitter::onSuccess)
+                emitter.onSuccess(staged.discard(e.result))
                 return@create
             }
 
@@ -163,33 +140,33 @@ class NewSourceImporter(
                 localizeKey = "importingSource", percent = 50.0
             )
 
-            // A versification problem must not fail the import: the tree builder reaches the
-            // bundled file through a blockingGet() that throws rather than returning empty when it
-            // is missing or malformed. Degrading to a text-only import is what the app did for the
-            // whole period this path was disabled, so it is a known-good fallback.
-            val versificationTrees = runCatching { versificationTreeBuilder.build(container) }
+            // A versification problem must not fail the import. Importing the parsed text alone is
+            // what the app did before gap-filling existed, so it is a known-good fallback.
+            val plan = runCatching { structurePlanner.plan(container, tree) }
                 .getOrElse {
                     logger.error(
-                        "Could not build the versification tree for ${file.name}; " +
-                            "importing from the source text only",
+                        "Could not plan the structure for ${file.name}; importing the source text as parsed",
                         it
                     )
-                    null
+                    SourceStructurePlan(tree, null)
                 }
+            // Taken from the parsed text, not the gap-filled tree: the fingerprint describes the
+            // edition's own content, independent of what the app adds to make it recordable.
+            val fingerprint = runCatching { fingerprinter.fingerprint(container, tree, plan.match?.code) }
+                .onFailure { logger.error("Could not fingerprint ${file.name}; importing without one", it) }
+                .getOrNull()
 
-            val plan = planImport(container.toCollection(), tree, versificationTrees)
+            val placed = try {
+                place(staged, container, fingerprint)
+            } catch (e: Exception) {
+                logger.error("Could not move ${file.name} into its edition folder", e)
+                container.close()
+                emitter.onSuccess(staged.discard(e.castOrFindImportException()?.result ?: ImportResult.IMPORT_ERROR))
+                return@create
+            }
 
-            importTree(container, plan.treeToImport, fileToImport)
-                .flatMap { result ->
-                    // Only backfill text into a structure that actually imported. Chaining this
-                    // unconditionally lets a failed import fall through into updateContent, where a
-                    // second failure replaces the first and hides what actually went wrong.
-                    if (plan.applyParsedTextAfter && result == ImportResult.SUCCESS) {
-                        updateContentFromTextContent(container, tree)
-                    } else {
-                        Single.just(result)
-                    }
-                }
+            // Older editions are never removed automatically (O1-Q5): the new one goes beside them.
+            importTree(placed, plan.tree, fingerprint)
                 .subscribe { result ->
                     notifyCallback(result, callback, file)
                     emitter.onSuccess(result)
@@ -212,65 +189,85 @@ class NewSourceImporter(
         }
     }
 
-    private fun prepareFileToImport(file: File): File {
-        var exists = false
-        val internalDir = getInternalDirectory(file) ?: throw ImportException(ImportResult.LOAD_RC_ERROR)
-        if (internalDir.exists()) {
-            val rcFileExists = file.isFile && internalDir.contains(file.name)
-            val rcDirExists = file.isDirectory && internalDir.listFiles().isNotEmpty()
-            if (rcFileExists || rcDirExists) {
-                exists = true
-            }
+    /**
+     * Where [file] is imported from. A source already inside the internal source directory is
+     * imported in place. Anything else is unpacked into a fresh staging folder, because the folder
+     * it finally lives in is named after its edition, which isn't known until its text is read.
+     */
+    private fun stage(file: File): Staged {
+        if (file.isInside(directoryProvider.internalSourceRCDirectory) &&
+            !file.isInside(directoryProvider.sourceStagingDirectory)
+        ) {
+            return Staged(root = null, rcFile = file)
         }
-        return if (exists) {
-            file
-        } else {
-            copyToInternalDirectory(file, internalDir)
-        }
-    }
-
-    private fun getInternalDirectory(file: File): File? {
-        // Load the external container to get the metadata we need to figure out where to copy to
-        val extContainer = try {
-            ResourceContainer.load(file, OtterResourceContainerConfig())
+        val root = directoryProvider.sourceStagingDirectory.resolve(UUID.randomUUID().toString())
+        root.mkdirs()
+        return try {
+            Staged(root, copyToInternalDirectory(file, root))
         } catch (e: Exception) {
-            // Could be checked or unchecked exception from RC library
-            logger.error("Error in getInternalDirectory, file: $file", e)
-            return null
+            root.deleteRecursively()
+            throw e
         }
-        return directoryProvider.getSourceContainerDirectory(extContainer)
     }
 
-    private fun cleanUp(container: File, result: ImportResult): Single<ImportResult> = Single.fromCallable {
-        container.deleteRecursively()
-        return@fromCallable result
+    /**
+     * Moves a staged source into its edition folder (see IResourceContainerDirectories
+     * .getSourceEditionDirectory) and reopens it there. A source imported in place stays put.
+     */
+    private fun place(staged: Staged, container: ResourceContainer, fingerprint: EditionFingerprint?): Placed {
+        val root = staged.root ?: return Placed(container, staged.rcFile, editionRoot = null)
+        // Without a fingerprint the code only has to keep this folder apart from the others.
+        val code = fingerprint?.shortCode ?: UUID.randomUUID().toString().take(6)
+        val editionDir = directoryProvider.getSourceEditionDirectory(container, code)
+        container.close()
+
+        if (editionDir.exists()) {
+            if (isStoredSourcePath(editionDir)) throw ImportException(ImportResult.ALREADY_EXISTS)
+            // Left behind by an import that failed after moving it.
+            editionDir.deleteRecursively()
+        }
+        editionDir.parentFile.mkdirs()
+        // The container's own folder becomes the edition folder. Staging unpacks a zip under its
+        // file name (import_123/en_ulb/manifest.yaml), and those folders mean nothing here.
+        val containerRoot = staged.rcFile
+        if (!containerRoot.renameTo(editionDir)) {
+            containerRoot.copyRecursively(editionDir, overwrite = true)
+        }
+        root.deleteRecursively()
+        return Placed(ResourceContainer.load(editionDir, OtterResourceContainerConfig()), editionDir, editionDir)
     }
+
+    private fun isStoredSourcePath(dir: File): Boolean =
+        metadataRepository.getAllSources().blockingGet().any { it.path.isInside(dir) }
 
     private fun importTree(
-        container: ResourceContainer,
+        placed: Placed,
         tree: OtterTree<CollectionOrContent>,
-        fileToLoad: File
+        fingerprint: EditionFingerprint?
     ): Single<ImportResult> {
+        val container = placed.container
         return resourceContainerRepository
-            .importResourceContainer(container, tree, container.manifest.dublinCore.language.identifier)
+            .importResourceContainer(container, tree, container.manifest.dublinCore.language.identifier, fingerprint)
             .doOnEvent { result, err ->
                 if (err != null) {
-                    logger.error("Error in importFromInternalDirectory importing rc, file: $fileToLoad", err)
+                    logger.error("Error in importFromInternalDirectory importing rc, file: ${placed.rcFile}", err)
                 }
-                if (result != ImportResult.SUCCESS || err != null) fileToLoad.deleteRecursively()
+                // Only remove files this import created; a source imported in place is left alone.
+                if (result != ImportResult.SUCCESS || err != null) placed.editionRoot?.deleteRecursively()
             }
     }
 
-    private fun updateContentFromTextContent(
-        container: ResourceContainer,
-        tree: OtterTree<CollectionOrContent>
-    ): Single<ImportResult> {
-        return resourceContainerRepository
-            .updateContent(
-                container,
-                tree
-            )
+    /** A source ready to read: [rcFile], unpacked under the staging folder [root], or in place. */
+    private class Staged(val root: File?, val rcFile: File) {
+        /** Deletes what staging unpacked, never a source imported in place. */
+        fun discard(result: ImportResult): ImportResult {
+            root?.deleteRecursively()
+            return result
+        }
     }
+
+    /** A source in its final folder; [editionRoot] is null when it was imported in place. */
+    private class Placed(val container: ResourceContainer, val rcFile: File, val editionRoot: File?)
 
     private fun copyToInternalDirectory(file: File, destinationDirectory: File): File {
         return if (file.isDirectory) {
@@ -289,26 +286,6 @@ class NewSourceImporter(
             }
         }
         return destinationDirectory
-    }
-
-    private fun File.contains(name: String): Boolean {
-        if (!this.isDirectory) {
-            throw Exception("Cannot call contains on non-directory file")
-        }
-        return this.listFiles().map { it.name }.contains(name)
-    }
-
-    private fun copyFileToInternalDirectory(filepath: File, destinationDirectory: File): File {
-        // Copy the resource container zip file into the correct directory
-        val destinationFile = File(destinationDirectory, filepath.name)
-        if (filepath.absoluteFile != destinationFile) {
-            filepath.copyTo(destinationFile, true)
-            val success = destinationDirectory.contains(filepath.name)
-            if (!success) {
-                throw IOException("Could not copy resource container ${filepath.name} to resource container directory")
-            }
-        }
-        return destinationFile
     }
 
     private fun extractSourceToDir(source: File, dir: File): File {
@@ -346,7 +323,7 @@ class NewSourceImporter(
             }
         }
         // Fallback to default
-        return versificationRepository.getVersification("ulb").blockingGet()
+        return versificationRepository.getVersification(StandardVersifications.DEFAULT).blockingGet()
     }
 
     private fun generateUsfmContent(bookSlug: String, versification: org.bibletranslationtools.otter.common.domain.versification.Versification): String {
@@ -364,4 +341,9 @@ class NewSourceImporter(
         }
         return sb.toString()
     }
+}
+
+private fun File.isInside(dir: File): Boolean {
+    val path = canonicalFile.toPath()
+    return path.startsWith(dir.canonicalFile.toPath())
 }

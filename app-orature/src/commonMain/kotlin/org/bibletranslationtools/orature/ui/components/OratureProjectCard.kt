@@ -1,5 +1,9 @@
 package org.bibletranslationtools.orature.ui.components
 
+import androidx.compose.ui.semantics.Role
+import org.bibletranslationtools.orature.resources.editionUpdateAvailable
+import org.bibletranslationtools.orature.resources.mixedEditions
+import org.bibletranslationtools.orature.ui.viewmodels.OratureGroupEdition
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -73,6 +77,7 @@ fun OratureProjectGroupCard(
     group: OratureProjectGroupUiModel,
     isSelected: Boolean,
     onClick: () -> Unit,
+    onUpdateEdition: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val borderColor = if (isSelected) OratureColors.Primary else OratureColors.SurfaceTertiary
@@ -89,6 +94,7 @@ fun OratureProjectGroupCard(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         if (isSelected) ActiveCardContent(title, group) else InactiveCardContent(title, group)
+        group.edition?.let { EditionLine(it, onUpdateEdition) }
     }
 }
 
@@ -118,6 +124,35 @@ private fun ActiveCardContent(title: String, group: OratureProjectGroupUiModel) 
     LanguageRow(stringResource(Res.string.sourceLanguage), group.sourceLanguageName, Icons.Filled.Hearing)
     HorizontalDivider(color = OratureColors.SurfaceTertiary)
     LanguageRow(stringResource(Res.string.targetLanguage), group.targetLanguageName, Icons.Filled.RecordVoiceOver)
+}
+
+/**
+ * The source edition the project's books are on, or "Mixed editions", and "Update available"
+ * when a newer edition is installed; tapping it opens the edition change (O1-Q2).
+ */
+@Composable
+private fun EditionLine(edition: OratureGroupEdition, onUpdateEdition: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = if (edition.mixed) stringResource(Res.string.mixedEditions) else sourceEditionText(edition.main, edition.mainCode),
+            fontSize = 13.sp,
+            color = OratureColors.NoteText,
+            modifier = Modifier.weight(1f)
+        )
+        if (edition.updateAvailable) {
+            Text(
+                text = stringResource(Res.string.editionUpdateAvailable),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = OratureColors.Primary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(role = Role.Button, onClick = onUpdateEdition)
+                    .background(OratureColors.PrimaryLight)
+                    .padding(horizontal = 8.dp, vertical = 2.dp)
+            )
+        }
+    }
 }
 
 @Composable
