@@ -20,7 +20,6 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.structure
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.structure.editionTextOf
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.primitives.Language
@@ -34,14 +33,8 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IReso
 import org.bibletranslationtools.otter.common.domain.versification.Versification
 import org.bibletranslationtools.otter.common.domain.collections.CreateProject
 import org.bibletranslationtools.otter.common.domain.collections.DeleteProject
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.domain.languages.ImportLanguages
 import org.bibletranslationtools.otter.common.domain.project.importer.RCImporterFactory
-import org.bibletranslationtools.otter.common.domain.wacs.auth.WacsSession
-import org.bibletranslationtools.otter.common.domain.wacs.git.IWacsGitClient
-import org.bibletranslationtools.otter.common.domain.wacs.usecase.CloneWacsRepo
-import org.bibletranslationtools.otter.common.domain.wacs.usecase.CreateProjectFromWacs
-import org.bibletranslationtools.otter.common.domain.wacs.usecase.RestoreChapterFromWacs
 import io.reactivex.Observable
 import org.bibletranslationtools.otter.common.data.ProgressStatus
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
@@ -69,7 +62,9 @@ import org.bibletranslationtools.shared.di.koin.sharedCommonModules
 import org.koin.core.Koin
 import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
+import org.koin.core.module.Module
 import org.koin.dsl.module
+import kotlin.reflect.KClass
 import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
@@ -117,10 +112,7 @@ class IntegrationEnvironment private constructor(
     /**
      * The production repository that turns a source/target [Collection] pair into a live
      * [org.bibletranslationtools.otter.common.data.workbook.Workbook] — takes, markers, everything
-     * a real recording/restore flow touches, not just what [db]'s raw DAOs expose. Needed by the
-     * WACS restore-as-take integration test (see `wacs/RestoreChapterFromWacsIntegrationTest`),
-     * which is the first thing in this tier to go through a live `Workbook` rather than the DAO
-     * layer directly.
+     * a real recording/restore flow touches, not just what [db]'s raw DAOs expose.
      */
     val workbookRepository: IWorkbookRepository = koin.get()
 
@@ -133,21 +125,13 @@ class IntegrationEnvironment private constructor(
     /** Embeds verse/chapter/book markers into a take's WAV cue chunks — see [workbookRepository]. */
     val writeTakeMarkers: WriteTakeMarkers = koin.get()
 
-    // WACS sync (`wacsModule`) is part of `sharedCommonModules`, so the exact same DI-wired
-    // instances the app uses are available here too — no separate manual wiring needed for a test
-    // that exercises both the WACS pull path and the real project database in one go.
-    val wacsSession: WacsSession = koin.get()
-    val wacsGitClient: IWacsGitClient = koin.get()
-    val cloneWacsRepo: CloneWacsRepo = koin.get()
-    val restoreChapterFromWacs: RestoreChapterFromWacs = koin.get()
-
-    /** M5(d): device-loss project creation — see `wacs/CreateProjectFromWacsIntegrationTest`. */
-    val createProjectFromWacs: CreateProjectFromWacs = koin.get()
-
     private val importerFactory: RCImporterFactory = koin.get()
 
     /** A fresh importer chain (ongoing → existing source → new source), as the app builds it. */
     val importer get() = importerFactory.makeImporter()
+
+    /** Any definition in the graph, as the app gets it. */
+    fun <T : Any> get(type: KClass<T>): T = koin.get(type)
 
     // ── actions ──────────────────────────────────────────────────────────────────────────
 
@@ -751,9 +735,10 @@ class IntegrationEnvironment private constructor(
         /**
          * Builds an environment over a fresh temp directory. The database bootstraps itself:
          * SQLDelight creates the schema from the `.sq` files when the file does not exist, then
-         * applies migrations.
+         * applies migrations. [overrides] replaces definitions in the production graph, such as the
+         * WACS host's clients with an in-process fake.
          */
-        fun create(): IntegrationEnvironment {
+        fun create(overrides: Module = module { }): IntegrationEnvironment {
             val tempRoot = File.createTempFile("orature-integration", "").let {
                 it.delete()
                 it.mkdirs()
@@ -770,7 +755,7 @@ class IntegrationEnvironment private constructor(
                 modules(
                     sharedCommonModules + appDatabaseModule + module {
                         single<IDirectoryProvider> { provider }
-                    }
+                    } + overrides
                 )
             }.koin
 

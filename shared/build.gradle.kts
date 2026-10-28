@@ -36,11 +36,14 @@ kotlin {
         //
         // associateWith(main) gives this compilation main's classpath AND its internals, which it
         // needs — IntegrationEnvironment composes the production Koin graph and reaches
-        // DesktopDirectoryProvider directly.
+        // DesktopDirectoryProvider directly. associateWith(test) shares the unit tier's test doubles
+        // (the in-process WACS host, FakeWacs) rather than copying them.
         compilations {
             val main by getting
+            val test by getting
             val integrationTest by creating {
                 associateWith(main)
+                associateWith(test)
                 defaultSourceSet.dependencies {
                     implementation(libs.kotlin.test)
                     implementation(libs.kotlin.test.junit)

@@ -119,7 +119,7 @@ class ImportProjectUseCase(
             .doOnSuccess { result ->
                 // So RefreshBundledSources doesn't import this same zip again at the next launch.
                 if (result == ImportResult.SUCCESS || result == ImportResult.ALREADY_EXISTS) {
-                    glSources.find { it.languageCode == language.slug }?.name?.let(bundledStamps::markImported)
+                    glSourceCatalog.sources.find { it.languageCode == language.slug }?.name?.let(bundledStamps::markImported)
                 }
             }
             .ignoreElement()

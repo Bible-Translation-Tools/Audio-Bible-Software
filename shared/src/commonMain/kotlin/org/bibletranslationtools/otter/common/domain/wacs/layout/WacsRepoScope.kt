@@ -50,10 +50,8 @@ data class WacsRepoScope(
  * That model doesn't parse the real prototype's official repos: the live `AudioTranslation/audio-en-ulb-mrk`
  * seed data uses `type_specific` where the vendored model expects `type`, and its top-level
  * `type.flavorType.currentScope` is present but **empty** (`{"MRK": []}`) even though a chapter 1
- * audio ingredient genuinely exists — confirmed live against the prototype (2026-09) and consistent
- * with [org.bibletranslationtools.otter.common.domain.wacs.usecase.PublishChapterToWacsDesktopTest]'s
- * note that this same server-authored manifest shape doesn't round-trip through that model either.
- * `currentScope` is therefore not a reliable "what's available" source. Ground truth instead is the
+ * audio ingredient genuinely exists — confirmed live against the prototype (2026-09); this same
+ * server-authored manifest shape doesn't round-trip through that model either. `currentScope` is therefore not a reliable "what's available" source. Ground truth instead is the
  * `ingredients{}` map itself: each entry carries its own per-ingredient `scope` (book -> chapter
  * list) and `mimeType`, which is schema-stable across every manifest seen so far (M2's own writer —
  * [MetadataJsonWriter] — and the prototype's seed data both shape `ingredients{}` the same way, even
