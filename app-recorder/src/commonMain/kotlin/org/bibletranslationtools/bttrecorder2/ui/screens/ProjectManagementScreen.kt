@@ -1,48 +1,51 @@
 package org.bibletranslationtools.bttrecorder2.ui.screens
 
-import org.bibletranslationtools.bttrecorder2.ui.MockData
-import org.jetbrains.compose.ui.tooling.preview.Preview
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.RecordVoiceOver
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.DialogProperties
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.*
-import androidx.compose.material.icons.automirrored.filled.LibraryBooks
-import androidx.compose.material.icons.filled.Book
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -50,62 +53,56 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.material3.LocalContentColor
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import org.bibletranslationtools.shared.resources.label_update_available
-import org.bibletranslationtools.shared.resources.Res
-import org.bibletranslationtools.shared.resources.cd_book_sort
-import org.bibletranslationtools.shared.resources.cd_info
-import org.bibletranslationtools.shared.resources.cd_language_sort
-import org.bibletranslationtools.shared.resources.cd_new_project
-import org.bibletranslationtools.shared.resources.cd_progress_sort
-import org.bibletranslationtools.shared.resources.cd_record
-import org.bibletranslationtools.shared.resources.pm_sort_book
-import org.bibletranslationtools.shared.resources.pm_sort_language
-import org.bibletranslationtools.shared.resources.pm_sort_progress
-import org.bibletranslationtools.shared.resources.action_collapse
-import org.bibletranslationtools.shared.resources.action_dismiss
-import org.bibletranslationtools.shared.resources.action_expand
-import org.bibletranslationtools.shared.resources.action_import
-import org.bibletranslationtools.shared.resources.action_ok
-import org.bibletranslationtools.shared.resources.action_settings
-import org.bibletranslationtools.shared.resources.cd_more_options
-import org.bibletranslationtools.shared.resources.import_in_progress
-import org.bibletranslationtools.shared.resources.import_success
-import org.bibletranslationtools.shared.resources.import_title
-import org.bibletranslationtools.shared.resources.pm_group_books_count
-import org.bibletranslationtools.shared.resources.pm_group_from_source
-import org.bibletranslationtools.shared.resources.pm_title
-import org.bibletranslationtools.shared.resources.pm_sort_asc
-import org.bibletranslationtools.shared.resources.pm_sort_desc
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import io.github.vinceglb.filekit.FileKit
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
-import io.github.vinceglb.filekit.dialogs.openFileSaver
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
-import org.jetbrains.compose.resources.stringResource
+import io.github.vinceglb.filekit.dialogs.openFileSaver
 import kotlinx.coroutines.launch
+import org.bibletranslationtools.bttrecorder2.ui.MockData
+import org.bibletranslationtools.bttrecorder2.ui.components.EditionChangeDialog
 import org.bibletranslationtools.bttrecorder2.ui.components.ExportOptionsDialog
 import org.bibletranslationtools.bttrecorder2.ui.components.ExportProgressDialog
 import org.bibletranslationtools.bttrecorder2.ui.components.ProgressPieView
+import org.bibletranslationtools.bttrecorder2.ui.components.ProjectInfoDialog
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportOptionsState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportProjectViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectGroup
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectImportState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementUiState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementViewModel
-import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SortDirection
-import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SortField
-import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SortState
-import org.bibletranslationtools.bttrecorder2.ui.components.ProjectInfoDialog
-import org.bibletranslationtools.bttrecorder2.ui.components.EditionChangeDialog
-import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
+import org.bibletranslationtools.shared.resources.Res
+import org.bibletranslationtools.shared.resources.action_collapse
+import org.bibletranslationtools.shared.resources.action_dismiss
+import org.bibletranslationtools.shared.resources.action_expand
+import org.bibletranslationtools.shared.resources.action_import
+import org.bibletranslationtools.shared.resources.action_ok
+import org.bibletranslationtools.shared.resources.action_settings
+import org.bibletranslationtools.shared.resources.cd_info
+import org.bibletranslationtools.shared.resources.cd_more_options
+import org.bibletranslationtools.shared.resources.cd_new_project
+import org.bibletranslationtools.shared.resources.cd_record
+import org.bibletranslationtools.shared.resources.import_in_progress
+import org.bibletranslationtools.shared.resources.import_success
+import org.bibletranslationtools.shared.resources.import_title
+import org.bibletranslationtools.shared.resources.label_update_available
+import org.bibletranslationtools.shared.resources.pm_group_books_count
+import org.bibletranslationtools.shared.resources.pm_group_from_source
+import org.bibletranslationtools.shared.resources.pm_title
+import org.jetbrains.compose.resources.stringResource
+import org.jetbrains.compose.ui.tooling.preview.Preview
 import org.koin.mp.KoinPlatform.getKoin
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProjectManagementScreen(
     viewModel: ProjectManagementViewModel,
@@ -136,7 +133,6 @@ fun ProjectManagementScreen(
         onBackupRequest = exportViewModel::openOptions,
         onSettingsClick = onSettingsClick,
         onImportProject = viewModel::importProject,
-        onSort = viewModel::toggleSort,
         onEditionChanged = viewModel::loadWorkbooks
     )
 
@@ -206,7 +202,6 @@ private fun ProjectImportDialog(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProjectManagementContent(
     uiState: ProjectManagementUiState,
@@ -218,8 +213,7 @@ fun ProjectManagementContent(
     onBackupRequest: (WorkbookDescriptor) -> Unit = {},
     onEditionChanged: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
-    onImportProject: (PlatformFile) -> Unit = {},
-    onSort: (SortField) -> Unit = {}
+    onImportProject: (PlatformFile) -> Unit = {}
 ) {
     var infoDialogTarget by remember { mutableStateOf<WorkbookDescriptor?>(null) }
     var editionDialogTarget by remember { mutableStateOf<WorkbookDescriptor?>(null) }
@@ -263,8 +257,6 @@ fun ProjectManagementContent(
 
     val backgroundColor = MaterialTheme.colorScheme.background
     val borderColor = MaterialTheme.colorScheme.outlineVariant
-
-    val sortState = (uiState as? ProjectManagementUiState.Success)?.sortState ?: SortState()
 
     Scaffold(
         topBar = {
@@ -343,12 +335,7 @@ fun ProjectManagementContent(
                 .padding(padding)
                 .background(backgroundColor)
         ) {
-            // ── Sort header ───────────────────────────────────────────────
-            SortHeader(sortState = sortState, onSort = onSort)
-
-            HorizontalDivider()
-
-            when (val state = uiState) {
+            when (uiState) {
                 is ProjectManagementUiState.Loading -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator()
@@ -360,7 +347,7 @@ fun ProjectManagementContent(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        items(state.groups, key = { it.id }) { group ->
+                        items(uiState.groups, key = { it.id }) { group ->
                             val isCollapsed = group.id in collapsedGroups
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
@@ -384,7 +371,7 @@ fun ProjectManagementContent(
                                             BookRow(
                                                 workbook = workbook,
                                                 isExporting = exportingWorkbookId == workbook.id,
-                                                updateAvailable = workbook.id in state.updatesAvailable,
+                                                updateAvailable = workbook.id in uiState.updatesAvailable,
                                                 onClick = { onProjectClick(workbook) },
                                                 onInfoClick = { infoDialogTarget = workbook },
                                                 onRecordClick = { onRecordClick(workbook) },
@@ -405,93 +392,9 @@ fun ProjectManagementContent(
                 }
                 is ProjectManagementUiState.Error -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(text = state.message, color = MaterialTheme.colorScheme.error)
+                        Text(text = uiState.message, color = MaterialTheme.colorScheme.error)
                     }
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SortHeader(sortState: SortState, onSort: (SortField) -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        SortColumnHeader(
-            label = stringResource(Res.string.pm_sort_language),
-            icon = { Icon(Icons.Filled.RecordVoiceOver, contentDescription = null, modifier = Modifier.size(18.dp)) },
-            field = SortField.LANGUAGE,
-            sortState = sortState,
-            modifier = Modifier.weight(0.4f),
-            onSort = onSort
-        )
-        SortColumnHeader(
-            label = stringResource(Res.string.pm_sort_book),
-            icon = { Icon(Icons.AutoMirrored.Filled.LibraryBooks, contentDescription = null, modifier = Modifier.size(18.dp)) },
-            field = SortField.BOOK,
-            sortState = sortState,
-            modifier = Modifier.weight(0.35f),
-            onSort = onSort
-        )
-        SortColumnHeader(
-            label = stringResource(Res.string.pm_sort_progress),
-            icon = { Icon(Icons.Filled.Book, contentDescription = null, modifier = Modifier.size(18.dp)) },
-            field = SortField.PROGRESS,
-            sortState = sortState,
-            modifier = Modifier.weight(0.25f),
-            onSort = onSort
-        )
-    }
-}
-
-@Composable
-private fun SortColumnHeader(
-    label: String,
-    icon: @Composable () -> Unit,
-    field: SortField,
-    sortState: SortState,
-    modifier: Modifier,
-    onSort: (SortField) -> Unit
-) {
-    val isActive = sortState.field == field
-    val contentColor = if (isActive) MaterialTheme.colorScheme.primary
-                       else MaterialTheme.colorScheme.onSurfaceVariant
-
-    val directionCd = if (sortState.direction == SortDirection.ASC) {
-        stringResource(Res.string.pm_sort_asc)
-    } else {
-        stringResource(Res.string.pm_sort_desc)
-    }
-
-    Row(
-        modifier = modifier
-            .clickable { onSort(field) }
-            .padding(vertical = 4.dp, horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        CompositionLocalProvider(LocalContentColor provides contentColor) {
-            icon()
-            Spacer(Modifier.width(4.dp))
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal
-            )
-            if (isActive) {
-                Spacer(Modifier.width(2.dp))
-                Icon(
-                    imageVector = if (sortState.direction == SortDirection.ASC) {
-                        Icons.Default.ArrowUpward
-                    } else {
-                        Icons.Default.ArrowDownward
-                    },
-                    contentDescription = directionCd,
-                    modifier = Modifier.size(14.dp)
-                )
             }
         }
     }
