@@ -38,9 +38,10 @@ import androidx.compose.material.icons.automirrored.filled.LibraryBooks
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -260,57 +261,79 @@ fun ProjectManagementContent(
         )
     }
 
-    val toolbarColor = MaterialTheme.colorScheme.primary
     val backgroundColor = MaterialTheme.colorScheme.background
-    val fabColor = MaterialTheme.colorScheme.secondary
-    val textColor = MaterialTheme.colorScheme.onPrimary
+    val borderColor = MaterialTheme.colorScheme.outlineVariant
 
     val sortState = (uiState as? ProjectManagementUiState.Success)?.sortState ?: SortState()
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(stringResource(Res.string.pm_title), color = textColor) },
-                actions = {
-                    IconButton(onClick = { menuExpanded = true }) {
-                        Icon(
-                            imageVector = Icons.Default.MoreVert,
-                            contentDescription = stringResource(Res.string.cd_more_options),
-                            tint = textColor
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = menuExpanded,
-                        onDismissRequest = { menuExpanded = false }
+            Surface(color = MaterialTheme.colorScheme.surface) {
+                Column {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .windowInsetsPadding(TopAppBarDefaults.windowInsets)
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(Res.string.action_import)) },
-                            onClick = {
-                                menuExpanded = false
-                                importPicker.launch()
-                            }
+                        Text(
+                            text = stringResource(Res.string.pm_title),
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
                         )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(Res.string.action_settings)) },
-                            onClick = {
-                                menuExpanded = false
-                                onSettingsClick()
+                        Button(
+                            onClick = onNewProjectClick,
+                            shape = RoundedCornerShape(4.dp),
+                            contentPadding = PaddingValues(start = 8.dp, end = 16.dp),
+                            elevation = ButtonDefaults.buttonElevation(defaultElevation = 1.dp),
+                            modifier = Modifier.height(48.dp)
+                        ) {
+                            Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(24.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(Res.string.cd_new_project), style = MaterialTheme.typography.titleLarge)
+                        }
+                        // Box anchors the dropdown to the menu button instead of the whole row.
+                        Box {
+                            OutlinedIconButton(
+                                onClick = { menuExpanded = true },
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, borderColor),
+                                modifier = Modifier.size(48.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = stringResource(Res.string.cd_more_options),
+                                    modifier = Modifier.size(36.dp)
+                                )
                             }
-                        )
+                            DropdownMenu(
+                                expanded = menuExpanded,
+                                onDismissRequest = { menuExpanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(Res.string.action_import)) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        importPicker.launch()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(Res.string.action_settings)) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onSettingsClick()
+                                    }
+                                )
+                            }
+                        }
                     }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = toolbarColor
-                )
-            )
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = onNewProjectClick,
-                containerColor = fabColor,
-                contentColor = Color.White
-            ) {
-                Icon(imageVector = Icons.Filled.Add, contentDescription = stringResource(Res.string.cd_new_project))
+                    HorizontalDivider(color = borderColor)
+                }
             }
         }
     ) { padding ->
@@ -334,8 +357,8 @@ fun ProjectManagementContent(
                 is ProjectManagementUiState.Success -> {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         items(state.groups, key = { it.id }) { group ->
                             val isCollapsed = group.id in collapsedGroups

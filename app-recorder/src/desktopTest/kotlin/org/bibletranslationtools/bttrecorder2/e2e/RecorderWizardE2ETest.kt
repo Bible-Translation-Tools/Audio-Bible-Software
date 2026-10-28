@@ -52,7 +52,7 @@ class RecorderWizardE2ETest {
             onAllNodesWithText("Project Management").fetchSemanticsNodes().isNotEmpty()
         }
 
-        onNodeWithContentDescription("New Project").performClick()
+        onNodeWithText("New Project").performClick()
         waitUntil(timeoutMillis = 60_000) {
             onAllNodesWithText("Select Source").fetchSemanticsNodes().isNotEmpty() ||
                 onAllNodesWithText("New Project").fetchSemanticsNodes().isNotEmpty()
