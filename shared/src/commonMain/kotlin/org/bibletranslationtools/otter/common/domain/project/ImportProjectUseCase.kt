@@ -49,8 +49,6 @@ import org.bibletranslationtools.otter.common.api.persistence.IFileIOFactory
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import java.io.File
 import java.lang.IllegalArgumentException
-import kotlinx.serialization.builtins.ListSerializer
-import org.bibletranslationtools.otter.common.OTTER_JSON
 
 // Packaged resource paths, resolved through IBundledContentSource. They are relative to the
 // resources root with no leading prefix; how that root is packaged (today: Compose
@@ -135,33 +133,19 @@ class ImportProjectUseCase(
             .doOnSuccess { result ->
                 // So RefreshBundledSources doesn't import this same zip again at the next launch.
                 if (result == ImportResult.SUCCESS || result == ImportResult.ALREADY_EXISTS) {
-                    glSources.find { it.languageCode == language.slug }?.name?.let(bundledStamps::markImported)
+                    glSourceCatalog.sources.find { it.languageCode == language.slug }?.name?.let(bundledStamps::markImported)
                 }
             }
             .ignoreElement()
     }
 
     private fun getEmbeddedSource(language: Language): File {
-        val resourceName = glSources.find { it.languageCode == language.slug }?.name
-        val pathToSource = org.bibletranslationtools.otter.common.domain.project.SOURCE_PATH_TEMPLATE.format(resourceName)
-
-        val sourceFile = javaClass
-            .classLoader
-            .getResource(pathToSource)
-            .openStream()
-            .use { input ->
-                val tempFile = File.createTempFile(
-                    resourceName,
-                    ".zip",
-                    tempFiles.tempDirectory
-                )
-                tempFile.outputStream().use { output ->
-                    input.copyTo(output)
-                }
-                tempFile
-            }
-
-        return sourceFile
+        val resourceName = glSourceCatalog.sources.find { it.languageCode == language.slug }?.name
+            ?: throw IllegalArgumentException("No bundled source for ${language.slug}")
+        // Through the bundled-content port, not the classloader: the zips are Compose resources.
+        val bytes = bundledContent.readBlocking(SOURCE_PATH_TEMPLATE.format(resourceName))
+        return File.createTempFile(resourceName, ".zip", tempFiles.tempDirectory)
+            .apply { writeBytes(bytes) }
     }
 
     /**
@@ -204,18 +188,6 @@ class ImportProjectUseCase(
             else -> throw ImportException(ImportResult.UNSUPPORTED_CONTENT)
         }
         return factory.makeImporter()
-    }
-
-    companion object {
-        val glSources: List<ResourceInfoSerializable> by lazy {
-            javaClass.classLoader.getResource(org.bibletranslationtools.otter.common.domain.project.SOURCES_JSON_FILE)!!
-                .openStream().use { stream ->
-                    val sources: List<ResourceInfoSerializable> = OTTER_JSON.decodeFromString(
-                        ListSerializer(ResourceInfoSerializable.serializer()), stream.readBytes().decodeToString()
-                    )
-                    sources
-                }
-        }
     }
 }
 
