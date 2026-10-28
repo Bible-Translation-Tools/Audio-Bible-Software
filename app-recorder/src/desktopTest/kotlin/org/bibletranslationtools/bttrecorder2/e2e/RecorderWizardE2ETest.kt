@@ -2,6 +2,7 @@ package org.bibletranslationtools.bttrecorder2.e2e
 
 import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasTextExactly
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
@@ -92,6 +93,15 @@ class RecorderWizardE2ETest {
         // project list.
         waitUntil(timeoutMillis = 60_000) {
             onAllNodesWithText("from English", substring = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        // The list shows language cards only: expand ours, then open its one translation type (e.g. ULB),
+        // the card that also reads "1 book" but is not the language card itself.
+        onNodeWithText("from English", substring = true).performClick()
+        val typeCard = hasText("1 book") and !hasText("from English", substring = true)
+        waitUntil(timeoutMillis = 30_000) { onAllNodes(typeCard).fetchSemanticsNodes().isNotEmpty() }
+        onNode(typeCard).performClick()
+        waitUntil(timeoutMillis = 30_000) {
+            onAllNodes(hasTextExactly("Genesis")).fetchSemanticsNodes().isNotEmpty()
         }
 
         // ── and then open it, because "the project appears" was not enough ──────────────────

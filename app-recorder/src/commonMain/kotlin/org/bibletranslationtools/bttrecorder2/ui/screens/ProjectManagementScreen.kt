@@ -2,6 +2,7 @@ package org.bibletranslationtools.bttrecorder2.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,31 +16,38 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedIconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -52,12 +60,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
@@ -72,7 +85,6 @@ import org.bibletranslationtools.bttrecorder2.ui.MockData
 import org.bibletranslationtools.bttrecorder2.ui.components.EditionChangeDialog
 import org.bibletranslationtools.bttrecorder2.ui.components.ExportOptionsDialog
 import org.bibletranslationtools.bttrecorder2.ui.components.ExportProgressDialog
-import org.bibletranslationtools.bttrecorder2.ui.components.ProgressPieView
 import org.bibletranslationtools.bttrecorder2.ui.components.ProjectInfoDialog
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportOptionsState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportProjectViewModel
@@ -80,25 +92,38 @@ import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectGroup
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectImportState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementUiState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementViewModel
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SortDirection
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SortField
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SortState
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.booksByType
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.shared.resources.Res
+import org.bibletranslationtools.shared.resources.action_back
 import org.bibletranslationtools.shared.resources.action_collapse
 import org.bibletranslationtools.shared.resources.action_dismiss
 import org.bibletranslationtools.shared.resources.action_expand
 import org.bibletranslationtools.shared.resources.action_import
 import org.bibletranslationtools.shared.resources.action_ok
 import org.bibletranslationtools.shared.resources.action_settings
+import org.bibletranslationtools.shared.resources.cd_clear_search
 import org.bibletranslationtools.shared.resources.cd_info
 import org.bibletranslationtools.shared.resources.cd_more_options
 import org.bibletranslationtools.shared.resources.cd_new_project
-import org.bibletranslationtools.shared.resources.cd_record
 import org.bibletranslationtools.shared.resources.import_in_progress
 import org.bibletranslationtools.shared.resources.import_success
 import org.bibletranslationtools.shared.resources.import_title
+import org.bibletranslationtools.shared.resources.info_value_unknown
 import org.bibletranslationtools.shared.resources.label_update_available
-import org.bibletranslationtools.shared.resources.pm_group_books_count
+import org.bibletranslationtools.shared.resources.pm_books_count
 import org.bibletranslationtools.shared.resources.pm_group_from_source
+import org.bibletranslationtools.shared.resources.pm_language_pair
+import org.bibletranslationtools.shared.resources.pm_search_books
+import org.bibletranslationtools.shared.resources.pm_sort_asc
+import org.bibletranslationtools.shared.resources.pm_sort_book
+import org.bibletranslationtools.shared.resources.pm_sort_desc
+import org.bibletranslationtools.shared.resources.pm_sort_progress
 import org.bibletranslationtools.shared.resources.pm_title
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import org.koin.mp.KoinPlatform.getKoin
@@ -108,7 +133,10 @@ fun ProjectManagementScreen(
     viewModel: ProjectManagementViewModel,
     onNewProjectClick: () -> Unit,
     onProjectClick: (WorkbookDescriptor) -> Unit,
-    onRecordClick: (WorkbookDescriptor) -> Unit = {},
+    selectedGroupId: String? = null,
+    selectedType: String? = null,
+    onTypeClick: (groupId: String, type: String) -> Unit = { _, _ -> },
+    onBackClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -127,7 +155,11 @@ fun ProjectManagementScreen(
         uiState = uiState,
         onNewProjectClick = onNewProjectClick,
         onProjectClick = onProjectClick,
-        onRecordClick = onRecordClick,
+        selectedGroupId = selectedGroupId,
+        selectedType = selectedType,
+        onTypeClick = onTypeClick,
+        onBackClick = onBackClick,
+        onSort = viewModel::toggleSort,
         onDeleteWorkbook = viewModel::deleteWorkbook,
         exportingWorkbookId = exportingWorkbookId,
         onBackupRequest = exportViewModel::openOptions,
@@ -207,7 +239,11 @@ fun ProjectManagementContent(
     uiState: ProjectManagementUiState,
     onNewProjectClick: () -> Unit,
     onProjectClick: (WorkbookDescriptor) -> Unit,
-    onRecordClick: (WorkbookDescriptor) -> Unit = {},
+    selectedGroupId: String? = null,
+    selectedType: String? = null,
+    onTypeClick: (groupId: String, type: String) -> Unit = { _, _ -> },
+    onBackClick: () -> Unit = {},
+    onSort: (SortField) -> Unit = {},
     onDeleteWorkbook: (WorkbookDescriptor) -> Unit = {},
     exportingWorkbookId: Int? = null,
     onBackupRequest: (WorkbookDescriptor) -> Unit = {},
@@ -218,8 +254,7 @@ fun ProjectManagementContent(
     var infoDialogTarget by remember { mutableStateOf<WorkbookDescriptor?>(null) }
     var editionDialogTarget by remember { mutableStateOf<WorkbookDescriptor?>(null) }
     var menuExpanded by remember { mutableStateOf(false) }
-    // Set of group IDs that are currently collapsed.
-    var collapsedGroups by remember { mutableStateOf(emptySet<String>()) }
+    val showBooks = selectedGroupId != null && selectedType != null
 
     val importPicker = rememberFilePickerLauncher(
         type = FileKitType.File(extensions = listOf("orature", "zip", "tstudio")),
@@ -270,6 +305,14 @@ fun ProjectManagementContent(
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        if (showBooks) {
+                            IconButton(onClick = onBackClick) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = stringResource(Res.string.action_back)
+                                )
+                            }
+                        }
                         Text(
                             text = stringResource(Res.string.pm_title),
                             style = MaterialTheme.typography.headlineMedium,
@@ -329,7 +372,7 @@ fun ProjectManagementContent(
             }
         }
     ) { padding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
@@ -337,63 +380,143 @@ fun ProjectManagementContent(
         ) {
             when (uiState) {
                 is ProjectManagementUiState.Loading -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 }
                 is ProjectManagementUiState.Success -> {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        items(uiState.groups, key = { it.id }) { group ->
-                            val isCollapsed = group.id in collapsedGroups
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                                shape = MaterialTheme.shapes.medium
-                            ) {
-                                Column {
-                                    ProjectGroupHeader(
-                                        group = group,
-                                        isCollapsed = isCollapsed,
-                                        onToggle = {
-                                            collapsedGroups = if (isCollapsed) {
-                                                collapsedGroups - group.id
-                                            } else {
-                                                collapsedGroups + group.id
-                                            }
-                                        }
-                                    )
-                                    if (!isCollapsed) {
-                                        group.books.forEachIndexed { index, workbook ->
-                                            BookRow(
-                                                workbook = workbook,
-                                                isExporting = exportingWorkbookId == workbook.id,
-                                                updateAvailable = workbook.id in uiState.updatesAvailable,
-                                                onClick = { onProjectClick(workbook) },
-                                                onInfoClick = { infoDialogTarget = workbook },
-                                                onRecordClick = { onRecordClick(workbook) },
-                                                onUpdateClick = { editionDialogTarget = workbook }
-                                            )
-                                            if (index < group.books.lastIndex) {
-                                                HorizontalDivider(
-                                                    modifier = Modifier.padding(start = 16.dp),
-                                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                    if (showBooks) {
+                        val group = uiState.groups.find { it.id == selectedGroupId }
+                        val books = group?.booksByType()?.get(selectedType)
+                        if (group == null || books == null) {
+                            // Its last book was deleted; there is nothing left to list here.
+                            LaunchedEffect(Unit) { onBackClick() }
+                        } else {
+                            BookList(
+                                group = group,
+                                type = selectedType,
+                                books = books,
+                                sortState = uiState.sortState,
+                                updatesAvailable = uiState.updatesAvailable,
+                                exportingWorkbookId = exportingWorkbookId,
+                                onBackClick = onBackClick,
+                                onSort = onSort,
+                                onProjectClick = onProjectClick,
+                                onInfoClick = { infoDialogTarget = it },
+                                onUpdateClick = { editionDialogTarget = it }
+                            )
                         }
+                    } else {
+                        LanguageList(groups = uiState.groups, onTypeClick = onTypeClick)
                     }
                 }
                 is ProjectManagementUiState.Error -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(text = uiState.message, color = MaterialTheme.colorScheme.error)
-                    }
+                    Text(
+                        text = uiState.message,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** A translation type's display name: its identifier upper-cased, e.g. "ULB". */
+@Composable
+private fun typeLabel(type: String): String =
+    if (type.isEmpty()) stringResource(Res.string.info_value_unknown) else type.uppercase()
+
+@Composable
+private fun LanguageList(
+    groups: List<ProjectGroup>,
+    onTypeClick: (groupId: String, type: String) -> Unit
+) {
+    // Saveable so the expanded cards survive a trip to a book list and back.
+    var expandedGroups by rememberSaveable { mutableStateOf(emptySet<String>()) }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        items(groups, key = { it.id }) { group ->
+            val types = group.booksByType()
+            val isExpanded = group.id in expandedGroups
+            LanguageCard(
+                group = group,
+                types = types,
+                isExpanded = isExpanded,
+                onClick = {
+                    expandedGroups = if (isExpanded) expandedGroups - group.id else expandedGroups + group.id
+                },
+                onTypeClick = { type -> onTypeClick(group.id, type) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun LanguageCard(
+    group: ProjectGroup,
+    types: Map<String, List<WorkbookDescriptor>>,
+    isExpanded: Boolean,
+    onClick: () -> Unit,
+    onTypeClick: (String) -> Unit
+) {
+    val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(12.dp)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(colors.surface)
+            .border(
+                width = if (isExpanded) 2.dp else 1.dp,
+                color = if (isExpanded) colors.primary else colors.outlineVariant,
+                shape = shape
+            )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(if (isExpanded) colors.primaryContainer else colors.surface)
+                .clickable(onClick = onClick)
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(20.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = group.targetLanguage.anglicizedName,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = stringResource(Res.string.pm_group_from_source, group.sourceLanguage.anglicizedName),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = colors.onSurfaceVariant
+                )
+            }
+            Text(
+                text = pluralStringResource(Res.plurals.pm_books_count, group.books.size, group.books.size),
+                style = MaterialTheme.typography.bodyLarge,
+                color = colors.onSurfaceVariant
+            )
+            Icon(
+                imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                contentDescription = stringResource(
+                    if (isExpanded) Res.string.action_collapse else Res.string.action_expand
+                ),
+                modifier = Modifier.size(36.dp)
+            )
+        }
+        if (isExpanded) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                types.forEach { (type, books) ->
+                    TypeCard(type = type, bookCount = books.size, onClick = { onTypeClick(type) })
                 }
             }
         }
@@ -401,51 +524,192 @@ fun ProjectManagementContent(
 }
 
 @Composable
-private fun ProjectGroupHeader(
-    group: ProjectGroup,
-    isCollapsed: Boolean,
-    onToggle: () -> Unit
-) {
-    val bgColor = MaterialTheme.colorScheme.surfaceVariant
-    val onBgColor = MaterialTheme.colorScheme.onSurfaceVariant
-
+private fun TypeCard(type: String, bookCount: Int, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(8.dp)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(bgColor)
-            .clickable(onClick = onToggle)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .clip(shape)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+            .clickable(onClick = onClick)
+            .padding(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(20.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            imageVector = if (isCollapsed) Icons.Default.ExpandMore else Icons.Default.ExpandLess,
-            contentDescription = stringResource(
-                if (isCollapsed) Res.string.action_expand else Res.string.action_collapse
-            ),
-            tint = onBgColor,
-            modifier = Modifier.size(20.dp)
-        )
-        Spacer(Modifier.width(8.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = group.targetLanguage.anglicizedName,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = stringResource(Res.string.pm_group_from_source, group.sourceLanguage.anglicizedName),
-                style = MaterialTheme.typography.bodySmall,
-                color = onBgColor
-            )
-        }
         Text(
-            text = stringResource(Res.string.pm_group_books_count, group.books.size),
-            style = MaterialTheme.typography.labelSmall,
-            color = onBgColor
+            text = typeLabel(type),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = pluralStringResource(Res.plurals.pm_books_count, bookCount, bookCount),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            modifier = Modifier.size(36.dp)
         )
     }
-    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+}
+
+@Composable
+private fun BookList(
+    group: ProjectGroup,
+    type: String,
+    books: List<WorkbookDescriptor>,
+    sortState: SortState,
+    updatesAvailable: Set<Int>,
+    exportingWorkbookId: Int?,
+    onBackClick: () -> Unit,
+    onSort: (SortField) -> Unit,
+    onProjectClick: (WorkbookDescriptor) -> Unit,
+    onInfoClick: (WorkbookDescriptor) -> Unit,
+    onUpdateClick: (WorkbookDescriptor) -> Unit
+) {
+    val colors = MaterialTheme.colorScheme
+    var query by rememberSaveable { mutableStateOf("") }
+    var isExpanded by rememberSaveable { mutableStateOf(true) }
+    val shownBooks = books.filter { it.title.contains(query.trim(), ignoreCase = true) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(
+                    Res.string.pm_language_pair,
+                    group.targetLanguage.anglicizedName,
+                    group.sourceLanguage.anglicizedName
+                ),
+                style = MaterialTheme.typography.bodyLarge,
+                color = colors.onSurfaceVariant,
+                textDecoration = TextDecoration.Underline,
+                modifier = Modifier.clickable(role = Role.Button, onClick = onBackClick)
+            )
+            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    placeholder = { Text(stringResource(Res.string.pm_search_books)) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    trailingIcon = if (query.isEmpty()) null else {
+                        {
+                            IconButton(onClick = { query = "" }) {
+                                Icon(Icons.Default.Close, contentDescription = stringResource(Res.string.cd_clear_search))
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(8.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        unfocusedContainerColor = colors.surface,
+                        focusedContainerColor = colors.surface,
+                        unfocusedBorderColor = colors.outlineVariant
+                    ),
+                    modifier = Modifier.widthIn(max = 380.dp).fillMaxWidth()
+                )
+            }
+        }
+
+        val shape = RoundedCornerShape(12.dp)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(colors.surface)
+                .border(1.dp, colors.outlineVariant, shape)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(colors.background)
+                    .clickable { isExpanded = !isExpanded }
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = typeLabel(type),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(
+                    imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = stringResource(
+                        if (isExpanded) Res.string.action_collapse else Res.string.action_expand
+                    ),
+                    modifier = Modifier.size(36.dp)
+                )
+            }
+            if (isExpanded) {
+                HorizontalDivider(color = colors.outlineVariant)
+                BookSortHeader(sortState = sortState, onSort = onSort)
+                HorizontalDivider(color = colors.outlineVariant)
+                shownBooks.forEach { workbook ->
+                    BookRow(
+                        workbook = workbook,
+                        isExporting = exportingWorkbookId == workbook.id,
+                        updateAvailable = workbook.id in updatesAvailable,
+                        onClick = { onProjectClick(workbook) },
+                        onInfoClick = { onInfoClick(workbook) },
+                        onUpdateClick = { onUpdateClick(workbook) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BookSortHeader(sortState: SortState, onSort: (SortField) -> Unit) {
+    val direction = stringResource(
+        if (sortState.direction == SortDirection.ASC) Res.string.pm_sort_asc else Res.string.pm_sort_desc
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(modifier = Modifier.weight(1f)) {
+            Row(
+                modifier = Modifier
+                    .clickable(role = Role.Button) { onSort(SortField.BOOK) }
+                    .semantics { stateDescription = direction },
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(Res.string.pm_sort_book),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Icon(
+                    imageVector = Icons.Default.SwapVert,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        }
+        Text(
+            text = stringResource(Res.string.pm_sort_progress),
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.weight(1f)
+        )
+        Spacer(Modifier.weight(1f))
+    }
 }
 
 @Composable
@@ -455,25 +719,19 @@ private fun BookRow(
     updateAvailable: Boolean,
     onClick: () -> Unit,
     onInfoClick: () -> Unit,
-    onRecordClick: () -> Unit,
     onUpdateClick: () -> Unit = {}
 ) {
-    val primaryColor = MaterialTheme.colorScheme.primary
-    val disabledColor = MaterialTheme.colorScheme.outlineVariant
-
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface)
             .clickable(onClick = onClick)
-            .padding(start = 32.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = workbook.title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface
+                style = MaterialTheme.typography.titleLarge
             )
             if (updateAvailable) {
                 // A newer edition of this book's source is installed.
@@ -487,33 +745,26 @@ private fun BookRow(
                 )
             }
         }
-        ProgressPieView(
-            progress = 0,
-            modifier = Modifier.size(36.dp),
-            strokeWidth = 0f,
-            strokeColor = Color.Transparent,
-            progressColor = primaryColor,
-            backgroundColor = disabledColor
-        )
-        Spacer(Modifier.width(4.dp))
-        IconButton(onClick = onInfoClick, enabled = !isExporting) {
-            Icon(
-                imageVector = Icons.Default.Info,
-                contentDescription = stringResource(Res.string.cd_info),
-                tint = if (isExporting) MaterialTheme.colorScheme.outlineVariant
-                       else Color.Gray
+        Box(modifier = Modifier.weight(1f)) {
+            // shortcut: progress is always 0, as the pie it replaces was; wire it up once per-book progress is tracked.
+            LinearProgressIndicator(
+                progress = { 0f },
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.primaryContainer,
+                strokeCap = StrokeCap.Round,
+                gapSize = 0.dp,
+                drawStopIndicator = {},
+                modifier = Modifier.width(130.dp).height(8.dp)
             )
         }
-        IconButton(
-            onClick = onRecordClick,
-            enabled = !isExporting
-        ) {
-            Icon(
-                imageVector = Icons.Default.Mic,
-                contentDescription = stringResource(Res.string.cd_record),
-                tint = if (isExporting) MaterialTheme.colorScheme.outlineVariant
-                       else Color.Gray
-            )
+        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+            IconButton(onClick = onInfoClick, enabled = !isExporting) {
+                Icon(
+                    imageVector = Icons.Default.Info,
+                    contentDescription = stringResource(Res.string.cd_info),
+                    modifier = Modifier.size(32.dp)
+                )
+            }
         }
     }
 }

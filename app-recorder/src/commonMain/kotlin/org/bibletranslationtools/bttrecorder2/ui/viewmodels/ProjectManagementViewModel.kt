@@ -33,7 +33,7 @@ enum class SortField { LANGUAGE, BOOK, PROGRESS }
 enum class SortDirection { ASC, DESC }
 
 data class SortState(
-    val field: SortField = SortField.LANGUAGE,
+    val field: SortField = SortField.BOOK,
     val direction: SortDirection = SortDirection.ASC
 )
 
@@ -43,6 +43,9 @@ data class ProjectGroup(
     val targetLanguage: Language,
     val books: List<WorkbookDescriptor>
 )
+
+fun ProjectGroup.booksByType(): Map<String, List<WorkbookDescriptor>> =
+    books.groupBy { it.targetCollection.resourceContainer?.identifier.orEmpty() }
 
 class ProjectManagementViewModel : ViewModel(), KoinComponent {
 

@@ -8,6 +8,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
@@ -37,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.toRoute
+import org.bibletranslationtools.bttrecorder2.ui.screens.SettingsScreen
 import org.koin.mp.KoinPlatform.getKoin
 
 @Composable
@@ -93,60 +95,19 @@ fun Navigation(
         }
 
         composable<ProjectManagementRoute> {
-            val vm = viewModel { ProjectManagementViewModel() }
-            ProjectManagementScreen(
-                viewModel = vm,
-                onNewProjectClick = {
-                    navController.navigate(ProjectWizardRoute)
-                },
-                onProjectClick = { workbookDesc ->
-                    // Persist the active workbook BEFORE navigating, like onChapterClick below.
-                    // ChapterListViewModel.loadChapters() opens by reading `navState.first()`, so
-                    // navigating while the write is still in flight is a race it loses — and it
-                    // reports the loss as "No active project", with the chapter list empty.
-                    //
-                    // The window is widest on a first-ever run, where the write has to create the
-                    // preferences file (and on Windows, be scanned on creation) rather than update
-                    // one. That is exactly where it was reproducing: fresh install, first project
-                    // opened, error; back out and in again and the value is already persisted, so it
-                    // works from then on.
-                    //
-                    // Awaiting does not block the UI — this is a coroutine, not a blocking call.
-                    scope.launch {
-                        appPreferences.setActiveWorkbook(
-                            workbookDesc.sourceCollection.id,
-                            workbookDesc.targetCollection.id
-                        )
-                        navController.navigate(ChapterListRoute)
-                    }
-                },
-                onRecordClick = { workbookDesc ->
-                    // Project-list mic: jump straight into the recorder at the
-                    // project's first verse (matching the original's per-project
-                    // record button), instead of drilling through chapter/unit lists.
-                    // Awaited for the same reason as onProjectClick: the recorder route carries its
-                    // ids explicitly, but backing out of it lands on a screen that reads navState.
-                    scope.launch {
-                        appPreferences.setActiveWorkbook(
-                            workbookDesc.sourceCollection.id,
-                            workbookDesc.targetCollection.id
-                        )
-                        navController.navigate(
-                            RecorderRoute(
-                                workbookDesc.sourceCollection.id,
-                                workbookDesc.targetCollection.id,
-                                -1,
-                                -1
-                            )
-                        )
-                    }
-                },
-                onSettingsClick = { navController.navigate(SettingsRoute) }
-            )
+            ProjectManagementDestination(navController, scope, appPreferences)
+        }
+
+        composable<BookListRoute> { backStackEntry ->
+            ProjectManagementDestination(
+                navController = navController,
+                scope = scope,
+                appPreferences = appPreferences,
+                bookList = backStackEntry.toRoute())
         }
 
         composable<SettingsRoute> {
-            org.bibletranslationtools.bttrecorder2.ui.screens.SettingsScreen(
+            SettingsScreen(
                 onBackClick = { navController.popBackStack() }
             )
         }
@@ -330,6 +291,49 @@ fun Navigation(
             )
         }
     }
+}
+
+/** The project list: languages, or with [bookList] one translation type's books. */
+@Composable
+private fun ProjectManagementDestination(
+    navController: NavHostController,
+    scope: CoroutineScope,
+    appPreferences: IAppPreferences,
+    bookList: BookListRoute? = null
+) {
+    val vm = viewModel { ProjectManagementViewModel() }
+    ProjectManagementScreen(
+        viewModel = vm,
+        selectedGroupId = bookList?.groupId,
+        selectedType = bookList?.type,
+        onTypeClick = { groupId, type -> navController.navigate(BookListRoute(groupId, type)) },
+        onBackClick = { navController.popBackStack() },
+        onNewProjectClick = {
+            navController.navigate(ProjectWizardRoute)
+        },
+        onProjectClick = { workbookDesc ->
+            // Persist the active workbook BEFORE navigating, like onChapterClick in Navigation().
+            // ChapterListViewModel.loadChapters() opens by reading `navState.first()`, so
+            // navigating while the write is still in flight is a race it loses — and it
+            // reports the loss as "No active project", with the chapter list empty.
+            //
+            // The window is widest on a first-ever run, where the write has to create the
+            // preferences file (and on Windows, be scanned on creation) rather than update
+            // one. That is exactly where it was reproducing: fresh install, first project
+            // opened, error; back out and in again and the value is already persisted, so it
+            // works from then on.
+            //
+            // Awaiting does not block the UI — this is a coroutine, not a blocking call.
+            scope.launch {
+                appPreferences.setActiveWorkbook(
+                    workbookDesc.sourceCollection.id,
+                    workbookDesc.targetCollection.id
+                )
+                navController.navigate(ChapterListRoute)
+            }
+        },
+        onSettingsClick = { navController.navigate(SettingsRoute) }
+    )
 }
 
 /**

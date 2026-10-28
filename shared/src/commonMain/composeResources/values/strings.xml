@@ -76,8 +76,15 @@
     <string name="pm_sort_language">Language</string>
     <string name="pm_sort_book">Book</string>
     <string name="pm_sort_progress">Progress</string>
-    <string name="pm_group_books_count">%1$d books</string>
+    <plurals name="pm_books_count">
+        <item quantity="one">%1$d book</item>
+        <item quantity="other">%1$d books</item>
+    </plurals>
     <string name="pm_group_from_source">from %1$s</string>
+    <!-- Breadcrumb back to the language list, e.g. "Cebuano from Wikang Tagalog". -->
+    <string name="pm_language_pair">%1$s from %2$s</string>
+    <string name="pm_search_books">Search books…</string>
+    <string name="cd_clear_search">Clear search</string>
     <string name="pm_sort_asc">Ascending</string>
     <string name="pm_sort_desc">Descending</string>
 
