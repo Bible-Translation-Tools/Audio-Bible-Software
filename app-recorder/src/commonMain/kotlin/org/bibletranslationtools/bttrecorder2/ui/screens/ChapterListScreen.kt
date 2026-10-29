@@ -55,6 +55,7 @@ import org.bibletranslationtools.bttrecorder2.ui.components.EditionChangeDialog
 import org.bibletranslationtools.bttrecorder2.ui.components.LazyColumnWithScrollbar
 import org.bibletranslationtools.bttrecorder2.ui.components.ProgressBar
 import org.bibletranslationtools.bttrecorder2.ui.components.ProjectManagementTopBar
+import org.bibletranslationtools.bttrecorder2.ui.components.SearchFilterBar
 import org.bibletranslationtools.bttrecorder2.ui.components.SortHeaderCell
 import org.bibletranslationtools.bttrecorder2.ui.components.localizedList
 import org.bibletranslationtools.bttrecorder2.ui.components.sourceEditionText
@@ -62,6 +63,7 @@ import org.bibletranslationtools.bttrecorder2.ui.components.typeLabel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterListUiState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterListViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterUiModel
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProgressFilter
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SortDirection
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.domain.collections.BookEditionState
@@ -90,6 +92,7 @@ import org.bibletranslationtools.shared.resources.error_prefix
 import org.bibletranslationtools.shared.resources.label_earlier_structure
 import org.bibletranslationtools.shared.resources.main_chapter_label
 import org.bibletranslationtools.shared.resources.pm_language_pair
+import org.bibletranslationtools.shared.resources.pm_search_chapters
 import org.bibletranslationtools.shared.resources.pm_sort_chapter
 import org.bibletranslationtools.shared.resources.pm_sort_progress
 import org.jetbrains.compose.resources.stringResource
@@ -210,6 +213,8 @@ fun ChapterListContent(
     var isCardExpanded by rememberSaveable { mutableStateOf(true) }
     var sortField by rememberSaveable { mutableStateOf(ChapterSortField.CHAPTER) }
     var sortDirection by rememberSaveable { mutableStateOf(SortDirection.ASC) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var filter by rememberSaveable { mutableStateOf<ProgressFilter?>(null) }
     val chapters = remember(uiState.chapters, sortField, sortDirection) {
         val order = when (sortField) {
             ChapterSortField.CHAPTER -> compareBy<ChapterUiModel> { it.chapter.sort }
@@ -238,15 +243,34 @@ fun ChapterListContent(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            uiState.workbook?.let { wb ->
-                Breadcrumb(
-                    stringResource(
-                        Res.string.pm_language_pair,
-                        wb.target.resourceMetadata.language.anglicizedName,
-                        wb.source.resourceMetadata.language.anglicizedName
-                    ) to onLanguagesClick,
-                    typeLabel(wb.target.resourceMetadata.identifier) to onBackClick
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                uiState.workbook?.let { wb ->
+                    Breadcrumb(
+                        stringResource(
+                            Res.string.pm_language_pair,
+                            wb.target.resourceMetadata.language.anglicizedName,
+                            wb.source.resourceMetadata.language.anglicizedName
+                        ) to onLanguagesClick,
+                        typeLabel(wb.target.resourceMetadata.identifier) to onBackClick
+                    )
+                }
+                SearchFilterBar(
+                    query = query,
+                    onQueryChange = { query = it },
+                    placeholder = stringResource(Res.string.pm_search_chapters),
+                    filter = filter,
+                    onFilterChange = { filter = it },
+                    modifier = Modifier.weight(1f)
                 )
+            }
+            // Search matches the label as shown ("Chapter 12"), so the number alone or with the word works.
+            val labels = chapters.associate { it.chapter.sort to stringResource(Res.string.main_chapter_label, it.chapter.title) }
+            val shownChapters = chapters.filter {
+                labels.getValue(it.chapter.sort).contains(query.trim(), ignoreCase = true) &&
+                    filter?.matches(it.progress.toDouble()) != false
             }
             // Hoisted above the `when` so the scroll position is retained across
             // load-state transitions and back-navigation (rememberLazyListState is
@@ -288,12 +312,12 @@ fun ChapterListContent(
                                 sortDirection = SortDirection.ASC
                             }
                         }
-                        if (chapters.isNotEmpty()) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        if (shownChapters.isNotEmpty()) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         LazyColumnWithScrollbar(
                             state = listState,
                             modifier = Modifier.weight(1f, fill = false)
                         ) {
-                            items(chapters, key = { it.chapter.sort }) { uiModel ->
+                            items(shownChapters, key = { it.chapter.sort }) { uiModel ->
                                 val isLoadedHere =
                                     uiState.loadedChapterSort == uiModel.chapter.sort
                                 val isPlayingThis = isLoadedHere && uiState.isChapterPlaying

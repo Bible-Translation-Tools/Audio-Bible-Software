@@ -1,7 +1,5 @@
 package org.bibletranslationtools.bttrecorder2.ui.screens
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,26 +10,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.outlined.Task
-import androidx.compose.material.icons.rounded.FilterAlt
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,10 +30,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.vinceglb.filekit.FileKit
 import io.github.vinceglb.filekit.PlatformFile
@@ -63,6 +46,7 @@ import org.bibletranslationtools.bttrecorder2.ui.components.ProgressBar
 import org.bibletranslationtools.bttrecorder2.ui.components.ProjectImportDialog
 import org.bibletranslationtools.bttrecorder2.ui.components.ProjectInfoDialog
 import org.bibletranslationtools.bttrecorder2.ui.components.ProjectManagementScaffold
+import org.bibletranslationtools.bttrecorder2.ui.components.SearchFilterBar
 import org.bibletranslationtools.bttrecorder2.ui.components.SortHeaderCell
 import org.bibletranslationtools.bttrecorder2.ui.components.typeLabel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportOptionsState
@@ -76,20 +60,12 @@ import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SortState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.booksByType
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.shared.resources.Res
-import org.bibletranslationtools.shared.resources.cd_clear_search
-import org.bibletranslationtools.shared.resources.cd_filter
 import org.bibletranslationtools.shared.resources.cd_info
-import org.bibletranslationtools.shared.resources.ic_status_in_progress
-import org.bibletranslationtools.shared.resources.ic_status_not_started
 import org.bibletranslationtools.shared.resources.label_update_available
-import org.bibletranslationtools.shared.resources.pm_filter_completed
-import org.bibletranslationtools.shared.resources.pm_filter_in_progress
-import org.bibletranslationtools.shared.resources.pm_filter_not_started
 import org.bibletranslationtools.shared.resources.pm_language_pair
 import org.bibletranslationtools.shared.resources.pm_search_books
 import org.bibletranslationtools.shared.resources.pm_sort_book
 import org.bibletranslationtools.shared.resources.pm_sort_progress
-import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import org.koin.mp.KoinPlatform.getKoin
@@ -265,7 +241,6 @@ private fun BookList(
     var query by rememberSaveable { mutableStateOf("") }
     var isExpanded by rememberSaveable { mutableStateOf(true) }
     var filter by rememberSaveable { mutableStateOf<ProgressFilter?>(null) }
-    var filterMenuExpanded by remember { mutableStateOf(false) }
     val shownBooks = books.filter {
         it.title.contains(query.trim(), ignoreCase = true) &&
             filter?.matches(progress[it.id] ?: 0.0) != false
@@ -288,63 +263,14 @@ private fun BookList(
                     group.sourceLanguage.anglicizedName
                 ) to onBackClick
             )
-            Row(
-                modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    placeholder = {
-                        Text(stringResource(Res.string.pm_search_books), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    trailingIcon = if (query.isEmpty()) null else {
-                        {
-                            IconButton(onClick = { query = "" }) {
-                                Icon(Icons.Default.Close, contentDescription = stringResource(Res.string.cd_clear_search))
-                            }
-                        }
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(8.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        unfocusedContainerColor = colors.surface,
-                        focusedContainerColor = colors.surface,
-                        unfocusedBorderColor = colors.outlineVariant
-                    ),
-                    modifier = Modifier.weight(1f, fill = false).widthIn(max = 380.dp).fillMaxWidth()
-                )
-                Box {
-                    FilledIconButton(
-                        onClick = { filterMenuExpanded = true },
-                        shape = RoundedCornerShape(8.dp),
-                        colors = IconButtonDefaults.filledIconButtonColors(
-                            containerColor = if (filter != null) {
-                                colors.primaryContainer
-                            } else colors.onSurface.copy(alpha = 0.06f),
-                            contentColor = if (filter != null) colors.primary else colors.onSurface
-                        ),
-                        modifier = Modifier.size(48.dp)
-                    ) {
-                        Icon(
-                            Icons.Rounded.FilterAlt,
-                            contentDescription = stringResource(Res.string.cd_filter),
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
-                    FilterMenu(
-                        expanded = filterMenuExpanded,
-                        selected = filter,
-                        onSelect = {
-                            filter = if (it == filter) null else it
-                            filterMenuExpanded = false
-                        },
-                        onDismiss = { filterMenuExpanded = false }
-                    )
-                }
-            }
+            SearchFilterBar(
+                query = query,
+                onQueryChange = { query = it },
+                placeholder = stringResource(Res.string.pm_search_books),
+                filter = filter,
+                onFilterChange = { filter = it },
+                modifier = Modifier.weight(1f)
+            )
         }
 
         CollapsibleCard(
@@ -394,62 +320,6 @@ private fun BookSortHeader(sortState: SortState, onSort: (SortField) -> Unit) {
             }
         }
         Spacer(Modifier.weight(1f))
-    }
-}
-
-@Composable
-private fun FilterMenu(
-    expanded: Boolean,
-    selected: ProgressFilter?,
-    onSelect: (ProgressFilter) -> Unit,
-    onDismiss: () -> Unit
-) {
-    val colors = MaterialTheme.colorScheme
-    DropdownMenu(
-        expanded = expanded,
-        onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(10.dp),
-        containerColor = colors.surface,
-        border = BorderStroke(1.dp, colors.onSurface.copy(alpha = 0.1f)),
-        modifier = Modifier.widthIn(min = 292.dp)
-    ) {
-        Text(
-            text = stringResource(Res.string.cd_filter),
-            style = MaterialTheme.typography.titleSmall,
-            color = colors.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-        )
-        listOf(
-            Triple(
-                ProgressFilter.NOT_STARTED,
-                painterResource(Res.drawable.ic_status_not_started),
-                Res.string.pm_filter_not_started
-            ),
-            Triple(
-                ProgressFilter.IN_PROGRESS,
-                painterResource(Res.drawable.ic_status_in_progress),
-                Res.string.pm_filter_in_progress
-            ),
-            Triple(
-                ProgressFilter.COMPLETED,
-                rememberVectorPainter(Icons.Outlined.Task),
-                Res.string.pm_filter_completed
-            )
-        ).forEach { (option, icon, label) ->
-            DropdownMenuItem(
-                text = {
-                    Text(stringResource(label), style = MaterialTheme.typography.titleLarge)
-                },
-                leadingIcon = {
-                    Icon(icon, contentDescription = null, modifier = Modifier.size(28.dp))
-                },
-                onClick = { onSelect(option) },
-                modifier = Modifier
-                    .background(
-                        if (option == selected) colors.primaryContainer else Color.Transparent
-                    )
-            )
-        }
     }
 }
 
