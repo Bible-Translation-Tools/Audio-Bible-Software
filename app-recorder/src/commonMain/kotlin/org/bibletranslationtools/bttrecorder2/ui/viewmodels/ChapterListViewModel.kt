@@ -16,30 +16,31 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
-import org.bibletranslationtools.shared.preferences.IAppPreferences
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.DateHolder
+import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnection
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
 import org.bibletranslationtools.otter.common.device.AudioPlayerEvent
 import org.bibletranslationtools.otter.common.device.IAudioPlayer
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
-import org.bibletranslationtools.otter.common.domain.content.ChapterTranslationBuilder
 import org.bibletranslationtools.otter.common.domain.collections.BookEditionState
 import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
-import org.jetbrains.compose.resources.getString
+import org.bibletranslationtools.otter.common.domain.content.ChapterTranslationBuilder
+import org.bibletranslationtools.shared.preferences.IAppPreferences
 import org.bibletranslationtools.shared.resources.Res
-import org.bibletranslationtools.shared.resources.err_no_active_project
-import org.bibletranslationtools.shared.resources.err_project_not_found
-import org.bibletranslationtools.shared.resources.err_workbook_not_found
-import org.bibletranslationtools.shared.resources.err_unknown
 import org.bibletranslationtools.shared.resources.err_compile_failed
 import org.bibletranslationtools.shared.resources.err_load_chapter_audio
+import org.bibletranslationtools.shared.resources.err_no_active_project
 import org.bibletranslationtools.shared.resources.err_play_chapter_audio
+import org.bibletranslationtools.shared.resources.err_project_not_found
+import org.bibletranslationtools.shared.resources.err_unknown
+import org.bibletranslationtools.shared.resources.err_workbook_not_found
+import org.jetbrains.compose.resources.getString
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -53,6 +54,8 @@ data class ChapterUiModel(
     val hasChapterTake: Boolean = false,
     /** The selected chapter take's number, when one exists (for opening in playback). */
     val chapterTakeNumber: Int? = null,
+    /** The chapter's takes, oldest first; deleted ones left out. */
+    val takes: List<Take> = emptyList(),
     /** True only when every verse has a selected take, i.e., compile is allowed. */
     val canCompile: Boolean = false
 )
@@ -76,8 +79,14 @@ data class ChapterListUiState(
     val isChapterPlaying: Boolean = false,
     val playbackProgress: Float = 0f,
     val elapsedText: String = "00:00:00",
-    val durationText: String = "00:00:00"
+    val durationText: String = "00:00:00",
+    val loadedTakeNumber: Int? = null,
+    val shownTakeNumbers: Map<Int, Int> = emptyMap()
 )
+
+/** The take a chapter's player shows: the one moved to, else the selected one, else the newest. */
+fun ChapterUiModel.shownTake(shownNumber: Int?): Take? =
+    takes.find { it.number == shownNumber } ?: takes.find { it.number == chapterTakeNumber } ?: takes.lastOrNull()
 
 class ChapterListViewModel : ViewModel(), KoinComponent {
 
@@ -209,9 +218,11 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
                                 updateChapterRow(chapter) { existing ->
                                     existing.copy(
                                         hasChapterTake = hasChapterTake,
-                                        chapterTakeNumber = if (hasChapterTake) take?.number else null
+                                        chapterTakeNumber = if (hasChapterTake) take.number else null,
+                                        takes = liveTakes(chapter)
                                     )
                                 }
+                                _uiState.update { it.copy(shownTakeNumbers = it.shownTakeNumbers - chapter.sort) }
                             }
                         }
                     }
@@ -337,8 +348,8 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
      * Safe to call multiple times; loading the same take twice is a no-op.
      */
     fun prepareChapterPlayback(chapter: Chapter) {
-        val take = chapter.audio.getSelectedTake() ?: return
-        if (_uiState.value.loadedChapterSort == chapter.sort) return
+        val take = shownTake(chapter) ?: return
+        if (_uiState.value.loadedChapterSort == chapter.sort && _uiState.value.loadedTakeNumber == take.number) return
         launchLogged(Dispatchers.IO) {
             try {
                 // If a different chapter is currently in the player, stop it first
@@ -354,6 +365,7 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
                 _uiState.update {
                     it.copy(
                         loadedChapterSort = chapter.sort,
+                        loadedTakeNumber = take.number,
                         isChapterPlaying = false,
                         playbackProgress = 0f,
                         elapsedText = "00:00:00",
@@ -368,19 +380,20 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
     }
 
     fun toggleChapterPlayback(chapter: Chapter) {
-        val take = chapter.audio.getSelectedTake() ?: return
+        val take = shownTake(chapter) ?: return
         launchLogged(Dispatchers.IO) {
             try {
                 val state = _uiState.value
                 // Ensure the player is holding *this* chapter's take. If it is
                 // already loaded we just toggle; otherwise we load before play.
-                if (state.loadedChapterSort != chapter.sort) {
+                if (state.loadedChapterSort != chapter.sort || state.loadedTakeNumber != take.number) {
                     val reader = OratureAudioFile(take.file).reader()
                     audioPlayer.load(reader)
                     val durationMs = runCatching { audioPlayer.getDurationMs() }.getOrDefault(0)
                     _uiState.update {
                         it.copy(
                             loadedChapterSort = chapter.sort,
+                            loadedTakeNumber = take.number,
                             playbackProgress = 0f,
                             elapsedText = "00:00:00",
                             durationText = formatTime(durationMs)
@@ -405,27 +418,58 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
     }
 
     fun deleteChapterTake(chapter: Chapter) {
-        val take = chapter.audio.getSelectedTake() ?: return
+        val take = shownTake(chapter) ?: return
         // Stop playback if this take is what's currently loaded.
-        if (_uiState.value.loadedChapterSort == chapter.sort) {
-            runCatching { audioPlayer.pause() }
-            stopProgressTicker()
-            _uiState.update {
-                it.copy(
-                    loadedChapterSort = null,
-                    isChapterPlaying = false,
-                    playbackProgress = 0f,
-                    elapsedText = "00:00:00",
-                    durationText = "00:00:00"
-                )
-            }
-        }
+        if (_uiState.value.loadedChapterSort == chapter.sort) unloadChapterTake()
         take.deletedTimestamp.accept(DateHolder.now())
         // selectedFlow doesn't always fire on take deletion (the selected
-        // reference itself doesn't change). Update the row directly so the
-        // layers icon switches back from "view chapter take" to "ready to
-        // compile" without requiring an external refresh.
-        updateChapterRow(chapter) { it.copy(hasChapterTake = false, chapterTakeNumber = null) }
+        // reference itself doesn't change), and deleting the selected take
+        // deselects it. Update the row directly from what is left.
+        val selected = chapter.audio.getSelectedTake()?.takeIf { !it.isDeleted() }
+        updateChapterRow(chapter) {
+            it.copy(hasChapterTake = selected != null, chapterTakeNumber = selected?.number, takes = liveTakes(chapter))
+        }
+        _uiState.update { it.copy(shownTakeNumbers = it.shownTakeNumbers - chapter.sort) }
+    }
+
+    /** Shows the chapter's previous ([direction] -1) or next (+1) take in its player; stops at either end. */
+    fun showOtherTake(chapter: Chapter, direction: Int) {
+        val state = _uiState.value
+        val row = state.chapters.firstOrNull { it.chapter.sort == chapter.sort } ?: return
+        val current = row.shownTake(state.shownTakeNumbers[chapter.sort]) ?: return
+        val next = row.takes.getOrNull(row.takes.indexOfFirst { it.number == current.number } + direction) ?: return
+        if (state.loadedChapterSort == chapter.sort) unloadChapterTake()
+        _uiState.update { it.copy(shownTakeNumbers = it.shownTakeNumbers + (chapter.sort to next.number)) }
+        prepareChapterPlayback(chapter)
+    }
+
+    /** Makes the take the chapter's player shows its selected take. */
+    fun selectShownTake(chapter: Chapter) {
+        shownTake(chapter)?.let { chapter.audio.selectTake(it) }
+    }
+
+    private fun shownTake(chapter: Chapter): Take? {
+        val state = _uiState.value
+        val row = state.chapters.firstOrNull { it.chapter.sort == chapter.sort } ?: return null
+        return row.shownTake(state.shownTakeNumbers[chapter.sort])
+    }
+
+    private fun liveTakes(chapter: Chapter): List<Take> =
+        chapter.audio.getAllTakes().filter { !it.isDeleted() }.sortedBy { it.number }
+
+    private fun unloadChapterTake() {
+        runCatching { audioPlayer.pause() }
+        stopProgressTicker()
+        _uiState.update {
+            it.copy(
+                loadedChapterSort = null,
+                loadedTakeNumber = null,
+                isChapterPlaying = false,
+                playbackProgress = 0f,
+                elapsedText = "00:00:00",
+                durationText = "00:00:00"
+            )
+        }
     }
 
     /**

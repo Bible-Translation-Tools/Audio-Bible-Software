@@ -11,13 +11,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Layers
@@ -97,6 +95,19 @@ import org.bibletranslationtools.shared.resources.pm_sort_chapter
 import org.bibletranslationtools.shared.resources.pm_sort_progress
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.ui.tooling.preview.Preview
+import androidx.compose.material.icons.outlined.Delete
+import org.bibletranslationtools.bttrecorder2.ui.components.takeDateText
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.foundation.layout.widthIn
+import org.bibletranslationtools.otter.common.data.workbook.Take
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.shownTake
+import org.bibletranslationtools.shared.resources.cd_select_take
+import org.bibletranslationtools.shared.resources.cd_previous_take
+import org.bibletranslationtools.shared.resources.cd_next_take
+import org.bibletranslationtools.shared.resources.unit_take_position
 
 @Composable
 fun ChapterListScreen(
@@ -138,6 +149,8 @@ fun ChapterListScreen(
         onCompileClick = { chapter -> pendingCompileChapter = chapter },
         onChapterExpand = viewModel::prepareChapterPlayback,
         onChapterPlayPause = viewModel::toggleChapterPlayback,
+        onShowOtherTake = viewModel::showOtherTake,
+        onSelectShownTake = viewModel::selectShownTake,
         onChapterDeleteRequest = { chapter -> pendingDeleteChapter = chapter },
         onOpenChapterPlayback = { sort, takeNumber ->
             uiState.workbook?.let { wb ->
@@ -200,6 +213,8 @@ fun ChapterListContent(
     onCompileClick: (Chapter) -> Unit = {},
     onChapterExpand: (Chapter) -> Unit = {},
     onChapterPlayPause: (Chapter) -> Unit = {},
+    onShowOtherTake: (Chapter, direction: Int) -> Unit = { _, _ -> },
+    onSelectShownTake: (Chapter) -> Unit = {},
     onChapterDeleteRequest: (Chapter) -> Unit = {},
     onOpenChapterPlayback: (chapterSort: Int, takeNumber: Int) -> Unit = { _, _ -> },
     onReviewEdition: () -> Unit = {},
@@ -323,14 +338,15 @@ fun ChapterListContent(
                                 val isPlayingThis = isLoadedHere && uiState.isChapterPlaying
                                 val isCompilingThis =
                                     uiState.compilingChapterSort == uiModel.chapter.sort
+                                val shownTake = uiModel.shownTake(uiState.shownTakeNumbers[uiModel.chapter.sort])
                                 val isExpanded =
-                                    expandedChapterSort == uiModel.chapter.sort &&
-                                        uiModel.hasChapterTake
+                                    expandedChapterSort == uiModel.chapter.sort && shownTake != null
 
                                 ChapterItem(
                                     uiModel = uiModel,
                                     heldBack = uiState.editionState?.heldBackChapters?.contains(uiModel.chapter.sort) == true,
                                     isExpanded = isExpanded,
+                                    shownTake = shownTake,
                                     isCompiling = isCompilingThis,
                                     isPlaying = isPlayingThis,
                                     // Use the loaded-here values so the slider /
@@ -358,7 +374,7 @@ fun ChapterListContent(
                                             expandedChapterSort != uiModel.chapter.sort
                                         expandedChapterSort =
                                             if (nowExpanding) uiModel.chapter.sort else null
-                                        if (nowExpanding && uiModel.hasChapterTake) {
+                                        if (nowExpanding && shownTake != null) {
                                             // Eagerly load the take so duration shows
                                             // immediately instead of after the first
                                             // play tap.
@@ -366,11 +382,11 @@ fun ChapterListContent(
                                         }
                                     },
                                     onPlayPause = { onChapterPlayPause(uiModel.chapter) },
+                                    onShowOtherTake = { direction -> onShowOtherTake(uiModel.chapter, direction) },
+                                    onSelectTake = { onSelectShownTake(uiModel.chapter) },
                                     onDelete = { onChapterDeleteRequest(uiModel.chapter) },
                                     onOpenPlayback = {
-                                        uiModel.chapterTakeNumber?.let { takeNumber ->
-                                            onOpenChapterPlayback(uiModel.chapter.sort, takeNumber)
-                                        }
+                                        shownTake?.let { onOpenChapterPlayback(uiModel.chapter.sort, it.number) }
                                     }
                                 )
                             }
@@ -448,6 +464,8 @@ fun ChapterItem(
     /** The chapter keeps an earlier edition's verse structure (held back on an upgrade). */
     heldBack: Boolean = false,
     isExpanded: Boolean,
+    /** The take the expanded player shows; null when the chapter has no take. */
+    shownTake: Take? = null,
     isCompiling: Boolean,
     isPlaying: Boolean,
     playbackProgress: Float,
@@ -459,6 +477,8 @@ fun ChapterItem(
     onExpandToggle: () -> Unit,
     onPlayPause: () -> Unit,
     onDelete: () -> Unit,
+    onShowOtherTake: (direction: Int) -> Unit = {},
+    onSelectTake: () -> Unit = {},
     onOpenPlayback: () -> Unit = {}
 ) {
     // Un-gray the chapter when it has any recorded audio — either a compiled/recorded
@@ -510,7 +530,7 @@ fun ChapterItem(
                 // Expand chevron — only present once a chapter take exists, so it
                 // doesn't suggest expandability on rows that have nothing to show. It sits
                 // before compile and mic so those two stay flush right on every row.
-                if (uiModel.hasChapterTake) {
+                if (uiModel.takes.isNotEmpty()) {
                     IconButton(onClick = onExpandToggle) {
                         Icon(
                             // Right chevron when collapsed (pointing at the row contents
@@ -562,8 +582,15 @@ fun ChapterItem(
 
         // Expanded body — playback row for the compiled chapter take. Visible
         // only when the user toggled it open and a chapter take exists.
-        if (isExpanded) {
+        if (isExpanded && shownTake != null) {
             ChapterTakePlaybackRow(
+                take = shownTake,
+                position = uiModel.takes.indexOfFirst { it.number == shownTake.number } + 1,
+                takeCount = uiModel.takes.size,
+                isSelected = shownTake.number == uiModel.chapterTakeNumber,
+                onPrevious = { onShowOtherTake(-1) },
+                onNext = { onShowOtherTake(1) },
+                onSelect = onSelectTake,
                 isPlaying = isPlaying,
                 playbackProgress = playbackProgress,
                 elapsedText = elapsedText,
@@ -576,8 +603,16 @@ fun ChapterItem(
     }
 }
 
+/** A chapter take's player, laid out like a verse take's: transport, actions, then which take. */
 @Composable
 private fun ChapterTakePlaybackRow(
+    take: Take,
+    position: Int,
+    takeCount: Int,
+    isSelected: Boolean,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onSelect: () -> Unit,
     isPlaying: Boolean,
     playbackProgress: Float,
     elapsedText: String,
@@ -587,56 +622,84 @@ private fun ChapterTakePlaybackRow(
     onOpenPlayback: () -> Unit = {}
 ) {
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 12.dp)
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(20.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onPlayPause) {
+                Icon(
+                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = if (isPlaying) stringResource(Res.string.action_pause) else stringResource(Res.string.action_play),
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+            ProgressBar(playbackProgress, modifier = Modifier.weight(1f))
+            // One time, as in the design: how long the take is, then how far in once it has started.
             Text(
-                text = elapsedText,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.width(64.dp)
-            )
-            Slider(
-                value = playbackProgress.coerceIn(0f, 1f),
-                onValueChange = {},
-                modifier = Modifier.weight(1f),
-                enabled = false
-            )
-            Text(
-                text = durationText,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.width(64.dp)
+                text = if (playbackProgress > 0f) elapsedText else durationText,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier.widthIn(max = 404.dp).fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
             IconButton(onClick = onDelete) {
                 Icon(
-                    Icons.Default.Delete,
+                    Icons.Outlined.Delete,
                     contentDescription = stringResource(Res.string.cd_delete_chapter_take),
-                    tint = MaterialTheme.colorScheme.onSurface
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(32.dp)
                 )
             }
             IconButton(onClick = onOpenPlayback) {
                 Icon(
                     Icons.Default.GraphicEq,
                     contentDescription = stringResource(Res.string.cd_open_in_playback),
-                    tint = MaterialTheme.colorScheme.onSurface
+                    modifier = Modifier.size(36.dp)
                 )
             }
-            Spacer(modifier = Modifier.weight(1f))
-            FilledIconButton(onClick = onPlayPause) {
+            // Filled when this is the chapter's selected take; tapping an outline star selects it.
+            IconButton(onClick = onSelect, enabled = !isSelected) {
                 Icon(
-                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (isPlaying) stringResource(Res.string.action_pause) else stringResource(Res.string.action_play)
+                    if (isSelected) Icons.Default.Star else Icons.Outlined.StarBorder,
+                    contentDescription = stringResource(Res.string.cd_select_take),
+                    tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(32.dp)
                 )
             }
-            Spacer(modifier = Modifier.weight(1f))
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.primaryContainer)
+                .padding(horizontal = 4.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onPrevious, enabled = position > 1) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(Res.string.cd_previous_take))
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    stringResource(Res.string.unit_take_position, position, takeCount),
+                    style = MaterialTheme.typography.titleLarge
+                )
+                Text(
+                    takeDateText(take.createdTimestamp),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            IconButton(onClick = onNext, enabled = position < takeCount) {
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = stringResource(Res.string.cd_next_take))
+            }
         }
     }
 }

@@ -2,10 +2,18 @@ package org.bibletranslationtools.bttrecorder2.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import org.bibletranslationtools.bttrecorder2.ui.components.LazyColumnWithScrollbar
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
@@ -17,8 +25,27 @@ import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -28,33 +55,35 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import org.bibletranslationtools.bttrecorder2.ui.MockData
+import org.bibletranslationtools.bttrecorder2.ui.components.LazyColumnWithScrollbar
+import org.bibletranslationtools.bttrecorder2.ui.components.takeDateText
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.UnitListUiState
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.UnitListViewModel
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Take
-import org.bibletranslationtools.bttrecorder2.ui.viewmodels.UnitListViewModel
-import org.bibletranslationtools.bttrecorder2.ui.viewmodels.UnitListUiState
-import org.jetbrains.compose.ui.tooling.preview.Preview
-import org.bibletranslationtools.bttrecorder2.ui.MockData
-import org.jetbrains.compose.resources.stringResource
 import org.bibletranslationtools.shared.resources.Res
-import org.bibletranslationtools.shared.resources.unit_delete_take_title
-import org.bibletranslationtools.shared.resources.action_yes
-import org.bibletranslationtools.shared.resources.action_no
-import org.bibletranslationtools.shared.resources.unit_chapter_title
 import org.bibletranslationtools.shared.resources.action_back
-import org.bibletranslationtools.shared.resources.cd_record_chapter
-import org.bibletranslationtools.shared.resources.cd_record
-import org.bibletranslationtools.shared.resources.cd_delete_take
-import org.bibletranslationtools.shared.resources.cd_open_in_playback
-import org.bibletranslationtools.shared.resources.cd_select_take
-import org.bibletranslationtools.shared.resources.cd_previous_take
-import org.bibletranslationtools.shared.resources.cd_next_take
-import org.bibletranslationtools.shared.resources.error_prefix
-import org.bibletranslationtools.shared.resources.unit_verse_label
 import org.bibletranslationtools.shared.resources.action_collapse
 import org.bibletranslationtools.shared.resources.action_expand
+import org.bibletranslationtools.shared.resources.action_no
 import org.bibletranslationtools.shared.resources.action_pause
 import org.bibletranslationtools.shared.resources.action_play
+import org.bibletranslationtools.shared.resources.action_yes
+import org.bibletranslationtools.shared.resources.cd_delete_take
+import org.bibletranslationtools.shared.resources.cd_next_take
+import org.bibletranslationtools.shared.resources.cd_open_in_playback
+import org.bibletranslationtools.shared.resources.cd_previous_take
+import org.bibletranslationtools.shared.resources.cd_record
+import org.bibletranslationtools.shared.resources.cd_record_chapter
+import org.bibletranslationtools.shared.resources.cd_select_take
+import org.bibletranslationtools.shared.resources.error_prefix
+import org.bibletranslationtools.shared.resources.unit_chapter_title
+import org.bibletranslationtools.shared.resources.unit_delete_take_title
 import org.bibletranslationtools.shared.resources.unit_take_position
+import org.bibletranslationtools.shared.resources.unit_verse_label
+import org.jetbrains.compose.resources.stringResource
+import org.jetbrains.compose.ui.tooling.preview.Preview
 
 private val GreenPlay = Color(0xFF4CAF50)
 
@@ -414,21 +443,11 @@ fun UnitCard(
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Normal
                     )
-                    val dateText = try {
-                        val ts = currentTake.createdTimestamp
-                        val monthName = ts.month.getDisplayName(
-                            java.time.format.TextStyle.FULL,
-                            java.util.Locale.getDefault()
-                        )
-                        "$monthName ${ts.dayOfMonth}, ${ts.year}"
-                    } catch (_: Exception) { "" }
-                    if (dateText.isNotEmpty()) {
-                        Text(
-                            text = dateText,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Text(
+                        text = takeDateText(currentTake.createdTimestamp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
 
                 IconButton(onClick = { onCycle(1) }) {
