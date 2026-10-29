@@ -1,13 +1,19 @@
 package org.bibletranslationtools.bttrecorder2.ui.screens
 
-import org.bibletranslationtools.bttrecorder2.ui.components.localizedList
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.GraphicEq
@@ -16,57 +22,79 @@ import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import org.bibletranslationtools.bttrecorder2.ui.MockData
+import org.bibletranslationtools.bttrecorder2.ui.components.Breadcrumb
+import org.bibletranslationtools.bttrecorder2.ui.components.EditionChangeDialog
 import org.bibletranslationtools.bttrecorder2.ui.components.LazyColumnWithScrollbar
 import org.bibletranslationtools.bttrecorder2.ui.components.ProgressPieView
-import org.bibletranslationtools.bttrecorder2.ui.components.EditionChangeDialog
+import org.bibletranslationtools.bttrecorder2.ui.components.ProjectManagementTopBar
+import org.bibletranslationtools.bttrecorder2.ui.components.localizedList
 import org.bibletranslationtools.bttrecorder2.ui.components.sourceEditionText
-import org.bibletranslationtools.otter.common.domain.collections.BookEditionState
-import org.bibletranslationtools.shared.resources.edition_banner_review
-import org.bibletranslationtools.shared.resources.edition_banner_update
-import org.bibletranslationtools.shared.resources.edition_held_back_message
-import org.bibletranslationtools.shared.resources.label_earlier_structure
+import org.bibletranslationtools.bttrecorder2.ui.components.typeLabel
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterListUiState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterListViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterUiModel
-import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterListUiState
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
-import org.jetbrains.compose.ui.tooling.preview.Preview
-import org.bibletranslationtools.bttrecorder2.ui.MockData
-import org.jetbrains.compose.resources.stringResource
+import org.bibletranslationtools.otter.common.domain.collections.BookEditionState
 import org.bibletranslationtools.shared.resources.Res
-import org.bibletranslationtools.shared.resources.chapter_compile_warning_title
-import org.bibletranslationtools.shared.resources.chapter_compile_warning_message
-import org.bibletranslationtools.shared.resources.action_ok
 import org.bibletranslationtools.shared.resources.action_cancel
-import org.bibletranslationtools.shared.resources.chapter_delete_take_title
-import org.bibletranslationtools.shared.resources.chapter_delete_take_message
+import org.bibletranslationtools.shared.resources.action_collapse
 import org.bibletranslationtools.shared.resources.action_delete
-import org.bibletranslationtools.shared.resources.action_back
-import org.bibletranslationtools.shared.resources.cd_record_chapter
-import org.bibletranslationtools.shared.resources.cd_delete_chapter_take
-import org.bibletranslationtools.shared.resources.cd_open_in_playback
-import org.bibletranslationtools.shared.resources.action_loading
-import org.bibletranslationtools.shared.resources.error_prefix
+import org.bibletranslationtools.shared.resources.action_ok
+import org.bibletranslationtools.shared.resources.action_pause
+import org.bibletranslationtools.shared.resources.action_play
 import org.bibletranslationtools.shared.resources.cd_chapter_compiled
 import org.bibletranslationtools.shared.resources.cd_compile_chapter
 import org.bibletranslationtools.shared.resources.cd_compile_chapter_not_ready
-import org.bibletranslationtools.shared.resources.action_collapse
+import org.bibletranslationtools.shared.resources.cd_delete_chapter_take
 import org.bibletranslationtools.shared.resources.cd_expand_chapter_take
-import org.bibletranslationtools.shared.resources.action_pause
-import org.bibletranslationtools.shared.resources.action_play
+import org.bibletranslationtools.shared.resources.cd_open_in_playback
+import org.bibletranslationtools.shared.resources.cd_record_chapter
+import org.bibletranslationtools.shared.resources.chapter_compile_warning_message
+import org.bibletranslationtools.shared.resources.chapter_compile_warning_title
+import org.bibletranslationtools.shared.resources.chapter_delete_take_message
+import org.bibletranslationtools.shared.resources.chapter_delete_take_title
+import org.bibletranslationtools.shared.resources.edition_banner_review
+import org.bibletranslationtools.shared.resources.edition_banner_update
+import org.bibletranslationtools.shared.resources.edition_held_back_message
+import org.bibletranslationtools.shared.resources.error_prefix
+import org.bibletranslationtools.shared.resources.label_earlier_structure
 import org.bibletranslationtools.shared.resources.main_chapter_label
+import org.bibletranslationtools.shared.resources.pm_language_pair
+import org.jetbrains.compose.resources.stringResource
+import org.jetbrains.compose.ui.tooling.preview.Preview
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChapterListScreen(
     viewModel: ChapterListViewModel = viewModel { ChapterListViewModel() },
     onBackClick: () -> Unit,
+    onLanguagesClick: () -> Unit,
+    onNewProjectClick: () -> Unit,
+    onSettingsClick: () -> Unit,
     onChapterClick: () -> Unit,
     onRecordChapter: (sourceId: Int, targetId: Int, chapterSort: Int) -> Unit = { _, _, _ -> },
     onOpenChapterPlayback: (sourceId: Int, targetId: Int, chapterSort: Int, takeNumber: Int) -> Unit =
@@ -88,6 +116,9 @@ fun ChapterListScreen(
         uiState = uiState,
         onReviewEdition = { showEditionChange = true },
         onBackClick = onBackClick,
+        onLanguagesClick = onLanguagesClick,
+        onNewProjectClick = onNewProjectClick,
+        onSettingsClick = onSettingsClick,
         onChapterClick = { sort -> viewModel.selectChapter(sort, onChapterClick) },
         onRecordChapter = { sort ->
             uiState.workbook?.let { wb ->
@@ -150,7 +181,6 @@ fun ChapterListScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChapterListContent(
     uiState: ChapterListUiState,
@@ -162,7 +192,10 @@ fun ChapterListContent(
     onChapterPlayPause: (Chapter) -> Unit = {},
     onChapterDeleteRequest: (Chapter) -> Unit = {},
     onOpenChapterPlayback: (chapterSort: Int, takeNumber: Int) -> Unit = { _, _ -> },
-    onReviewEdition: () -> Unit = {}
+    onReviewEdition: () -> Unit = {},
+    onLanguagesClick: () -> Unit = {},
+    onNewProjectClick: () -> Unit = {},
+    onSettingsClick: () -> Unit = {}
 ) {
     // The row a user taps to expand. Only one expanded at a time, mirroring
     // the original Recorder behaviour.
@@ -170,111 +203,121 @@ fun ChapterListContent(
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(uiState.workbook?.target?.title ?: stringResource(Res.string.action_loading)) },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(Res.string.action_back))
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimary,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimary
-                )
+            ProjectManagementTopBar(
+                onNewProjectClick = onNewProjectClick,
+                onSettingsClick = onSettingsClick,
+                onBackClick = onBackClick
             )
         }
     ) { padding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(MaterialTheme.colorScheme.surface)
+                .background(MaterialTheme.colorScheme.background)
         ) {
-            // Hoisted above the `when` so the scroll position is retained across
-            // load-state transitions and back-navigation (rememberLazyListState is
-            // rememberSaveable-backed and restored per nav back-stack entry).
-            val listState = rememberLazyListState()
-            when {
-                uiState.isLoading -> {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                }
-                uiState.error != null -> {
-                    Text(
-                        text = stringResource(Res.string.error_prefix, uiState.error ?: ""),
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.align(Alignment.Center)
-                    )
-                }
-                else -> {
-                    LazyColumnWithScrollbar(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        uiState.editionState?.let { editions ->
-                            if (editions.updateAvailable || editions.heldBackChapters.isNotEmpty()) {
-                                item(key = "edition-banner") {
-                                    EditionBanner(editions, onReviewEdition)
+            uiState.workbook?.let { wb ->
+                Breadcrumb(
+                    stringResource(
+                        Res.string.pm_language_pair,
+                        wb.target.resourceMetadata.language.anglicizedName,
+                        wb.source.resourceMetadata.language.anglicizedName
+                    ) to onLanguagesClick,
+                    typeLabel(wb.target.resourceMetadata.identifier) to onBackClick,
+                    modifier = Modifier.padding(16.dp)
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .background(MaterialTheme.colorScheme.surface)
+            ) {
+                // Hoisted above the `when` so the scroll position is retained across
+                // load-state transitions and back-navigation (rememberLazyListState is
+                // rememberSaveable-backed and restored per nav back-stack entry).
+                val listState = rememberLazyListState()
+                when {
+                    uiState.isLoading -> {
+                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                    }
+                    uiState.error != null -> {
+                        Text(
+                            text = stringResource(Res.string.error_prefix, uiState.error ?: ""),
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.align(Alignment.Center)
+                        )
+                    }
+                    else -> {
+                        LazyColumnWithScrollbar(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            uiState.editionState?.let { editions ->
+                                if (editions.updateAvailable || editions.heldBackChapters.isNotEmpty()) {
+                                    item(key = "edition-banner") {
+                                        EditionBanner(editions, onReviewEdition)
+                                    }
                                 }
                             }
-                        }
-                        items(uiState.chapters, key = { it.chapter.sort }) { uiModel ->
-                            val isLoadedHere =
-                                uiState.loadedChapterSort == uiModel.chapter.sort
-                            val isPlayingThis = isLoadedHere && uiState.isChapterPlaying
-                            val isCompilingThis =
-                                uiState.compilingChapterSort == uiModel.chapter.sort
-                            val isExpanded =
-                                expandedChapterSort == uiModel.chapter.sort &&
-                                    uiModel.hasChapterTake
+                            items(uiState.chapters, key = { it.chapter.sort }) { uiModel ->
+                                val isLoadedHere =
+                                    uiState.loadedChapterSort == uiModel.chapter.sort
+                                val isPlayingThis = isLoadedHere && uiState.isChapterPlaying
+                                val isCompilingThis =
+                                    uiState.compilingChapterSort == uiModel.chapter.sort
+                                val isExpanded =
+                                    expandedChapterSort == uiModel.chapter.sort &&
+                                        uiModel.hasChapterTake
 
-                            ChapterItem(
-                                uiModel = uiModel,
-                                heldBack = uiState.editionState?.heldBackChapters?.contains(uiModel.chapter.sort) == true,
-                                isExpanded = isExpanded,
-                                isCompiling = isCompilingThis,
-                                isPlaying = isPlayingThis,
-                                // Use the loaded-here values so the slider /
-                                // duration label survive a pause (the take is
-                                // still in the player). When a different chapter
-                                // is loaded, fall back to zeros.
-                                playbackProgress = if (isLoadedHere) uiState.playbackProgress else 0f,
-                                elapsedText = if (isLoadedHere) uiState.elapsedText else "00:00:00",
-                                durationText = if (isLoadedHere) uiState.durationText else "00:00:00",
-                                onChapterClick = {
-                                    // Tap on the row's text area opens the unit list, just like
-                                    // the original. Expand/collapse is on the chevron.
-                                    onChapterClick(uiModel.chapter.sort)
-                                },
-                                onRecordChapter = { onRecordChapter(uiModel.chapter.sort) },
-                                onCompileClick = {
-                                    // Compile only when every verse has a take; the chevron
-                                    // (not this icon) drives expand of an existing take.
-                                    if (uiModel.canCompile && !isCompilingThis) {
-                                        onCompileClick(uiModel.chapter)
+                                ChapterItem(
+                                    uiModel = uiModel,
+                                    heldBack = uiState.editionState?.heldBackChapters?.contains(uiModel.chapter.sort) == true,
+                                    isExpanded = isExpanded,
+                                    isCompiling = isCompilingThis,
+                                    isPlaying = isPlayingThis,
+                                    // Use the loaded-here values so the slider /
+                                    // duration label survive a pause (the take is
+                                    // still in the player). When a different chapter
+                                    // is loaded, fall back to zeros.
+                                    playbackProgress = if (isLoadedHere) uiState.playbackProgress else 0f,
+                                    elapsedText = if (isLoadedHere) uiState.elapsedText else "00:00:00",
+                                    durationText = if (isLoadedHere) uiState.durationText else "00:00:00",
+                                    onChapterClick = {
+                                        // Tap on the row's text area opens the unit list, just like
+                                        // the original. Expand/collapse is on the chevron.
+                                        onChapterClick(uiModel.chapter.sort)
+                                    },
+                                    onRecordChapter = { onRecordChapter(uiModel.chapter.sort) },
+                                    onCompileClick = {
+                                        // Compile only when every verse has a take; the chevron
+                                        // (not this icon) drives expand of an existing take.
+                                        if (uiModel.canCompile && !isCompilingThis) {
+                                            onCompileClick(uiModel.chapter)
+                                        }
+                                    },
+                                    onExpandToggle = {
+                                        val nowExpanding =
+                                            expandedChapterSort != uiModel.chapter.sort
+                                        expandedChapterSort =
+                                            if (nowExpanding) uiModel.chapter.sort else null
+                                        if (nowExpanding && uiModel.hasChapterTake) {
+                                            // Eagerly load the take so duration shows
+                                            // immediately instead of after the first
+                                            // play tap.
+                                            onChapterExpand(uiModel.chapter)
+                                        }
+                                    },
+                                    onPlayPause = { onChapterPlayPause(uiModel.chapter) },
+                                    onDelete = { onChapterDeleteRequest(uiModel.chapter) },
+                                    onOpenPlayback = {
+                                        uiModel.chapterTakeNumber?.let { takeNumber ->
+                                            onOpenChapterPlayback(uiModel.chapter.sort, takeNumber)
+                                        }
                                     }
-                                },
-                                onExpandToggle = {
-                                    val nowExpanding =
-                                        expandedChapterSort != uiModel.chapter.sort
-                                    expandedChapterSort =
-                                        if (nowExpanding) uiModel.chapter.sort else null
-                                    if (nowExpanding && uiModel.hasChapterTake) {
-                                        // Eagerly load the take so duration shows
-                                        // immediately instead of after the first
-                                        // play tap.
-                                        onChapterExpand(uiModel.chapter)
-                                    }
-                                },
-                                onPlayPause = { onChapterPlayPause(uiModel.chapter) },
-                                onDelete = { onChapterDeleteRequest(uiModel.chapter) },
-                                onOpenPlayback = {
-                                    uiModel.chapterTakeNumber?.let { takeNumber ->
-                                        onOpenChapterPlayback(uiModel.chapter.sort, takeNumber)
-                                    }
-                                }
-                            )
-                            HorizontalDivider()
+                                )
+                                HorizontalDivider()
+                            }
                         }
                     }
                 }

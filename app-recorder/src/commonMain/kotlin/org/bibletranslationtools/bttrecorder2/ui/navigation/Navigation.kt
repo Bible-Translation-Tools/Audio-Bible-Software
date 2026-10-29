@@ -123,6 +123,9 @@ fun Navigation(
         composable<ChapterListRoute> {
             ChapterListScreen(
                 onBackClick = { navController.popBackStack() },
+                onLanguagesClick = { navController.popBackStack(ProjectManagementRoute, inclusive = false) },
+                onNewProjectClick = { navController.navigate(ProjectWizardRoute) },
+                onSettingsClick = { navController.navigate(SettingsRoute) },
                 onChapterClick = { navController.navigate(UnitListRoute) },
                 onRecordChapter = { sourceId, targetId, chapterSort ->
                     navController.navigate(

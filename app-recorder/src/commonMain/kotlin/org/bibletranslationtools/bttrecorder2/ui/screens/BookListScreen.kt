@@ -59,7 +59,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.vinceglb.filekit.FileKit
@@ -67,10 +66,14 @@ import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.openFileSaver
 import kotlinx.coroutines.launch
 import org.bibletranslationtools.bttrecorder2.ui.MockData
+import org.bibletranslationtools.bttrecorder2.ui.components.Breadcrumb
 import org.bibletranslationtools.bttrecorder2.ui.components.EditionChangeDialog
 import org.bibletranslationtools.bttrecorder2.ui.components.ExportOptionsDialog
 import org.bibletranslationtools.bttrecorder2.ui.components.ExportProgressDialog
+import org.bibletranslationtools.bttrecorder2.ui.components.ProjectImportDialog
 import org.bibletranslationtools.bttrecorder2.ui.components.ProjectInfoDialog
+import org.bibletranslationtools.bttrecorder2.ui.components.ProjectManagementScaffold
+import org.bibletranslationtools.bttrecorder2.ui.components.typeLabel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportOptionsState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportProjectViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProgressFilter
@@ -292,16 +295,12 @@ private fun BookList(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = stringResource(
+            Breadcrumb(
+                stringResource(
                     Res.string.pm_language_pair,
                     group.targetLanguage.anglicizedName,
                     group.sourceLanguage.anglicizedName
-                ),
-                style = MaterialTheme.typography.bodyLarge,
-                color = colors.onSurfaceVariant,
-                textDecoration = TextDecoration.Underline,
-                modifier = Modifier.clickable(role = Role.Button, onClick = onBackClick)
+                ) to onBackClick
             )
             Row(
                 modifier = Modifier.weight(1f),
