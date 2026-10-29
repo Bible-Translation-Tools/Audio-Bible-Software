@@ -67,9 +67,10 @@ import org.bibletranslationtools.shared.resources.main_chapter_label
 fun ChapterListScreen(
     viewModel: ChapterListViewModel = viewModel { ChapterListViewModel() },
     onBackClick: () -> Unit,
-    onChapterClick: (Int) -> Unit,
-    onRecordChapter: (Int) -> Unit = {},
-    onOpenChapterPlayback: (chapterSort: Int, takeNumber: Int) -> Unit = { _, _ -> }
+    onChapterClick: () -> Unit,
+    onRecordChapter: (sourceId: Int, targetId: Int, chapterSort: Int) -> Unit = { _, _, _ -> },
+    onOpenChapterPlayback: (sourceId: Int, targetId: Int, chapterSort: Int, takeNumber: Int) -> Unit =
+        { _, _, _, _ -> }
 ) {
     LaunchedEffect(Unit) {
         viewModel.loadChapters()
@@ -87,13 +88,21 @@ fun ChapterListScreen(
         uiState = uiState,
         onReviewEdition = { showEditionChange = true },
         onBackClick = onBackClick,
-        onChapterClick = onChapterClick,
-        onRecordChapter = onRecordChapter,
+        onChapterClick = { sort -> viewModel.selectChapter(sort, onChapterClick) },
+        onRecordChapter = { sort ->
+            uiState.workbook?.let { wb ->
+                viewModel.selectChapter(sort) { onRecordChapter(wb.source.collectionId, wb.target.collectionId, sort) }
+            }
+        },
         onCompileClick = { chapter -> pendingCompileChapter = chapter },
         onChapterExpand = viewModel::prepareChapterPlayback,
         onChapterPlayPause = viewModel::toggleChapterPlayback,
         onChapterDeleteRequest = { chapter -> pendingDeleteChapter = chapter },
-        onOpenChapterPlayback = onOpenChapterPlayback
+        onOpenChapterPlayback = { sort, takeNumber ->
+            uiState.workbook?.let { wb ->
+                onOpenChapterPlayback(wb.source.collectionId, wb.target.collectionId, sort, takeNumber)
+            }
+        }
     )
 
     if (showEditionChange) {

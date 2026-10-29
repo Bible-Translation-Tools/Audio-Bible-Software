@@ -58,31 +58,44 @@ import org.bibletranslationtools.shared.resources.unit_take_position
 
 private val GreenPlay = Color(0xFF4CAF50)
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UnitListScreen(
     viewModel: UnitListViewModel = viewModel { UnitListViewModel() },
     onBackClick: () -> Unit,
-    onUnitClick: (Int) -> Unit,
-    onRecordChapter: () -> Unit,
-    onOpenPlayback: (unitSort: Int, takeNumber: Int) -> Unit
+    onUnitClick: (sourceId: Int, targetId: Int, chapterSort: Int, unitSort: Int) -> Unit,
+    onRecordChapter: (sourceId: Int, targetId: Int, chapterSort: Int) -> Unit,
+    onOpenPlayback: (sourceId: Int, targetId: Int, chapterSort: Int, unitSort: Int, takeNumber: Int) -> Unit
 ) {
     LaunchedEffect(Unit) {
         viewModel.loadUnits()
     }
 
     val uiState by viewModel.uiState.collectAsState()
+    val workbook = uiState.workbook
+    val chapter = uiState.chapter
 
     UnitListContent(
         uiState = uiState,
         onBackClick = onBackClick,
-        onUnitClick = onUnitClick,
-        onRecordChapter = onRecordChapter,
+        onUnitClick = { unitSort ->
+            if (workbook != null && chapter != null) viewModel.selectUnit(unitSort) {
+                onUnitClick(workbook.source.collectionId, workbook.target.collectionId, chapter.sort, unitSort)
+            }
+        },
+        onRecordChapter = {
+            if (workbook != null && chapter != null) {
+                onRecordChapter(workbook.source.collectionId, workbook.target.collectionId, chapter.sort)
+            }
+        },
         onPlayPause = { viewModel.togglePlay(it) },
         onDelete = { unit, take -> viewModel.deleteTake(unit, take) },
         onCycle = { unit, direction -> viewModel.cycleTake(unit, direction) },
         onSelectTake = { viewModel.selectCurrentTake(it) },
-        onOpenPlayback = onOpenPlayback
+        onOpenPlayback = { unitSort, takeNumber ->
+            if (workbook != null && chapter != null) {
+                onOpenPlayback(workbook.source.collectionId, workbook.target.collectionId, chapter.sort, unitSort, takeNumber)
+            }
+        }
     )
 }
 

@@ -1,23 +1,33 @@
 package org.bibletranslationtools.bttrecorder2.ui.navigation
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
+import androidx.navigation.toRoute
 import kotlinx.coroutines.rx2.await
-import org.bibletranslationtools.shared.preferences.IAppPreferences
+import org.bibletranslationtools.bttrecorder2.ui.screens.BookListScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.ChapterListScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.MainMenuScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.PlaybackScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.ProjectManagementScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.ProjectWizardScreen
+import org.bibletranslationtools.bttrecorder2.ui.screens.RecorderScreen
+import org.bibletranslationtools.bttrecorder2.ui.screens.SettingsScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.SplashScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.UnitListScreen
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportProjectViewModel
@@ -25,28 +35,14 @@ import org.bibletranslationtools.bttrecorder2.ui.viewmodels.MainMenuViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.PlaybackViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectCreationViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementViewModel
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.RecorderViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SplashScreenViewModel
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.foundation.layout.Column
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import androidx.navigation.toRoute
-import org.bibletranslationtools.bttrecorder2.ui.screens.SettingsScreen
 import org.koin.mp.KoinPlatform.getKoin
 
 @Composable
 fun Navigation(
     navController: NavHostController
 ) {
-    val scope = rememberCoroutineScope()
-    val appPreferences = remember { getKoin().get<IAppPreferences>() }
     val exportViewModel = remember { getKoin().get<ExportProjectViewModel>() }
 
     NavHost(
@@ -95,15 +91,27 @@ fun Navigation(
         }
 
         composable<ProjectManagementRoute> {
-            ProjectManagementDestination(navController, scope, appPreferences)
+            val vm = viewModel { ProjectManagementViewModel() }
+            ProjectManagementScreen(
+                viewModel = vm,
+                onNewProjectClick = { navController.navigate(ProjectWizardRoute) },
+                onTypeClick = { groupId, type -> navController.navigate(BookListRoute(groupId, type)) },
+                onSettingsClick = { navController.navigate(SettingsRoute) }
+            )
         }
 
         composable<BookListRoute> { backStackEntry ->
-            ProjectManagementDestination(
-                navController = navController,
-                scope = scope,
-                appPreferences = appPreferences,
-                bookList = backStackEntry.toRoute())
+            val route = backStackEntry.toRoute<BookListRoute>()
+            val vm = viewModel { ProjectManagementViewModel() }
+            BookListScreen(
+                viewModel = vm,
+                groupId = route.groupId,
+                type = route.type,
+                onBackClick = { navController.popBackStack() },
+                onNewProjectClick = { navController.navigate(ProjectWizardRoute) },
+                onProjectOpened = { navController.navigate(ChapterListRoute) },
+                onSettingsClick = { navController.navigate(SettingsRoute) }
+            )
         }
 
         composable<SettingsRoute> {
@@ -115,34 +123,27 @@ fun Navigation(
         composable<ChapterListRoute> {
             ChapterListScreen(
                 onBackClick = { navController.popBackStack() },
-                onChapterClick = { chapterSort ->
-                    scope.launch {
-                        appPreferences.setActiveChapter(chapterSort)
-                        navController.navigate(UnitListRoute)
-                    }
-                },
-                onRecordChapter = { chapterSort ->
-                    scope.launch {
-                        appPreferences.setActiveChapter(chapterSort)
-                        val nav = appPreferences.navState.first()
-                        navController.navigate(
-                            RecorderRoute(nav.workbookSourceId, nav.workbookTargetId, chapterSort, -1)
+                onChapterClick = { navController.navigate(UnitListRoute) },
+                onRecordChapter = { sourceId, targetId, chapterSort ->
+                    navController.navigate(
+                        RecorderRoute(
+                            sourceId = sourceId,
+                            targetId = targetId,
+                            chapterNumber = chapterSort,
+                            unitNumber = -1
                         )
-                    }
+                    )
                 },
-                onOpenChapterPlayback = { chapterSort, takeNumber ->
-                    scope.launch {
-                        val nav = appPreferences.navState.first()
-                        navController.navigate(
-                            PlaybackRoute(
-                                sourceId = nav.workbookSourceId,
-                                targetId = nav.workbookTargetId,
-                                chapterNumber = chapterSort,
-                                unitNumber = -1,       // chapter target (loadTarget maps -1 → whole chapter)
-                                takeNumber = takeNumber
-                            )
+                onOpenChapterPlayback = { sourceId, targetId, chapterSort, takeNumber ->
+                    navController.navigate(
+                        PlaybackRoute(
+                            sourceId = sourceId,
+                            targetId = targetId,
+                            chapterNumber = chapterSort,
+                            unitNumber = -1,       // chapter target (loadTarget maps -1 → whole chapter)
+                            takeNumber = takeNumber
                         )
-                    }
+                    )
                 }
             )
         }
@@ -150,36 +151,36 @@ fun Navigation(
         composable<UnitListRoute> {
             UnitListScreen(
                 onBackClick = { navController.popBackStack() },
-                onUnitClick = { unitSort ->
-                    scope.launch {
-                        val nav = appPreferences.navState.first()
-                        appPreferences.setActiveUnit(unitSort)
-                        navController.navigate(
-                            RecorderRoute(nav.workbookSourceId, nav.workbookTargetId, nav.chapterSort, unitSort)
+                onUnitClick = { sourceId, targetId, chapterSort, unitSort ->
+                    navController.navigate(
+                        RecorderRoute(
+                            sourceId = sourceId,
+                            targetId = targetId,
+                            chapterNumber = chapterSort,
+                            unitNumber = unitSort
                         )
-                    }
+                    )
                 },
-                onRecordChapter = {
-                    scope.launch {
-                        val nav = appPreferences.navState.first()
-                        navController.navigate(
-                            RecorderRoute(nav.workbookSourceId, nav.workbookTargetId, nav.chapterSort, -1)
+                onRecordChapter = { sourceId, targetId, chapterSort ->
+                    navController.navigate(
+                        RecorderRoute(
+                            sourceId = sourceId,
+                            targetId = targetId,
+                            chapterNumber = chapterSort,
+                            unitNumber = -1
                         )
-                    }
+                    )
                 },
-                onOpenPlayback = { unitSort, takeNumber ->
-                    scope.launch {
-                        val nav = appPreferences.navState.first()
-                        navController.navigate(
-                            PlaybackRoute(
-                                sourceId = nav.workbookSourceId,
-                                targetId = nav.workbookTargetId,
-                                chapterNumber = nav.chapterSort,
-                                unitNumber = unitSort,
-                                takeNumber = takeNumber
-                            )
+                onOpenPlayback = { sourceId, targetId, chapterSort, unitSort, takeNumber ->
+                    navController.navigate(
+                        PlaybackRoute(
+                            sourceId = sourceId,
+                            targetId = targetId,
+                            chapterNumber = chapterSort,
+                            unitNumber = unitSort,
+                            takeNumber = takeNumber
                         )
-                    }
+                    )
                 }
             )
         }
@@ -208,7 +209,7 @@ fun Navigation(
             }
 
             val koin = getKoin()
-            val vm: org.bibletranslationtools.bttrecorder2.ui.viewmodels.RecorderViewModel = viewModel { koin.get() }
+            val vm: RecorderViewModel = viewModel { koin.get() }
 
             LaunchedEffect(sourceId, targetId, chapterNumber, unitNumber) {
                 vm.loadTarget(
@@ -219,7 +220,7 @@ fun Navigation(
                 )
             }
 
-            org.bibletranslationtools.bttrecorder2.ui.screens.RecorderScreen(
+            RecorderScreen(
                 viewModel = vm,
                 onNavigateToPlayback = { takeNumber ->
                     navController.navigate(
@@ -291,49 +292,6 @@ fun Navigation(
             )
         }
     }
-}
-
-/** The project list: languages, or with [bookList] one translation type's books. */
-@Composable
-private fun ProjectManagementDestination(
-    navController: NavHostController,
-    scope: CoroutineScope,
-    appPreferences: IAppPreferences,
-    bookList: BookListRoute? = null
-) {
-    val vm = viewModel { ProjectManagementViewModel() }
-    ProjectManagementScreen(
-        viewModel = vm,
-        selectedGroupId = bookList?.groupId,
-        selectedType = bookList?.type,
-        onTypeClick = { groupId, type -> navController.navigate(BookListRoute(groupId, type)) },
-        onBackClick = { navController.popBackStack() },
-        onNewProjectClick = {
-            navController.navigate(ProjectWizardRoute)
-        },
-        onProjectClick = { workbookDesc ->
-            // Persist the active workbook BEFORE navigating, like onChapterClick in Navigation().
-            // ChapterListViewModel.loadChapters() opens by reading `navState.first()`, so
-            // navigating while the write is still in flight is a race it loses — and it
-            // reports the loss as "No active project", with the chapter list empty.
-            //
-            // The window is widest on a first-ever run, where the write has to create the
-            // preferences file (and on Windows, be scanned on creation) rather than update
-            // one. That is exactly where it was reproducing: fresh install, first project
-            // opened, error; back out and in again and the value is already persisted, so it
-            // works from then on.
-            //
-            // Awaiting does not block the UI — this is a coroutine, not a blocking call.
-            scope.launch {
-                appPreferences.setActiveWorkbook(
-                    workbookDesc.sourceCollection.id,
-                    workbookDesc.targetCollection.id
-                )
-                navController.navigate(ChapterListRoute)
-            }
-        },
-        onSettingsClick = { navController.navigate(SettingsRoute) }
-    )
 }
 
 /**

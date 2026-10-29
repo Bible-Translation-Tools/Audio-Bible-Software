@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
+import org.bibletranslationtools.shared.preferences.IAppPreferences
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.data.primitives.Language
@@ -66,11 +67,13 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
     private val importProjectUseCase: ImportProjectUseCase by inject()
     private val directoryProvider: ITempFileProvider by inject()
     private val describeSourceEditions: DescribeSourceEditions by inject()
+    private val appPreferences: IAppPreferences by inject()
 
     private val _rawWorkbooks = MutableStateFlow<List<WorkbookDescriptor>?>(null)
     private val _sortState = MutableStateFlow(SortState())
     private val _updatesAvailable = MutableStateFlow<Set<Int>>(emptySet())
     private val _progress = MutableStateFlow<Map<Int, Double>>(emptyMap())
+    private var progressIds: Set<Int> = emptySet()
 
     private val _uiState = MutableStateFlow<ProjectManagementUiState>(ProjectManagementUiState.Loading)
     val uiState: StateFlow<ProjectManagementUiState> = _uiState.asStateFlow()
@@ -78,19 +81,15 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
     private val _importState = MutableStateFlow<ProjectImportState>(ProjectImportState.Idle)
     val importState: StateFlow<ProjectImportState> = _importState.asStateFlow()
 
-    init {
-        loadWorkbooks()
-    }
-
     fun loadWorkbooks() {
         launchLogged {
             _uiState.value = ProjectManagementUiState.Loading
             try {
-                val workbooks = workbookDescriptorRepository.getAll().blockingGet()
+                val workbooks = workbookDescriptorRepository.getAllSuspend()
                 _rawWorkbooks.value = workbooks
                 _updatesAvailable.value = updatesAvailable(workbooks)
-                _progress.value = progressOf(workbooks)
                 publish()
+                refreshProgress()
             } catch (e: Exception) {
                 logFailure("loading the project list", e)
                 _uiState.value = ProjectManagementUiState.Error(e.message ?: getString(Res.string.err_unknown))
@@ -108,6 +107,21 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
             SortState(field = field, direction = SortDirection.ASC)
         }
         publish()
+    }
+
+    /** Computes progress for [ids] only: it reads every chapter of a book, too slow for whole languages. */
+    fun loadProgress(ids: Set<Int>) {
+        progressIds = ids
+        refreshProgress()
+    }
+
+    private fun refreshProgress() {
+        val books = _rawWorkbooks.value.orEmpty().filter { it.id in progressIds }
+        if (books.isEmpty()) return
+        launchLogged {
+            _progress.value = progressOf(books)
+            publish()
+        }
     }
 
     private fun publish() {
@@ -184,7 +198,20 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
         }
     }
 
-    fun onProjectClick() {}
+    /**
+     * Makes [workbook] the active project, then calls [onOpened]. The write must land first: the
+     * chapter list reads it as it opens, and loses the race otherwise ("No active project", seen
+     * on a first-ever run, where the write has to create the preferences file).
+     */
+    fun openProject(workbook: WorkbookDescriptor, onOpened: () -> Unit) {
+        launchLogged {
+            appPreferences.setActiveWorkbook(
+                sourceId = workbook.sourceCollection.id,
+                targetId = workbook.targetCollection.id
+            )
+            onOpened()
+        }
+    }
 
     fun onNewProjectClick() {}
 

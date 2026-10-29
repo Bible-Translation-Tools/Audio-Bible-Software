@@ -122,6 +122,14 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
     }
     private var tickerJob: Job? = null
 
+    /** Makes [chapterSort] the active chapter, then calls [onSaved]: the verse list reads it as it opens. */
+    fun selectChapter(chapterSort: Int, onSaved: () -> Unit) {
+        launchLogged {
+            appPreferences.setActiveChapter(chapterSort)
+            onSaved()
+        }
+    }
+
     fun loadChapters() {
         // Load once per ViewModel. The chunk-LIST flow below only re-emits when the
         // set of chunks changes, not when a verse's take changes, so instead of a
