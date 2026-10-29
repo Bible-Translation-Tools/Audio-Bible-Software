@@ -33,6 +33,9 @@ class ImportProjectUseCaseTest {
         tempFiles = mockk(relaxed = true),
         bundledContent = mockk(relaxed = true),
         glSourceCatalog = mockk(relaxed = true),
+        installedEditions = mockk(relaxed = true),
+        fingerprinter = mockk(relaxed = true),
+        bundledStamps = mockk(relaxed = true),
     )
 
     @Test
