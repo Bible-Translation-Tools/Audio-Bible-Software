@@ -46,7 +46,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import org.bibletranslationtools.bttrecorder2.ui.MockData
@@ -54,7 +53,7 @@ import org.bibletranslationtools.bttrecorder2.ui.components.Breadcrumb
 import org.bibletranslationtools.bttrecorder2.ui.components.CollapsibleCard
 import org.bibletranslationtools.bttrecorder2.ui.components.EditionChangeDialog
 import org.bibletranslationtools.bttrecorder2.ui.components.LazyColumnWithScrollbar
-import org.bibletranslationtools.bttrecorder2.ui.components.ProgressPieView
+import org.bibletranslationtools.bttrecorder2.ui.components.ProgressBar
 import org.bibletranslationtools.bttrecorder2.ui.components.ProjectManagementTopBar
 import org.bibletranslationtools.bttrecorder2.ui.components.SortHeaderCell
 import org.bibletranslationtools.bttrecorder2.ui.components.localizedList
@@ -441,7 +440,6 @@ fun ChapterItem(
     // Un-gray the chapter when it has any recorded audio — either a compiled/recorded
     // chapter take or at least one verse take.
     val hasAnyTake = uiModel.hasContent || uiModel.hasChapterTake
-    val rowAlpha = if (hasAnyTake) 1f else 0.38f
 
     // The layers icon is a *compile* action, available ONLY when every verse has a
     // selected take (canCompile). The existence of a chapter take is irrelevant to
@@ -450,24 +448,22 @@ fun ChapterItem(
     //   - solid + enabled: every verse recorded → tap to (re)compile.
     //   - dimmed + disabled: some verse is missing a take.
     // Expand/collapse of an existing chapter take lives on the separate chevron.
-    val layersActive = uiModel.canCompile
-    val layersAlpha = if (layersActive) 1f else 0.38f
-    val layersEnabled = uiModel.canCompile
+    val layersAlpha = if (uiModel.canCompile) 1f else 0.38f
 
     Column {
+        // Three equal columns, like a book row, so they line up under the Chapter / Progress header.
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { onChapterClick() }
-                .padding(start = 16.dp, end = 4.dp, top = 10.dp, bottom = 10.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = stringResource(Res.string.main_chapter_label, uiModel.chapter.title),
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = if (hasAnyTake) FontWeight.Bold else FontWeight.Normal,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = rowAlpha)
+                    style = MaterialTheme.typography.titleLarge,
+                    color = if (hasAnyTake) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline
                 )
                 if (heldBack) {
                     Text(
@@ -478,76 +474,65 @@ fun ChapterItem(
                 }
             }
 
-            ProgressPieView(
-                progress = (uiModel.progress * 100).toInt(),
-                modifier = Modifier.size(36.dp),
-                progressColor = MaterialTheme.colorScheme.primary,
-                backgroundColor = MaterialTheme.colorScheme.outline.copy(alpha = rowAlpha)
-            )
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // Compile/layers icon. Click semantics depend on chapter state —
-            // see onCompileClick wiring in ChapterListContent.
-            if (isCompiling) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(24.dp).padding(2.dp),
-                    strokeWidth = 2.dp
-                )
-                Spacer(modifier = Modifier.width(16.dp))
-            } else {
-                IconButton(
-                    onClick = onCompileClick,
-                    enabled = layersEnabled,
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Layers,
-                        contentDescription = when {
-                            uiModel.canCompile -> stringResource(Res.string.cd_compile_chapter)
-                            uiModel.hasChapterTake -> stringResource(Res.string.cd_chapter_compiled)
-                            else -> stringResource(Res.string.cd_compile_chapter_not_ready)
-                        },
-                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = layersAlpha)
-                    )
-                }
+            Box(modifier = Modifier.weight(1f)) {
+                ProgressBar(uiModel.progress)
             }
 
-            // Record button — always shown
-            IconButton(
-                onClick = onRecordChapter,
-                modifier = Modifier.size(40.dp)
+            Row(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    Icons.Default.Mic,
-                    contentDescription = stringResource(Res.string.cd_record_chapter),
-                    tint = MaterialTheme.colorScheme.onSurface
-                )
-            }
+                // Expand chevron — only present once a chapter take exists, so it
+                // doesn't suggest expandability on rows that have nothing to show. It sits
+                // before compile and mic so those two stay flush right on every row.
+                if (uiModel.hasChapterTake) {
+                    IconButton(onClick = onExpandToggle) {
+                        Icon(
+                            // Right chevron when collapsed (pointing at the row contents
+                            // you'd reveal), down chevron when expanded.
+                            imageVector = if (isExpanded) {
+                                Icons.Default.KeyboardArrowDown
+                            } else {
+                                Icons.AutoMirrored.Filled.KeyboardArrowRight
+                            },
+                            contentDescription = if (isExpanded) stringResource(Res.string.action_collapse) else stringResource(Res.string.cd_expand_chapter_take),
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
 
-            // Expand chevron — only present once a chapter take exists, so it
-            // doesn't suggest expandability on rows that have nothing to show.
-            if (uiModel.hasChapterTake) {
-                IconButton(
-                    onClick = onExpandToggle,
-                    modifier = Modifier.size(40.dp)
-                ) {
+                // Compile/layers icon. Click semantics depend on chapter state —
+                // see onCompileClick wiring in ChapterListContent.
+                if (isCompiling) {
+                    Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
+                    }
+                } else {
+                    IconButton(onClick = onCompileClick, enabled = uiModel.canCompile) {
+                        Icon(
+                            Icons.Default.Layers,
+                            contentDescription = when {
+                                uiModel.canCompile -> stringResource(Res.string.cd_compile_chapter)
+                                uiModel.hasChapterTake -> stringResource(Res.string.cd_chapter_compiled)
+                                else -> stringResource(Res.string.cd_compile_chapter_not_ready)
+                            },
+                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = layersAlpha),
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
+                }
+
+                // Record button — always shown
+                IconButton(onClick = onRecordChapter) {
                     Icon(
-                        // Right chevron when collapsed (pointing at the row contents
-                        // you'd reveal), down chevron when expanded.
-                        imageVector = if (isExpanded) {
-                            Icons.Default.KeyboardArrowDown
-                        } else {
-                            Icons.AutoMirrored.Filled.KeyboardArrowRight
-                        },
-                        contentDescription = if (isExpanded) stringResource(Res.string.action_collapse) else stringResource(Res.string.cd_expand_chapter_take),
-                        tint = MaterialTheme.colorScheme.onSurface
+                        Icons.Default.Mic,
+                        contentDescription = stringResource(Res.string.cd_record_chapter),
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(32.dp)
                     )
                 }
-            } else {
-                // Reserve the same width so neighboring rows align visually
-                // regardless of compile state.
-                Spacer(modifier = Modifier.size(40.dp))
+
             }
         }
 
