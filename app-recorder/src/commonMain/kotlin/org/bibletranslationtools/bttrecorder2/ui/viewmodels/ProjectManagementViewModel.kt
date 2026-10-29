@@ -1,13 +1,18 @@
 package org.bibletranslationtools.bttrecorder2.ui.viewmodels
 
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.DescribeSourceEditions
 import androidx.lifecycle.ViewModel
+import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.name
+import io.github.vinceglb.filekit.readBytes
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
@@ -15,22 +20,29 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IWork
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.DescribeSourceEditions
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
-import io.github.vinceglb.filekit.PlatformFile
-import io.github.vinceglb.filekit.name
-import io.github.vinceglb.filekit.readBytes
-import kotlinx.coroutines.rx2.await
-import org.jetbrains.compose.resources.getString
 import org.bibletranslationtools.shared.resources.Res
-import org.bibletranslationtools.shared.resources.err_unknown
 import org.bibletranslationtools.shared.resources.err_delete_project
+import org.bibletranslationtools.shared.resources.err_unknown
 import org.bibletranslationtools.shared.resources.import_failed
+import org.jetbrains.compose.resources.getString
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.io.File
 
 enum class SortField { LANGUAGE, BOOK, PROGRESS }
 enum class SortDirection { ASC, DESC }
+
+enum class ProgressFilter {
+    NOT_STARTED, IN_PROGRESS, COMPLETED;
+
+    fun matches(progress: Double): Boolean = when (this) {
+        NOT_STARTED -> progress <= 0.0
+        IN_PROGRESS -> progress > 0.0 && progress < 1.0
+        COMPLETED -> progress >= 1.0
+    }
+}
 
 data class SortState(
     val field: SortField = SortField.BOOK,
@@ -58,6 +70,7 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
     private val _rawWorkbooks = MutableStateFlow<List<WorkbookDescriptor>?>(null)
     private val _sortState = MutableStateFlow(SortState())
     private val _updatesAvailable = MutableStateFlow<Set<Int>>(emptySet())
+    private val _progress = MutableStateFlow<Map<Int, Double>>(emptyMap())
 
     private val _uiState = MutableStateFlow<ProjectManagementUiState>(ProjectManagementUiState.Loading)
     val uiState: StateFlow<ProjectManagementUiState> = _uiState.asStateFlow()
@@ -76,11 +89,8 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
                 val workbooks = workbookDescriptorRepository.getAll().blockingGet()
                 _rawWorkbooks.value = workbooks
                 _updatesAvailable.value = updatesAvailable(workbooks)
-                _uiState.value = ProjectManagementUiState.Success(
-                    groups = groupAndSort(workbooks, _sortState.value),
-                    sortState = _sortState.value,
-                    updatesAvailable = _updatesAvailable.value
-                )
+                _progress.value = progressOf(workbooks)
+                publish()
             } catch (e: Exception) {
                 logFailure("loading the project list", e)
                 _uiState.value = ProjectManagementUiState.Error(e.message ?: getString(Res.string.err_unknown))
@@ -97,12 +107,33 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
         } else {
             SortState(field = field, direction = SortDirection.ASC)
         }
+        publish()
+    }
+
+    private fun publish() {
         val workbooks = _rawWorkbooks.value ?: return
         _uiState.value = ProjectManagementUiState.Success(
             groups = groupAndSort(workbooks, _sortState.value),
             sortState = _sortState.value,
-            updatesAvailable = _updatesAvailable.value
+            updatesAvailable = _updatesAvailable.value,
+            progress = _progress.value
         )
+    }
+
+    /** Each project's completion, 0.0 to 1.0, computed concurrently; a project that fails reads 0. */
+    private suspend fun progressOf(workbooks: List<WorkbookDescriptor>): Map<Int, Double> = coroutineScope {
+        workbooks.map { workbook ->
+            async {
+                workbook.id to try {
+                    workbook.progress.await()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    logFailure("computing project progress", e)
+                    0.0
+                }
+            }
+        }.awaitAll().toMap()
     }
 
     /** Ids of the projects whose source edition has a newer edition installed. */
@@ -221,7 +252,8 @@ sealed interface ProjectManagementUiState {
         val groups: List<ProjectGroup>,
         val sortState: SortState = SortState(),
         /** Ids of projects with a newer source edition installed. */
-        val updatesAvailable: Set<Int> = emptySet()
+        val updatesAvailable: Set<Int> = emptySet(),
+        val progress: Map<Int, Double> = emptyMap()
     ) : ProjectManagementUiState
     data class Error(val message: String) : ProjectManagementUiState
 }

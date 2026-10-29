@@ -28,6 +28,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.Task
+import androidx.compose.material.icons.rounded.FilterAlt
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -40,9 +42,11 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedIconButton
@@ -65,7 +69,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -89,6 +95,7 @@ import org.bibletranslationtools.bttrecorder2.ui.components.ProjectInfoDialog
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportOptionsState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportProjectViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectGroup
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProgressFilter
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectImportState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementUiState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementViewModel
@@ -106,6 +113,12 @@ import org.bibletranslationtools.shared.resources.action_import
 import org.bibletranslationtools.shared.resources.action_ok
 import org.bibletranslationtools.shared.resources.action_settings
 import org.bibletranslationtools.shared.resources.cd_clear_search
+import org.bibletranslationtools.shared.resources.cd_filter
+import org.bibletranslationtools.shared.resources.ic_status_in_progress
+import org.bibletranslationtools.shared.resources.ic_status_not_started
+import org.bibletranslationtools.shared.resources.pm_filter_completed
+import org.bibletranslationtools.shared.resources.pm_filter_in_progress
+import org.bibletranslationtools.shared.resources.pm_filter_not_started
 import org.bibletranslationtools.shared.resources.cd_info
 import org.bibletranslationtools.shared.resources.cd_more_options
 import org.bibletranslationtools.shared.resources.cd_new_project
@@ -123,6 +136,7 @@ import org.bibletranslationtools.shared.resources.pm_sort_book
 import org.bibletranslationtools.shared.resources.pm_sort_desc
 import org.bibletranslationtools.shared.resources.pm_sort_progress
 import org.bibletranslationtools.shared.resources.pm_title
+import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.ui.tooling.preview.Preview
@@ -396,6 +410,7 @@ fun ProjectManagementContent(
                                 books = books,
                                 sortState = uiState.sortState,
                                 updatesAvailable = uiState.updatesAvailable,
+                                progress = uiState.progress,
                                 exportingWorkbookId = exportingWorkbookId,
                                 onBackClick = onBackClick,
                                 onSort = onSort,
@@ -562,6 +577,7 @@ private fun BookList(
     books: List<WorkbookDescriptor>,
     sortState: SortState,
     updatesAvailable: Set<Int>,
+    progress: Map<Int, Double>,
     exportingWorkbookId: Int?,
     onBackClick: () -> Unit,
     onSort: (SortField) -> Unit,
@@ -572,7 +588,12 @@ private fun BookList(
     val colors = MaterialTheme.colorScheme
     var query by rememberSaveable { mutableStateOf("") }
     var isExpanded by rememberSaveable { mutableStateOf(true) }
-    val shownBooks = books.filter { it.title.contains(query.trim(), ignoreCase = true) }
+    var filter by rememberSaveable { mutableStateOf<ProgressFilter?>(null) }
+    var filterMenuExpanded by remember { mutableStateOf(false) }
+    val shownBooks = books.filter {
+        it.title.contains(query.trim(), ignoreCase = true) &&
+            filter?.matches(progress[it.id] ?: 0.0) != false
+    }
 
     Column(
         modifier = Modifier
@@ -596,11 +617,17 @@ private fun BookList(
                 textDecoration = TextDecoration.Underline,
                 modifier = Modifier.clickable(role = Role.Button, onClick = onBackClick)
             )
-            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+            Row(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
-                    placeholder = { Text(stringResource(Res.string.pm_search_books)) },
+                    placeholder = {
+                        Text(stringResource(Res.string.pm_search_books), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     trailingIcon = if (query.isEmpty()) null else {
                         {
@@ -616,8 +643,36 @@ private fun BookList(
                         focusedContainerColor = colors.surface,
                         unfocusedBorderColor = colors.outlineVariant
                     ),
-                    modifier = Modifier.widthIn(max = 380.dp).fillMaxWidth()
+                    modifier = Modifier.weight(1f, fill = false).widthIn(max = 380.dp).fillMaxWidth()
                 )
+                Box {
+                    FilledIconButton(
+                        onClick = { filterMenuExpanded = true },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = if (filter != null) {
+                                colors.primaryContainer
+                            } else colors.onSurface.copy(alpha = 0.06f),
+                            contentColor = if (filter != null) colors.primary else colors.onSurface
+                        ),
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(
+                            Icons.Rounded.FilterAlt,
+                            contentDescription = stringResource(Res.string.cd_filter),
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                    FilterMenu(
+                        expanded = filterMenuExpanded,
+                        selected = filter,
+                        onSelect = {
+                            filter = if (it == filter) null else it
+                            filterMenuExpanded = false
+                        },
+                        onDismiss = { filterMenuExpanded = false }
+                    )
+                }
             }
         }
 
@@ -660,6 +715,7 @@ private fun BookList(
                         workbook = workbook,
                         isExporting = exportingWorkbookId == workbook.id,
                         updateAvailable = workbook.id in updatesAvailable,
+                        progress = progress[workbook.id] ?: 0.0,
                         onClick = { onProjectClick(workbook) },
                         onInfoClick = { onInfoClick(workbook) },
                         onUpdateClick = { onUpdateClick(workbook) }
@@ -713,10 +769,67 @@ private fun BookSortHeader(sortState: SortState, onSort: (SortField) -> Unit) {
 }
 
 @Composable
+private fun FilterMenu(
+    expanded: Boolean,
+    selected: ProgressFilter?,
+    onSelect: (ProgressFilter) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colors = MaterialTheme.colorScheme
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(10.dp),
+        containerColor = colors.surface,
+        border = BorderStroke(1.dp, colors.onSurface.copy(alpha = 0.1f)),
+        modifier = Modifier.widthIn(min = 292.dp)
+    ) {
+        Text(
+            text = stringResource(Res.string.cd_filter),
+            style = MaterialTheme.typography.titleSmall,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+        listOf(
+            Triple(
+                ProgressFilter.NOT_STARTED,
+                painterResource(Res.drawable.ic_status_not_started),
+                Res.string.pm_filter_not_started
+            ),
+            Triple(
+                ProgressFilter.IN_PROGRESS,
+                painterResource(Res.drawable.ic_status_in_progress),
+                Res.string.pm_filter_in_progress
+            ),
+            Triple(
+                ProgressFilter.COMPLETED,
+                rememberVectorPainter(Icons.Outlined.Task),
+                Res.string.pm_filter_completed
+            )
+        ).forEach { (option, icon, label) ->
+            DropdownMenuItem(
+                text = {
+                    Text(stringResource(label), style = MaterialTheme.typography.titleLarge)
+                },
+                leadingIcon = {
+                    Icon(icon, contentDescription = null, modifier = Modifier.size(28.dp))
+                },
+                onClick = { onSelect(option) },
+                modifier = Modifier
+                    .background(
+                        if (option == selected) colors.primaryContainer else Color.Transparent
+                    )
+            )
+        }
+    }
+}
+
+@Composable
 private fun BookRow(
     workbook: WorkbookDescriptor,
     isExporting: Boolean,
     updateAvailable: Boolean,
+    progress: Double,
     onClick: () -> Unit,
     onInfoClick: () -> Unit,
     onUpdateClick: () -> Unit = {}
@@ -746,9 +859,8 @@ private fun BookRow(
             }
         }
         Box(modifier = Modifier.weight(1f)) {
-            // shortcut: progress is always 0, as the pie it replaces was; wire it up once per-book progress is tracked.
             LinearProgressIndicator(
-                progress = { 0f },
+                progress = { progress.toFloat().coerceIn(0f, 1f) },
                 color = MaterialTheme.colorScheme.primary,
                 trackColor = MaterialTheme.colorScheme.primaryContainer,
                 strokeCap = StrokeCap.Round,
