@@ -75,6 +75,7 @@
     <string name="cd_progress_sort">Sort by progress</string>
     <string name="pm_sort_language">Language</string>
     <string name="pm_sort_book">Book</string>
+    <string name="pm_sort_chapter">Chapter</string>
     <string name="pm_sort_progress">Progress</string>
     <plurals name="pm_books_count">
         <item quantity="one">%1$d book</item>

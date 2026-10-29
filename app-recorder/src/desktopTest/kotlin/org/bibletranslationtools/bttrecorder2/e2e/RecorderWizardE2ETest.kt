@@ -118,9 +118,10 @@ class RecorderWizardE2ETest {
         onNode(hasTextExactly("Genesis")).performClick()
 
         // Chapter rows are "Chapter <title>", where the title comes from the collection, so match on
-        // the label and let the number be whatever the import produced.
+        // the label and let the number be whatever the import produced. The trailing space keeps the
+        // card's "Chapter" sort header, which would re-sort instead of opening, from matching.
         waitUntil(timeoutMillis = 120_000) {
-            onAllNodesWithText("Chapter", substring = true).fetchSemanticsNodes().isNotEmpty() ||
+            onAllNodesWithText("Chapter ", substring = true).fetchSemanticsNodes().isNotEmpty() ||
                 onAllNodesWithText("No active project").fetchSemanticsNodes().isNotEmpty()
         }
         // Opening a project persists it as the active workbook, and the chapter list opens by
@@ -130,7 +131,7 @@ class RecorderWizardE2ETest {
             "the chapter list must not open on a workbook the prefs write has not persisted yet"
         )
 
-        onAllNodesWithText("Chapter", substring = true)[0].performClick()
+        onAllNodesWithText("Chapter ", substring = true)[0].performClick()
 
         // Waits for the verse rows themselves, NOT merely for the verse screen to be up. The screen's
         // title renders before the chunks flow has emitted, so accepting it here made the assertion

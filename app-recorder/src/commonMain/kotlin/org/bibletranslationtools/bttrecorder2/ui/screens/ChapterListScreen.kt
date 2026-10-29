@@ -2,6 +2,7 @@ package org.bibletranslationtools.bttrecorder2.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Delete
@@ -40,6 +42,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,16 +51,19 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import org.bibletranslationtools.bttrecorder2.ui.MockData
 import org.bibletranslationtools.bttrecorder2.ui.components.Breadcrumb
+import org.bibletranslationtools.bttrecorder2.ui.components.CollapsibleCard
 import org.bibletranslationtools.bttrecorder2.ui.components.EditionChangeDialog
 import org.bibletranslationtools.bttrecorder2.ui.components.LazyColumnWithScrollbar
 import org.bibletranslationtools.bttrecorder2.ui.components.ProgressPieView
 import org.bibletranslationtools.bttrecorder2.ui.components.ProjectManagementTopBar
+import org.bibletranslationtools.bttrecorder2.ui.components.SortHeaderCell
 import org.bibletranslationtools.bttrecorder2.ui.components.localizedList
 import org.bibletranslationtools.bttrecorder2.ui.components.sourceEditionText
 import org.bibletranslationtools.bttrecorder2.ui.components.typeLabel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterListUiState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterListViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterUiModel
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SortDirection
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.domain.collections.BookEditionState
 import org.bibletranslationtools.shared.resources.Res
@@ -85,6 +91,8 @@ import org.bibletranslationtools.shared.resources.error_prefix
 import org.bibletranslationtools.shared.resources.label_earlier_structure
 import org.bibletranslationtools.shared.resources.main_chapter_label
 import org.bibletranslationtools.shared.resources.pm_language_pair
+import org.bibletranslationtools.shared.resources.pm_sort_chapter
+import org.bibletranslationtools.shared.resources.pm_sort_progress
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
@@ -200,6 +208,19 @@ fun ChapterListContent(
     // The row a user taps to expand. Only one expanded at a time, mirroring
     // the original Recorder behaviour.
     var expandedChapterSort by remember { mutableStateOf<Int?>(null) }
+    var isCardExpanded by rememberSaveable { mutableStateOf(true) }
+    var sortField by rememberSaveable { mutableStateOf(ChapterSortField.CHAPTER) }
+    var sortDirection by rememberSaveable { mutableStateOf(SortDirection.ASC) }
+    val chapters = remember(uiState.chapters, sortField, sortDirection) {
+        val order = when (sortField) {
+            ChapterSortField.CHAPTER -> compareBy<ChapterUiModel> { it.chapter.sort }
+            ChapterSortField.PROGRESS -> compareBy { it.progress }
+        }
+        // Equal progress keeps chapter order whichever way it runs.
+        uiState.chapters.sortedWith(
+            (if (sortDirection == SortDirection.DESC) order.reversed() else order).thenBy { it.chapter.sort }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -215,6 +236,8 @@ fun ChapterListContent(
                 .fillMaxSize()
                 .padding(padding)
                 .background(MaterialTheme.colorScheme.background)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             uiState.workbook?.let { wb ->
                 Breadcrumb(
@@ -223,44 +246,55 @@ fun ChapterListContent(
                         wb.target.resourceMetadata.language.anglicizedName,
                         wb.source.resourceMetadata.language.anglicizedName
                     ) to onLanguagesClick,
-                    typeLabel(wb.target.resourceMetadata.identifier) to onBackClick,
-                    modifier = Modifier.padding(16.dp)
+                    typeLabel(wb.target.resourceMetadata.identifier) to onBackClick
                 )
             }
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .background(MaterialTheme.colorScheme.surface)
-            ) {
-                // Hoisted above the `when` so the scroll position is retained across
-                // load-state transitions and back-navigation (rememberLazyListState is
-                // rememberSaveable-backed and restored per nav back-stack entry).
-                val listState = rememberLazyListState()
-                when {
-                    uiState.isLoading -> {
-                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            // Hoisted above the `when` so the scroll position is retained across
+            // load-state transitions and back-navigation (rememberLazyListState is
+            // rememberSaveable-backed and restored per nav back-stack entry).
+            val listState = rememberLazyListState()
+            when {
+                uiState.isLoading -> {
+                    Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
                     }
-                    uiState.error != null -> {
+                }
+                uiState.error != null -> {
+                    Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                         Text(
                             text = stringResource(Res.string.error_prefix, uiState.error ?: ""),
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.align(Alignment.Center)
+                            color = MaterialTheme.colorScheme.error
                         )
                     }
-                    else -> {
+                }
+                else -> {
+                    uiState.editionState?.let { editions ->
+                        if (editions.updateAvailable || editions.heldBackChapters.isNotEmpty()) {
+                            EditionBanner(editions, onReviewEdition)
+                        }
+                    }
+                    CollapsibleCard(
+                        title = uiState.workbook?.target?.title.orEmpty(),
+                        isExpanded = isCardExpanded,
+                        onToggle = { isCardExpanded = !isCardExpanded },
+                        // Shrinks to its rows, but never past the screen: the rows scroll instead.
+                        modifier = Modifier.weight(1f, fill = false)
+                    ) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        ChapterSortHeader(sortField, sortDirection) { field ->
+                            if (field == sortField) {
+                                sortDirection = if (sortDirection == SortDirection.ASC) SortDirection.DESC else SortDirection.ASC
+                            } else {
+                                sortField = field
+                                sortDirection = SortDirection.ASC
+                            }
+                        }
+                        if (chapters.isNotEmpty()) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         LazyColumnWithScrollbar(
                             state = listState,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier.weight(1f, fill = false)
                         ) {
-                            uiState.editionState?.let { editions ->
-                                if (editions.updateAvailable || editions.heldBackChapters.isNotEmpty()) {
-                                    item(key = "edition-banner") {
-                                        EditionBanner(editions, onReviewEdition)
-                                    }
-                                }
-                            }
-                            items(uiState.chapters, key = { it.chapter.sort }) { uiModel ->
+                            items(chapters, key = { it.chapter.sort }) { uiModel ->
                                 val isLoadedHere =
                                     uiState.loadedChapterSort == uiModel.chapter.sort
                                 val isPlayingThis = isLoadedHere && uiState.isChapterPlaying
@@ -316,7 +350,6 @@ fun ChapterListContent(
                                         }
                                     }
                                 )
-                                HorizontalDivider()
                             }
                         }
                     }
@@ -326,13 +359,41 @@ fun ChapterListContent(
     }
 }
 
+private enum class ChapterSortField { CHAPTER, PROGRESS }
+
+@Composable
+private fun ChapterSortHeader(field: ChapterSortField, direction: SortDirection, onSort: (ChapterSortField) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(modifier = Modifier.weight(1f)) {
+            SortHeaderCell(stringResource(Res.string.pm_sort_chapter), field == ChapterSortField.CHAPTER, direction) {
+                onSort(ChapterSortField.CHAPTER)
+            }
+        }
+        Box(modifier = Modifier.weight(1f)) {
+            SortHeaderCell(stringResource(Res.string.pm_sort_progress), field == ChapterSortField.PROGRESS, direction) {
+                onSort(ChapterSortField.PROGRESS)
+            }
+        }
+        Spacer(Modifier.weight(1f))
+    }
+}
+
 /**
  * Above the chapters: a newer edition of the book's source is installed, or some chapters keep the
  * verse structure they were recorded with. [onReview] opens the edition change flow.
  */
 @Composable
 private fun EditionBanner(editions: BookEditionState, onReview: () -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp)
@@ -356,7 +417,6 @@ private fun EditionBanner(editions: BookEditionState, onReview: () -> Unit) {
             TextButton(onClick = onReview) { Text(stringResource(Res.string.edition_banner_review)) }
         }
     }
-    HorizontalDivider()
 }
 
 @Composable

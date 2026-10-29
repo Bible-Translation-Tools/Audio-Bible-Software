@@ -2,7 +2,6 @@ package org.bibletranslationtools.bttrecorder2.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,10 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.outlined.Task
 import androidx.compose.material.icons.rounded.FilterAlt
 import androidx.compose.material3.DropdownMenu
@@ -51,14 +47,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.vinceglb.filekit.FileKit
@@ -67,12 +59,14 @@ import io.github.vinceglb.filekit.dialogs.openFileSaver
 import kotlinx.coroutines.launch
 import org.bibletranslationtools.bttrecorder2.ui.MockData
 import org.bibletranslationtools.bttrecorder2.ui.components.Breadcrumb
+import org.bibletranslationtools.bttrecorder2.ui.components.CollapsibleCard
 import org.bibletranslationtools.bttrecorder2.ui.components.EditionChangeDialog
 import org.bibletranslationtools.bttrecorder2.ui.components.ExportOptionsDialog
 import org.bibletranslationtools.bttrecorder2.ui.components.ExportProgressDialog
 import org.bibletranslationtools.bttrecorder2.ui.components.ProjectImportDialog
 import org.bibletranslationtools.bttrecorder2.ui.components.ProjectInfoDialog
 import org.bibletranslationtools.bttrecorder2.ui.components.ProjectManagementScaffold
+import org.bibletranslationtools.bttrecorder2.ui.components.SortHeaderCell
 import org.bibletranslationtools.bttrecorder2.ui.components.typeLabel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportOptionsState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportProjectViewModel
@@ -80,14 +74,11 @@ import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProgressFilter
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectGroup
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementUiState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementViewModel
-import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SortDirection
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SortField
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SortState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.booksByType
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.shared.resources.Res
-import org.bibletranslationtools.shared.resources.action_collapse
-import org.bibletranslationtools.shared.resources.action_expand
 import org.bibletranslationtools.shared.resources.cd_clear_search
 import org.bibletranslationtools.shared.resources.cd_filter
 import org.bibletranslationtools.shared.resources.cd_info
@@ -99,9 +90,7 @@ import org.bibletranslationtools.shared.resources.pm_filter_in_progress
 import org.bibletranslationtools.shared.resources.pm_filter_not_started
 import org.bibletranslationtools.shared.resources.pm_language_pair
 import org.bibletranslationtools.shared.resources.pm_search_books
-import org.bibletranslationtools.shared.resources.pm_sort_asc
 import org.bibletranslationtools.shared.resources.pm_sort_book
-import org.bibletranslationtools.shared.resources.pm_sort_desc
 import org.bibletranslationtools.shared.resources.pm_sort_progress
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
@@ -361,55 +350,28 @@ private fun BookList(
             }
         }
 
-        val shape = RoundedCornerShape(12.dp)
-        Column(
-            modifier = Modifier
-                // Shrinks to its rows, but never past the screen: the rows scroll instead.
-                .weight(1f, fill = false)
-                .fillMaxWidth()
-                .clip(shape)
-                .background(colors.surface)
-                .border(1.dp, colors.outlineVariant, shape)
+        CollapsibleCard(
+            title = typeLabel(type),
+            isExpanded = isExpanded,
+            onToggle = { isExpanded = !isExpanded },
+            // Shrinks to its rows, but never past the screen: the rows scroll instead.
+            modifier = Modifier.weight(1f, fill = false)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(colors.background)
-                    .clickable { isExpanded = !isExpanded }
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = typeLabel(type),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.weight(1f)
-                )
-                Icon(
-                    imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                    contentDescription = stringResource(
-                        if (isExpanded) Res.string.action_collapse else Res.string.action_expand
-                    ),
-                    modifier = Modifier.size(36.dp)
-                )
-            }
-            if (isExpanded) {
-                HorizontalDivider(color = colors.outlineVariant)
-                BookSortHeader(sortState = sortState, onSort = onSort)
-                if (shownBooks.isNotEmpty()) HorizontalDivider(color = colors.outlineVariant)
+            HorizontalDivider(color = colors.outlineVariant)
+            BookSortHeader(sortState = sortState, onSort = onSort)
+            if (shownBooks.isNotEmpty()) HorizontalDivider(color = colors.outlineVariant)
 
-                LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
-                    items(shownBooks, key = { it.id }) { workbook ->
-                        BookRow(
-                            workbook = workbook,
-                            isExporting = exportingWorkbookId == workbook.id,
-                            updateAvailable = workbook.id in updatesAvailable,
-                            progress = progress[workbook.id] ?: 0.0,
-                            onClick = { onProjectClick(workbook) },
-                            onInfoClick = { onInfoClick(workbook) },
-                            onUpdateClick = { onUpdateClick(workbook) }
-                        )
-                    }
+            LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
+                items(shownBooks, key = { it.id }) { workbook ->
+                    BookRow(
+                        workbook = workbook,
+                        isExporting = exportingWorkbookId == workbook.id,
+                        updateAvailable = workbook.id in updatesAvailable,
+                        progress = progress[workbook.id] ?: 0.0,
+                        onClick = { onProjectClick(workbook) },
+                        onInfoClick = { onInfoClick(workbook) },
+                        onUpdateClick = { onUpdateClick(workbook) }
+                    )
                 }
             }
         }
@@ -425,42 +387,16 @@ private fun BookSortHeader(sortState: SortState, onSort: (SortField) -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(modifier = Modifier.weight(1f)) {
-            SortHeaderCell(stringResource(Res.string.pm_sort_book), SortField.BOOK, sortState, onSort)
+            SortHeaderCell(stringResource(Res.string.pm_sort_book), sortState.field == SortField.BOOK, sortState.direction) {
+                onSort(SortField.BOOK)
+            }
         }
         Box(modifier = Modifier.weight(1f)) {
-            SortHeaderCell(stringResource(Res.string.pm_sort_progress), SortField.PROGRESS, sortState, onSort)
+            SortHeaderCell(stringResource(Res.string.pm_sort_progress), sortState.field == SortField.PROGRESS, sortState.direction) {
+                onSort(SortField.PROGRESS)
+            }
         }
         Spacer(Modifier.weight(1f))
-    }
-}
-
-/** A column title that sorts by [field]; the active one is highlighted and announces its direction. */
-@Composable
-private fun SortHeaderCell(label: String, field: SortField, sortState: SortState, onSort: (SortField) -> Unit) {
-    val isActive = sortState.field == field
-    val color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-    val direction = stringResource(
-        if (sortState.direction == SortDirection.ASC) Res.string.pm_sort_asc else Res.string.pm_sort_desc
-    )
-    Row(
-        modifier = Modifier
-            .clickable(role = Role.Button) { onSort(field) }
-            .semantics { if (isActive) stateDescription = direction },
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
-            color = color
-        )
-        Icon(
-            imageVector = Icons.Default.SwapVert,
-            contentDescription = null,
-            tint = color,
-            modifier = Modifier.size(28.dp)
-        )
     }
 }
 
