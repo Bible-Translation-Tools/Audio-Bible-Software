@@ -419,43 +419,49 @@ private fun BookList(
 
 @Composable
 private fun BookSortHeader(sortState: SortState, onSort: (SortField) -> Unit) {
-    val direction = stringResource(
-        if (sortState.direction == SortDirection.ASC) Res.string.pm_sort_asc else Res.string.pm_sort_desc
-    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(modifier = Modifier.weight(1f)) {
-            Row(
-                modifier = Modifier
-                    .clickable(role = Role.Button) { onSort(SortField.BOOK) }
-                    .semantics { stateDescription = direction },
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = stringResource(Res.string.pm_sort_book),
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Icon(
-                    imageVector = Icons.Default.SwapVert,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(28.dp)
-                )
-            }
+        Box(modifier = Modifier.weight(1f)) {
+            SortHeaderCell(stringResource(Res.string.pm_sort_book), SortField.BOOK, sortState, onSort)
         }
-        Text(
-            text = stringResource(Res.string.pm_sort_progress),
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.weight(1f)
-        )
+        Box(modifier = Modifier.weight(1f)) {
+            SortHeaderCell(stringResource(Res.string.pm_sort_progress), SortField.PROGRESS, sortState, onSort)
+        }
         Spacer(Modifier.weight(1f))
+    }
+}
+
+/** A column title that sorts by [field]; the active one is highlighted and announces its direction. */
+@Composable
+private fun SortHeaderCell(label: String, field: SortField, sortState: SortState, onSort: (SortField) -> Unit) {
+    val isActive = sortState.field == field
+    val color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+    val direction = stringResource(
+        if (sortState.direction == SortDirection.ASC) Res.string.pm_sort_asc else Res.string.pm_sort_desc
+    )
+    Row(
+        modifier = Modifier
+            .clickable(role = Role.Button) { onSort(field) }
+            .semantics { if (isActive) stateDescription = direction },
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
+            color = color
+        )
+        Icon(
+            imageVector = Icons.Default.SwapVert,
+            contentDescription = null,
+            tint = color,
+            modifier = Modifier.size(28.dp)
+        )
     }
 }
 

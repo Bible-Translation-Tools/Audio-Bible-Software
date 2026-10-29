@@ -57,6 +57,15 @@ data class ProjectGroup(
     val books: List<WorkbookDescriptor>
 )
 
+/** Books by [progress] (absent reads 0); equal progress keeps Bible order whichever way it runs. */
+internal fun List<WorkbookDescriptor>.sortedByProgress(
+    progress: Map<Int, Double>,
+    direction: SortDirection
+): List<WorkbookDescriptor> {
+    val byProgress = compareBy<WorkbookDescriptor> { progress[it.id] ?: 0.0 }
+    return sortedWith((if (direction == SortDirection.DESC) byProgress.reversed() else byProgress).thenBy { it.sort })
+}
+
 fun ProjectGroup.booksByType(): Map<String, List<WorkbookDescriptor>> =
     books.groupBy { it.targetCollection.resourceContainer?.identifier.orEmpty() }
 
@@ -194,7 +203,7 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
                 val sorted = books.sortedBy { it.sort }
                 if (sort.direction == SortDirection.DESC) sorted.reversed() else sorted
             }
-            SortField.PROGRESS -> books.sortedBy { it.sort }
+            SortField.PROGRESS -> books.sortedByProgress(_progress.value, sort.direction)
         }
     }
 
