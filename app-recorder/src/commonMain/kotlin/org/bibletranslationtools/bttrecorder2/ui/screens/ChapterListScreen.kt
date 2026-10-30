@@ -233,7 +233,7 @@ fun ChapterListContent(
     val chapters = remember(uiState.chapters, sortField, sortDirection) {
         val order = when (sortField) {
             ChapterSortField.CHAPTER -> compareBy<ChapterUiModel> { it.chapter.sort }
-            ChapterSortField.PROGRESS -> compareBy { it.progress }
+            ChapterSortField.PROGRESS -> compareBy { it.completion }
         }
         // Equal progress keeps chapter order whichever way it runs.
         uiState.chapters.sortedWith(
@@ -285,7 +285,7 @@ fun ChapterListContent(
             val labels = chapters.associate { it.chapter.sort to stringResource(Res.string.main_chapter_label, it.chapter.title) }
             val shownChapters = chapters.filter {
                 labels.getValue(it.chapter.sort).contains(query.trim(), ignoreCase = true) &&
-                    filter?.matches(it.progress.toDouble()) != false
+                    filter?.matches(it.completion.toDouble()) != false
             }
             // Hoisted above the `when` so the scroll position is retained across
             // load-state transitions and back-navigation (rememberLazyListState is
@@ -483,7 +483,7 @@ fun ChapterItem(
 ) {
     // Un-gray the chapter when it has any recorded audio — either a compiled/recorded
     // chapter take or at least one verse take.
-    val hasAnyTake = uiModel.hasContent || uiModel.hasChapterTake
+    val hasAnyTake = uiModel.hasContent || uiModel.hasChapterTake || uiModel.takes.isNotEmpty()
 
     // The layers icon is a *compile* action, available ONLY when every verse has a
     // selected take (canCompile). The existence of a chapter take is irrelevant to
@@ -519,7 +519,7 @@ fun ChapterItem(
             }
 
             Box(modifier = Modifier.weight(1f)) {
-                ProgressBar(uiModel.progress)
+                ProgressBar(uiModel.completion)
             }
 
             Row(

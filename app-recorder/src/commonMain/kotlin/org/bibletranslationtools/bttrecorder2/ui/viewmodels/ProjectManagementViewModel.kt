@@ -15,14 +15,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
-import org.bibletranslationtools.shared.preferences.IAppPreferences
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
+import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.DescribeSourceEditions
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
+import org.bibletranslationtools.shared.preferences.IAppPreferences
 import org.bibletranslationtools.shared.resources.Res
 import org.bibletranslationtools.shared.resources.err_delete_project
 import org.bibletranslationtools.shared.resources.err_unknown
@@ -148,7 +149,7 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
         workbooks.map { workbook ->
             async {
                 workbook.id to try {
-                    workbook.progress.await()
+                    bookProgress(workbook)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -157,6 +158,25 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
                 }
             }
         }.awaitAll().toMap()
+    }
+
+    /**
+     * The share of the book's verses recorded. A chapter with a take of its own, recorded or compiled,
+     * counts all its verses, as the chapter list counts it done (ChapterUiModel.completion).
+     */
+    private suspend fun bookProgress(descriptor: WorkbookDescriptor): Double = withContext(Dispatchers.IO) {
+        val workbook = workbookRepository.get(descriptor.sourceCollection, descriptor.targetCollection)
+        var recorded = 0
+        var total = 0
+        workbook.target.chapters.toList().await().forEach { chapter ->
+            val verses = chapter.chunksSuspend().filter { it.contentType == ContentType.TEXT }
+            // The selected take is read with the chapter; the take list may still be loading.
+            val hasChapterTake = chapter.audio.getSelectedTake()?.isDeleted() == false ||
+                chapter.audio.getAllTakes().any { !it.isDeleted() }
+            total += verses.size
+            recorded += if (hasChapterTake) verses.size else verses.count { it.hasSelectedAudio() }
+        }
+        if (total == 0) 0.0 else recorded.toDouble() / total
     }
 
     /** Ids of the projects whose source edition has a newer edition installed. */

@@ -58,7 +58,10 @@ data class ChapterUiModel(
     val takes: List<Take> = emptyList(),
     /** True only when every verse has a selected take, i.e., compile is allowed. */
     val canCompile: Boolean = false
-)
+) {
+    /** How done the chapter is: all of it once it has a take of its own, recorded or compiled, else [progress]. */
+    val completion: Float get() = if (hasChapterTake || takes.isNotEmpty()) 1f else progress
+}
 
 data class ChapterListUiState(
     val isLoading: Boolean = false,
