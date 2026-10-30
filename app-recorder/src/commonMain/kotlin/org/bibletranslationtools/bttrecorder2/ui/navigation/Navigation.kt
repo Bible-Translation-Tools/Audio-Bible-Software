@@ -154,6 +154,10 @@ fun Navigation(
         composable<UnitListRoute> {
             UnitListScreen(
                 onBackClick = { navController.popBackStack() },
+                onLanguagesClick = { navController.popBackStack(ProjectManagementRoute, inclusive = false) },
+                onBooksClick = { navController.popBackStack<BookListRoute>(inclusive = false) },
+                onNewProjectClick = { navController.navigate(ProjectWizardRoute) },
+                onSettingsClick = { navController.navigate(SettingsRoute) },
                 onUnitClick = { sourceId, targetId, chapterSort, unitSort ->
                     navController.navigate(
                         RecorderRoute(
@@ -161,16 +165,6 @@ fun Navigation(
                             targetId = targetId,
                             chapterNumber = chapterSort,
                             unitNumber = unitSort
-                        )
-                    )
-                },
-                onRecordChapter = { sourceId, targetId, chapterSort ->
-                    navController.navigate(
-                        RecorderRoute(
-                            sourceId = sourceId,
-                            targetId = targetId,
-                            chapterNumber = chapterSort,
-                            unitNumber = -1
                         )
                     )
                 },
