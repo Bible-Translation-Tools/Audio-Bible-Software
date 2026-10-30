@@ -88,6 +88,7 @@
     <string name="pm_language_pair">%1$s from %2$s</string>
     <string name="pm_search_books">Search books…</string>
     <string name="pm_search_chapters">Search chapters…</string>
+    <string name="pm_search_verses">Search verses…</string>
     <string name="cd_clear_search">Clear search</string>
     <string name="cd_filter">Filter</string>
     <string name="pm_filter_not_started">Not started</string>

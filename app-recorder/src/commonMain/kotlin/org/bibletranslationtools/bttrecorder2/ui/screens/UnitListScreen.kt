@@ -44,6 +44,7 @@ import org.bibletranslationtools.bttrecorder2.ui.components.Breadcrumb
 import org.bibletranslationtools.bttrecorder2.ui.components.CollapsibleCard
 import org.bibletranslationtools.bttrecorder2.ui.components.LazyColumnWithScrollbar
 import org.bibletranslationtools.bttrecorder2.ui.components.ProjectManagementTopBar
+import org.bibletranslationtools.bttrecorder2.ui.components.SearchFilterBar
 import org.bibletranslationtools.bttrecorder2.ui.components.SortHeaderCell
 import org.bibletranslationtools.bttrecorder2.ui.components.TakePlayer
 import org.bibletranslationtools.bttrecorder2.ui.components.typeLabel
@@ -62,6 +63,7 @@ import org.bibletranslationtools.shared.resources.cd_record
 import org.bibletranslationtools.shared.resources.error_prefix
 import org.bibletranslationtools.shared.resources.pm_column_takes
 import org.bibletranslationtools.shared.resources.pm_language_pair
+import org.bibletranslationtools.shared.resources.pm_search_verses
 import org.bibletranslationtools.shared.resources.pm_sort_verses
 import org.bibletranslationtools.shared.resources.unit_chapter_title
 import org.bibletranslationtools.shared.resources.unit_delete_take_title
@@ -114,7 +116,6 @@ fun UnitListScreen(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UnitListContent(
     uiState: UnitListUiState,
@@ -133,6 +134,7 @@ fun UnitListContent(
     var expandedUnitSort by remember { mutableStateOf<Int?>(null) }
     var isCardExpanded by rememberSaveable { mutableStateOf(true) }
     var sortDirection by rememberSaveable { mutableStateOf(SortDirection.ASC) }
+    var query by rememberSaveable { mutableStateOf("") }
     val units = remember(uiState.units, sortDirection) {
         uiState.units.sortedBy { it.unit.sort }.let { if (sortDirection == SortDirection.DESC) it.reversed() else it }
     }
@@ -173,17 +175,31 @@ fun UnitListContent(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            uiState.workbook?.let { wb ->
-                Breadcrumb(
-                    stringResource(
-                        Res.string.pm_language_pair,
-                        wb.target.resourceMetadata.language.anglicizedName,
-                        wb.source.resourceMetadata.language.anglicizedName
-                    ) to onLanguagesClick,
-                    typeLabel(wb.target.resourceMetadata.identifier) to onBooksClick,
-                    wb.target.title to onBackClick
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                uiState.workbook?.let { wb ->
+                    Breadcrumb(
+                        stringResource(
+                            Res.string.pm_language_pair,
+                            wb.target.resourceMetadata.language.anglicizedName,
+                            wb.source.resourceMetadata.language.anglicizedName
+                        ) to onLanguagesClick,
+                        typeLabel(wb.target.resourceMetadata.identifier) to onBooksClick,
+                        wb.target.title to onBackClick
+                    )
+                }
+                SearchFilterBar(
+                    query = query,
+                    onQueryChange = { query = it },
+                    placeholder = stringResource(Res.string.pm_search_verses),
+                    modifier = Modifier.weight(1f)
                 )
             }
+            // Search matches the label as shown ("Verse 3"), so the number alone or with the word works.
+            val labels = units.associate { it.unit.sort to stringResource(Res.string.unit_verse_label, it.unit.title) }
+            val shownUnits = units.filter { labels.getValue(it.unit.sort).contains(query.trim(), ignoreCase = true) }
             // Hoisted above the load-state branches so the scroll position is
             // retained across load transitions and back-navigation (e.g. returning
             // from recording a verse) instead of resetting to the top.
@@ -218,12 +234,12 @@ fun UnitListContent(
                         VerseSortHeader(sortDirection) {
                             sortDirection = if (sortDirection == SortDirection.ASC) SortDirection.DESC else SortDirection.ASC
                         }
-                        if (units.isNotEmpty()) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        if (shownUnits.isNotEmpty()) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         LazyColumnWithScrollbar(
                             state = listState,
                             modifier = Modifier.weight(1f, fill = false)
                         ) {
-                            items(units, key = { it.unit.sort }) { unitHolder ->
+                            items(shownUnits, key = { it.unit.sort }) { unitHolder ->
                                 val unit = unitHolder.unit
                                 val takes = unit.audio.getAllTakes()
                                     .filter { !it.isDeleted() }

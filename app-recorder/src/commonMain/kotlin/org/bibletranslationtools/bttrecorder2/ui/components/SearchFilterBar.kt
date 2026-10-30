@@ -48,15 +48,15 @@ import org.bibletranslationtools.shared.resources.pm_filter_not_started
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
-/** The project lists' search field and Not started / In progress / Completed filter. */
+/** The project lists' search field, and their Not started / In progress / Completed filter when [onFilterChange] is given. */
 @Composable
 internal fun SearchFilterBar(
     query: String,
     onQueryChange: (String) -> Unit,
     placeholder: String,
-    filter: ProgressFilter?,
-    onFilterChange: (ProgressFilter?) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    filter: ProgressFilter? = null,
+    onFilterChange: ((ProgressFilter?) -> Unit)? = null
 ) {
     val colors = MaterialTheme.colorScheme
     var filterMenuExpanded by remember { mutableStateOf(false) }
@@ -88,34 +88,36 @@ internal fun SearchFilterBar(
             ),
             modifier = Modifier.weight(1f, fill = false).widthIn(max = 380.dp).fillMaxWidth()
         )
-        Box {
-            FilledIconButton(
-                onClick = { filterMenuExpanded = true },
-                shape = RoundedCornerShape(8.dp),
-                colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = if (filter != null) {
-                        colors.primaryContainer
-                    } else colors.onSurface.copy(alpha = 0.06f),
-                    contentColor = if (filter != null) colors.primary else colors.onSurface
-                ),
-                modifier = Modifier.size(48.dp)
-            ) {
-                Icon(
-                    Icons.Rounded.FilterAlt,
-                    contentDescription = stringResource(Res.string.cd_filter),
-                    modifier = Modifier.size(28.dp)
+        if (onFilterChange != null) {
+            Box {
+                FilledIconButton(
+                    onClick = { filterMenuExpanded = true },
+                    shape = RoundedCornerShape(8.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = if (filter != null) {
+                            colors.primaryContainer
+                        } else colors.onSurface.copy(alpha = 0.06f),
+                        contentColor = if (filter != null) colors.primary else colors.onSurface
+                    ),
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        Icons.Rounded.FilterAlt,
+                        contentDescription = stringResource(Res.string.cd_filter),
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+                FilterMenu(
+                    expanded = filterMenuExpanded,
+                    selected = filter,
+                    onSelect = {
+                        // Picking the active filter again clears it.
+                        onFilterChange(if (it == filter) null else it)
+                        filterMenuExpanded = false
+                    },
+                    onDismiss = { filterMenuExpanded = false }
                 )
             }
-            FilterMenu(
-                expanded = filterMenuExpanded,
-                selected = filter,
-                onSelect = {
-                    // Picking the active filter again clears it.
-                    onFilterChange(if (it == filter) null else it)
-                    filterMenuExpanded = false
-                },
-                onDismiss = { filterMenuExpanded = false }
-            )
         }
     }
 }
