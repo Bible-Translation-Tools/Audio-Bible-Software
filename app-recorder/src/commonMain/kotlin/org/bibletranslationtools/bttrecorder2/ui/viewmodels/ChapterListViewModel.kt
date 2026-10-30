@@ -228,6 +228,14 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
                                 _uiState.update { it.copy(shownTakeNumbers = it.shownTakeNumbers - chapter.sort) }
                             }
                         }
+                        launch {
+                            // The take list loads from the database in the background, so on a first open
+                            // it can still be empty when the selection arrives above: follow it as each take
+                            // comes in (and as new ones are recorded), or the row offers no takes to play.
+                            chapter.audio.takesFlow.collect {
+                                updateChapterRow(chapter) { existing -> existing.copy(takes = liveTakes(chapter)) }
+                            }
+                        }
                     }
                 }
             } catch (e: CancellationException) {

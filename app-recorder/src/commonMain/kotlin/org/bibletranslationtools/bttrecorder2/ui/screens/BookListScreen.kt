@@ -20,6 +20,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -101,6 +102,7 @@ fun BookListScreen(
         onProjectClick = { viewModel.openProject(it, onProjectOpened) },
         onSort = viewModel::toggleSort,
         onBooksShown = viewModel::loadProgress,
+        onBooksHidden = viewModel::stopProgress,
         onDeleteWorkbook = viewModel::deleteWorkbook,
         exportingWorkbookId = exportingWorkbookId,
         onBackupRequest = exportViewModel::openOptions,
@@ -150,6 +152,7 @@ fun BookListContent(
     onProjectClick: (WorkbookDescriptor) -> Unit,
     onSort: (SortField) -> Unit = {},
     onBooksShown: (ids: Set<Int>) -> Unit = {},
+    onBooksHidden: () -> Unit = {},
     onDeleteWorkbook: (WorkbookDescriptor) -> Unit = {},
     exportingWorkbookId: Int? = null,
     onBackupRequest: (WorkbookDescriptor) -> Unit = {},
@@ -202,7 +205,12 @@ fun BookListContent(
             LaunchedEffect(Unit) { onBackClick() }
         } else {
             val ids = books.mapTo(HashSet()) { it.id }
-            LaunchedEffect(ids) { onBooksShown(ids) }
+            // Progress is worked out only while the list is on screen: opening a book stops it, so the
+            // chapter list does not load against 66 books' worth of progress.
+            DisposableEffect(ids) {
+                onBooksShown(ids)
+                onDispose { onBooksHidden() }
+            }
 
             BookList(
                 group = group,

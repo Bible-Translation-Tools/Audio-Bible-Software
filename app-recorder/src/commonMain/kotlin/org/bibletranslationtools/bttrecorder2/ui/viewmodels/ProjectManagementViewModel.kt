@@ -6,17 +6,20 @@ import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.readBytes
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
+import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IContentRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.ITakeRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
@@ -72,7 +75,9 @@ fun ProjectGroup.booksByType(): Map<String, List<WorkbookDescriptor>> =
 
 class ProjectManagementViewModel : ViewModel(), KoinComponent {
 
-    private val workbookRepository: IWorkbookRepository by inject()
+    private val collectionRepository: ICollectionRepository by inject()
+    private val contentRepository: IContentRepository by inject()
+    private val takeRepository: ITakeRepository by inject()
     private val workbookDescriptorRepository: IWorkbookDescriptorRepository by inject()
     private val importProjectUseCase: ImportProjectUseCase by inject()
     private val directoryProvider: ITempFileProvider by inject()
@@ -84,6 +89,7 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
     private val _updatesAvailable = MutableStateFlow<Set<Int>>(emptySet())
     private val _progress = MutableStateFlow<Map<Int, Double>>(emptyMap())
     private var progressIds: Set<Int> = emptySet()
+    private var progressJob: Job? = null
 
     private val _uiState = MutableStateFlow<ProjectManagementUiState>(ProjectManagementUiState.Loading)
     val uiState: StateFlow<ProjectManagementUiState> = _uiState.asStateFlow()
@@ -125,13 +131,18 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
         refreshProgress()
     }
 
+    /** Stops calculating progress: the book list left the screen, and a book opened from it should not wait on it. */
+    fun stopProgress() {
+        progressIds = emptySet()
+        progressJob?.cancel()
+        progressJob = null
+    }
+
     private fun refreshProgress() {
         val books = _rawWorkbooks.value.orEmpty().filter { it.id in progressIds }
         if (books.isEmpty()) return
-        launchLogged {
-            _progress.value = progressOf(books)
-            publish()
-        }
+        progressJob?.cancel()
+        progressJob = launchLogged { publishProgressOf(books) }
     }
 
     private fun publish() {
@@ -144,11 +155,11 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
         )
     }
 
-    /** Each project's completion, 0.0 to 1.0, computed concurrently; a project that fails reads 0. */
-    private suspend fun progressOf(workbooks: List<WorkbookDescriptor>): Map<Int, Double> = coroutineScope {
-        workbooks.map { workbook ->
-            async {
-                workbook.id to try {
+    /** Each project's completion, 0.0 to 1.0, shown as each one is ready; a project that fails reads 0. */
+    private suspend fun publishProgressOf(workbooks: List<WorkbookDescriptor>) = coroutineScope {
+        workbooks.forEach { workbook ->
+            launch {
+                val progress = try {
                     bookProgress(workbook)
                 } catch (e: CancellationException) {
                     throw e
@@ -156,27 +167,34 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
                     logFailure("computing project progress", e)
                     0.0
                 }
+                _progress.update { it + (workbook.id to progress) }
+                publish()
             }
-        }.awaitAll().toMap()
+        }
     }
 
     /**
      * The share of the book's verses recorded. A chapter with a take of its own, recorded or compiled,
      * counts all its verses, as the chapter list counts it done (ChapterUiModel.completion).
+     *
+     * Read with plain queries, one per chapter, not through a Workbook: building one loads the whole
+     * book, source and target, through subscriptions the repository owns, so cancelling could not stop it.
      */
-    private suspend fun bookProgress(descriptor: WorkbookDescriptor): Double = withContext(Dispatchers.IO) {
-        val workbook = workbookRepository.get(descriptor.sourceCollection, descriptor.targetCollection)
+    private suspend fun bookProgress(descriptor: WorkbookDescriptor): Double {
         var recorded = 0
         var total = 0
-        workbook.target.chapters.toList().await().forEach { chapter ->
-            val verses = chapter.chunksSuspend().filter { it.contentType == ContentType.TEXT }
-            // The selected take is read with the chapter; the take list may still be loading.
-            val hasChapterTake = chapter.audio.getSelectedTake()?.isDeleted() == false ||
-                chapter.audio.getAllTakes().any { !it.isDeleted() }
+        collectionRepository.getChildrenSuspend(descriptor.targetCollection).forEach { chapter ->
+            val contents = contentRepository.getByCollectionSuspend(chapter)
+            val verses = contents.filter { it.type == ContentType.TEXT }
+            val chapterContent = contents.firstOrNull { it.type == ContentType.META }
+            val hasChapterTake = chapterContent != null && (
+                chapterContent.selectedTake?.deleted == null && chapterContent.selectedTake != null ||
+                    takeRepository.getByContent(chapterContent).await().isNotEmpty()
+                )
             total += verses.size
-            recorded += if (hasChapterTake) verses.size else verses.count { it.hasSelectedAudio() }
+            recorded += if (hasChapterTake) verses.size else verses.count { it.selectedTake?.deleted == null && it.selectedTake != null }
         }
-        if (total == 0) 0.0 else recorded.toDouble() / total
+        return if (total == 0) 0.0 else recorded.toDouble() / total
     }
 
     /** Ids of the projects whose source edition has a newer edition installed. */
