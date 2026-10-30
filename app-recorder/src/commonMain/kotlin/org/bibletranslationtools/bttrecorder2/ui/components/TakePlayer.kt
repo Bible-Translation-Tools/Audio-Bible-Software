@@ -14,9 +14,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.shared.resources.Res
@@ -35,6 +36,9 @@ import org.bibletranslationtools.shared.resources.cd_previous_take
 import org.bibletranslationtools.shared.resources.cd_select_take
 import org.bibletranslationtools.shared.resources.unit_take_position
 import org.jetbrains.compose.resources.stringResource
+
+/** The design's star for a selected take; the theme has no orange role. */
+private val SelectedStar = Color(0xFFE99A2E)
 
 /**
  * A take's player for the project lists: transport, then delete / open in Playback / select (filled star
@@ -105,9 +109,9 @@ internal fun TakePlayer(
             // Filled when this is the chapter's selected take; tapping an outline star selects it.
             IconButton(onClick = onSelect, enabled = !isSelected) {
                 Icon(
-                    if (isSelected) Icons.Default.Star else Icons.Outlined.StarBorder,
+                    if (isSelected) Icons.Rounded.Star else Icons.Rounded.StarBorder,
                     contentDescription = stringResource(Res.string.cd_select_take),
-                    tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    tint = if (isSelected) SelectedStar else MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.size(32.dp)
                 )
             }
