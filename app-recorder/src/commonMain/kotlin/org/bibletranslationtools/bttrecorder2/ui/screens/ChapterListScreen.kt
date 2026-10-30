@@ -11,26 +11,30 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -57,13 +61,16 @@ import org.bibletranslationtools.bttrecorder2.ui.components.SearchFilterBar
 import org.bibletranslationtools.bttrecorder2.ui.components.SortHeaderCell
 import org.bibletranslationtools.bttrecorder2.ui.components.localizedList
 import org.bibletranslationtools.bttrecorder2.ui.components.sourceEditionText
+import org.bibletranslationtools.bttrecorder2.ui.components.takeDateText
 import org.bibletranslationtools.bttrecorder2.ui.components.typeLabel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterListUiState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterListViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterUiModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProgressFilter
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SortDirection
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.shownTake
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
+import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.domain.collections.BookEditionState
 import org.bibletranslationtools.shared.resources.Res
 import org.bibletranslationtools.shared.resources.action_cancel
@@ -77,8 +84,11 @@ import org.bibletranslationtools.shared.resources.cd_compile_chapter
 import org.bibletranslationtools.shared.resources.cd_compile_chapter_not_ready
 import org.bibletranslationtools.shared.resources.cd_delete_chapter_take
 import org.bibletranslationtools.shared.resources.cd_expand_chapter_take
+import org.bibletranslationtools.shared.resources.cd_next_take
 import org.bibletranslationtools.shared.resources.cd_open_in_playback
+import org.bibletranslationtools.shared.resources.cd_previous_take
 import org.bibletranslationtools.shared.resources.cd_record_chapter
+import org.bibletranslationtools.shared.resources.cd_select_take
 import org.bibletranslationtools.shared.resources.chapter_compile_warning_message
 import org.bibletranslationtools.shared.resources.chapter_compile_warning_title
 import org.bibletranslationtools.shared.resources.chapter_delete_take_message
@@ -93,21 +103,9 @@ import org.bibletranslationtools.shared.resources.pm_language_pair
 import org.bibletranslationtools.shared.resources.pm_search_chapters
 import org.bibletranslationtools.shared.resources.pm_sort_chapter
 import org.bibletranslationtools.shared.resources.pm_sort_progress
+import org.bibletranslationtools.shared.resources.unit_take_position
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.ui.tooling.preview.Preview
-import androidx.compose.material.icons.outlined.Delete
-import org.bibletranslationtools.bttrecorder2.ui.components.takeDateText
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.outlined.StarBorder
-import androidx.compose.foundation.layout.widthIn
-import org.bibletranslationtools.otter.common.data.workbook.Take
-import org.bibletranslationtools.bttrecorder2.ui.viewmodels.shownTake
-import org.bibletranslationtools.shared.resources.cd_select_take
-import org.bibletranslationtools.shared.resources.cd_previous_take
-import org.bibletranslationtools.shared.resources.cd_next_take
-import org.bibletranslationtools.shared.resources.unit_take_position
 
 @Composable
 fun ChapterListScreen(
@@ -419,6 +417,7 @@ private fun ChapterSortHeader(field: ChapterSortField, direction: SortDirection,
             }
         }
         Spacer(Modifier.weight(1f))
+        Spacer(Modifier.size(48.dp))
     }
 }
 
@@ -524,28 +523,9 @@ fun ChapterItem(
 
             Row(
                 modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.End,
+                horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Expand chevron — only present once a chapter take exists, so it
-                // doesn't suggest expandability on rows that have nothing to show. It sits
-                // before compile and mic so those two stay flush right on every row.
-                if (uiModel.takes.isNotEmpty()) {
-                    IconButton(onClick = onExpandToggle) {
-                        Icon(
-                            // Right chevron when collapsed (pointing at the row contents
-                            // you'd reveal), down chevron when expanded.
-                            imageVector = if (isExpanded) {
-                                Icons.Default.KeyboardArrowDown
-                            } else {
-                                Icons.AutoMirrored.Filled.KeyboardArrowRight
-                            },
-                            contentDescription = if (isExpanded) stringResource(Res.string.action_collapse) else stringResource(Res.string.cd_expand_chapter_take),
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                }
-
                 // Compile/layers icon. Click semantics depend on chapter state —
                 // see onCompileClick wiring in ChapterListContent.
                 if (isCompiling) {
@@ -576,7 +556,14 @@ fun ChapterItem(
                         modifier = Modifier.size(32.dp)
                     )
                 }
+            }
 
+            IconButton(onClick = onExpandToggle, enabled = uiModel.takes.isNotEmpty()) {
+                Icon(
+                    imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (isExpanded) stringResource(Res.string.action_collapse) else stringResource(Res.string.cd_expand_chapter_take),
+                    modifier = Modifier.size(36.dp)
+                )
             }
         }
 
