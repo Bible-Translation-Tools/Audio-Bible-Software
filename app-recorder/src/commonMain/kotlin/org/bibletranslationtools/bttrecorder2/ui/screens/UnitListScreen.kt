@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
@@ -21,6 +20,7 @@ import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -85,6 +85,7 @@ import org.bibletranslationtools.shared.resources.pm_language_pair
 import org.bibletranslationtools.shared.resources.pm_sort_verses
 import org.bibletranslationtools.shared.resources.unit_chapter_title
 import org.bibletranslationtools.shared.resources.unit_delete_take_title
+import org.bibletranslationtools.shared.resources.unit_take_count
 import org.bibletranslationtools.shared.resources.unit_take_position
 import org.bibletranslationtools.shared.resources.unit_verse_label
 import org.jetbrains.compose.resources.stringResource
@@ -349,51 +350,37 @@ fun UnitCard(
     val hasTakes = takes.isNotEmpty()
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        // Header row — tapping anywhere toggles expansion
+        // Tapping the row also expands it, once there is a take to show.
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
                 .then(if (hasTakes) Modifier.clickable { onExpandClick() } else Modifier)
-                .padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
             Text(
                 text = stringResource(Res.string.unit_verse_label, unit.title),
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = if (hasTakes) FontWeight.Bold else FontWeight.Normal,
-                color = if (hasTakes)
-                    MaterialTheme.colorScheme.onSurface
-                else
-                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
+                style = MaterialTheme.typography.titleLarge,
+                color = if (hasTakes) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
                 modifier = Modifier.weight(1f)
             )
-
-            if (hasTakes) {
-                Text(
-                    text = "×${takes.size}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = if (hasTakes) stringResource(Res.string.unit_take_count, takes.size) else "",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f)
+            )
+            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                IconButton(onClick = onRecord) {
+                    Icon(Icons.Default.Mic, contentDescription = stringResource(Res.string.cd_record), modifier = Modifier.size(32.dp))
+                }
             }
-
-            IconButton(
-                onClick = onRecord,
-                modifier = Modifier.size(40.dp)
-            ) {
-                Icon(Icons.Default.Mic, contentDescription = stringResource(Res.string.cd_record))
-            }
-
-            if (hasTakes) {
+            IconButton(onClick = onExpandClick, enabled = hasTakes) {
                 Icon(
-                    imageVector = if (isExpanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight,
+                    imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                     contentDescription = if (isExpanded) stringResource(Res.string.action_collapse) else stringResource(Res.string.action_expand),
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(36.dp)
                 )
-                Spacer(modifier = Modifier.width(4.dp))
-            } else {
-                // Reserve space so mic button stays aligned
-                Spacer(modifier = Modifier.size(28.dp))
             }
         }
 

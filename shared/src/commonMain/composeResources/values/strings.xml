@@ -200,6 +200,7 @@
     <string name="cd_next_take">Next Take</string>
     <string name="unit_verse_label">Verse %1$s</string>
     <string name="unit_take_position">Take %1$d of %2$d</string>
+    <string name="unit_take_count">x%1$d</string>
 
     <!-- ───────────── Recorder ───────────── -->
     <string name="recorder_label_chapter">Chapter</string>
