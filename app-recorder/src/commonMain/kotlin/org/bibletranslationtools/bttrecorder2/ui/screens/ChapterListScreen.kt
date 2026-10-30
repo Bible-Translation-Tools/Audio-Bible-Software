@@ -11,23 +11,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -59,9 +50,9 @@ import org.bibletranslationtools.bttrecorder2.ui.components.ProgressBar
 import org.bibletranslationtools.bttrecorder2.ui.components.ProjectManagementTopBar
 import org.bibletranslationtools.bttrecorder2.ui.components.SearchFilterBar
 import org.bibletranslationtools.bttrecorder2.ui.components.SortHeaderCell
+import org.bibletranslationtools.bttrecorder2.ui.components.TakePlayer
 import org.bibletranslationtools.bttrecorder2.ui.components.localizedList
 import org.bibletranslationtools.bttrecorder2.ui.components.sourceEditionText
-import org.bibletranslationtools.bttrecorder2.ui.components.takeDateText
 import org.bibletranslationtools.bttrecorder2.ui.components.typeLabel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterListUiState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterListViewModel
@@ -77,18 +68,12 @@ import org.bibletranslationtools.shared.resources.action_cancel
 import org.bibletranslationtools.shared.resources.action_collapse
 import org.bibletranslationtools.shared.resources.action_delete
 import org.bibletranslationtools.shared.resources.action_ok
-import org.bibletranslationtools.shared.resources.action_pause
-import org.bibletranslationtools.shared.resources.action_play
 import org.bibletranslationtools.shared.resources.cd_chapter_compiled
 import org.bibletranslationtools.shared.resources.cd_compile_chapter
 import org.bibletranslationtools.shared.resources.cd_compile_chapter_not_ready
 import org.bibletranslationtools.shared.resources.cd_delete_chapter_take
 import org.bibletranslationtools.shared.resources.cd_expand_chapter_take
-import org.bibletranslationtools.shared.resources.cd_next_take
-import org.bibletranslationtools.shared.resources.cd_open_in_playback
-import org.bibletranslationtools.shared.resources.cd_previous_take
 import org.bibletranslationtools.shared.resources.cd_record_chapter
-import org.bibletranslationtools.shared.resources.cd_select_take
 import org.bibletranslationtools.shared.resources.chapter_compile_warning_message
 import org.bibletranslationtools.shared.resources.chapter_compile_warning_title
 import org.bibletranslationtools.shared.resources.chapter_delete_take_message
@@ -103,7 +88,6 @@ import org.bibletranslationtools.shared.resources.pm_language_pair
 import org.bibletranslationtools.shared.resources.pm_search_chapters
 import org.bibletranslationtools.shared.resources.pm_sort_chapter
 import org.bibletranslationtools.shared.resources.pm_sort_progress
-import org.bibletranslationtools.shared.resources.unit_take_position
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
@@ -570,7 +554,7 @@ fun ChapterItem(
         // Expanded body — playback row for the compiled chapter take. Visible
         // only when the user toggled it open and a chapter take exists.
         if (isExpanded && shownTake != null) {
-            ChapterTakePlaybackRow(
+            TakePlayer(
                 take = shownTake,
                 position = uiModel.takes.indexOfFirst { it.number == shownTake.number } + 1,
                 takeCount = uiModel.takes.size,
@@ -584,109 +568,9 @@ fun ChapterItem(
                 durationText = durationText,
                 onPlayPause = onPlayPause,
                 onDelete = onDelete,
-                onOpenPlayback = onOpenPlayback
+                onOpenPlayback = onOpenPlayback,
+                deleteDescription = stringResource(Res.string.cd_delete_chapter_take)
             )
-        }
-    }
-}
-
-/** A chapter take's player, laid out like a verse take's: transport, actions, then which take. */
-@Composable
-private fun ChapterTakePlaybackRow(
-    take: Take,
-    position: Int,
-    takeCount: Int,
-    isSelected: Boolean,
-    onPrevious: () -> Unit,
-    onNext: () -> Unit,
-    onSelect: () -> Unit,
-    isPlaying: Boolean,
-    playbackProgress: Float,
-    elapsedText: String,
-    durationText: String,
-    onPlayPause: () -> Unit,
-    onDelete: () -> Unit,
-    onOpenPlayback: () -> Unit = {}
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(20.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(20.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onPlayPause) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (isPlaying) stringResource(Res.string.action_pause) else stringResource(Res.string.action_play),
-                    modifier = Modifier.size(32.dp)
-                )
-            }
-            ProgressBar(playbackProgress, modifier = Modifier.weight(1f))
-            // One time, as in the design: how long the take is, then how far in once it has started.
-            Text(
-                text = if (playbackProgress > 0f) elapsedText else durationText,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Row(
-            modifier = Modifier.widthIn(max = 404.dp).fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            IconButton(onClick = onDelete) {
-                Icon(
-                    Icons.Outlined.Delete,
-                    contentDescription = stringResource(Res.string.cd_delete_chapter_take),
-                    tint = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.size(32.dp)
-                )
-            }
-            IconButton(onClick = onOpenPlayback) {
-                Icon(
-                    Icons.Default.GraphicEq,
-                    contentDescription = stringResource(Res.string.cd_open_in_playback),
-                    modifier = Modifier.size(36.dp)
-                )
-            }
-            // Filled when this is the chapter's selected take; tapping an outline star selects it.
-            IconButton(onClick = onSelect, enabled = !isSelected) {
-                Icon(
-                    if (isSelected) Icons.Default.Star else Icons.Outlined.StarBorder,
-                    contentDescription = stringResource(Res.string.cd_select_take),
-                    tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.size(32.dp)
-                )
-            }
-        }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.primaryContainer)
-                .padding(horizontal = 4.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onPrevious, enabled = position > 1) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(Res.string.cd_previous_take))
-            }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    stringResource(Res.string.unit_take_position, position, takeCount),
-                    style = MaterialTheme.typography.titleLarge
-                )
-                Text(
-                    takeDateText(take.createdTimestamp),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            IconButton(onClick = onNext, enabled = position < takeCount) {
-                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = stringResource(Res.string.cd_next_take))
-            }
         }
     }
 }
