@@ -169,6 +169,14 @@ class UnitListViewModel(
         return "%02d:%02d:%02d".format(hours, minutes, seconds)
     }
 
+    /** Makes [unitSort] the active verse, then calls [onSaved]. */
+    fun selectUnit(unitSort: Int, onSaved: () -> Unit) {
+        launchLogged {
+            appPreferences.setActiveUnit(unitSort)
+            onSaved()
+        }
+    }
+
     fun loadUnits() {
         // Load once per ViewModel. The chunk flow below keeps collecting for the
         // ViewModel's lifetime (the back-stack entry), so the verse rows stay current

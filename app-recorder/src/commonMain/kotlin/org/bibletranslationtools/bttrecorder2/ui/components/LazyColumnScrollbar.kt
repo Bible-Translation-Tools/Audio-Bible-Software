@@ -7,6 +7,7 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -63,22 +64,26 @@ fun LazyColumnWithScrollbar(
     content: LazyListScope.() -> Unit
 ) {
     Box(modifier = modifier) {
+        // Width only: given room, the list sizes the box to its rows instead of always filling it.
         LazyColumn(
             state = state,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxWidth()
         ) {
             content()
         }
-        Scrollbar(
-            state = state,
-            thumbColor = thumbColor,
-            thumbWidth = thumbWidth,
-            minThumbHeight = minThumbHeight,
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .fillMaxHeight()
-                .width(trackWidth)
-        )
+        // matchParentSize keeps the track as tall as the list without making the box taller.
+        Box(modifier = Modifier.matchParentSize()) {
+            Scrollbar(
+                state = state,
+                thumbColor = thumbColor,
+                thumbWidth = thumbWidth,
+                minThumbHeight = minThumbHeight,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .fillMaxHeight()
+                    .width(trackWidth)
+            )
+        }
     }
 }
 
