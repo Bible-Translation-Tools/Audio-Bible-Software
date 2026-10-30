@@ -42,6 +42,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,10 +55,13 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import org.bibletranslationtools.bttrecorder2.ui.MockData
 import org.bibletranslationtools.bttrecorder2.ui.components.Breadcrumb
+import org.bibletranslationtools.bttrecorder2.ui.components.CollapsibleCard
 import org.bibletranslationtools.bttrecorder2.ui.components.LazyColumnWithScrollbar
 import org.bibletranslationtools.bttrecorder2.ui.components.ProjectManagementTopBar
+import org.bibletranslationtools.bttrecorder2.ui.components.SortHeaderCell
 import org.bibletranslationtools.bttrecorder2.ui.components.takeDateText
 import org.bibletranslationtools.bttrecorder2.ui.components.typeLabel
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.SortDirection
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.UnitListUiState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.UnitListViewModel
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
@@ -76,7 +80,10 @@ import org.bibletranslationtools.shared.resources.cd_previous_take
 import org.bibletranslationtools.shared.resources.cd_record
 import org.bibletranslationtools.shared.resources.cd_select_take
 import org.bibletranslationtools.shared.resources.error_prefix
+import org.bibletranslationtools.shared.resources.pm_column_takes
 import org.bibletranslationtools.shared.resources.pm_language_pair
+import org.bibletranslationtools.shared.resources.pm_sort_verses
+import org.bibletranslationtools.shared.resources.unit_chapter_title
 import org.bibletranslationtools.shared.resources.unit_delete_take_title
 import org.bibletranslationtools.shared.resources.unit_take_position
 import org.bibletranslationtools.shared.resources.unit_verse_label
@@ -145,6 +152,11 @@ fun UnitListContent(
     onSettingsClick: () -> Unit = {}
 ) {
     var expandedUnitSort by remember { mutableStateOf<Int?>(null) }
+    var isCardExpanded by rememberSaveable { mutableStateOf(true) }
+    var sortDirection by rememberSaveable { mutableStateOf(SortDirection.ASC) }
+    val units = remember(uiState.units, sortDirection) {
+        uiState.units.sortedBy { it.unit.sort }.let { if (sortDirection == SortDirection.DESC) it.reversed() else it }
+    }
     // Pending delete: lambda to invoke on confirmation
     var pendingDelete by remember { mutableStateOf<(() -> Unit)?>(null) }
 
@@ -179,6 +191,8 @@ fun UnitListContent(
                 .fillMaxSize()
                 .padding(padding)
                 .background(MaterialTheme.colorScheme.background)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             uiState.workbook?.let { wb ->
                 Breadcrumb(
@@ -188,88 +202,125 @@ fun UnitListContent(
                         wb.source.resourceMetadata.language.anglicizedName
                     ) to onLanguagesClick,
                     typeLabel(wb.target.resourceMetadata.identifier) to onBooksClick,
-                    wb.target.title to onBackClick,
-                    modifier = Modifier.padding(16.dp)
+                    wb.target.title to onBackClick
                 )
             }
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .background(MaterialTheme.colorScheme.surface)
-            ) {
-                // Hoisted above the load-state branches so the scroll position is
-                // retained across load transitions and back-navigation (e.g. returning
-                // from recording a verse) instead of resetting to the top.
-                val listState = rememberLazyListState()
-                if (uiState.isLoading) {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                } else if (uiState.error != null) {
-                    Text(
-                        text = stringResource(Res.string.error_prefix, uiState.error ?: ""),
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.align(Alignment.Center)
-                    )
-                } else {
-                    LazyColumnWithScrollbar(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize()
+            // Hoisted above the load-state branches so the scroll position is
+            // retained across load transitions and back-navigation (e.g. returning
+            // from recording a verse) instead of resetting to the top.
+            val listState = rememberLazyListState()
+            when {
+                uiState.isLoading -> {
+                    Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                }
+                uiState.error != null -> {
+                    Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        Text(
+                            text = stringResource(Res.string.error_prefix, uiState.error ?: ""),
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+                else -> {
+                    CollapsibleCard(
+                        title = stringResource(
+                            Res.string.unit_chapter_title,
+                            uiState.workbook?.target?.title.orEmpty(),
+                            uiState.chapter?.title.orEmpty()
+                        ),
+                        isExpanded = isCardExpanded,
+                        onToggle = { isCardExpanded = !isCardExpanded },
+                        // Shrinks to its rows, but never past the screen: the rows scroll instead.
+                        modifier = Modifier.weight(1f, fill = false)
                     ) {
-                        items(uiState.units) { unitHolder ->
-                            val unit = unitHolder.unit
-                            val takes = unit.audio.getAllTakes()
-                                .filter { !it.isDeleted() }
-                                .sortedBy { it.number }
-                            val currentIndex = uiState.currentTakeIndices[unit.sort] ?: 0
-                            val currentTake = takes.getOrNull(currentIndex)
-                            // The take is "loaded" as long as the player is holding it
-                            // (whether or not it's actively playing right now). Use *that*
-                            // to gate slider/elapsed/duration values so a pause doesn't
-                            // visually snap the cursor back to zero — only the play/pause
-                            // icon depends on isPlaying. This mirrors how the chapter
-                            // player gates its expanded panel on `isLoadedHere`.
-                            val isThisUnitLoaded =
-                                uiState.currentPlayingTake?.file == currentTake?.file &&
-                                    currentTake != null
-                            val isThisUnitPlaying = isThisUnitLoaded && uiState.isPlaying
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        VerseSortHeader(sortDirection) {
+                            sortDirection = if (sortDirection == SortDirection.ASC) SortDirection.DESC else SortDirection.ASC
+                        }
+                        if (units.isNotEmpty()) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        LazyColumnWithScrollbar(
+                            state = listState,
+                            modifier = Modifier.weight(1f, fill = false)
+                        ) {
+                            items(units, key = { it.unit.sort }) { unitHolder ->
+                                val unit = unitHolder.unit
+                                val takes = unit.audio.getAllTakes()
+                                    .filter { !it.isDeleted() }
+                                    .sortedBy { it.number }
+                                val currentIndex = uiState.currentTakeIndices[unit.sort] ?: 0
+                                val currentTake = takes.getOrNull(currentIndex)
+                                // The take is "loaded" as long as the player is holding it
+                                // (whether or not it's actively playing right now). Use *that*
+                                // to gate slider/elapsed/duration values so a pause doesn't
+                                // visually snap the cursor back to zero — only the play/pause
+                                // icon depends on isPlaying. This mirrors how the chapter
+                                // player gates its expanded panel on `isLoadedHere`.
+                                val isThisUnitLoaded =
+                                    uiState.currentPlayingTake?.file == currentTake?.file &&
+                                        currentTake != null
+                                val isThisUnitPlaying = isThisUnitLoaded && uiState.isPlaying
 
-                            val precomputedDuration = currentTake?.file?.absolutePath
-                                ?.let { uiState.takeDurations[it] }
-                                ?: "00:00:00"
+                                val precomputedDuration = currentTake?.file?.absolutePath
+                                    ?.let { uiState.takeDurations[it] }
+                                    ?: "00:00:00"
 
-                            UnitCard(
-                                unit = unit,
-                                currentTake = currentTake,
-                                currentIndex = currentIndex,
-                                takes = takes,
-                                selectedTake = unitHolder.selectedTake,
-                                isExpanded = expandedUnitSort == unit.sort,
-                                onExpandClick = {
-                                    expandedUnitSort = if (expandedUnitSort == unit.sort) null else unit.sort
-                                },
-                                isPlaying = isThisUnitPlaying,
-                                playbackProgress = if (isThisUnitLoaded) uiState.playbackProgress else 0f,
-                                elapsedText = if (isThisUnitLoaded) uiState.elapsedText else "00:00:00",
-                                durationText = if (isThisUnitLoaded) uiState.durationText else precomputedDuration,
-                                onPlayPause = { onPlayPause(unit) },
-                                onDelete = {
-                                    if (currentTake != null) {
-                                        pendingDelete = { onDelete(unit, currentTake) }
-                                    }
-                                },
-                                onCycle = { direction -> onCycle(unit, direction) },
-                                onSelectTake = { onSelectTake(unit) },
-                                onOpenPlayback = {
-                                    if (currentTake != null) onOpenPlayback(unit.sort, currentTake.number)
-                                },
-                                onRecord = { onUnitClick(unit.sort) }
-                            )
-                            HorizontalDivider()
+                                UnitCard(
+                                    unit = unit,
+                                    currentTake = currentTake,
+                                    currentIndex = currentIndex,
+                                    takes = takes,
+                                    selectedTake = unitHolder.selectedTake,
+                                    isExpanded = expandedUnitSort == unit.sort,
+                                    onExpandClick = {
+                                        expandedUnitSort = if (expandedUnitSort == unit.sort) null else unit.sort
+                                    },
+                                    isPlaying = isThisUnitPlaying,
+                                    playbackProgress = if (isThisUnitLoaded) uiState.playbackProgress else 0f,
+                                    elapsedText = if (isThisUnitLoaded) uiState.elapsedText else "00:00:00",
+                                    durationText = if (isThisUnitLoaded) uiState.durationText else precomputedDuration,
+                                    onPlayPause = { onPlayPause(unit) },
+                                    onDelete = {
+                                        if (currentTake != null) {
+                                            pendingDelete = { onDelete(unit, currentTake) }
+                                        }
+                                    },
+                                    onCycle = { direction -> onCycle(unit, direction) },
+                                    onSelectTake = { onSelectTake(unit) },
+                                    onOpenPlayback = {
+                                        if (currentTake != null) onOpenPlayback(unit.sort, currentTake.number)
+                                    },
+                                    onRecord = { onUnitClick(unit.sort) }
+                                )
+                            }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/** Verses (sortable) and Takes over the verse rows' columns; the last two slots are the mic and chevron columns. */
+@Composable
+private fun VerseSortHeader(direction: SortDirection, onSort: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(modifier = Modifier.weight(1f)) {
+            SortHeaderCell(stringResource(Res.string.pm_sort_verses), isActive = true, direction = direction, onClick = onSort)
+        }
+        Text(
+            text = stringResource(Res.string.pm_column_takes),
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.weight(1f)
+        )
+        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.size(48.dp))
     }
 }
 

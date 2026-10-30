@@ -76,6 +76,8 @@
     <string name="pm_sort_language">Language</string>
     <string name="pm_sort_book">Book</string>
     <string name="pm_sort_chapter">Chapter</string>
+    <string name="pm_sort_verses">Verses</string>
+    <string name="pm_column_takes">Takes</string>
     <string name="pm_sort_progress">Progress</string>
     <plurals name="pm_books_count">
         <item quantity="one">%1$d book</item>
@@ -190,7 +192,7 @@
 
     <!-- ───────────── Unit list ───────────── -->
     <string name="unit_delete_take_title">Delete take?</string>
-    <string name="unit_chapter_title">%1$s - Chapter %2$s</string>
+    <string name="unit_chapter_title">%1$s %2$s</string>
     <string name="cd_delete_take">Delete Take</string>
     <string name="cd_open_in_playback">Open in Playback</string>
     <string name="cd_select_take">Select Take</string>
