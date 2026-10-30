@@ -41,8 +41,10 @@ import org.bibletranslationtools.otter.common.domain.project.importer.OngoingPro
 import org.bibletranslationtools.otter.common.domain.project.importer.ProjectImporterCallback
 import org.bibletranslationtools.otter.common.domain.project.importer.RCImporterFactory
 import org.bibletranslationtools.otter.common.domain.project.importer.TsImporterFactory
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportException
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstants
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.castOrFindImportException
 import org.bibletranslationtools.otter.common.api.persistence.IFileIOFactory
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import java.io.File
@@ -74,7 +76,6 @@ class ImportProjectUseCase(
 
     private val logger = LoggerFactory.getLogger(javaClass)
 
-    @Throws(IllegalArgumentException::class)
     fun import(
         file: File,
         callback: ProjectImporterCallback?,
@@ -82,18 +83,31 @@ class ImportProjectUseCase(
     ): Single<ImportResult> {
         return Single
             .fromCallable {
-                val format = ProjectFormatIdentifier.getProjectFormat(file)
+                val format = try {
+                    ProjectFormatIdentifier.getProjectFormat(file)
+                } catch (e: IllegalArgumentException) {
+                    logger.info("No project-format identifier matched $file; treating as unsupported.", e)
+                    throw ImportException(ImportResult.UNSUPPORTED_CONTENT)
+                }
                 getImporter(format)
             }
             .flatMap {
                 it.import(file, callback, options)
             }
-            .onErrorReturn {
-                logger.error(
-                    "Failed to import project file: $file. See exception detail below.",
-                    it
-                )
-                ImportResult.FAILED
+            .onErrorReturn { error ->
+                // An importer (or the format/importer selection above) can carry a specific
+                // ImportResult via ImportException — surface that rather than a blanket FAILED.
+                val carried = error.castOrFindImportException()?.result
+                if (carried != null) {
+                    logger.warn("Could not import project file: $file (result=$carried)", error)
+                    carried
+                } else {
+                    logger.error(
+                        "Failed to import project file: $file. See exception detail below.",
+                        error
+                    )
+                    ImportResult.FAILED
+                }
             }
     }
 
@@ -125,36 +139,13 @@ class ImportProjectUseCase(
             .ignoreElement()
     }
 
-    /**
-     * M5(d) fix: was reading through `javaClass.classLoader.getResource(...)`, a plain JVM
-     * classpath lookup — but the bundled GL zips are Compose Multiplatform resources, which
-     * [ComposeBundledContentSource][org.bibletranslationtools.shared.content.ComposeBundledContentSource]'s
-     * own KDoc spells out are deliberately NOT on the JVM classpath (`ClassLoader.getResource`
-     * returns null for them; only [IBundledContentSource.readBlocking] reaches them). That made
-     * [sideloadSource] throw a `NullPointerException` the moment anything actually called it —
-     * dead code in practice, only ever exercised by a mocked unit test
-     * ([org.bibletranslationtools.orature.ui.viewmodels.OratureProjectWizardViewModelTest]) that
-     * never touched a real bundle. Discovered while building `CreateProjectFromWacs` (M5(d)), which
-     * needs this path to actually work to sideload a bundled source on demand. Fixed by routing
-     * through the [bundledContent]/[glSourceCatalog] ports this class already took as constructor
-     * parameters but never used — the same pattern [GlSourceCatalog] already established, not a new
-     * one.
-     */
     private fun getEmbeddedSource(language: Language): File {
         val resourceName = glSourceCatalog.sources.find { it.languageCode == language.slug }?.name
-            ?: throw IllegalArgumentException("No bundled gateway-language source for '${language.slug}'")
-        val pathToSource = SOURCE_PATH_TEMPLATE.format(resourceName)
-        val bytes = bundledContent.readBlocking(pathToSource)
-
-        val sourceFile = File.createTempFile(
-            resourceName,
-            ".zip",
-            tempFiles.tempDirectory
-        ).also { tempFile ->
-            tempFile.outputStream().use { output -> output.write(bytes) }
-        }
-
-        return sourceFile
+            ?: throw IllegalArgumentException("No bundled source for ${language.slug}")
+        // Through the bundled-content port, not the classloader: the zips are Compose resources.
+        val bytes = bundledContent.readBlocking(SOURCE_PATH_TEMPLATE.format(resourceName))
+        return File.createTempFile(resourceName, ".zip", tempFiles.tempDirectory)
+            .apply { writeBytes(bytes) }
     }
 
     /**
@@ -194,7 +185,7 @@ class ImportProjectUseCase(
             ProjectFormat.SCRIPTURE_BURRITO -> burritoFactoryProvider
             ProjectFormat.RESOURCE_CONTAINER -> rcFactoryProvider
             ProjectFormat.TSTUDIO -> tsFactoryProvider
-            else -> throw Exception("Unsupported project format.")
+            else -> throw ImportException(ImportResult.UNSUPPORTED_CONTENT)
         }
         return factory.makeImporter()
     }
