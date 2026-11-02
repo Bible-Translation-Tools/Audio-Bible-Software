@@ -235,7 +235,7 @@
     <string name="export_load_chapters_error_title">Couldn\'t load chapters</string>
     <string name="export_type_backup_title">Backup</string>
     <string name="export_type_source_audio_title">Source Audio</string>
-    <string name="export_chapters_count">Chapters (%1$d of %2$d)</string>
+    <string name="export_estimated_size">Estimated File Size: %1$s MB</string>
     <string name="export_book_action">Export Book</string>
 
     <!-- ───────────── Export progress dialog ───────────── -->

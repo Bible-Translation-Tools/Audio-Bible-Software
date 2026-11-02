@@ -40,7 +40,7 @@ import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportOptionsState
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportType
 import org.bibletranslationtools.shared.resources.Res
 import org.bibletranslationtools.shared.resources.export_book_action
-import org.bibletranslationtools.shared.resources.export_chapters_count
+import org.bibletranslationtools.shared.resources.export_estimated_size
 import org.bibletranslationtools.shared.resources.export_load_chapters_error_title
 import org.bibletranslationtools.shared.resources.export_mixed_editions_warning
 import org.bibletranslationtools.shared.resources.export_options_title
@@ -132,7 +132,9 @@ private fun ReadyDialog(
         maxWidth = 720.dp,
         footer = {
             Text(
-                text = stringResource(Res.string.export_chapters_count, state.selectedChapterSorts.size, state.chapters.size),
+                text = state.estimatedSizeBytes?.let {
+                    stringResource(Res.string.export_estimated_size, megabytes(it))
+                }.orEmpty(),
                 style = MaterialTheme.typography.bodyLarge,
                 color = colors.onSurfaceVariant,
                 modifier = Modifier.weight(1f)
@@ -284,3 +286,6 @@ private fun isSelectable(chapter: ExportChapter, type: ExportType): Boolean = wh
     ExportType.BACKUP -> chapter.progress > 0f
     else -> chapter.progress >= 1f
 }
+
+/** The megabyte count only, to one decimal; the unit lives in the string so translators can localize it. */
+private fun megabytes(bytes: Long): String = "%.1f".format(bytes / (1024.0 * 1024.0))
