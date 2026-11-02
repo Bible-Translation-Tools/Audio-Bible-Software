@@ -14,9 +14,7 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.bibletranslationtools.bttrecorder2.ui.App
-import org.bibletranslationtools.bttrecorder2.ui.components.ProgressPieView
 import org.bibletranslationtools.bttrecorder2.ui.MockData
-import org.bibletranslationtools.bttrecorder2.ui.components.ProjectCard
 import org.bibletranslationtools.bttrecorder2.ui.screens.MainMenuScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.ProjectManagementContent
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementUiState

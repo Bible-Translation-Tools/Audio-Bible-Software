@@ -1,6 +1,6 @@
 appId: org.bibletranslationtools.recorder2
 ---
-# Files → New Project → English → Afar → Genesis → Project Management.
+# Files → New Project → English → Afar → Genesis → Project Management → Afar's book list.
 # Paths are relative to this file (shared/), not the workspace root.
 - runFlow: open_files.yaml
 - tapOn: "New Project"
@@ -51,4 +51,13 @@ appId: org.bibletranslationtools.recorder2
 - extendedWaitUntil:
     visible: "Project Management"
     timeout: 3000
+# The project list shows language cards: expand Afar's, then open its one translation type.
+# Both read "1 book": the language card's count comes first, the type card under it second.
+- tapOn: ".*from English.*"
+- tapOn:
+    text: "1 book"
+    index: 1
+- extendedWaitUntil:
+    visible: "Genesis"
+    timeout: 5000
 - assertVisible: ".*Genesis.*"
