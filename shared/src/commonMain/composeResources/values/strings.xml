@@ -123,8 +123,6 @@
     <string name="value_source_edition_with_code">%1$s %2$s · %3$s · %4$s</string>
     <string name="label_update_available">Update available</string>
     <!-- Moving a project book to another installed edition of its source (upgrade or downgrade). -->
-    <string name="edition_change_action">Change edition</string>
-    <string name="edition_update_action">Update edition</string>
     <string name="edition_change_title">Source Edition</string>
     <string name="edition_change_current">Current: %1$s</string>
     <string name="edition_change_hint">Choose the edition this book should use. Recordings are never deleted, and you can move back to an older edition later.</string>
