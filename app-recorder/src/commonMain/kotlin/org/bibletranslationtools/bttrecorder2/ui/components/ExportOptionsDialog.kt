@@ -1,68 +1,63 @@
 package org.bibletranslationtools.bttrecorder2.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.RadioButtonChecked
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.TriStateCheckbox
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.DialogProperties
-import org.bibletranslationtools.shared.resources.Res
-import org.bibletranslationtools.shared.resources.action_all
-import org.bibletranslationtools.shared.resources.action_cancel
-import org.bibletranslationtools.shared.resources.action_dismiss
-import org.bibletranslationtools.shared.resources.action_export
-import org.bibletranslationtools.shared.resources.action_none
-import org.bibletranslationtools.shared.resources.export_load_chapters_error_title
-import org.bibletranslationtools.shared.resources.export_options_title
-import org.bibletranslationtools.shared.resources.export_type_backup_subtitle
-import org.bibletranslationtools.shared.resources.export_type_backup_title
-import org.bibletranslationtools.shared.resources.export_type_source_audio_subtitle
-import org.bibletranslationtools.shared.resources.export_type_source_audio_title
-import org.bibletranslationtools.shared.resources.export_type_label
-import org.bibletranslationtools.shared.resources.export_chapters_count
-import org.jetbrains.compose.resources.stringResource
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportChapter
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportOptionsState
-import org.bibletranslationtools.shared.resources.export_mixed_editions_warning
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportType
+import org.bibletranslationtools.shared.resources.Res
+import org.bibletranslationtools.shared.resources.export_book_action
+import org.bibletranslationtools.shared.resources.export_chapters_count
+import org.bibletranslationtools.shared.resources.export_load_chapters_error_title
+import org.bibletranslationtools.shared.resources.export_mixed_editions_warning
+import org.bibletranslationtools.shared.resources.export_options_title
+import org.bibletranslationtools.shared.resources.export_type_backup_title
+import org.bibletranslationtools.shared.resources.export_type_source_audio_title
+import org.bibletranslationtools.shared.resources.pm_sort_chapter
+import org.bibletranslationtools.shared.resources.pm_sort_progress
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Pre-export options dialog modeled on Orature's `ExportProjectDialog`:
  *
- *   - Export type chosen via card-style radio buttons (Backup / Source Audio).
+ *   - Export type chosen in a left-hand radio column (Backup / Source Audio).
  *   - Per-chapter checkbox list. A chapter is "selectable" based on its
  *     progress and the chosen type (any progress for Backup; only complete
  *     chapters for Source Audio). Non-selectable rows are dimmed and inert.
- *   - All / None quick toggles.
+ *   - The list header's tri-state checkbox selects all / none.
  *   - Export button is disabled when zero chapters are selected.
  *
  * The dialog itself doesn't trigger the file save picker — it delegates to
@@ -97,39 +92,27 @@ fun ExportOptionsDialog(
 
 @Composable
 private fun LoadingDialog(state: ExportOptionsState.Loading, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-        modifier = Modifier.fillMaxWidth(0.92f),
-        title = { Text(stringResource(Res.string.export_options_title, state.descriptor.title)) },
-        text = {
-            Box(
-                modifier = Modifier.fillMaxWidth().height(120.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator()
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.action_cancel)) }
+    DialogFrame(
+        title = stringResource(Res.string.export_options_title, state.descriptor.title),
+        onClose = onDismiss
+    ) {
+        Box(
+            modifier = Modifier.fillMaxWidth().height(160.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator()
         }
-    )
+    }
 }
 
 @Composable
 private fun ErrorDialog(state: ExportOptionsState.Error, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(Res.string.export_load_chapters_error_title)) },
-        text = {
-            Text(
-                text = state.message,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyMedium
-            )
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(Res.string.action_dismiss)) } }
-    )
+    DialogFrame(
+        title = stringResource(Res.string.export_load_chapters_error_title),
+        onClose = onDismiss
+    ) {
+        DialogMessage(state.message, color = MaterialTheme.colorScheme.error)
+    }
 }
 
 @Composable
@@ -142,79 +125,76 @@ private fun ReadyDialog(
     onDeselectAll: () -> Unit,
     onExport: () -> Unit
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-        modifier = Modifier.fillMaxWidth(0.94f),
-        title = {
+    val colors = MaterialTheme.colorScheme
+    DialogFrame(
+        title = stringResource(Res.string.export_options_title, state.descriptor.title),
+        onClose = onDismiss,
+        maxWidth = 720.dp,
+        footer = {
             Text(
-                text = stringResource(Res.string.export_options_title, state.descriptor.title),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold
+                text = stringResource(Res.string.export_chapters_count, state.selectedChapterSorts.size, state.chapters.size),
+                style = MaterialTheme.typography.bodyLarge,
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.weight(1f)
             )
-        },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = stringResource(Res.string.export_type_label),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+            Button(
+                onClick = onExport,
+                enabled = state.canExport,
+                shape = RoundedCornerShape(4.dp),
+                contentPadding = PaddingValues(start = 8.dp, end = 16.dp),
+                modifier = Modifier.height(48.dp)
+            ) {
+                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(Res.string.export_book_action), style = MaterialTheme.typography.titleLarge)
+            }
+        }
+    ) {
+        Row(modifier = Modifier.weight(1f, fill = false).height(336.dp)) {
+            Column(modifier = Modifier.width(240.dp).fillMaxHeight()) {
+                ExportTypeRow(
+                    title = stringResource(Res.string.export_type_backup_title),
+                    selected = state.type == ExportType.BACKUP,
+                    onClick = { onSetType(ExportType.BACKUP) }
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Card-style radio row for the supported export types.
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ExportTypeCard(
-                        title = stringResource(Res.string.export_type_backup_title),
-                        subtitle = stringResource(Res.string.export_type_backup_subtitle),
-                        selected = state.type == ExportType.BACKUP,
-                        onClick = { onSetType(ExportType.BACKUP) }
-                    )
-                    ExportTypeCard(
-                        title = stringResource(Res.string.export_type_source_audio_title),
-                        subtitle = stringResource(Res.string.export_type_source_audio_subtitle),
-                        selected = state.type == ExportType.SOURCE_AUDIO,
-                        onClick = { onSetType(ExportType.SOURCE_AUDIO) }
-                    )
-                }
-
+                ExportTypeRow(
+                    title = stringResource(Res.string.export_type_source_audio_title),
+                    selected = state.type == ExportType.SOURCE_AUDIO,
+                    onClick = { onSetType(ExportType.SOURCE_AUDIO) }
+                )
                 // A published export of a book whose chapters follow different editions (A13's
                 // fallback: allowed, with a warning). A backup restores them as they are.
                 val mixed = state.heldBackChapters.filter { it in state.selectedChapterSorts }
                 if (state.type != ExportType.BACKUP && mixed.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(12.dp))
                     Text(
                         text = stringResource(Res.string.export_mixed_editions_warning, localizedList(mixed.map { it.toString() })),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error
+                        color = colors.error,
+                        modifier = Modifier.padding(16.dp)
                     )
                 }
-
-                Spacer(modifier = Modifier.height(16.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = stringResource(Res.string.export_chapters_count, state.selectedChapterSorts.size, state.chapters.size),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.weight(1f)
-                    )
-                    TextButton(onClick = onSelectAll) { Text(stringResource(Res.string.action_all)) }
-                    TextButton(onClick = onDeselectAll) { Text(stringResource(Res.string.action_none)) }
+            }
+            VerticalDivider(color = colors.outlineVariant)
+            Column(modifier = Modifier.weight(1f)) {
+                val selectable = state.chapters.filter { isSelectable(it, state.type) }
+                val headerState = when {
+                    state.selectedChapterSorts.isEmpty() -> ToggleableState.Off
+                    state.selectedChapterSorts.size == selectable.size -> ToggleableState.On
+                    else -> ToggleableState.Indeterminate
                 }
-
-                // Bound height so the dialog stays a sane size on phones.
-                // The list scrolls when the chapter count is large.
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 320.dp)
-                ) {
+                ChapterRowLayout(
+                    modifier = Modifier.background(colors.background),
+                    checkbox = {
+                        TriStateCheckbox(
+                            state = headerState,
+                            onClick = if (headerState == ToggleableState.On) onDeselectAll else onSelectAll,
+                            enabled = selectable.isNotEmpty()
+                        )
+                    },
+                    title = { Text(stringResource(Res.string.pm_sort_chapter), style = MaterialTheme.typography.titleLarge) },
+                    progress = { Text(stringResource(Res.string.pm_sort_progress), style = MaterialTheme.typography.titleLarge) }
+                )
+                LazyColumnWithScrollbar(modifier = Modifier.weight(1f)) {
                     items(state.chapters, key = { it.sort }) { chapter ->
                         ChapterRow(
                             chapter = chapter,
@@ -225,69 +205,52 @@ private fun ReadyDialog(
                     }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = onExport,
-                enabled = state.canExport
-            ) { Text(stringResource(Res.string.action_export)) }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.action_cancel)) }
         }
-    )
+    }
 }
 
 @Composable
-private fun ExportTypeCard(
-    title: String,
-    subtitle: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    val borderColor = if (selected) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        MaterialTheme.colorScheme.outlineVariant
-    }
-    val container = if (selected) {
-        MaterialTheme.colorScheme.primaryContainer
-    } else {
-        MaterialTheme.colorScheme.surface
-    }
-
-    Surface(
+private fun ExportTypeRow(title: String, selected: Boolean, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        color = container,
-        shape = RoundedCornerShape(8.dp),
-        border = androidx.compose.foundation.BorderStroke(
-            width = if (selected) 2.dp else 1.dp,
-            color = borderColor
-        )
+            .height(64.dp)
+            .background(if (selected) colors.primaryContainer else Color.Transparent)
+            .selectable(selected = selected, onClick = onClick, role = Role.RadioButton)
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            RadioButton(selected = selected, onClick = onClick)
-            Spacer(modifier = Modifier.width(8.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleLarge,
+            color = if (selected) colors.primary else colors.onSurface,
+            modifier = Modifier.weight(1f)
+        )
+        Icon(
+            if (selected) Icons.Filled.RadioButtonChecked else Icons.Filled.RadioButtonUnchecked,
+            contentDescription = null,
+            tint = if (selected) colors.primary else colors.onSurface,
+            modifier = Modifier.size(28.dp)
+        )
+    }
+}
+
+/** Checkbox, chapter and progress columns shared by the list header and its rows. */
+@Composable
+private fun ChapterRowLayout(
+    checkbox: @Composable () -> Unit,
+    title: @Composable () -> Unit,
+    progress: @Composable () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth().height(48.dp).padding(start = 4.dp, end = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        checkbox()
+        Box(Modifier.weight(1f).padding(start = 8.dp)) { title() }
+        Box(Modifier.width(172.dp)) { progress() }
     }
 }
 
@@ -298,38 +261,23 @@ private fun ChapterRow(
     checked: Boolean,
     onToggle: () -> Unit
 ) {
-    val rowAlpha = if (selectable) 1f else 0.4f
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(
-                if (selectable) Modifier.clickable(onClick = onToggle)
-                else Modifier
+    ChapterRowLayout(
+        modifier = Modifier.toggleable(
+            value = checked && selectable,
+            enabled = selectable,
+            role = Role.Checkbox,
+            onValueChange = { onToggle() }
+        ),
+        checkbox = { Checkbox(checked = checked && selectable, onCheckedChange = null, enabled = selectable, modifier = Modifier.size(48.dp)) },
+        title = {
+            Text(
+                text = chapter.title,
+                style = MaterialTheme.typography.titleLarge,
+                color = if (selectable) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline
             )
-            .padding(horizontal = 4.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Checkbox(
-            checked = checked && selectable,
-            onCheckedChange = { if (selectable) onToggle() },
-            enabled = selectable
-        )
-        Text(
-            text = chapter.title,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = rowAlpha),
-            modifier = Modifier
-                .weight(1f)
-                .padding(horizontal = 8.dp)
-        )
-        // Inline progress bar reminds the user how complete the chapter is —
-        // mostly useful for distinguishing "ready to export under Source Audio"
-        // (full progress) from "only meaningful under Backup" (partial).
-        LinearProgressIndicator(
-            progress = { chapter.progress },
-            modifier = Modifier.width(64.dp).height(4.dp)
-        )
-    }
+        },
+        progress = { ProgressBar(chapter.progress, Modifier.width(172.dp)) }
+    )
 }
 
 private fun isSelectable(chapter: ExportChapter, type: ExportType): Boolean = when (type) {

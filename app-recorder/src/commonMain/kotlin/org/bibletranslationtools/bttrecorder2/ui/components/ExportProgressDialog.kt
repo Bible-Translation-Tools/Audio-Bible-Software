@@ -1,22 +1,21 @@
 package org.bibletranslationtools.bttrecorder2.ui.components
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.DialogProperties
+import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportState
 import org.bibletranslationtools.shared.resources.Res
 import org.bibletranslationtools.shared.resources.action_cancel
-import org.bibletranslationtools.shared.resources.action_dismiss
 import org.bibletranslationtools.shared.resources.action_ok
 import org.bibletranslationtools.shared.resources.export_backing_up_title
 import org.bibletranslationtools.shared.resources.export_complete_message
@@ -27,7 +26,6 @@ import org.bibletranslationtools.shared.resources.export_status_exporting_takes
 import org.bibletranslationtools.shared.resources.export_status_finishing
 import org.bibletranslationtools.shared.resources.export_status_preparing
 import org.bibletranslationtools.shared.resources.export_status_working
-import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportState
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -59,70 +57,59 @@ fun ExportProgressDialog(
 
 @Composable
 private fun InProgressDialog(state: ExportState.InProgress, onCancel: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = { /* non-dismissible while exporting */ },
-        properties = DialogProperties(
-            dismissOnBackPress = false,
-            dismissOnClickOutside = false
-        ),
-        title = { Text(stringResource(Res.string.export_backing_up_title)) },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                LinearProgressIndicator(
-                    progress = { state.progress },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = humanStatus(state.statusKey, state.progress),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+    // No close button and no outside/back dismiss while exporting: only Cancel stops it.
+    DialogFrame(
+        title = stringResource(Res.string.export_backing_up_title),
+        onClose = null,
+        footer = {
+            TextButton(onClick = onCancel) {
+                Text(stringResource(Res.string.action_cancel), style = MaterialTheme.typography.titleLarge)
             }
-        },
-        confirmButton = {
-            TextButton(onClick = onCancel) { Text(stringResource(Res.string.action_cancel)) }
         }
-    )
+    ) {
+        Column(
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            ProgressBar(state.progress, Modifier.fillMaxWidth())
+            Text(
+                text = humanStatus(state.statusKey, state.progress),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
 }
 
 @Composable
 private fun SuccessDialog(state: ExportState.Success, onAcknowledge: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onAcknowledge,
-        title = { Text(stringResource(Res.string.export_complete_title)) },
-        text = {
-            Text(
-                text = stringResource(
-                    Res.string.export_complete_message,
-                    state.producedName,
-                    state.destinationName
-                ),
-                style = MaterialTheme.typography.bodyMedium
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = onAcknowledge) { Text(stringResource(Res.string.action_ok)) }
+    DialogFrame(
+        title = stringResource(Res.string.export_complete_title),
+        onClose = onAcknowledge,
+        footer = {
+            Button(
+                onClick = onAcknowledge,
+                shape = RoundedCornerShape(4.dp),
+                modifier = Modifier.height(48.dp)
+            ) {
+                Text(stringResource(Res.string.action_ok), style = MaterialTheme.typography.titleLarge)
+            }
         }
-    )
+    ) {
+        DialogMessage(
+            stringResource(Res.string.export_complete_message, state.producedName, state.destinationName)
+        )
+    }
 }
 
 @Composable
 private fun ErrorDialog(state: ExportState.Error, onAcknowledge: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onAcknowledge,
-        title = { Text(stringResource(Res.string.export_failed_title)) },
-        text = {
-            Text(
-                text = state.message,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.error
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = onAcknowledge) { Text(stringResource(Res.string.action_dismiss)) }
-        }
-    )
+    DialogFrame(
+        title = stringResource(Res.string.export_failed_title),
+        onClose = onAcknowledge
+    ) {
+        DialogMessage(state.message, color = MaterialTheme.colorScheme.error)
+    }
 }
 
 /**
