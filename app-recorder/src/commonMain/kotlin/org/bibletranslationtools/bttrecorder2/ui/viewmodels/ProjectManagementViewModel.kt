@@ -36,7 +36,7 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.io.File
 
-enum class SortField { LANGUAGE, BOOK, PROGRESS }
+enum class SortField { BOOK, PROGRESS }
 enum class SortDirection { ASC, DESC }
 
 enum class ProgressFilter {
@@ -99,7 +99,7 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
 
     fun loadWorkbooks() {
         launchLogged {
-            _uiState.value = ProjectManagementUiState.Loading
+            if (_rawWorkbooks.value == null) _uiState.value = ProjectManagementUiState.Loading
             try {
                 val workbooks = workbookDescriptorRepository.getAllSuspend()
                 _rawWorkbooks.value = workbooks
@@ -189,7 +189,7 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
             val chapterContent = contents.firstOrNull { it.type == ContentType.META }
             val hasChapterTake = chapterContent != null && (
                 chapterContent.selectedTake?.deleted == null && chapterContent.selectedTake != null ||
-                    takeRepository.getByContent(chapterContent).await().isNotEmpty()
+                    takeRepository.getByContentSuspend(chapterContent).isNotEmpty()
                 )
             total += verses.size
             recorded += if (hasChapterTake) verses.size else verses.count { it.selectedTake?.deleted == null && it.selectedTake != null }
@@ -223,20 +223,12 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
                 )
             }
 
-        return when (sort.field) {
-            SortField.LANGUAGE -> {
-                val sorted = groups.sortedBy { it.targetLanguage.anglicizedName }
-                if (sort.direction == SortDirection.DESC) sorted.reversed() else sorted
-            }
-            // BOOK and PROGRESS sort within groups — groups stay in language order
-            SortField.BOOK, SortField.PROGRESS ->
-                groups.sortedBy { it.targetLanguage.anglicizedName }
-        }
+        // Sorting applies within groups; groups stay in language order.
+        return groups.sortedBy { it.targetLanguage.anglicizedName }
     }
 
     private fun sortBooks(books: List<WorkbookDescriptor>, sort: SortState): List<WorkbookDescriptor> {
         return when (sort.field) {
-            SortField.LANGUAGE -> books.sortedBy { it.sort }
             SortField.BOOK -> {
                 val sorted = books.sortedBy { it.sort }
                 if (sort.direction == SortDirection.DESC) sorted.reversed() else sorted
@@ -259,8 +251,6 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
             onOpened()
         }
     }
-
-    fun onNewProjectClick() {}
 
     fun importProject(platformFile: PlatformFile) {
         if (_importState.value is ProjectImportState.InProgress) return
