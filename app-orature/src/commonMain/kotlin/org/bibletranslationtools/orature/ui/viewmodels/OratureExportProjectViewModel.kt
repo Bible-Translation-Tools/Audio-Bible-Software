@@ -34,7 +34,9 @@ data class OratureExportChapter(
     val sort: Int,
     val progress: Double,
     val selectable: Boolean,
-    val selected: Boolean
+    val selected: Boolean,
+    /** Its chapter take has no verse markers, which a source export needs (it would drop the audio). */
+    val missingVerseMarkers: Boolean = false
 )
 
 /** UI state for the export dialog (JVM: `ExportProjectDialog` + `ExportProjectViewModel`). */
@@ -51,6 +53,11 @@ data class OratureExportUiState(
     /** Chapters that keep an earlier source edition's verses: a published export mixes structures (A13). */
     val heldBackChapters: List<Int> = emptyList()
 ) {
+    /** Complete chapters a source export can't take for want of verse markers. */
+    val unmarkedChapters: List<Int>
+        get() = if (selectedType != ExportType.SOURCE_AUDIO && selectedType != ExportType.PUBLISH) emptyList()
+        else chapters.filter { it.progress >= 1.0 && it.missingVerseMarkers }.map { it.sort }
+
     /** Selected chapters that would mix verse structures in a published export; a backup restores them as they are. */
     val mixedEditionChapters: List<Int>
         get() = if (selectedType == ExportType.BACKUP) emptyList()
@@ -89,15 +96,10 @@ class OratureExportProjectViewModel(
         ExportType.LISTEN -> audioExporter
         ExportType.SOURCE_AUDIO, ExportType.PUBLISH -> sourceExporter
         ExportType.BACKUP -> backupExporter
-        // BurritoWrapperExporter exists but is NOT bound in Koin, because it needs the same
-        // `AuthProvider` and `IAppInfo` ports that leave SourceProjectExporter unresolvable — see
-        // the note in KoinModules and `SharedGraphWiringTest.source project exporter is
-        // unresolvable while AuthProvider and IAppInfo are unbound`. Nothing in either app offers
-        // this export type yet, so this branch is unreachable; it fails loudly rather than
-        // silently exporting some other format if that changes before the ports land.
-        ExportType.BURRITO_WRAPPER -> error(
-            "Burrito wrapper export is not wired up: AuthProvider and IAppInfo are unbound."
-        )
+        // BurritoWrapperExporter is not bound in Koin and nothing in either app offers this export
+        // type yet, so this branch is unreachable; it fails loudly rather than silently exporting
+        // some other format if that changes before it is wired up.
+        ExportType.BURRITO_WRAPPER -> error("Burrito wrapper export is not wired up.")
     }
 
     private fun load() {
@@ -107,15 +109,19 @@ class OratureExportProjectViewModel(
                 val opened = openWorkbook.openWithChapters(workbookDescriptorId)
                 val wb = opened.workbook
                 workbook = wb
-                val chapters = opened.chapters.map { chapter ->
+                // IO: the verse-marker check reads each chapter take's file.
+                val chapters = withContext(Dispatchers.IO) { opened.chapters.map { chapter ->
                     // JVM: progress is 1.0 when the chapter has selected audio, else 0.0.
                     OratureExportChapter(
                         sort = chapter.sort,
                         progress = if (opened.completedByChapterSort[chapter.sort] == true) 1.0 else 0.0,
                         selectable = false,
-                        selected = false
+                        selected = false,
+                        missingVerseMarkers = runCatching { sourceExporter.isMissingVerseMarkers(chapter) }
+                            .onFailure { logFailure("reading chapter ${chapter.sort}'s verse markers", it) }
+                            .getOrDefault(false)
                     )
-                }
+                } }
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     bookTitle = wb.target.title.ifEmpty { wb.target.slug.uppercase() },
@@ -167,13 +173,17 @@ class OratureExportProjectViewModel(
     }
 
     /** JVM onSelectExportType selectability rule: Backup includes any chapter with progress > 0;
-     *  every other type only fully-complete chapters (progress == 1.0). Selectable rows start
-     *  pre-selected. */
+     *  every other type only fully-complete chapters (progress == 1.0), and a source export only
+     *  those with verse markers. Selectable rows start pre-selected. */
     private fun applySelectability(
         chapters: List<OratureExportChapter>,
         type: ExportType
     ): List<OratureExportChapter> = chapters.map { ch ->
-        val selectable = if (type == ExportType.BACKUP) ch.progress > 0.0 else ch.progress >= 1.0
+        val selectable = when (type) {
+            ExportType.BACKUP -> ch.progress > 0.0
+            ExportType.SOURCE_AUDIO, ExportType.PUBLISH -> ch.progress >= 1.0 && !ch.missingVerseMarkers
+            else -> ch.progress >= 1.0
+        }
         ch.copy(selectable = selectable, selected = selectable)
     }
 
@@ -185,7 +195,9 @@ class OratureExportProjectViewModel(
         val chapters = selectedChapters()
         launchLogged {
             val size = withContext(Dispatchers.IO) {
-                runCatching { exporterFor(type).estimateExportSize(wb, chapters) }.getOrDefault(0L)
+                runCatching { exporterFor(type).estimateExportSize(wb, chapters) }
+                    .onFailure { logFailure("estimating the export size", it) }
+                    .getOrDefault(0L)
             }
             _uiState.value = _uiState.value.copy(estimatedSizeBytes = size)
         }
@@ -211,7 +223,10 @@ class OratureExportProjectViewModel(
                     exporterFor(type)
                         .export(directory, wb, callback, chapters?.let { ExportOptions(it) })
                         .await()
-                }.getOrElse { ExportResult.FAILURE }
+                }.getOrElse {
+                    logFailure("exporting the project", it)
+                    ExportResult.FAILURE
+                }
             }
             _uiState.value = if (result == ExportResult.SUCCESS) {
                 _uiState.value.copy(progress = null, done = true)

@@ -461,6 +461,7 @@
     <string name="editionChangeFailed">The edition could not be changed: %1$s</string>
     <string name="editionBannerUpdate">A newer edition of this source is installed: %1$s. Change it from the home screen.</string>
     <string name="earlierVerses">Earlier verses</string>
+    <string name="exportMissingVerseMarkers">Chapters %1$s have no verse markers, so they can\'t be exported as source audio. Add verse markers first.</string>
     <string name="exportMixedEditionsWarning">Chapters %1$s keep an earlier source edition\'s verses, so this export mixes verse structures.</string>
     <string name="apply">Apply</string>
 

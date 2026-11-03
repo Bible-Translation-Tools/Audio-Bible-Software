@@ -1,9 +1,10 @@
 package org.bibletranslationtools.orature.di
 
+import org.bibletranslationtools.orature.platform.appVersion
 import org.bibletranslationtools.orature.plugins.OraturePluginStore
 import org.bibletranslationtools.orature.services.OratureImportEvents
-import org.bibletranslationtools.orature.services.OratureProjectEvents
 import org.bibletranslationtools.orature.services.OratureProjectDeletion
+import org.bibletranslationtools.orature.services.OratureProjectEvents
 import org.bibletranslationtools.orature.services.OratureVerseMarkerEditor
 import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
 import org.bibletranslationtools.orature.ui.OratureNavigationLock
@@ -11,6 +12,8 @@ import org.bibletranslationtools.orature.ui.narration.OratureNarrationFactory
 import org.bibletranslationtools.orature.ui.viewmodels.OratureHomeViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureProjectWizardViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureSettingsViewModel
+import org.bibletranslationtools.otter.common.data.AppInfo
+import org.bibletranslationtools.otter.common.data.IAppInfo
 import org.koin.core.parameter.parametersOf
 import org.koin.dsl.module
 
@@ -25,6 +28,8 @@ import org.koin.dsl.module
  * bound there); they are this app's own layer between its screens and that domain.
  */
 val oratureViewModelModule = module {
+    // Names the app in exported Scripture Burrito metadata.
+    single<IAppInfo> { AppInfo("Orature", appVersion()) }
     single { OratureHomeViewModel() }
     // App-scoped bus so a successful import (global Add Files drawer in the shell) refreshes home.
     single { OratureImportEvents() }

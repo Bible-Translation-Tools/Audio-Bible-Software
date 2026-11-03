@@ -12,16 +12,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
-import org.bibletranslationtools.otter.common.data.primitives.Collection as OratureCollection
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstants
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
+import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
 import org.bibletranslationtools.otter.common.domain.project.ProjectCompletionStatus
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportOptions
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportResult
@@ -30,21 +28,22 @@ import org.bibletranslationtools.otter.common.domain.project.exporter.IProjectEx
 import org.bibletranslationtools.otter.common.domain.project.exporter.ProjectExporterCallback
 import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.BackupProjectExporter
 import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.SourceProjectExporter
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstants
+import org.bibletranslationtools.shared.resources.Res
+import org.bibletranslationtools.shared.resources.export_error_generic
+import org.bibletranslationtools.shared.resources.export_error_load_chapters_failed
+import org.bibletranslationtools.shared.resources.export_error_no_audio
+import org.bibletranslationtools.shared.resources.export_error_no_file
+import org.bibletranslationtools.shared.resources.export_error_no_takes_selected
+import org.bibletranslationtools.shared.resources.export_error_not_initialized
+import org.bibletranslationtools.shared.resources.export_error_packaging
+import org.bibletranslationtools.shared.resources.export_error_project_not_found
+import org.jetbrains.compose.resources.getString
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
-import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
-import org.jetbrains.compose.resources.getString
-import org.bibletranslationtools.shared.resources.Res
-import org.bibletranslationtools.shared.resources.export_error_project_not_found
-import org.bibletranslationtools.shared.resources.export_error_load_chapters_failed
-import org.bibletranslationtools.shared.resources.export_error_no_file
-import org.bibletranslationtools.shared.resources.export_error_generic
-import org.bibletranslationtools.shared.resources.export_error_not_initialized
-import org.bibletranslationtools.shared.resources.export_error_no_audio
-import org.bibletranslationtools.shared.resources.export_error_no_takes_selected
-import org.bibletranslationtools.shared.resources.export_error_packaging
 import java.io.File
 import java.util.UUID
+import org.bibletranslationtools.otter.common.data.primitives.Collection as OratureCollection
 
 /**
  * Owns three phases of project export:
@@ -144,13 +143,16 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
                     ExportChapter(
                         sort = chapter.sort,
                         title = chapter.title,
-                        progress = progress.toFloat().coerceIn(0f, 1f)
+                        progress = progress.toFloat().coerceIn(0f, 1f),
+                        missingVerseMarkers = runCatching { sourceExporter.isMissingVerseMarkers(chapter) }
+                            .onFailure { logFailure("reading chapter ${chapter.sort}'s verse markers", it) }
+                            .getOrDefault(false)
                     )
                 }.sortedBy { it.sort }
 
                 val defaultType = ExportType.BACKUP
                 val initialSelection = chapterDescriptors
-                    .filter { isChapterSelectable(it, defaultType) }
+                    .filter { it.isSelectable(defaultType) }
                     .map { it.sort }
                     .toSet()
 
@@ -189,7 +191,7 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
         // behavior so users don't have to manually re-check chapters after a
         // type switch.
         val newSelection = current.chapters
-            .filter { isChapterSelectable(it, type) }
+            .filter { it.isSelectable(type) }
             .map { it.sort }
             .toSet()
         _options.value = current.copy(type = type, selectedChapterSorts = newSelection)
@@ -198,7 +200,7 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
     fun toggleChapter(sort: Int) {
         val current = _options.value as? ExportOptionsState.Ready ?: return
         val chapter = current.chapters.firstOrNull { it.sort == sort } ?: return
-        if (!isChapterSelectable(chapter, current.type)) return // non-selectable, ignore tap
+        if (!chapter.isSelectable(current.type)) return // non-selectable, ignore tap
 
         val newSelection = if (sort in current.selectedChapterSorts) {
             current.selectedChapterSorts - sort
@@ -212,7 +214,7 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
         val current = _options.value as? ExportOptionsState.Ready ?: return
         _options.value = current.copy(
             selectedChapterSorts = current.chapters
-                .filter { isChapterSelectable(it, current.type) }
+                .filter { it.isSelectable(current.type) }
                 .map { it.sort }
                 .toSet()
         )
@@ -223,18 +225,6 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
         _options.value = current.copy(selectedChapterSorts = emptySet())
     }
 
-    /**
-     * For BACKUP, any chapter with at least one selected take is fair game.
-     * For SOURCE_AUDIO (and other "publish-style" types), only fully-complete
-     * chapters can be exported — matches Orature's `onSelectExportType` logic
-     * in `ExportProjectDialog`.
-     */
-    private fun isChapterSelectable(chapter: ExportChapter, type: ExportType): Boolean {
-        return when (type) {
-            ExportType.BACKUP -> chapter.progress > 0f
-            else -> chapter.progress >= 1f
-        }
-    }
 
     // -------------------------------------------------------------------------
     // Export
@@ -339,7 +329,7 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
                 )
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 logFailure("exporting the project", e)
                 _state.value = ExportState.Error(e.message ?: getString(Res.string.export_error_generic))
             } finally {
@@ -503,5 +493,21 @@ sealed interface ExportOptionsState {
 data class ExportChapter(
     val sort: Int,
     val title: String,
-    val progress: Float
-)
+    val progress: Float,
+    /** Its chapter take has no verse markers, which a source export needs (it would drop the audio). */
+    val missingVerseMarkers: Boolean = false
+) {
+    /**
+     * For BACKUP, any chapter with at least one selected take is fair game.
+     * For SOURCE_AUDIO (and other "publish-style" types), only fully-complete
+     * chapters can be exported — matches Orature's `onSelectExportType` logic
+     * in `ExportProjectDialog` — and only with verse markers.
+     */
+    fun isSelectable(type: ExportType): Boolean = when (type) {
+        ExportType.BACKUP -> progress > 0f
+        else -> progress >= 1f && !missingVerseMarkers
+    }
+
+    /** Complete, but blocked from a source export for want of verse markers. */
+    val blockedByMissingMarkers: Boolean get() = progress >= 1f && missingVerseMarkers
+}

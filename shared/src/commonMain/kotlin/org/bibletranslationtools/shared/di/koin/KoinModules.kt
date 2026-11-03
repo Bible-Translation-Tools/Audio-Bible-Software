@@ -115,13 +115,6 @@ val directoryPortsModule = module {
     single<IFileIOFactory> { get<IDirectoryProvider>() }
 }
 
-// NOT bound here, and deliberately not stubbed: `AuthProvider` and `IAppInfo`, the two ports
-// `ScriptureBurritoUtils` needs. The JavaFX implementations (`WacsIdAuthority`, `AppInfo`) were
-// never ported, so `SourceProjectExporter` cannot be resolved and source / Scripture Burrito
-// export throws the first time a user picks it. Tracked by
-// `SharedGraphWiringTest.source project exporter is unresolvable while AuthProvider and IAppInfo
-// are unbound` — implement the two ports, bind them here, and that test will tell you it is done.
-
 // The shared, platform-agnostic Koin modules both apps compose. Backend use-cases +
 // audio + prefs + repositories only — NO ViewModels (each app owns its own) and NO
 // platform pieces (directory provider / DB / device audio live in the platform lists).
