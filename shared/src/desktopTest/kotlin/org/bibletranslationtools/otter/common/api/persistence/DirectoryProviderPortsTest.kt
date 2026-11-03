@@ -102,8 +102,8 @@ class DirectoryProviderPortsTest {
     /**
      * `openInFileManager(path: String)` was on the interface with zero callers: both platform
      * providers implemented it (Android's was `TODO("Not yet implemented")`, i.e. it would have
-     * thrown), while every real caller went through :app-orature's own
-     * `platform/FileManager.kt` `expect fun openInFileManager(file: File)`. Launching a file
+     * thrown), while every real caller went through the UI layer's `expect fun openInFileManager`
+     * (`shared/ui/platform/FileManager.kt`). Launching a file
      * manager is a UI concern; a directory provider has no business doing it.
      */
     @Test
@@ -113,7 +113,7 @@ class DirectoryProviderPortsTest {
         }
         if (offenders.isNotEmpty()) {
             fail(
-                "openInFileManager belongs to the UI layer (:app-orature platform/FileManager.kt), " +
+                "openInFileManager belongs to the UI layer (shared/ui/platform/FileManager.kt), " +
                     "not to a directory port — found on ${offenders.joinToString()}"
             )
         }

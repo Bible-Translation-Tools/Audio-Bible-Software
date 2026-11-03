@@ -1,15 +1,15 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.ExportSourceEdition
-import org.bibletranslationtools.orature.platform.openInFileManager
-import java.io.File
 import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.ExportSourceEdition
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.InstalledResource
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.InstalledResources
+import org.bibletranslationtools.shared.ui.platform.openInFileManager
+import java.io.File
 
 /** The outcome of the last removal, for the drawer to report. */
 sealed interface OratureResourceRemoval {

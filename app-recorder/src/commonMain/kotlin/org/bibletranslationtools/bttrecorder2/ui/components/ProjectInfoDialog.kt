@@ -1,6 +1,16 @@
 package org.bibletranslationtools.bttrecorder2.ui.components
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -8,8 +18,22 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -18,22 +42,14 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitMode
-import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.bibletranslationtools.shared.domain.SourceAudioImporter
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
-import org.koin.mp.KoinPlatform.getKoin
-import org.jetbrains.compose.resources.stringResource
-import org.bibletranslationtools.shared.resources.info_row_source_edition
-import org.bibletranslationtools.shared.resources.info_row_newer_edition
-import org.bibletranslationtools.shared.resources.edition_change_action
-import org.bibletranslationtools.shared.resources.edition_update_action
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.DescribeSourceEditions
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.SourceEditionSummary
-import androidx.compose.runtime.produceState
+import org.bibletranslationtools.shared.domain.SourceAudioImporter
 import org.bibletranslationtools.shared.resources.Res
 import org.bibletranslationtools.shared.resources.action_cancel
 import org.bibletranslationtools.shared.resources.action_close
@@ -42,6 +58,8 @@ import org.bibletranslationtools.shared.resources.action_dismiss
 import org.bibletranslationtools.shared.resources.cd_back_up_project
 import org.bibletranslationtools.shared.resources.cd_delete_project
 import org.bibletranslationtools.shared.resources.cd_edit_label
+import org.bibletranslationtools.shared.resources.edition_change_action
+import org.bibletranslationtools.shared.resources.edition_update_action
 import org.bibletranslationtools.shared.resources.info_delete_project_message
 import org.bibletranslationtools.shared.resources.info_delete_project_title
 import org.bibletranslationtools.shared.resources.info_dialog_title
@@ -51,9 +69,11 @@ import org.bibletranslationtools.shared.resources.info_import_source_audio_title
 import org.bibletranslationtools.shared.resources.info_import_success
 import org.bibletranslationtools.shared.resources.info_importing_source_audio
 import org.bibletranslationtools.shared.resources.info_row_mode
+import org.bibletranslationtools.shared.resources.info_row_newer_edition
 import org.bibletranslationtools.shared.resources.info_row_project
 import org.bibletranslationtools.shared.resources.info_row_source_audio
 import org.bibletranslationtools.shared.resources.info_row_source_audio_language
+import org.bibletranslationtools.shared.resources.info_row_source_edition
 import org.bibletranslationtools.shared.resources.info_row_target_language
 import org.bibletranslationtools.shared.resources.info_row_translation_type
 import org.bibletranslationtools.shared.resources.info_source_audio_available
@@ -64,6 +84,9 @@ import org.bibletranslationtools.shared.resources.info_translation_type_udb
 import org.bibletranslationtools.shared.resources.info_translation_type_ulb
 import org.bibletranslationtools.shared.resources.info_value_unknown
 import org.bibletranslationtools.shared.resources.value_name_with_code
+import org.bibletranslationtools.shared.ui.platform.importPickerType
+import org.jetbrains.compose.resources.stringResource
+import org.koin.mp.KoinPlatform.getKoin
 import java.util.Locale
 
 /**
@@ -105,7 +128,7 @@ fun ProjectInfoDialog(
     var isImporting by remember { mutableStateOf(false) }
 
     val picker = rememberFilePickerLauncher(
-        type = FileKitType.File(extensions = SourceAudioImporter.pickerExtensions),
+        type = importPickerType(SourceAudioImporter.pickerExtensions),
         mode = FileKitMode.Multiple(),
         title = stringResource(Res.string.info_import_source_audio_title)
     ) { selectedFiles: List<PlatformFile>? ->
