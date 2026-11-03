@@ -1,11 +1,9 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
-import org.jetbrains.compose.resources.getString
-import org.bibletranslationtools.orature.resources.Res
-import org.bibletranslationtools.orature.resources.errUnknown
-import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
 import androidx.lifecycle.ViewModel
-import io.reactivex.Single
+import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.path
+import io.github.vinceglb.filekit.write
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,9 +11,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
-import org.bibletranslationtools.otter.common.domain.project.OpenWorkbook
+import org.bibletranslationtools.orature.platform.canOpenInFileManager
+import org.bibletranslationtools.orature.resources.Res
+import org.bibletranslationtools.orature.resources.errUnknown
+import org.bibletranslationtools.otter.common.api.persistence.IFileIOFactory
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
+import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
+import org.bibletranslationtools.otter.common.domain.project.OpenWorkbook
 import org.bibletranslationtools.otter.common.domain.project.exporter.AudioProjectExporter
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportOptions
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportResult
@@ -24,9 +28,13 @@ import org.bibletranslationtools.otter.common.domain.project.exporter.IProjectEx
 import org.bibletranslationtools.otter.common.domain.project.exporter.ProjectExporterCallback
 import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.BackupProjectExporter
 import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.SourceProjectExporter
+import org.jetbrains.compose.resources.getString
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.io.File
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import java.util.UUID
 
 /** One chapter row in the export dialog (JVM: `ChapterDescriptor`). Progress is binary in the JVM
  *  (1.0 when the chapter has selected audio, else 0.0). */
@@ -72,12 +80,14 @@ class OratureExportProjectViewModel(
     private val sourceExporter: SourceProjectExporter by inject()
     private val backupExporter: BackupProjectExporter by inject()
     private val upgradeBookEdition: UpgradeBookEdition by inject()
+    private val tempFiles: ITempFileProvider by inject()
+    private val fileIO: IFileIOFactory by inject()
 
     private val _uiState = MutableStateFlow(OratureExportUiState())
     val uiState: StateFlow<OratureExportUiState> = _uiState.asStateFlow()
 
     private var workbook: Workbook? = null
-    // The exported artifact (from the exporter's success callback), for "Show Location".
+    // The saved file, for "Show Location" (desktop only).
     private var exportedFile: File? = null
     fun exportedLocation(): File? = exportedFile
 
@@ -191,29 +201,57 @@ class OratureExportProjectViewModel(
         }
     }
 
-    /** Run the export into [directory] (JVM: exportWorkbook). Backup ignores chapter selection. */
-    fun export(directory: File) {
+    /** Name to seed the save dialog with (mirrors `RCProjectExporter.makeExportFilename`); FileKit adds the extension. */
+    fun suggestedExportName(): String {
+        val wb = workbook ?: return "export"
+        val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmm"))
+        return "${wb.target.language.slug}-${wb.target.resourceMetadata.identifier}-${wb.target.slug}-$timestamp"
+    }
+
+    /** Listen exports a folder of mp3s, which is zipped for the save dialog; the others are one RC archive. */
+    fun exportExtension(): String = if (_uiState.value.selectedType == ExportType.LISTEN) "zip" else "orature"
+
+    /**
+     * Run the export into a temp dir, then copy the result to [destination] (JVM: exportWorkbook).
+     * A save-dialog file, not a picked folder: on Android a picked folder is a SAF tree URI that
+     * java.io.File can't write into. Backup ignores chapter selection.
+     */
+    fun export(destination: PlatformFile) {
         val wb = workbook ?: return
         val type = _uiState.value.selectedType
         val chapters = selectedChapters().takeIf { type != ExportType.BACKUP && it.isNotEmpty() }
-        exportedFile = directory
+        exportedFile = null
         _uiState.value = _uiState.value.copy(progress = 0f, error = null)
         launchLogged {
+            var produced: File? = null
             val callback = object : ProjectExporterCallback {
-                override fun onNotifySuccess(project: Collection, file: File) { exportedFile = file }
+                override fun onNotifySuccess(project: Collection, file: File) { produced = file }
                 override fun onError(project: Collection) {}
                 override fun onNotifyProgress(percent: Double, messageKey: String?) {
                     _uiState.value = _uiState.value.copy(progress = (percent / 100.0).toFloat().coerceIn(0f, 1f))
                 }
             }
-            val result = withContext(Dispatchers.IO) {
+            val tempDir = File(tempFiles.tempDirectory, "export-${UUID.randomUUID()}").apply { mkdirs() }
+            val ok = withContext(Dispatchers.IO) {
                 runCatching {
-                    exporterFor(type)
-                        .export(directory, wb, callback, chapters?.let { ExportOptions(it) })
+                    val result = exporterFor(type)
+                        .export(tempDir, wb, callback, chapters?.let { ExportOptions(it) })
                         .await()
-                }.getOrElse { ExportResult.FAILURE }
+                    val output = produced
+                    if (result != ExportResult.SUCCESS || output == null || !output.exists()) return@runCatching false
+                    val file = if (output.isDirectory) {
+                        File(tempDir, "${output.name}.zip").also { zip ->
+                            fileIO.newFileWriter(zip).use { it.copyDirectory(output, output.name) }
+                        }
+                    } else output
+                    destination.write(PlatformFile(file))
+                    true
+                }.onFailure { logFailure("exporting the project", it) }.getOrDefault(false)
+                    .also { tempDir.deleteRecursively() }
             }
-            _uiState.value = if (result == ExportResult.SUCCESS) {
+            // Only desktop has a real path to reveal; on Android the destination is a content URI.
+            if (ok && canOpenInFileManager()) exportedFile = File(destination.path)
+            _uiState.value = if (ok) {
                 _uiState.value.copy(progress = null, done = true)
             } else {
                 _uiState.value.copy(progress = null, error = "export_failed")

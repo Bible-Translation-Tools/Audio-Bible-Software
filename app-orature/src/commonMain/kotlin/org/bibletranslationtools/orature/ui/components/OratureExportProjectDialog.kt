@@ -1,6 +1,5 @@
 package org.bibletranslationtools.orature.ui.components
 
-import org.bibletranslationtools.orature.resources.exportMixedEditionsWarning
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -43,23 +42,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
-import io.github.vinceglb.filekit.dialogs.compose.rememberDirectoryPickerLauncher
-import io.github.vinceglb.filekit.path
+import io.github.vinceglb.filekit.dialogs.compose.rememberFileSaverLauncher
 import org.bibletranslationtools.orature.resources.Res
 import org.bibletranslationtools.orature.resources.backup
 import org.bibletranslationtools.orature.resources.bookNameExportTitle
 import org.bibletranslationtools.orature.resources.chapter
 import org.bibletranslationtools.orature.resources.close
 import org.bibletranslationtools.orature.resources.estimatedFileSize
+import org.bibletranslationtools.orature.resources.exportMixedEditionsWarning
 import org.bibletranslationtools.orature.resources.exportProject
 import org.bibletranslationtools.orature.resources.listen
 import org.bibletranslationtools.orature.resources.progress
 import org.bibletranslationtools.orature.resources.publish
 import org.bibletranslationtools.orature.resources.sourceAudio
-import org.bibletranslationtools.otter.common.domain.project.exporter.ExportType
 import org.bibletranslationtools.orature.ui.OratureColors
 import org.bibletranslationtools.orature.ui.viewmodels.OratureExportChapter
 import org.bibletranslationtools.orature.ui.viewmodels.OratureExportProjectViewModel
+import org.bibletranslationtools.otter.common.domain.project.exporter.ExportType
 import org.jetbrains.compose.resources.stringResource
 import java.io.File
 
@@ -80,9 +79,7 @@ fun OratureExportProjectDialog(
     val vm = viewModel(key = "export-$workbookDescriptorId") { OratureExportProjectViewModel(workbookDescriptorId) }
     val state by vm.uiState.collectAsState()
 
-    val dirPicker = rememberDirectoryPickerLauncher { dir ->
-        dir?.let { vm.export(File(it.path)) }
-    }
+    val saver = rememberFileSaverLauncher { file -> file?.let(vm::export) }
 
     LaunchedEffect(state.done, state.error) {
         if (state.done) onFinished(true, vm.exportedLocation())
@@ -177,7 +174,10 @@ fun OratureExportProjectDialog(
                                 )
                                 val anySelected = state.chapters.any { it.selected }
                                 Button(
-                                    onClick = { vm.acknowledgeError(); dirPicker.launch() },
+                                    onClick = {
+                                        vm.acknowledgeError();
+                                        saver.launch(vm.suggestedExportName(), vm.exportExtension())
+                                    },
                                     enabled = anySelected,
                                     shape = RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = OratureColors.Primary)
