@@ -7,6 +7,10 @@ import android.media.AudioTrack
 class AndroidAudioSink : AudioSink {
     private var audioTrack: AudioTrack? = null
 
+    /** Frames handed to the track since it was opened or last really flushed; what [drain] waits out. */
+    private var framesWritten = 0L
+    private var bytesPerFrame = 2
+
     override val isRunning: Boolean
         get() = audioTrack?.playState == AudioTrack.PLAYSTATE_PLAYING
 
@@ -67,6 +71,8 @@ class AndroidAudioSink : AudioSink {
         if (audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
             throw IllegalStateException("Failed to initialize AudioTrack")
         }
+        bytesPerFrame = 2 * spec.channels
+        framesWritten = 0
     }
 
     override fun start() {
@@ -75,7 +81,9 @@ class AndroidAudioSink : AudioSink {
 
     override fun write(data: ByteArray, offset: Int, size: Int): Int {
         // WRITE_BLOCKING ensures this behaves similarly to the JVM logic
-        return audioTrack?.write(data, offset, size, AudioTrack.WRITE_BLOCKING) ?: 0
+        val written = audioTrack?.write(data, offset, size, AudioTrack.WRITE_BLOCKING) ?: 0
+        if (written > 0) framesWritten += written / bytesPerFrame
+        return written
     }
 
     override fun stop() {
@@ -91,12 +99,37 @@ class AndroidAudioSink : AudioSink {
     }
 
     override fun drain() {
-        // In Android's streaming mode, stop() waits for the buffer to empty
-        audioTrack?.stop()
+        // Waits for the queue to play out, as the contract (and the JVM line's drain) does. This used to
+        // call stop(), which in stream mode does not wait: it lets the queue play out in the background
+        // and reports STOPPED at once. A whole bufferful (~250ms) before the sound ended, isRunning went
+        // false, so the position froze where it was last trusted and Complete went out early. Not
+        // stopping also keeps the line running between takes, as AudioBufferPlayer intends.
+        val track = audioTrack ?: return
+        var lastHead = -1L
+        var stalledSince = System.currentTimeMillis()
+        while (track.playState == AudioTrack.PLAYSTATE_PLAYING) {
+            // playbackHeadPosition is an unsigned 32-bit counter.
+            val head = track.playbackHeadPosition.toLong() and 0xFFFF_FFFFL
+            if (head >= framesWritten) break
+            val now = System.currentTimeMillis()
+            if (head != lastHead) {
+                lastHead = head
+                stalledSince = now
+            } else if (now - stalledSince > DRAIN_STALL_TIMEOUT_MS) {
+                // A device that never reports the last frames must not hang playback.
+                break
+            }
+            Thread.sleep(DRAIN_POLL_MS)
+        }
     }
 
     override fun flush() {
-        audioTrack?.flush()
+        val track = audioTrack ?: return
+        // A no-op while the track is playing (AudioTrack.flush only acts on a stopped or paused track),
+        // and then the queue, and the count of what is in it, are still there.
+        val discards = track.playState != AudioTrack.PLAYSTATE_PLAYING
+        track.flush()
+        if (discards) framesWritten = 0
     }
 
     override fun close() {
@@ -111,5 +144,9 @@ class AndroidAudioSink : AudioSink {
          * the flush on pause/seek stays imperceptible.
          */
         const val BUFFER_HEADROOM_FACTOR = 4
+
+        /** How often [drain] checks the play cursor, and how long it waits on one that stops moving. */
+        const val DRAIN_POLL_MS = 5L
+        const val DRAIN_STALL_TIMEOUT_MS = 500L
     }
 }
