@@ -27,13 +27,16 @@ import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.api.MergeCommand
 import org.eclipse.jgit.api.MergeResult
 import org.eclipse.jgit.lib.Constants
+import org.eclipse.jgit.lib.ObjectId
 import org.eclipse.jgit.lib.Repository
 import org.eclipse.jgit.revwalk.RevWalk
 import org.eclipse.jgit.transport.CredentialsProvider
+import org.eclipse.jgit.transport.RefLeaseSpec
 import org.eclipse.jgit.transport.RefSpec
 import org.eclipse.jgit.transport.RemoteRefUpdate
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider
 import org.eclipse.jgit.treewalk.TreeWalk
+import org.eclipse.jgit.treewalk.filter.PathFilter
 import org.eclipse.jgit.util.FS
 import org.eclipse.jgit.util.WacsAndroidFS
 import java.io.File
@@ -96,30 +99,109 @@ class JGitWacsGitClient : IWacsGitClient {
         }
     }
 
-    override suspend fun syncFromUpstream(
+    override suspend fun fetchRemote(
         dir: File,
-        upstreamUrl: String,
-        credential: WacsCredential,
+        remote: String,
+        url: String,
         branch: String,
-    ): Boolean = withContext(Dispatchers.IO) {
+        credential: WacsCredential,
+    ): String = withContext(Dispatchers.IO) {
         requireSupported()
         open(dir).use { git ->
-            // `git remote add upstream <url>` is just these two config keys — set them directly
-            // (idempotent; a fresh clone never already has an "upstream" remote) rather than
-            // pulling in JGit's RemoteAddCommand for a one-shot per-publish clone.
-            val remoteName = "upstream"
+            // `git remote add <remote> <url>` is just these two config keys; setting them directly
+            // also repoints a remote that already exists.
             val repoConfig = git.repository.config
-            repoConfig.setString("remote", remoteName, "url", upstreamUrl)
-            repoConfig.setString("remote", remoteName, "fetch", "+refs/heads/*:refs/remotes/$remoteName/*")
+            repoConfig.setString("remote", remote, "url", url)
+            repoConfig.setString("remote", remote, "fetch", "+refs/heads/*:refs/remotes/$remote/*")
             repoConfig.save()
 
+            val tracking = "refs/remotes/$remote/$branch"
             git.fetch()
-                .setRemote(remoteName)
+                .setRemote(remote)
+                .setRefSpecs(RefSpec("+refs/heads/$branch:$tracking"))
                 .setCredentialsProvider(credential.toProvider())
                 .call()
-            git.fastForwardTo("$remoteName/$branch")
+            git.repository.resolve(tracking)?.name ?: error("$remote has no branch $branch")
         }
     }
+
+    override suspend fun resolve(dir: File, revision: String): String? = withContext(Dispatchers.IO) {
+        requireSupported()
+        open(dir).use { git -> git.repository.resolve(revision)?.name }
+    }
+
+    override suspend fun startBranch(dir: File, branch: String, startPoint: String) = withContext(Dispatchers.IO) {
+        requireSupported()
+        open(dir).use { git ->
+            val start = git.repository.resolve(startPoint) ?: error("No $startPoint to start $branch from")
+            // Detach first: git won't force-move the branch that's checked out.
+            git.checkout().setName(start.name).setForced(true).call()
+            git.branchCreate().setName(branch).setStartPoint(start.name).setForce(true).call()
+            git.checkout().setName(branch).setForced(true).call()
+            Unit
+        }
+    }
+
+    override suspend fun listFiles(dir: File, revision: String, directory: String): List<String> =
+        withContext(Dispatchers.IO) {
+            requireSupported()
+            open(dir).use { git ->
+                val repo = git.repository
+                val commit = repo.resolve(revision) ?: error("No $revision")
+                RevWalk(repo).use { walk ->
+                    TreeWalk(repo).use { tw ->
+                        tw.addTree(walk.parseCommit(commit).tree)
+                        tw.isRecursive = true
+                        tw.filter = PathFilter.create(directory.trimEnd('/'))
+                        buildList { while (tw.next()) add(tw.pathString) }
+                    }
+                }
+            }
+        }
+
+    override suspend fun restoreFiles(dir: File, revision: String, paths: List<String>) = withContext(Dispatchers.IO) {
+        requireSupported()
+        if (paths.isEmpty()) return@withContext
+        open(dir).use { git ->
+            git.checkout().setStartPoint(revision).addPaths(paths).call()
+            Unit
+        }
+    }
+
+    override suspend fun stage(dir: File, add: List<String>, remove: List<String>) = withContext(Dispatchers.IO) {
+        requireSupported()
+        open(dir).use { git ->
+            if (remove.isNotEmpty()) {
+                val rm = git.rm()
+                remove.forEach { rm.addFilepattern(it) }
+                rm.call()
+            }
+            if (add.isNotEmpty()) {
+                val stageAdds = git.add()
+                add.forEach { stageAdds.addFilepattern(it) }
+                stageAdds.call()
+            }
+            Unit
+        }
+    }
+
+    override suspend fun commitStaged(dir: File, message: String, authorName: String, authorEmail: String): String? =
+        withContext(Dispatchers.IO) {
+            requireSupported()
+            open(dir).use { git ->
+                val status = git.status().call()
+                if (status.added.isEmpty() && status.changed.isEmpty() && status.removed.isEmpty()) {
+                    return@use null
+                }
+                git.commit()
+                    .setMessage(message)
+                    .setAuthor(authorName, authorEmail)
+                    .setCommitter(authorName, authorEmail)
+                    .setSign(false)
+                    .call()
+                    .name
+            }
+        }
 
     /** Fast-forward-merge the currently checked-out branch onto [remoteRef] (e.g. `origin/master`). */
     private fun Git.fastForwardTo(remoteRef: String): Boolean {
@@ -135,37 +217,20 @@ class JGitWacsGitClient : IWacsGitClient {
         }
     }
 
-    override suspend fun commit(
-        dir: File,
-        paths: List<String>,
-        message: String,
-        authorName: String,
-        authorEmail: String,
-    ): String = withContext(Dispatchers.IO) {
-        requireSupported()
-        open(dir).use { git ->
-            val add = git.add()
-            paths.forEach { add.addFilepattern(it) }
-            add.call()
-            git.commit()
-                .setMessage(message)
-                .setAuthor(authorName, authorEmail)
-                .setSign(false)
-                .call()
-                .name
-        }
-    }
-
     override suspend fun push(
         dir: File,
         credential: WacsCredential,
         branch: String,
+        expectedRemote: String?,
     ) = withContext(Dispatchers.IO) {
         requireSupported()
         open(dir).use { git ->
+            val ref = "refs/heads/$branch"
             val results = git.push()
                 .setCredentialsProvider(credential.toProvider())
-                .setRefSpecs(RefSpec("HEAD:refs/heads/$branch"))
+                .setRefSpecs(RefSpec("$ref:$ref").setForceUpdate(true))
+                // The all-zero id is git's "no such ref": a new branch mustn't already exist.
+                .setRefLeaseSpecs(RefLeaseSpec(ref, expectedRemote ?: ObjectId.zeroId().name))
                 .call()
             val rejected = results.flatMap { it.remoteUpdates }.filterNot {
                 it.status == RemoteRefUpdate.Status.OK || it.status == RemoteRefUpdate.Status.UP_TO_DATE
@@ -208,9 +273,8 @@ class JGitWacsGitClient : IWacsGitClient {
     /** Open an existing clone with the platform-appropriate [fs]. */
     private fun open(dir: File): Git = Git.open(dir, newFs())
 
-    private fun WacsCredential.toProvider(): CredentialsProvider = when (this) {
-        is WacsCredential.Basic -> UsernamePasswordCredentialsProvider(username, secret)
-    }
+    /** WACS takes a token as the git password, so every credential is a username and a secret. */
+    private fun WacsCredential.toProvider(): CredentialsProvider = UsernamePasswordCredentialsProvider(username, gitPassword)
 
     private companion object {
         fun isAndroidRuntime(): Boolean =

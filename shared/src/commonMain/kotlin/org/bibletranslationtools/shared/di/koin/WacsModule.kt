@@ -16,7 +16,7 @@ import org.bibletranslationtools.otter.common.domain.wacs.usecase.CloneWacsRepo
 import org.bibletranslationtools.otter.common.domain.wacs.usecase.CreateProjectFromWacs
 import org.bibletranslationtools.otter.common.domain.wacs.usecase.ImportPulledChapterAsSource
 import org.bibletranslationtools.otter.common.domain.wacs.usecase.ListWacsRepos
-import org.bibletranslationtools.otter.common.domain.wacs.usecase.PublishChapterToWacs
+import org.bibletranslationtools.otter.common.domain.wacs.usecase.PublishChaptersToWacs
 import org.bibletranslationtools.otter.common.domain.wacs.usecase.PullChapter
 import org.bibletranslationtools.otter.common.domain.wacs.usecase.RestoreChapterFromWacs
 import org.koin.dsl.module
@@ -63,10 +63,10 @@ val wacsModule = module {
     single { WacsSession() }
     single<IWacsAuthenticator> { BasicAuthenticator(get()) }
 
-    // M2: publish. Takes WacsApiFactory (not a fixed ForgejoApi) because it must target whatever
-    // host WacsSession was logged into, which may differ from WacsConfig.baseUrl — see
-    // WacsSession.host's KDoc.
-    single { PublishChapterToWacs(get(), get(), get(), get(), get(), get()) }
+    // Publish: the pipeline's prepare, then a pull request from the user's fork. Takes
+    // WacsApiFactory (not a fixed ForgejoApi) because it must target whatever WACS host and
+    // pipeline WacsSession was signed in with, which may differ from WacsConfig's defaults.
+    single { PublishChaptersToWacs(get(), get(), get(), get(), get(), get()) }
 
     // M3: repo-picker + clone infrastructure. ListWacsRepos/CloneWacsRepo are read-only REST + clone
     // (no fork, unlike M2's publish); PullChapter materializes one chapter's audio at a time via the

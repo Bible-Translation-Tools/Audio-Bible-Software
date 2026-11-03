@@ -28,7 +28,7 @@ import java.io.File
  * [org.bibletranslationtools.otter.common.domain.wacs.lfs.LfsBatchClient]. Implementations MUST run
  * with host git config isolated (see [GitConfigIsolation]) so no ambient `filter.lfs.*` ever makes
  * JGit shell out to a system `git-lfs`; the working tree therefore holds LFS *pointers*, which is
- * what [listLfsPointers] reads and what [commit] stages.
+ * what [listLfsPointers] reads and what [stage] stages.
  */
 interface IWacsGitClient {
 
@@ -51,45 +51,45 @@ interface IWacsGitClient {
     ): Boolean
 
     /**
-     * M4: add/refresh an `upstream` remote pointing at [upstreamUrl] (the *official*
-     * `AudioTranslation/<repo>`, not `origin` — which is the user's fork), fetch it, and
-     * fast-forward-merge [branch] from it onto the currently checked-out branch. Run this after
-     * [clone] and before writing/committing new files, so a fork that has fallen behind the
-     * official repo (someone else's contribution merged upstream since the fork was created)
-     * doesn't cause a later [push] to be rejected as non-fast-forward.
-     *
-     * Pointer-only and cheap: with [GitConfigIsolation] installed, nothing here ever smudges an
-     * LFS pointer into real bytes, so this is an ordinary small-object git fetch + fast-forward,
-     * not an LFS download. A brand-new fork is already even with upstream, so this is a no-op
-     * (returns `false`) immediately after cloning it.
-     *
-     * Throws if the local branch can't fast-forward (diverged — e.g. an in-progress local commit
-     * conflicts with upstream). Callers classify that the same way as [fetchAndFastForward]'s
-     * "someone else changed it" case (see `PublishChapterToWacs.classifyGitFailure`) — no
-     * line-level merge is attempted (see the plan doc, §6).
+     * Points the remote [remote] at [url] (adding it if needed), fetches its [branch] into
+     * `refs/remotes/<remote>/<branch>`, and returns that branch's commit. Publishing fetches the
+     * official repo as `upstream` this way. Pointers only: nothing here downloads LFS audio.
      */
-    suspend fun syncFromUpstream(
+    suspend fun fetchRemote(
         dir: File,
-        upstreamUrl: String,
+        remote: String,
+        url: String,
+        branch: String,
         credential: WacsCredential,
-        branch: String = DEFAULT_BRANCH,
-    ): Boolean
-
-    /** Stage [paths] (repo-relative) and commit. Returns the new commit's SHA-1. */
-    suspend fun commit(
-        dir: File,
-        paths: List<String>,
-        message: String,
-        authorName: String,
-        authorEmail: String,
     ): String
 
-    /** Push local [branch] to origin. Throws if the remote rejects the update. */
-    suspend fun push(
-        dir: File,
-        credential: WacsCredential,
-        branch: String = DEFAULT_BRANCH,
-    )
+    /** The commit [revision] (a branch, remote-tracking ref, or SHA-1) names, or null if none. */
+    suspend fun resolve(dir: File, revision: String): String?
+
+    /**
+     * `git checkout -B <branch> <startPoint>`: makes [branch] point at [startPoint] and checks it
+     * out, discarding whatever the working tree held.
+     */
+    suspend fun startBranch(dir: File, branch: String, startPoint: String)
+
+    /** The repo-relative paths of the files under [directory] at [revision]. */
+    suspend fun listFiles(dir: File, revision: String, directory: String): List<String>
+
+    /** `git checkout <revision> -- <paths>`: the files exactly as [revision] has them, staged. */
+    suspend fun restoreFiles(dir: File, revision: String, paths: List<String>)
+
+    /** Stages [remove] as deleted and [add] (written by the caller) as added or changed. */
+    suspend fun stage(dir: File, add: List<String>, remove: List<String> = emptyList())
+
+    /** Commits what's staged; returns the new commit's SHA-1, or null if nothing differs from HEAD. */
+    suspend fun commitStaged(dir: File, message: String, authorName: String, authorEmail: String): String?
+
+    /**
+     * Pushes the local [branch] to origin's branch of the same name, replacing it only if origin
+     * still has it at [expectedRemote] (`--force-with-lease`); null means origin mustn't have the
+     * branch yet. Throws if the remote rejects the update, e.g. because another device pushed.
+     */
+    suspend fun push(dir: File, credential: WacsCredential, branch: String, expectedRemote: String?)
 
     /** Read every LFS pointer committed at HEAD (repo-relative path + parsed pointer). */
     suspend fun listLfsPointers(dir: File): List<TrackedObject>

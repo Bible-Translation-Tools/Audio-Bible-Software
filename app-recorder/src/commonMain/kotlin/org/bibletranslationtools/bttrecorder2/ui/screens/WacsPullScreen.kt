@@ -149,11 +149,13 @@ fun WacsPullScreen(
                 )
                 !loginState.isLoggedIn -> WacsLoginForm(
                     host = loginState.host,
+                    pipelineUrl = loginState.pipelineUrl,
                     username = loginState.username,
                     password = loginState.password,
                     isLoading = loginState.isLoading,
                     error = loginState.error,
                     onHostChange = loginViewModel::setHost,
+                    onPipelineUrlChange = loginViewModel::setPipelineUrl,
                     onUsernameChange = loginViewModel::setUsername,
                     onPasswordChange = loginViewModel::setPassword,
                     onTestConnection = loginViewModel::testConnection

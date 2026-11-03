@@ -30,6 +30,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
 import org.bibletranslationtools.otter.common.domain.wacs.auth.WacsCredential
+import org.slf4j.LoggerFactory
 import java.io.File
 import java.security.DigestInputStream
 import java.security.MessageDigest
@@ -52,6 +53,8 @@ class LfsBatchClient(
     private val http: OkHttpClient,
     private val json: Json = Json { ignoreUnknownKeys = true; encodeDefaults = true },
 ) {
+    private val logger = LoggerFactory.getLogger(LfsBatchClient::class.java)
+
     /**
      * Download the object named by [pointer] into [dest], verifying `sha256(bytes) == pointer.oid`.
      * [lfsBaseUrl] is the repo's LFS base, i.e. `<clone-url>/info/lfs` (see [batchUrl]).
@@ -63,7 +66,7 @@ class LfsBatchClient(
         dest: File,
     ) = withContext(Dispatchers.IO) {
         val obj = requestBatch(lfsBaseUrl, credential, Operation.DOWNLOAD, pointer)
-        obj.error?.let { error("LFS download refused for ${pointer.oid}: ${it.code} ${it.message}") }
+        obj.error?.let { failed("LFS download refused for ${pointer.oid}: ${it.code} ${it.message}") }
         val action = obj.actions?.download
             ?: error("LFS batch returned no download action for ${pointer.oid}")
 
@@ -71,8 +74,9 @@ class LfsBatchClient(
         val batchHost = HttpUrl.parse(batchUrl(lfsBaseUrl))
         val request = transferRequest(action, credential, batchHost).get().build()
         val digest = MessageDigest.getInstance("SHA-256")
+        logger.info("Downloading LFS object {} ({} bytes) from {}", pointer.oid, pointer.size, request.url().host())
         http.newCall(request).execute().use { resp ->
-            if (!resp.isSuccessful) error("LFS download HTTP ${resp.code()} for ${pointer.oid}")
+            if (!resp.isSuccessful) failed("LFS download HTTP ${resp.code()} for ${pointer.oid} from ${request.url().host()}")
             val body = resp.body() ?: error("LFS download: empty body for ${pointer.oid}")
             DigestInputStream(body.byteStream(), digest).use { input ->
                 dest.outputStream().use { out -> input.copyTo(out) }
@@ -81,7 +85,7 @@ class LfsBatchClient(
         val actual = digest.digest().toHex()
         if (actual != pointer.oid || dest.length() != pointer.size) {
             dest.delete()
-            error("LFS integrity check failed for ${pointer.oid}: got sha256=$actual size=${dest.length()}")
+            failed("LFS integrity check failed for ${pointer.oid}: got sha256=$actual size=${dest.length()}")
         }
     }
 
@@ -96,21 +100,25 @@ class LfsBatchClient(
         source: File,
     ) = withContext(Dispatchers.IO) {
         val obj = requestBatch(lfsBaseUrl, credential, Operation.UPLOAD, pointer)
-        obj.error?.let { error("LFS upload refused for ${pointer.oid}: ${it.code} ${it.message}") }
-        val action = obj.actions?.upload ?: return@withContext // already present server-side
+        obj.error?.let { failed("LFS upload refused for ${pointer.oid}: ${it.code} ${it.message}") }
+        val action = obj.actions?.upload ?: run {
+            logger.info("LFS object {} is already stored at {}; nothing to upload", pointer.oid, batchUrl(lfsBaseUrl))
+            return@withContext
+        }
 
         val batchHost = HttpUrl.parse(batchUrl(lfsBaseUrl))
         val putBody = RequestBody.create(OCTET_STREAM, source)
         val put = transferRequest(action, credential, batchHost).put(putBody).build()
+        logger.info("Uploading LFS object {} ({} bytes) to {}", pointer.oid, pointer.size, put.url().host())
         http.newCall(put).execute().use { resp ->
-            if (!resp.isSuccessful) error("LFS upload PUT HTTP ${resp.code()} for ${pointer.oid}")
+            if (!resp.isSuccessful) failed("LFS upload PUT HTTP ${resp.code()} for ${pointer.oid} to ${put.url().host()}")
         }
         obj.actions.verify?.let { verify ->
             val body = RequestBody.create(LFS_JSON, json.encodeToString(ObjectRef(pointer.oid, pointer.size)))
             val req = transferRequest(verify, credential, batchHost)
                 .post(body).header("Accept", LFS_CONTENT_TYPE).build()
             http.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) error("LFS verify HTTP ${resp.code()} for ${pointer.oid}")
+                if (!resp.isSuccessful) failed("LFS verify HTTP ${resp.code()} for ${pointer.oid}")
             }
         }
     }
@@ -127,12 +135,12 @@ class LfsBatchClient(
         val request = Request.Builder()
             .url(batchUrl(lfsBaseUrl))
             .header("Accept", LFS_CONTENT_TYPE)
-            .header("Authorization", credential.authorizationHeader())
+            .header("Authorization", credential.gitAuthorizationHeader())
             .post(RequestBody.create(LFS_JSON, payload))
             .build()
         val text = http.newCall(request).execute().use { resp ->
             val s = resp.body()?.string().orEmpty()
-            if (!resp.isSuccessful) error("LFS batch HTTP ${resp.code()}: $s")
+            if (!resp.isSuccessful) failed("LFS batch HTTP ${resp.code()} from ${request.url().host()}${request.url().encodedPath()}: $s")
             s
         }
         return json.decodeFromString<BatchResponse>(text).objects.firstOrNull()
@@ -147,8 +155,14 @@ class LfsBatchClient(
         val href = HttpUrl.parse(action.href)
         val sameOrigin = href != null && batchHost != null &&
             href.host() == batchHost.host() && href.port() == batchHost.port()
-        if (!hasAuth && sameOrigin) builder.header("Authorization", credential.authorizationHeader())
+        if (!hasAuth && sameOrigin) builder.header("Authorization", credential.gitAuthorizationHeader())
         return builder
+    }
+
+    /** Logs [message] (never a credential or a presigned URL's query) and throws it. */
+    private fun failed(message: String): Nothing {
+        logger.warn(message)
+        error(message)
     }
 
     private enum class Operation(val wire: String) { DOWNLOAD("download"), UPLOAD("upload") }

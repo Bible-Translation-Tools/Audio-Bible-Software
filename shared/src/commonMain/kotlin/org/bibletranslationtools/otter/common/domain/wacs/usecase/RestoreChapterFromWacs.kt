@@ -213,8 +213,8 @@ class RestoreChapterFromWacs(
 
     /**
      * Best-effort: tries every companion file as a Burrito alignment document (the prototype's seed
-     * data and [org.bibletranslationtools.otter.common.domain.wacs.layout.MetadataJsonWriter]'s own
-     * writer disagree on the extension - `.timing` vs `.alignment.json` - so this reads by content,
+     * data and the app's own publishes have disagreed on the extension - `.timing`, `.alignment.json`,
+     * `.json` - so this reads by content,
      * not by name, exactly like [org.bibletranslationtools.otter.common.domain.wacs.layout.WacsScopeReader]
      * treats "companion" generically). Resolves the alignment's own docid rather than assuming it
      * matches [audioFile]'s name, because it won't: the docid recorded at publish time is the

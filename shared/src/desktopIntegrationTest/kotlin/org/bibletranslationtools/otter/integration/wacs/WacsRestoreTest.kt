@@ -11,6 +11,7 @@ import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
+import org.bibletranslationtools.otter.common.domain.audio.metadata.BurritoAlignmentMetadata
 import org.bibletranslationtools.otter.common.domain.wacs.WacsConfig
 import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoRepo
 import org.bibletranslationtools.otter.common.domain.wacs.auth.WacsSession
@@ -23,7 +24,6 @@ import org.bibletranslationtools.otter.common.domain.wacs.layout.WacsTakeProvena
 import org.bibletranslationtools.otter.common.domain.wacs.lfs.Sha256
 import org.bibletranslationtools.otter.common.domain.wacs.usecase.CloneWacsRepo
 import org.bibletranslationtools.otter.common.domain.wacs.usecase.CreateProjectFromWacs
-import org.bibletranslationtools.otter.common.domain.wacs.usecase.PublishChapterToWacs
 import org.bibletranslationtools.otter.common.domain.wacs.usecase.RestoreChapterFromWacs
 import org.bibletranslationtools.otter.common.domain.wacs.usecase.RestoreChapterFromWacs.SelectionPolicy
 import org.bibletranslationtools.otter.common.domain.wacs.usecase.WacsPullException
@@ -40,11 +40,13 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
- * Publishing a recorded chapter and restoring it, through the production Koin graph and a real
- * database, with an in-process WACS host (see [FakeWacs]) in place of the network.
+ * Restoring a recorded chapter from WACS, through the production Koin graph and a real database,
+ * with an in-process WACS host (see [FakeWacs]) in place of the network.
  *
- * The project is English ULB Mark, narrated, so its repo is `audio-en-ulb-mrk`. No official repo
- * exists, so publishing goes to the user's own.
+ * The project is English ULB Mark, narrated, so its repo is `audio-en-ulb-mrk`. Restore reads the
+ * per-book layout the app used to publish (the chapter list in `metadata.json`), so the repo is
+ * seeded in that layout; publishing now goes through the pipeline's per-language repos, which
+ * restore doesn't read yet.
  */
 class WacsRestoreTest {
     private val root = createTempDirectory("wacs-restore").toFile()
@@ -94,8 +96,25 @@ class WacsRestoreTest {
         take
     }
 
-    private fun IntegrationEnvironment.publish(project: Collection, chapter: Int) = runBlocking {
-        component<PublishChapterToWacs>().publish(PublishChapterToWacs.Request(workbookOf(project), chapter))
+    /** Puts [take] in the user's `audio-en-ulb-mrk` as chapter [chapter], in the layout restore reads. */
+    private fun publish(take: Take, chapter: Int = 1): ForgejoRepo {
+        val staged = File(root, "published").apply { mkdirs() }
+        val audio = take.file.copyTo(File(staged, "0$chapter.wav"), overwrite = true)
+        val timing = File(staged, "0$chapter.json")
+        val oratureAudio = OratureAudioFile(audio)
+        BurritoAlignmentMetadata(timing, audio).write(oratureAudio.getMarkers(), "mrk", chapter, oratureAudio.totalFrames)
+        val audioPath = WacsRepoLayout.audioIngredientPath("MRK", chapter, "wav")
+        val timingPath = WacsRepoLayout.timingIngredientPath("MRK", chapter)
+        val metadata = """
+            {"languages": [{"tag": "en"}],
+             "ingredients": {"$audioPath": {"mimeType": "audio/wav", "scope": {"MRK": ["$chapter"]}},
+                             "$timingPath": {"mimeType": "application/json", "scope": {"MRK": ["$chapter"]}}}}
+        """.trimIndent()
+        return wacs.createRepo(
+            "translator", REPO,
+            files = mapOf(WacsRepoLayout.METADATA_PATH to metadata.encodeToByteArray(), timingPath to timing.readBytes()),
+            lfsFiles = mapOf(audioPath to audio.readBytes()),
+        )
     }
 
     private fun IntegrationEnvironment.open(repo: ForgejoRepo = wacs.repo("translator/$REPO")!!) =
@@ -108,7 +127,7 @@ class WacsRestoreTest {
         val environment = environment()
         val project = environment.markProject()
         val recorded = environment.recordChapter(project, 1)
-        environment.publish(project, 1)
+        publish(recorded)
         val oid = Sha256.hex(recorded.file)
         val publishedMarkers = markers(recorded.file)
         environment.deleteAllProjects()
@@ -130,7 +149,7 @@ class WacsRestoreTest {
         val environment = environment()
         val project = environment.markProject()
         val original = environment.recordChapter(project, 1)
-        environment.publish(project, 1)
+        publish(original)
         val opened = environment.open()
         val ingredient = opened.scope.books.getValue("MRK").single()
         val restore = environment.component<RestoreChapterFromWacs>()
@@ -156,8 +175,7 @@ class WacsRestoreTest {
     fun `by default the restored take becomes the selected one`() {
         val environment = environment()
         val project = environment.markProject()
-        environment.recordChapter(project, 1)
-        environment.publish(project, 1)
+        publish(environment.recordChapter(project, 1))
         val opened = environment.open()
 
         val outcome = runBlocking {

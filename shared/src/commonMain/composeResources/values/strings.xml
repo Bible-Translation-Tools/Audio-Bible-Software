@@ -285,11 +285,12 @@
     <string name="wacs_publish_unsupported_message">Publishing to WACS requires Android 8.0 (Oreo) or newer. This device cannot use it.</string>
     <string name="wacs_login_title">Log in to WACS</string>
     <string name="wacs_login_host_label">Server</string>
+    <string name="wacs_login_pipeline_label">Publishing service</string>
     <string name="wacs_login_username_label">Username</string>
     <string name="wacs_login_password_label">Password or app token</string>
     <string name="wacs_login_password_hint">A WACS app-password/token is safer than your account password — it can be scoped and revoked.</string>
     <string name="wacs_login_test_connection">Test connection</string>
-    <string name="wacs_login_error_missing_fields">Enter the server, username, and password/token.</string>
+    <string name="wacs_login_error_missing_fields">Enter the server, publishing service, username, and password/token.</string>
     <string name="wacs_login_error_generic">Couldn\'t connect. Check the server address and credentials.</string>
     <string name="wacs_login_error_invalid_credentials">Incorrect username or password/token.</string>
     <string name="wacs_login_error_server">The WACS server had a problem. Try again later.</string>
@@ -302,24 +303,23 @@
     <string name="wacs_publish_chapters_label">Chapters to publish (%1$d)</string>
     <string name="wacs_publish_chapter_label">Chapter %1$d</string>
     <string name="wacs_publish_no_chapters">No chapters selected. Choose \"Publish to WACS\" from a project\'s export options and select at least one complete chapter.</string>
-    <string name="wacs_publish_success">Published %1$d chapter(s) to your WACS fork.</string>
+    <string name="wacs_publish_success">Submitted %1$d chapter(s) for review.</string>
+    <string name="wacs_publish_nothing_new">These chapters are already in the official repository. There was nothing new to submit.</string>
     <string name="wacs_publish_status_pending">Not started</string>
     <string name="wacs_publish_status_in_progress">Publishing…</string>
-    <string name="wacs_publish_status_success">Published</string>
+    <string name="wacs_publish_status_success">Submitted</string>
     <string name="wacs_publish_status_failed">Failed</string>
-    <string name="wacs_publish_progress_checking_repo">Checking for the official repository…</string>
-    <string name="wacs_publish_progress_forking">Forking to your account…</string>
+    <string name="wacs_publish_progress_preparing_repos">Setting up your repository on WACS…</string>
     <string name="wacs_publish_progress_cloning">Cloning your fork…</string>
-    <string name="wacs_publish_progress_syncing">Syncing your fork with the official repository…</string>
-    <string name="wacs_publish_progress_preparing">Preparing chapter files…</string>
-    <string name="wacs_publish_progress_committing">Committing…</string>
-    <string name="wacs_publish_progress_uploading">Uploading audio…</string>
+    <string name="wacs_publish_progress_preparing_chapter">Preparing chapter %1$d…</string>
+    <string name="wacs_publish_progress_uploading_chapter">Uploading chapter %1$d audio…</string>
     <string name="wacs_publish_progress_pushing">Pushing to your fork…</string>
     <string name="wacs_publish_progress_opening_pr">Submitting your contribution…</string>
     <string name="wacs_publish_error_not_authenticated">You\'re not logged in. Log in and try again.</string>
     <string name="wacs_publish_error_auth_rejected">The server rejected your credentials. Log in again.</string>
     <string name="wacs_publish_error_network">Couldn\'t reach the WACS server. Check your connection and try again.</string>
-    <string name="wacs_publish_error_no_official_repo">No official WACS repository exists yet for this project. Ask an administrator to create it first.</string>
+    <string name="wacs_publish_error_pipeline_rejected">WACS couldn\'t set up the repository: %1$s</string>
+    <string name="wacs_publish_error_pipeline_unavailable">The publishing service isn\'t responding. Try again later.</string>
     <string name="wacs_publish_error_no_audio">This chapter has no finished recording to publish.</string>
     <string name="wacs_publish_error_conflict">Someone else changed this repository. Try again.</string>
     <string name="wacs_publish_error_integrity">The uploaded audio didn\'t verify correctly. Try again.</string>
@@ -327,8 +327,7 @@
 
     <!-- M4: contribute + sync -->
     <string name="wacs_publish_pr_submitted_title">Contribution submitted</string>
-    <string name="wacs_publish_pr_submitted_message">Your chapters were published. View the pull request:</string>
-    <string name="wacs_publish_pr_error">Chapters were published to your fork, but submitting the pull request failed: %1$s</string>
+    <string name="wacs_publish_pr_submitted_message">Your chapters were submitted for review. View the pull request:</string>
 
     <!-- M3.1: restore from WACS (as takes) -->
     <string name="wacs_pull_menu_item">Restore from WACS</string>

@@ -61,7 +61,7 @@ import org.bibletranslationtools.bttrecorder2.ui.viewmodels.WacsLoginViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.WacsPublishUiState
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.WacsPublishViewModel
 import org.bibletranslationtools.otter.common.domain.wacs.WacsPlatform
-import org.bibletranslationtools.otter.common.domain.wacs.usecase.PublishChapterToWacs
+import org.bibletranslationtools.otter.common.domain.wacs.usecase.PublishChaptersToWacs
 import org.jetbrains.compose.resources.stringResource
 import org.bibletranslationtools.shared.resources.Res
 import org.bibletranslationtools.shared.resources.action_back
@@ -78,21 +78,19 @@ import org.bibletranslationtools.shared.resources.wacs_publish_button
 import org.bibletranslationtools.shared.resources.wacs_publish_chapter_label
 import org.bibletranslationtools.shared.resources.wacs_publish_chapters_label
 import org.bibletranslationtools.shared.resources.wacs_publish_no_chapters
-import org.bibletranslationtools.shared.resources.wacs_publish_progress_checking_repo
 import org.bibletranslationtools.shared.resources.wacs_publish_progress_cloning
-import org.bibletranslationtools.shared.resources.wacs_publish_progress_committing
-import org.bibletranslationtools.shared.resources.wacs_publish_progress_forking
+import org.bibletranslationtools.shared.resources.wacs_publish_progress_preparing_chapter
+import org.bibletranslationtools.shared.resources.wacs_publish_progress_preparing_repos
+import org.bibletranslationtools.shared.resources.wacs_publish_progress_uploading_chapter
 import org.bibletranslationtools.shared.resources.wacs_publish_progress_opening_pr
-import org.bibletranslationtools.shared.resources.wacs_publish_progress_preparing
 import org.bibletranslationtools.shared.resources.wacs_publish_progress_pushing
-import org.bibletranslationtools.shared.resources.wacs_publish_progress_syncing
-import org.bibletranslationtools.shared.resources.wacs_publish_progress_uploading
 import org.bibletranslationtools.shared.resources.wacs_publish_pr_submitted_message
 import org.bibletranslationtools.shared.resources.wacs_publish_pr_submitted_title
 import org.bibletranslationtools.shared.resources.wacs_publish_status_failed
 import org.bibletranslationtools.shared.resources.wacs_publish_status_in_progress
 import org.bibletranslationtools.shared.resources.wacs_publish_status_pending
 import org.bibletranslationtools.shared.resources.wacs_publish_status_success
+import org.bibletranslationtools.shared.resources.wacs_publish_nothing_new
 import org.bibletranslationtools.shared.resources.wacs_publish_success
 import org.bibletranslationtools.shared.resources.wacs_publish_unsupported_message
 import org.bibletranslationtools.shared.resources.wacs_publish_unsupported_title
@@ -161,11 +159,13 @@ fun WacsPublishScreen(
                 )
                 else -> WacsLoginForm(
                     host = state.host,
+                    pipelineUrl = state.pipelineUrl,
                     username = state.username,
                     password = state.password,
                     isLoading = state.isLoading,
                     error = state.error,
                     onHostChange = viewModel::setHost,
+                    onPipelineUrlChange = viewModel::setPipelineUrl,
                     onUsernameChange = viewModel::setUsername,
                     onPasswordChange = viewModel::setPassword,
                     onTestConnection = viewModel::testConnection
@@ -249,7 +249,11 @@ private fun LoggedInContent(
             publishState.publishedCount?.let { count ->
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    text = stringResource(Res.string.wacs_publish_success, count),
+                    text = if (publishState.nothingNew) {
+                        stringResource(Res.string.wacs_publish_nothing_new)
+                    } else {
+                        stringResource(Res.string.wacs_publish_success, count)
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -276,14 +280,6 @@ private fun LoggedInContent(
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
-                }
-                publishState.pullRequestError?.let { message ->
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = message,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error
-                    )
                 }
 
                 TextButton(onClick = onAcknowledgeSuccess) { Text(stringResource(Res.string.action_dismiss)) }
@@ -334,15 +330,14 @@ private fun ChapterPublishRow(chapterSort: Int, chapterState: ChapterPublishStat
 }
 
 @Composable
-private fun progressLabel(progress: PublishChapterToWacs.Progress): String = when (progress) {
-    is PublishChapterToWacs.Progress.CheckingOfficialRepo -> stringResource(Res.string.wacs_publish_progress_checking_repo)
-    is PublishChapterToWacs.Progress.Forking -> stringResource(Res.string.wacs_publish_progress_forking)
-    is PublishChapterToWacs.Progress.Cloning -> stringResource(Res.string.wacs_publish_progress_cloning)
-    is PublishChapterToWacs.Progress.SyncingUpstream -> stringResource(Res.string.wacs_publish_progress_syncing)
-    is PublishChapterToWacs.Progress.PreparingFiles -> stringResource(Res.string.wacs_publish_progress_preparing)
-    is PublishChapterToWacs.Progress.Committing -> stringResource(Res.string.wacs_publish_progress_committing)
-    is PublishChapterToWacs.Progress.UploadingAudio -> stringResource(Res.string.wacs_publish_progress_uploading)
-    is PublishChapterToWacs.Progress.Pushing -> stringResource(Res.string.wacs_publish_progress_pushing)
-    is PublishChapterToWacs.Progress.OpeningPullRequest -> stringResource(Res.string.wacs_publish_progress_opening_pr)
-    is PublishChapterToWacs.Progress.Done -> ""
+private fun progressLabel(progress: PublishChaptersToWacs.Progress): String = when (progress) {
+    is PublishChaptersToWacs.Progress.PreparingRepos -> stringResource(Res.string.wacs_publish_progress_preparing_repos)
+    is PublishChaptersToWacs.Progress.Cloning -> stringResource(Res.string.wacs_publish_progress_cloning)
+    is PublishChaptersToWacs.Progress.PreparingChapter ->
+        stringResource(Res.string.wacs_publish_progress_preparing_chapter, progress.chapter)
+    is PublishChaptersToWacs.Progress.UploadingAudio ->
+        stringResource(Res.string.wacs_publish_progress_uploading_chapter, progress.chapter)
+    is PublishChaptersToWacs.Progress.Pushing -> stringResource(Res.string.wacs_publish_progress_pushing)
+    is PublishChaptersToWacs.Progress.OpeningPullRequest -> stringResource(Res.string.wacs_publish_progress_opening_pr)
+    is PublishChaptersToWacs.Progress.Done -> ""
 }

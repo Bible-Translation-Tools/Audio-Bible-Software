@@ -21,7 +21,7 @@ package org.bibletranslationtools.otter.common.domain.wacs.usecase
 /**
  * A publish failure, classified into a small domain vocabulary the UI can localize — the M2
  * counterpart of [org.bibletranslationtools.otter.common.domain.wacs.auth.WacsAuthException].
- * [PublishChapterToWacs] is the only thing that throws this; every JGit exception
+ * [PublishChaptersToWacs] is the only thing that throws this; every JGit exception
  * (`GitAPIException`, `TransportException`, ...), `retrofit2.HttpException`, and `java.io.IOException`
  * / LFS transfer failure it can encounter is caught and mapped to a [Reason] here, so the app/UI
  * layer never depends on those transport types — mirrors exactly how `BasicAuthenticator` keeps
@@ -30,7 +30,9 @@ package org.bibletranslationtools.otter.common.domain.wacs.usecase
 class WacsPublishException(
     val reason: Reason,
     cause: Throwable? = null,
-) : Exception(reason.name, cause) {
+    /** For [Reason.PIPELINE_REJECTED], the pipeline's own explanation, to show the user as is. */
+    val detail: String? = null,
+) : Exception(detail ?: reason.name, cause) {
     enum class Reason {
         /** No credential in [org.bibletranslationtools.otter.common.domain.wacs.auth.WacsSession] — the user needs to log in first. */
         NOT_AUTHENTICATED,
@@ -41,8 +43,15 @@ class WacsPublishException(
         /** Host unreachable / transport failure (could not connect, timed out, DNS, ...). */
         NETWORK,
 
-        /** No `AudioTranslation/<repo>` exists yet for this workbook — nothing to fork. */
-        NO_OFFICIAL_REPO,
+        /**
+         * The publish pipeline refused the request and retrying won't help: an unknown language, a
+         * translation code it can't name a repo after, or a repo of the user's in the fork's way.
+         * [detail] says which.
+         */
+        PIPELINE_REJECTED,
+
+        /** The publish pipeline kept failing or couldn't be reached, so no repo could be set up. */
+        PIPELINE_UNAVAILABLE,
 
         /** The chapter has no selected/finished take to publish. */
         NO_AUDIO,

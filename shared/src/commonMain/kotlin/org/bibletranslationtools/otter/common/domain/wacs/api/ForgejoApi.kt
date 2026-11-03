@@ -86,7 +86,33 @@ interface ForgejoApi {
         @Path("repo") repo: String,
         @Header("Authorization") auth: String,
         @Query("state") state: String = "open",
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 50,
     ): List<ForgejoPullRequest>
+
+    /** The commits a pull request carries, oldest first; publishing reads their `Audio-Chapter` trailers. */
+    @GET("api/v1/repos/{owner}/{repo}/pulls/{index}/commits")
+    suspend fun listPullRequestCommits(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("index") index: Long,
+        @Header("Authorization") auth: String,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 50,
+        @Query("files") files: Boolean = false,
+        @Query("verification") verification: Boolean = false,
+    ): List<ForgejoCommit>
+
+    /**
+     * Creates an access token for [username]. Forgejo only allows this with the account's password
+     * (Basic auth), not with another token.
+     */
+    @POST("api/v1/users/{username}/tokens")
+    suspend fun createToken(
+        @Path("username") username: String,
+        @Header("Authorization") auth: String,
+        @Body request: CreateTokenRequest,
+    ): ForgejoAccessToken
 
     /**
      * M3: page through the `AudioTranslation` org's repos for the pull-as-source repo picker —
@@ -139,7 +165,21 @@ data class ForgejoUser(
     val id: Long,
     val login: String,
     @SerialName("is_admin") val isAdmin: Boolean = false,
+    val email: String? = null,
 )
+
+@Serializable
+data class CreateTokenRequest(val name: String, val scopes: List<String>)
+
+/** A token Forgejo just created; [sha1] is the token itself, shown only this once. */
+@Serializable
+data class ForgejoAccessToken(val id: Long, val name: String, val sha1: String)
+
+@Serializable
+data class ForgejoCommit(val sha: String, val commit: ForgejoCommitDetail)
+
+@Serializable
+data class ForgejoCommitDetail(val message: String)
 
 @Serializable
 data class ForgejoOwner(val id: Long, val login: String)
@@ -199,4 +239,9 @@ data class ForgejoPullRequest(
 data class ForgejoPrBranchInfo(
     val ref: String? = null,
     @SerialName("repo_id") val repoId: Long? = null,
+    val repo: ForgejoPrRepo? = null,
 )
+
+/** The part of a pull request branch's repository needed to tell whose fork it is. */
+@Serializable
+data class ForgejoPrRepo(@SerialName("full_name") val fullName: String)

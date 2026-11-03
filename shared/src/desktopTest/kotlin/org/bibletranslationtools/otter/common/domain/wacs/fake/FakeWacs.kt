@@ -5,6 +5,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -21,8 +22,13 @@ import okhttp3.ResponseBody
 import okio.Buffer
 import org.bibletranslationtools.otter.common.domain.wacs.api.CreatePullRequestRequest
 import org.bibletranslationtools.otter.common.domain.wacs.api.CreateRepoRequest
+import org.bibletranslationtools.otter.common.domain.wacs.api.CreateTokenRequest
+import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoAccessToken
+import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoCommit
+import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoCommitDetail
 import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoOwner
 import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoPrBranchInfo
+import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoPrRepo
 import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoPullRequest
 import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoRepo
 import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoUser
@@ -31,10 +37,16 @@ import org.bibletranslationtools.otter.common.domain.wacs.auth.WacsCredential
 import org.bibletranslationtools.otter.common.domain.wacs.git.GitConfigIsolation
 import org.bibletranslationtools.otter.common.domain.wacs.git.IWacsGitClient
 import org.bibletranslationtools.otter.common.domain.wacs.git.JGitWacsGitClient
+import org.bibletranslationtools.otter.common.domain.wacs.layout.WacsRepoLayout
 import org.bibletranslationtools.otter.common.domain.wacs.lfs.LfsBatchClient
 import org.bibletranslationtools.otter.common.domain.wacs.lfs.LfsPointer
 import org.eclipse.jgit.api.Git
+import org.eclipse.jgit.diff.DiffEntry
+import org.eclipse.jgit.lib.Constants
+import org.eclipse.jgit.revwalk.RevCommit
+import org.eclipse.jgit.revwalk.RevWalk
 import org.eclipse.jgit.transport.RefSpec
+import org.eclipse.jgit.treewalk.TreeWalk
 import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
@@ -42,30 +54,39 @@ import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * An in-process stand-in for a WACS host (Forgejo with git-LFS), so WACS sync is tested without a
- * server: the tests have to pass in CI from this repo alone.
+ * An in-process stand-in for a WACS host (Forgejo with git-LFS) and the audio publishing pipeline
+ * in front of it, so WACS sync is tested without a server: the tests have to pass in CI from this
+ * repo alone.
  *
- * - REST and LFS: an OkHttp interceptor on [http] answers what [ForgejoApi][org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoApi]
- *   and [LfsBatchClient] ask, from memory. Nothing is sent over a network; [apiFactory] and
- *   [lfsClient] are built on [http].
+ * - REST, LFS and the pipeline: an OkHttp interceptor on [http] answers what
+ *   [ForgejoApi][org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoApi], [LfsBatchClient]
+ *   and [PublishPipelineApi][org.bibletranslationtools.otter.common.domain.wacs.api.PublishPipelineApi]
+ *   ask, from memory. Nothing is sent over a network; [apiFactory] and [lfsClient] are built on [http].
  * - git: each repo's remote is a bare repository under [root]. [gitClient] is the real
  *   [JGitWacsGitClient], with a repo's clone URL pointed at its bare repository, so clone, fetch,
  *   commit and push run for real.
  *
  * It models the slice of Forgejo the client uses, with Forgejo's status codes where the client acts
- * on them: 401 for a wrong password, 404 for a missing repo or LFS object, 409 for a repo or fork
- * that already exists or a duplicate pull request, 422 for an upload whose bytes don't match its
- * oid. git itself doesn't check credentials here; the REST calls in front of it do.
+ * on them: 401 for a wrong password or token, 404 for a missing repo or LFS object, 409 for a repo
+ * or fork that already exists or a duplicate pull request, 422 for an upload whose bytes don't match
+ * its oid. The pipeline's `prepare` follows its `PUBLISH_API.md`: naming, idempotence and error
+ * codes. git itself doesn't check credentials here; the REST calls in front of it do.
  */
 class FakeWacs(private val root: File) {
 
     val host = "http://$HOST/"
 
-    /** Every request the host answered, oldest first. */
+    /** Where the publish pipeline answers. */
+    val pipelineUrl = "http://$PIPELINE_HOST/"
+
+    /** Every request answered, oldest first. */
     val requests: List<RecordedRequest> get() = recorded.toList()
 
-    /** A request the host answered: its method, its path (no query), and its headers. */
+    /** A request answered: its method, host, path (no query), and headers. */
     data class RecordedRequest(val method: String, val host: String, val path: String, val headers: Headers)
+
+    /** One commit on a branch: its message and the files it changed. */
+    data class CommitInfo(val sha: String, val message: String, val changedPaths: Set<String>)
 
     /** When true, every request fails as if the host can't be reached. */
     @Volatile
@@ -78,6 +99,10 @@ class FakeWacs(private val root: File) {
     @Volatile
     var objectStoreHost: String? = null
 
+    /** The language tags the pipeline knows; any other well-formed tag is `unknown_language`. */
+    @Volatile
+    var knownLanguages: Set<String> = setOf("en", "fr", "es-419")
+
     val http: OkHttpClient = OkHttpClient.Builder().addInterceptor { chain -> answer(chain.request()) }.build()
     val apiFactory = WacsApiFactory(http)
     val lfsClient = LfsBatchClient(http)
@@ -85,17 +110,26 @@ class FakeWacs(private val root: File) {
 
     private data class Account(val id: Long, val login: String, val password: String?)
 
-    private class HostedRepo(val info: ForgejoRepo, val remote: File, val lfs: MutableMap<String, ByteArray>)
+    private class HostedRepo(
+        val info: ForgejoRepo,
+        val remote: File,
+        val lfs: MutableMap<String, ByteArray>,
+        /** The repo this one is a fork of, `owner/name`. */
+        val parent: String? = null,
+    )
 
-    private class HostedPull(val target: String, val pull: ForgejoPullRequest)
+    private class HostedPull(val target: String, var pull: ForgejoPullRequest, val headRepo: String)
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val accounts = mutableMapOf<String, Account>()
+    private val tokens = mutableMapOf<String, String>()
     private val repos = linkedMapOf<String, HostedRepo>()
     private val pulls = mutableListOf<HostedPull>()
-    private val failures = mutableListOf<Triple<String, String, Int>>()
+    private val failures = mutableListOf<Failure>()
     private val recorded = CopyOnWriteArrayList<RecordedRequest>()
     private var nextId = 1L
+
+    private class Failure(val method: String, val host: String, val path: String, val code: Int, var times: Int)
 
     init {
         // Before any JGit use here, so a developer's global git-lfs filter can't smudge the seeds.
@@ -110,6 +144,15 @@ class FakeWacs(private val root: File) {
     fun addUser(login: String, password: String): WacsCredential.Basic {
         accounts[login] = Account(nextId++, login, password)
         return WacsCredential.Basic(login, password)
+    }
+
+    /** An access token for [login], as signing in would create. */
+    @Synchronized
+    fun tokenFor(login: String): WacsCredential.Token {
+        require(login in accounts)
+        val token = "token-${nextId++}"
+        tokens[token] = login
+        return WacsCredential.Token(login, token)
     }
 
     /** Adds an organization, which owns repos but can't sign in. */
@@ -176,6 +219,10 @@ class FakeWacs(private val root: File) {
     @Synchronized
     fun repo(fullName: String): ForgejoRepo? = repos[fullName]?.info
 
+    /** The repo `owner/name` is a fork of, or null. */
+    @Synchronized
+    fun parentOf(fullName: String): String? = repos[fullName]?.parent
+
     @Synchronized
     fun pullRequests(fullName: String): List<ForgejoPullRequest> = pulls.filter { it.target == fullName }.map { it.pull }
 
@@ -191,32 +238,78 @@ class FakeWacs(private val root: File) {
         lfs[oid] = bytes
     }
 
-    /** A fresh checkout of `owner/name`'s `master`, to look at what was pushed. */
+    /** A fresh checkout of `owner/name`'s [branch], to look at what was pushed. */
     @Synchronized
-    fun checkout(fullName: String): File {
+    fun checkout(fullName: String, branch: String = BRANCH): File {
         val dir = File(root, "checkout-${UUID.randomUUID()}")
         Git.cloneRepository().setURI(requireNotNull(repos[fullName]).remote.toURI().toString())
-            .setBranch(BRANCH).setDirectory(dir).call().close()
+            .setBranch(branch).setDirectory(dir).call().close()
         return dir
     }
 
-    /** The log of `owner/name`'s `master`, newest first, as commit messages. */
+    /** The branches `owner/name` has. */
     @Synchronized
-    fun log(fullName: String): List<String> = checkout(fullName).let { dir ->
-        try {
-            Git.open(dir).use { git -> git.log().call().map { it.fullMessage } }
-        } finally {
-            dir.deleteRecursively()
-        }
+    fun branches(fullName: String): List<String> = Git.open(requireNotNull(repos[fullName]).remote).use { git ->
+        git.branchList().call().map { it.name.removePrefix(Constants.R_HEADS) }
     }
 
-    /** Answers [method] [path] (the URL's encoded path) with [code] from now on. */
+    /** The log of `owner/name`'s [branch], newest first, as commit messages. */
     @Synchronized
-    fun fail(method: String, path: String, code: Int) {
-        failures += Triple(method, path, code)
+    fun log(fullName: String, branch: String = BRANCH): List<String> = commits(fullName, branch).map { it.message }
+
+    /** The commits on `owner/name`'s [branch], newest first, each with the files it changed. */
+    @Synchronized
+    fun commits(fullName: String, branch: String = BRANCH): List<CommitInfo> =
+        Git.open(requireNotNull(repos[fullName]).remote).use { git ->
+            val repo = git.repository
+            val tip = repo.resolve("refs/heads/$branch") ?: return@use emptyList()
+            RevWalk(repo).use { walk ->
+                walk.markStart(walk.parseCommit(tip))
+                walk.map { commit -> CommitInfo(commit.name, commit.fullMessage.trimEnd(), changedPaths(git, walk, commit)) }
+            }
+        }
+
+    /**
+     * Merges pull request [number] on `owner/name` as a reviewer would: the head branch's commits
+     * land on the target's `master`, and the pull request is closed.
+     */
+    @Synchronized
+    fun mergePullRequest(fullName: String, number: Long) {
+        val hosted = pulls.single { it.target == fullName && it.pull.number == number }
+        val target = requireNotNull(repos[fullName])
+        val head = requireNotNull(repos[hosted.headRepo])
+        Git.open(target.remote).use { git ->
+            git.fetch().setRemote(head.remote.toURI().toString())
+                .setRefSpecs(RefSpec("+refs/heads/${hosted.pull.head!!.ref}:refs/heads/$BRANCH")).call()
+        }
+        target.lfs.putAll(head.lfs)
+        hosted.pull = hosted.pull.copy(state = "closed")
+    }
+
+    /** Answers [method] [path] (the URL's encoded path) on [host] with [code], [times] times. */
+    @Synchronized
+    fun fail(method: String, path: String, code: Int, host: String = HOST, times: Int = Int.MAX_VALUE) {
+        failures += Failure(method, host, path, code, times)
     }
 
     fun cloneUrl(owner: String, name: String) = "$host$owner/$name.git"
+
+    private fun changedPaths(git: Git, walk: RevWalk, commit: RevCommit): Set<String> {
+        val repo = git.repository
+        val parent = commit.parents.firstOrNull()?.let { walk.parseCommit(it) }
+        if (parent == null) {
+            return TreeWalk(repo).use { tw ->
+                tw.addTree(commit.tree)
+                tw.isRecursive = true
+                buildSet { while (tw.next()) add(tw.pathString) }
+            }
+        }
+        return git.diff().setOldTree(treeOf(repo, parent)).setNewTree(treeOf(repo, commit)).call()
+            .map { if (it.changeType == DiffEntry.ChangeType.DELETE) it.oldPath else it.newPath }.toSet()
+    }
+
+    private fun treeOf(repo: org.eclipse.jgit.lib.Repository, commit: RevCommit) =
+        org.eclipse.jgit.treewalk.CanonicalTreeParser().apply { repo.newObjectReader().use { reset(it, commit.tree) } }
 
     // ── git ────────────────────────────────────────────────────────────────────────────────
 
@@ -225,8 +318,8 @@ class FakeWacs(private val root: File) {
         override suspend fun clone(remoteUrl: String, dir: File, credential: WacsCredential, branch: String) =
             jgit.clone(remoteFor(remoteUrl), dir, credential, branch)
 
-        override suspend fun syncFromUpstream(dir: File, upstreamUrl: String, credential: WacsCredential, branch: String) =
-            jgit.syncFromUpstream(dir, remoteFor(upstreamUrl), credential, branch)
+        override suspend fun fetchRemote(dir: File, remote: String, url: String, branch: String, credential: WacsCredential) =
+            jgit.fetchRemote(dir, remote, remoteFor(url), branch, credential)
     }
 
     @Synchronized
@@ -245,18 +338,27 @@ class FakeWacs(private val root: File) {
         val url = request.url()
         recorded += RecordedRequest(request.method(), url.host(), url.encodedPath(), request.headers())
         if (unreachable) throw IOException("${url.host()} can't be reached")
-        failures.firstOrNull { (method, path) -> method == request.method() && path == url.encodedPath() }
-            ?.let { (_, _, code) -> return request.respond(code, """{"message":"injected failure"}""") }
+        failures.firstOrNull { it.method == request.method() && it.host == url.host() && it.path == url.encodedPath() && it.times > 0 }
+            ?.let { failure ->
+                failure.times--
+                return request.respond(failure.code, """{"error":"injected","message":"injected failure"}""")
+            }
 
         if (url.host() == objectStoreHost) return objectStore(request)
+        if (url.host() == PIPELINE_HOST) return pipeline(request)
         check(url.host() == HOST) { "FakeWacs only answers $HOST, not ${url.host()}" }
 
         val segments = url.pathSegments().filter { it.isNotEmpty() }
-        val account = signedIn(request) ?: return request.respond(401, """{"message":"unauthorized"}""")
+        if (segments.size == 5 && segments.take(3) == listOf("api", "v1", "users") && segments[4] == "tokens") {
+            return createToken(request, segments[3])
+        }
+        val isLfs = segments.size >= 5 && segments[1].endsWith(".git") && segments[2] == "info" && segments[3] == "lfs"
+        // Like Forgejo, LFS reads `token`/`Bearer` as its own LFS tokens; an access token has to come as Basic.
+        val account = signedIn(request, acceptsTokenHeader = !isLfs)
+            ?: return request.respond(401, """{"message":"unauthorized"}""")
         return when {
             segments.take(2) == listOf("api", "v1") -> api(request, account, segments.drop(2))
-            segments.size >= 5 && segments[1].endsWith(".git") && segments[2] == "info" && segments[3] == "lfs" ->
-                lfs(request, "${segments[0]}/${segments[1].removeSuffix(".git")}", segments.drop(4))
+            isLfs -> lfs(request, "${segments[0]}/${segments[1].removeSuffix(".git")}", segments.drop(4))
             else -> request.respond(404)
         }
     }
@@ -265,30 +367,54 @@ class FakeWacs(private val root: File) {
         val method = request.method()
         return when {
             path == listOf("user") && method == "GET" ->
-                request.respond(200, json.encodeToString(ForgejoUser.serializer(), ForgejoUser(account.id, account.login)))
+                request.respond(200, json.encodeToString(ForgejoUser.serializer(), ForgejoUser(account.id, account.login, email = "${account.login}@example.org")))
             path == listOf("user", "repos") && method == "GET" ->
-                request.respondRepos(repos.values.filter { it.info.owner.login == account.login })
+                request.respondPage(repos.values.filter { it.info.owner.login == account.login }.map { it.info }, ForgejoRepo.serializer())
             path == listOf("user", "repos") && method == "POST" -> createRepo(request, account)
             path.size == 3 && path[0] == "orgs" && path[2] == "repos" && method == "GET" ->
-                request.respondRepos(repos.values.filter { it.info.owner.login == path[1] })
+                request.respondPage(repos.values.filter { it.info.owner.login == path[1] }.map { it.info }, ForgejoRepo.serializer())
             path.size >= 3 && path[0] == "repos" -> {
                 val fullName = "${path[1]}/${path[2]}"
                 val hosted = repos[fullName] ?: return request.respond(404, """{"message":"repo not found"}""")
                 when {
                     path.size == 3 && method == "GET" ->
                         request.respond(200, json.encodeToString(ForgejoRepo.serializer(), hosted.info))
-                    path.getOrNull(3) == "forks" && method == "POST" -> fork(request, account, hosted)
-                    path.getOrNull(3) == "pulls" && method == "GET" -> {
+                    path.getOrNull(3) == "forks" && method == "POST" -> {
+                        val name = request.bodyText().takeIf { it.isNotBlank() }
+                            ?.let { json.parseToJsonElement(it).jsonObject["name"]?.jsonPrimitive?.content }
+                        fork(account, hosted, name ?: hosted.info.name)
+                            ?.let { request.respond(202, json.encodeToString(ForgejoRepo.serializer(), it)) }
+                            ?: request.respond(409, """{"message":"repository is already forked by user"}""")
+                    }
+                    path.size == 4 && path[3] == "pulls" && method == "GET" -> {
                         val state = request.url().queryParameter("state") ?: "open"
                         val list = pulls.filter { it.target == fullName && (state == "all" || it.pull.state == state) }.map { it.pull }
-                        request.respond(200, json.encodeToString(ListSerializer(ForgejoPullRequest.serializer()), list))
+                        request.respondPage(list, ForgejoPullRequest.serializer())
                     }
-                    path.getOrNull(3) == "pulls" && method == "POST" -> openPull(request, hosted)
+                    path.size == 4 && path[3] == "pulls" && method == "POST" -> openPull(request, hosted)
+                    path.size == 6 && path[3] == "pulls" && path[5] == "commits" && method == "GET" -> {
+                        val pull = pulls.singleOrNull { it.target == fullName && it.pull.number == path[4].toLong() }
+                            ?: return request.respond(404)
+                        request.respondPage(pullCommits(pull), ForgejoCommit.serializer())
+                    }
                     else -> request.respond(404)
                 }
             }
             else -> request.respond(404)
         }
+    }
+
+    /** Forgejo creates tokens only for a password, never for another token. */
+    private fun createToken(request: Request, login: String): Response {
+        val account = accounts[login]
+        val password = account?.password
+        if (password == null || request.header("Authorization") != WacsCredential.Basic(login, password).authorizationHeader()) {
+            return request.respond(401, """{"message":"auth required"}""")
+        }
+        val body = json.decodeFromString(CreateTokenRequest.serializer(), request.bodyText())
+        val token = "token-${nextId++}"
+        tokens[token] = login
+        return request.respond(201, json.encodeToString(ForgejoAccessToken.serializer(), ForgejoAccessToken(nextId++, body.name, token)))
     }
 
     private fun createRepo(request: Request, account: Account): Response {
@@ -303,25 +429,30 @@ class FakeWacs(private val root: File) {
         return request.respond(201, json.encodeToString(ForgejoRepo.serializer(), info))
     }
 
-    private fun fork(request: Request, account: Account, parent: HostedRepo): Response {
-        val fullName = "${account.login}/${parent.info.name}"
-        if (fullName in repos) return request.respond(409, """{"message":"repository is already forked by user"}""")
+    /** Forks [parent] into [account] as [name], or returns null if that name is taken. */
+    private fun fork(account: Account, parent: HostedRepo, name: String): ForgejoRepo? {
+        val fullName = "${account.login}/$name"
+        if (fullName in repos) return null
         val remote = File(root, "remotes/$fullName.git")
         parent.remote.copyRecursively(remote)
-        val info = repoInfo(account, parent.info.name, fork = true, empty = false)
-        repos[fullName] = HostedRepo(info, remote, parent.lfs.toMutableMap())
-        return request.respond(202, json.encodeToString(ForgejoRepo.serializer(), info))
+        val info = repoInfo(account, name, fork = true, empty = false)
+        repos[fullName] = HostedRepo(info, remote, parent.lfs.toMutableMap(), parent = parent.info.fullName)
+        return info
     }
 
     private fun openPull(request: Request, target: HostedRepo): Response {
         val body = json.decodeFromString(CreatePullRequestRequest.serializer(), request.bodyText())
         val headOwner = body.head.substringBefore(':')
         val headRef = body.head.substringAfter(':')
-        val head = repos["$headOwner/${target.info.name}"]
+        // The head is the owner's fork of the target, whatever it's named.
+        val head = repos.values.firstOrNull { it.info.owner.login == headOwner && it.parent == target.info.fullName }
             ?: return request.respond(422, """{"message":"head repository not found"}""")
+        if (headRef !in Git.open(head.remote).use { git -> git.branchList().call().map { it.name.removePrefix(Constants.R_HEADS) } }) {
+            return request.respond(404, """{"message":"head branch not found"}""")
+        }
         val duplicate = pulls.any {
             it.target == target.info.fullName && it.pull.state == "open" &&
-                it.pull.head?.repoId == head.info.id && it.pull.head.ref == headRef && it.pull.base?.ref == body.base
+                it.headRepo == head.info.fullName && it.pull.head?.ref == headRef && it.pull.base?.ref == body.base
         }
         if (duplicate) return request.respond(409, """{"message":"pull request already exists"}""")
         val number = pulls.count { it.target == target.info.fullName } + 1L
@@ -329,12 +460,96 @@ class FakeWacs(private val root: File) {
             number = number,
             htmlUrl = "$host${target.info.fullName}/pulls/$number",
             state = "open",
-            head = ForgejoPrBranchInfo(headRef, head.info.id),
-            base = ForgejoPrBranchInfo(body.base, target.info.id),
+            head = ForgejoPrBranchInfo(headRef, head.info.id, ForgejoPrRepo(head.info.fullName)),
+            base = ForgejoPrBranchInfo(body.base, target.info.id, ForgejoPrRepo(target.info.fullName)),
         )
-        pulls += HostedPull(target.info.fullName, pull)
+        pulls += HostedPull(target.info.fullName, pull, head.info.fullName)
         return request.respond(201, json.encodeToString(ForgejoPullRequest.serializer(), pull))
     }
+
+    /** The commits on the pull request's head branch that its base doesn't have, oldest first. */
+    private fun pullCommits(pull: HostedPull): List<ForgejoCommit> {
+        val baseHistory = Git.open(requireNotNull(repos[pull.target]).remote).use { git ->
+            val tip = git.repository.resolve("refs/heads/${pull.pull.base!!.ref}") ?: return@use emptySet()
+            RevWalk(git.repository).use { walk ->
+                walk.markStart(walk.parseCommit(tip))
+                walk.map { it.name }.toSet()
+            }
+        }
+        return Git.open(requireNotNull(repos[pull.headRepo]).remote).use { git ->
+            val tip = git.repository.resolve("refs/heads/${pull.pull.head!!.ref}") ?: return@use emptyList()
+            RevWalk(git.repository).use { walk ->
+                walk.markStart(walk.parseCommit(tip))
+                walk.filter { it.name !in baseHistory }.map { ForgejoCommit(it.name, ForgejoCommitDetail(it.fullMessage)) }.reversed()
+            }
+        }
+    }
+
+    // ── The publish pipeline ───────────────────────────────────────────────────────────────
+
+    /** `POST /v1/publish/prepare`, per the pipeline's `PUBLISH_API.md` §3 and §4. */
+    private fun pipeline(request: Request): Response {
+        if (request.method() != "POST" || request.url().encodedPath() != "/v1/publish/prepare") return request.respond(404)
+        val token = Regex("^(?:token|bearer)\\s+(\\S+)$", RegexOption.IGNORE_CASE)
+            .find(request.header("Authorization").orEmpty())?.groupValues?.get(1)
+        val user = token?.let { tokens[it] }?.let { accounts[it] }
+            ?: return request.pipelineError(401, "unauthorized", "send \"Authorization: token <your WACS token>\"")
+        val body = runCatching { json.parseToJsonElement(request.bodyText()).jsonObject }.getOrNull()
+            ?: return request.pipelineError(400, "bad_json", "the body isn't JSON")
+        val language = body["language"]?.jsonPrimitive?.content?.trim()?.lowercase()
+        val translation = body["translation"]?.jsonPrimitive?.content?.trim()?.lowercase()
+        val edition = body["edition"]?.jsonPrimitive?.int ?: 1
+        if (language == null || translation == null) return request.pipelineError(400, "bad_request", "language and translation are required")
+        if (!Regex("^[a-z0-9]+(-[a-z0-9]+)*$").matches(language)) {
+            return request.pipelineError(400, "bad_language", "\"$language\" isn't an IETF language tag")
+        }
+        if (!Regex("^[a-z0-9-]+$").matches(translation)) {
+            return request.pipelineError(400, "bad_translation", "translation \"$translation\" must match /^[a-z0-9-]+$/")
+        }
+        if (language !in knownLanguages) return request.pipelineError(422, "unknown_language", "\"$language\" is not a known IETF language tag")
+
+        val name = "${language}_$translation" + if (edition > 1) "_${edition}e" else ""
+        if (ORG !in accounts) addOrg(ORG)
+        val officialName = "$ORG/$name"
+        val officialCreated = officialName !in repos
+        if (officialCreated) {
+            createRepo(
+                ORG, name,
+                files = mapOf(
+                    WacsRepoLayout.GITATTRIBUTES_PATH to WacsRepoLayout.AUDIO_EXTENSIONS
+                        .joinToString("") { WacsRepoLayout.gitattributesLine(it) + "\n" }.encodeToByteArray(),
+                    WacsRepoLayout.METADATA_PATH to """{"ingredients":{}}""".encodeToByteArray(),
+                ),
+            )
+        }
+        val official = requireNotNull(repos[officialName])
+        // Forgejo allows one fork per user per repo, whatever it's named.
+        val existingFork = repos.values.firstOrNull { it.info.owner.login == user.login && it.parent == officialName }
+        val fork = existingFork?.info
+            ?: fork(user, official, "${name}_audio")
+            ?: return request.pipelineError(409, "fork_name_taken", "${user.login}/${name}_audio exists and isn't a fork of $officialName")
+        val response = buildJsonObject {
+            putJsonObject("official") {
+                put("owner", ORG)
+                put("name", name)
+                put("clone_url", official.info.cloneUrl)
+                put("default_branch", BRANCH)
+                put("created", officialCreated)
+            }
+            putJsonObject("fork") {
+                put("owner", fork.owner.login)
+                put("name", fork.name)
+                put("clone_url", fork.cloneUrl)
+                put("created", existingFork == null)
+            }
+        }
+        return request.respond(200, response.toString())
+    }
+
+    private fun Request.pipelineError(code: Int, error: String, message: String): Response =
+        respond(code, buildJsonObject { put("error", error); put("message", message) }.toString())
+
+    // ── LFS ────────────────────────────────────────────────────────────────────────────────
 
     /** `<owner>/<repo>.git/info/lfs/...`: the batch endpoint, transfers, and verify. */
     private fun lfs(request: Request, fullName: String, path: List<String>): Response {
@@ -415,12 +630,19 @@ class FakeWacs(private val root: File) {
         return transfer(request, hosted, segments[2])
     }
 
-    private fun signedIn(request: Request): Account? {
+    /**
+     * The account a password (Basic) or token (Basic with the token as the password, or, where
+     * [acceptsTokenHeader], `token`/`Bearer`) signs in as.
+     */
+    private fun signedIn(request: Request, acceptsTokenHeader: Boolean = true): Account? {
         val header = request.header("Authorization") ?: return null
-        return accounts.values.firstOrNull { account ->
-            account.password != null &&
-                header == WacsCredential.Basic(account.login, account.password).authorizationHeader()
+        Regex("^(?:token|bearer)\\s+(\\S+)$", RegexOption.IGNORE_CASE).find(header)?.let { match ->
+            return if (acceptsTokenHeader) tokens[match.groupValues[1]]?.let { accounts[it] } else null
         }
+        return accounts.values.firstOrNull { account ->
+            account.password != null && header == WacsCredential.Basic(account.login, account.password).authorizationHeader()
+        } ?: tokens.entries.firstOrNull { (token, login) -> header == WacsCredential.Basic(login, token).authorizationHeader() }
+            ?.let { accounts[it.value] }
     }
 
     private fun repoInfo(owner: Account, name: String, fork: Boolean, empty: Boolean) = ForgejoRepo(
@@ -435,12 +657,12 @@ class FakeWacs(private val root: File) {
         empty = empty,
     )
 
-    /** One page of [hosted], by the request's `page` and `limit`, as Forgejo pages its listings. */
-    private fun Request.respondRepos(hosted: List<HostedRepo>): Response {
+    /** One page of [items], by the request's `page` and `limit`, as Forgejo pages its listings. */
+    private fun <T> Request.respondPage(items: List<T>, serializer: kotlinx.serialization.KSerializer<T>): Response {
         val page = url().queryParameter("page")?.toInt() ?: 1
         val limit = url().queryParameter("limit")?.toInt() ?: 30
-        val slice = hosted.map { it.info }.drop((page - 1) * limit).take(limit)
-        return respond(200, json.encodeToString(ListSerializer(ForgejoRepo.serializer()), slice))
+        val slice = items.drop((page - 1) * limit).take(limit)
+        return respond(200, json.encodeToString(ListSerializer(serializer), slice))
     }
 
     private fun Request.bodyBytes(): ByteArray = Buffer().also { body()?.writeTo(it) }.readByteArray()
@@ -457,6 +679,8 @@ class FakeWacs(private val root: File) {
 
     companion object {
         const val HOST = "wacs.test"
+        const val PIPELINE_HOST = "pipeline.test"
+        const val ORG = "AudioTranslation"
         const val BRANCH = "master"
         const val PRESIGNED_HEADER = "X-Presigned-Signature"
         private const val LFS_JSON = "application/vnd.git-lfs+json"

@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import org.jetbrains.compose.resources.stringResource
 import org.bibletranslationtools.shared.resources.Res
 import org.bibletranslationtools.shared.resources.wacs_login_host_label
+import org.bibletranslationtools.shared.resources.wacs_login_pipeline_label
 import org.bibletranslationtools.shared.resources.wacs_login_password_hint
 import org.bibletranslationtools.shared.resources.wacs_login_password_label
 import org.bibletranslationtools.shared.resources.wacs_login_test_connection
@@ -68,11 +69,13 @@ fun WacsUnsupportedNotice(title: String, message: String) {
 @Composable
 fun WacsLoginForm(
     host: String,
+    pipelineUrl: String,
     username: String,
     password: String,
     isLoading: Boolean,
     error: String?,
     onHostChange: (String) -> Unit,
+    onPipelineUrlChange: (String) -> Unit,
     onUsernameChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
     onTestConnection: () -> Unit
@@ -85,6 +88,15 @@ fun WacsLoginForm(
             value = host,
             onValueChange = onHostChange,
             label = { Text(stringResource(Res.string.wacs_login_host_label)) },
+            singleLine = true,
+            enabled = !isLoading,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+            modifier = Modifier.fillMaxWidth()
+        )
+        OutlinedTextField(
+            value = pipelineUrl,
+            onValueChange = onPipelineUrlChange,
+            label = { Text(stringResource(Res.string.wacs_login_pipeline_label)) },
             singleLine = true,
             enabled = !isLoading,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),

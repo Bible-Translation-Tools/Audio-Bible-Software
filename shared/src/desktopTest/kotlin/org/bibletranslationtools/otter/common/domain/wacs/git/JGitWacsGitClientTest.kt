@@ -13,6 +13,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** The real JGit client against bare repositories on disk (see [FakeWacs]). */
@@ -33,18 +34,24 @@ class JGitWacsGitClientTest {
     }
 
     private fun official(): ForgejoRepo = wacs.createRepo(
-        "AudioTranslation", "audio-en-ulb-mrk",
+        "AudioTranslation", "en_ulb",
         files = mapOf(WacsRepoLayout.GITATTRIBUTES_PATH to "${WacsRepoLayout.gitattributesLine("wav")}\n".encodeToByteArray()),
         lfsFiles = mapOf(AUDIO_PATH to audio),
     )
+
+    private fun fork(official: ForgejoRepo): ForgejoRepo = runBlocking {
+        wacs.apiFactory.create(wacs.host).forkRepo(official.owner.login, official.name, user.authorizationHeader())
+    }
 
     private fun cloneOf(repo: ForgejoRepo): File = File(root, "clone-${repo.owner.login}").also {
         runBlocking { git.clone(repo.cloneUrl, it, user) }
     }
 
-    private fun commit(dir: File, path: String, text: String, message: String) = runBlocking {
+    /** Writes [text] at [path] and commits just that file. */
+    private fun commit(dir: File, path: String, text: String, message: String): String? = runBlocking {
         File(dir, path).apply { parentFile.mkdirs() }.writeText(text)
-        git.commit(dir, listOf(path), message, "translator", "translator@example.org")
+        git.stage(dir, add = listOf(path))
+        git.commitStaged(dir, message, "translator", "translator@example.org")
     }
 
     @Test
@@ -60,26 +67,84 @@ class JGitWacsGitClientTest {
     }
 
     @Test
-    fun `a pushed commit is on the remote`() {
-        val repo = official()
-        val dir = cloneOf(repo)
+    fun `a new branch from upstream is pushed to the fork, and only there`() {
+        val official = official()
+        val fork = fork(official)
+        wacs.pushCommit(official.fullName, mapOf("other.txt" to "merged upstream".encodeToByteArray()))
+        val dir = cloneOf(fork)
 
-        commit(dir, "notes.txt", "notes", "Add notes")
-        runBlocking { git.push(dir, user) }
+        val upstreamTip = runBlocking { git.fetchRemote(dir, "upstream", official.cloneUrl, "master", user) }
+        runBlocking { git.startBranch(dir, "publish/1", "refs/remotes/upstream/master") }
+        commit(dir, "notes.txt", "mine", "Add notes")
+        runBlocking { git.push(dir, user, "publish/1", expectedRemote = null) }
 
-        assertEquals("Add notes", wacs.log(repo.fullName).first())
+        assertEquals(upstreamTip, runBlocking { git.resolve(dir, "refs/remotes/upstream/master") })
+        assertEquals(listOf("Add notes", "Another contributor's change", "Initial commit"), wacs.log(fork.fullName, "publish/1"))
+        assertEquals(listOf("Initial commit"), wacs.log(fork.fullName), "the fork's master is never used")
     }
 
     @Test
-    fun `a push the remote has moved past is rejected`() {
+    fun `nothing staged makes no commit`() {
+        val dir = cloneOf(official())
+
+        assertNull(runBlocking { git.commitStaged(dir, "Empty", "translator", "translator@example.org") })
+    }
+
+    @Test
+    fun `a push whose lease no longer holds is rejected`() {
         val repo = official()
         val dir = cloneOf(repo)
-        wacs.pushCommit(repo.fullName, mapOf("other.txt" to "theirs".encodeToByteArray()))
-        commit(dir, "notes.txt", "mine", "Add notes")
+        runBlocking { git.startBranch(dir, "publish/1", "HEAD") }
+        commit(dir, "notes.txt", "first", "First")
+        runBlocking { git.push(dir, user, "publish/1", expectedRemote = null) }
 
-        val failure = assertFailsWith<Exception> { runBlocking { git.push(dir, user) } }
+        // Pushing it as new again: the branch exists now, so the lease fails.
+        commit(dir, "notes.txt", "second", "Second")
+        val failure = assertFailsWith<Exception> { runBlocking { git.push(dir, user, "publish/1", expectedRemote = null) } }
 
         assertContains(failure.message.orEmpty(), "Push rejected")
+        assertEquals(listOf("First", "Initial commit"), wacs.log(repo.fullName, "publish/1"))
+    }
+
+    @Test
+    fun `a branch rebuilt with the right lease replaces the old one`() {
+        val repo = official()
+        val dir = cloneOf(repo)
+        runBlocking { git.startBranch(dir, "publish/1", "HEAD") }
+        commit(dir, "notes.txt", "first", "First")
+        runBlocking { git.push(dir, user, "publish/1", expectedRemote = null) }
+        val previous = runBlocking { git.resolve(dir, "publish/1") }
+
+        runBlocking { git.startBranch(dir, "publish/1", "refs/remotes/origin/master") }
+        commit(dir, "notes.txt", "rebuilt", "Rebuilt")
+        runBlocking { git.push(dir, user, "publish/1", expectedRemote = previous) }
+
+        assertEquals(listOf("Rebuilt", "Initial commit"), wacs.log(repo.fullName, "publish/1"))
+    }
+
+    @Test
+    fun `files are listed and restored as another revision has them`() {
+        val repo = official()
+        val dir = cloneOf(repo)
+        val original = runBlocking { git.resolve(dir, "HEAD") }!!
+        commit(dir, AUDIO_PATH, "a different pointer", "Replace")
+
+        assertEquals(listOf(AUDIO_PATH), runBlocking { git.listFiles(dir, original, "ingredients/MRK") })
+        runBlocking { git.restoreFiles(dir, original, listOf(AUDIO_PATH)) }
+
+        assertTrue(LfsPointer.isPointer(File(dir, AUDIO_PATH).readBytes()), "the original pointer is back")
+        assertFalse(runBlocking { git.commitStaged(dir, "Restore", "translator", "translator@example.org") } == null)
+    }
+
+    @Test
+    fun `removing a file stages its deletion`() {
+        val dir = cloneOf(official())
+
+        runBlocking { git.stage(dir, add = emptyList(), remove = listOf(AUDIO_PATH)) }
+        runBlocking { git.commitStaged(dir, "Remove", "translator", "translator@example.org") }
+
+        assertEquals(emptyList(), runBlocking { git.listFiles(dir, "HEAD", "ingredients/MRK") })
+        assertFalse(File(dir, AUDIO_PATH).exists())
     }
 
     @Test
@@ -91,33 +156,6 @@ class JGitWacsGitClientTest {
         assertTrue(runBlocking { git.fetchAndFastForward(dir, user) }, "the branch moved")
         assertEquals("theirs", File(dir, "other.txt").readText())
         assertFalse(runBlocking { git.fetchAndFastForward(dir, user) }, "nothing new the second time")
-    }
-
-    @Test
-    fun `syncing from upstream brings a fork level with the official repo`() {
-        val official = official()
-        val fork = runBlocking { wacs.apiFactory.create(wacs.host).forkRepo(official.owner.login, official.name, user.authorizationHeader()) }
-        wacs.pushCommit(official.fullName, mapOf("other.txt" to "merged upstream".encodeToByteArray()))
-        val dir = cloneOf(fork)
-
-        assertTrue(runBlocking { git.syncFromUpstream(dir, official.cloneUrl, user) })
-        commit(dir, "notes.txt", "mine", "Add notes")
-        runBlocking { git.push(dir, user) }
-
-        assertEquals(listOf("Add notes", "Another contributor's change", "Initial commit"), wacs.log(fork.fullName))
-    }
-
-    @Test
-    fun `syncing fails when the branch has diverged from upstream`() {
-        val official = official()
-        val fork = runBlocking { wacs.apiFactory.create(wacs.host).forkRepo(official.owner.login, official.name, user.authorizationHeader()) }
-        val dir = cloneOf(fork)
-        commit(dir, "notes.txt", "mine", "Add notes")
-        wacs.pushCommit(official.fullName, mapOf("other.txt" to "merged upstream".encodeToByteArray()))
-
-        val failure = assertFailsWith<Exception> { runBlocking { git.syncFromUpstream(dir, official.cloneUrl, user) } }
-
-        assertContains(failure.message.orEmpty(), "Cannot fast-forward")
     }
 
     private companion object {

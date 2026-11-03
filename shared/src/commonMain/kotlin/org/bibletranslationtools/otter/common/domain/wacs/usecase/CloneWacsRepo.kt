@@ -35,13 +35,13 @@ import java.io.IOException
 
 /**
  * M3: open a repo in the `AudioTranslation` org for pull-as-source — clone it **read-only**
- * (pointers only; no fork, unlike [PublishChapterToWacs]'s fork-then-clone, since pulling never
+ * (pointers only; no fork, unlike [PublishChaptersToWacs]'s fork-then-clone, since pulling never
  * writes back) into a stable per-repo cache directory, and read its `metadata.json` to learn what's
  * currently available ([WacsRepoScope]) so the UI can show book/chapter options WITHOUT downloading
  * any audio (the plan doc, §8, M3 step 2).
  *
  * The clone is cached under [IAppDirectories.cacheDirectory] rather than a one-shot temp dir (unlike
- * [PublishChapterToWacs]'s per-publish work dir) because a pull session browses a repo's chapters
+ * [PublishChaptersToWacs]'s per-publish work dir) because a pull session browses a repo's chapters
  * one at a time — [PullChapter] needs the same working tree to still be there for each chapter the
  * user opens, and re-cloning per chapter would defeat the "low-bandwidth per-chapter fetch" point of
  * this milestone. Re-opening an already-cloned repo cheaply fast-forwards it instead of re-cloning;

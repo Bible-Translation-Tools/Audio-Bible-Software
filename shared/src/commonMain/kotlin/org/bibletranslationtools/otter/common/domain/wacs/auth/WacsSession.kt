@@ -35,7 +35,7 @@ class WacsSession {
 
     /**
      * The WACS host [credential] was validated against (e.g. `"http://localhost:3000/"`) — needed
-     * by M2's [org.bibletranslationtools.otter.common.domain.wacs.usecase.PublishChapterToWacs] to
+     * by M2's [org.bibletranslationtools.otter.common.domain.wacs.usecase.PublishChaptersToWacs] to
      * build a [org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoApi] for the right
      * server, since the M1 login screen lets the user point at an arbitrary host rather than
      * always [org.bibletranslationtools.otter.common.domain.wacs.WacsConfig.baseUrl]. In memory
@@ -44,17 +44,26 @@ class WacsSession {
     var host: String? = null
         private set
 
+    /**
+     * The publish pipeline the user pointed this session at, or null to use
+     * [org.bibletranslationtools.otter.common.domain.wacs.WacsConfig.pipelineUrl].
+     */
+    var pipelineUrl: String? = null
+        private set
+
     fun isLoggedIn(): Boolean = credential != null
 
     /** Called after a successful [IWacsAuthenticator.login] — never call with an unvalidated credential. */
-    fun set(credential: WacsCredential, host: String) {
+    fun set(credential: WacsCredential, host: String, pipelineUrl: String? = null) {
         this.credential = credential
         this.host = host
+        this.pipelineUrl = pipelineUrl
     }
 
     /** Explicit logout. Also implicitly "logs out" on process death, since nothing is persisted. */
     fun clear() {
         credential = null
         host = null
+        pipelineUrl = null
     }
 }

@@ -29,7 +29,6 @@ import kotlinx.coroutines.launch
 import org.bibletranslationtools.otter.common.domain.wacs.WacsConfig
 import org.bibletranslationtools.otter.common.domain.wacs.auth.IWacsAuthenticator
 import org.bibletranslationtools.otter.common.domain.wacs.auth.WacsAuthException
-import org.bibletranslationtools.otter.common.domain.wacs.auth.WacsCredential
 import org.bibletranslationtools.otter.common.domain.wacs.auth.WacsSession
 import org.jetbrains.compose.resources.getString
 import org.bibletranslationtools.shared.resources.Res
@@ -57,18 +56,20 @@ class WacsLoginViewModel(
     private val _state = MutableStateFlow(
         WacsLoginUiState(
             host = config.baseUrl,
-            loggedInAs = (session.credential as? WacsCredential.Basic)?.username
+            pipelineUrl = session.pipelineUrl ?: config.pipelineUrl,
+            loggedInAs = session.credential?.username
         )
     )
     val state: StateFlow<WacsLoginUiState> = _state.asStateFlow()
 
     fun setHost(value: String) = _state.update { it.copy(host = value, error = null) }
+    fun setPipelineUrl(value: String) = _state.update { it.copy(pipelineUrl = value, error = null) }
     fun setUsername(value: String) = _state.update { it.copy(username = value, error = null) }
     fun setPassword(value: String) = _state.update { it.copy(password = value, error = null) }
 
     fun testConnection() {
         val current = _state.value
-        if (current.host.isBlank() || current.username.isBlank() || current.password.isBlank()) {
+        if (current.host.isBlank() || current.pipelineUrl.isBlank() || current.username.isBlank() || current.password.isBlank()) {
             viewModelScope.launch {
                 _state.update { it.copy(error = getString(Res.string.wacs_login_error_missing_fields)) }
             }
@@ -80,11 +81,11 @@ class WacsLoginViewModel(
         viewModelScope.launch {
             try {
                 val credential = authenticator.login(current.host, current.username, current.password)
-                session.set(credential, current.host)
+                session.set(credential, current.host, current.pipelineUrl)
                 _state.update {
                     it.copy(
                         isLoading = false,
-                        loggedInAs = current.username,
+                        loggedInAs = credential.username,
                         password = "" // don't linger in the form once it's safely in WacsSession
                     )
                 }
@@ -120,6 +121,8 @@ class WacsLoginViewModel(
 
 data class WacsLoginUiState(
     val host: String = "",
+    /** The publish pipeline; see [WacsConfig.pipelineUrl]. */
+    val pipelineUrl: String = "",
     val username: String = "",
     val password: String = "",
     val isLoading: Boolean = false,

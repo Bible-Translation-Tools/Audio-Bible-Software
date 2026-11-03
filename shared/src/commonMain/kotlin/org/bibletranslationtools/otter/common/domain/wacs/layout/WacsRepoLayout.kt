@@ -23,36 +23,19 @@ import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import java.util.Locale
 
 /**
- * Centralizes the WACS repo naming rule and in-repo path conventions (see the plan doc, §1/§4/§9)
- * so the publish client and the server (the Catalog Indexer reading `metadata.json`) agree on both.
- * [org.bibletranslationtools.otter.common.domain.wacs.usecase.PublishChapterToWacs] and
- * [MetadataJsonWriter] are the only callers — nothing else should hardcode a WACS path.
+ * Centralizes the WACS repo naming rule and in-repo path conventions so the client and the
+ * publish pipeline agree on both; nothing else should hardcode a WACS path. The chapter rules are
+ * the pipeline's commit contract (its `CLIENT_INTEGRATION_GUIDE.md` §3), which its server-side
+ * check enforces on every pull request.
  */
 object WacsRepoLayout {
 
     /**
-     * `audio-<target-language-slug>-<resource-identifier>-<book-slug>`, e.g. `audio-en-ulb-mrk` —
-     * matches the prototype's official test repo (`AudioTranslation/audio-en-ulb-mrk`).
-     *
-     * The plan's naming rule allows an optional book segment ("audio-<lang>-<edition>[-<book>]")
-     * for a hypothetical non-book-scoped project; a [Workbook] in this app is always exactly one
-     * Scripture-Burrito "project" (one USFM book), so the book segment is always present here.
-     * Revisit if a non-book-scoped project type is ever added.
-     */
-    fun repoName(workbook: Workbook): String {
-        val lang = workbook.target.language.slug.lowercase(Locale.US)
-        val edition = workbook.target.resourceMetadata.identifier.lowercase(Locale.US)
-        val book = workbook.target.slug.lowercase(Locale.US)
-        return "audio-$lang-$edition-$book"
-    }
-
-    /**
-     * The same naming rule as [repoName], but from a [WorkbookDescriptor] — the lightweight listing
-     * a project picker already has (no need to open a full [Workbook]) — used by
-     * [org.bibletranslationtools.otter.common.domain.wacs.usecase.RestoreChapterFromWacs] to find
-     * which local project (if any) a WACS repo restores into. Null if [descriptor]'s target
-     * collection has no resource-container metadata yet (shouldn't happen for a created project, but
-     * this is a read of someone else's data, not a guarantee this class controls).
+     * The per-book name `audio-<target-language-slug>-<resource-identifier>-<book-slug>` (e.g.
+     * `audio-en-ulb-mrk`) that restore matches a local project by, from a [WorkbookDescriptor].
+     * Publishing no longer names repos this way: the pipeline names one repo per language and
+     * translation (`en_ulb`) and returns it. Null if [descriptor]'s target collection has no
+     * resource-container metadata.
      */
     fun repoNameOrNull(descriptor: WorkbookDescriptor): String? {
         val targetMetadata = descriptor.targetCollection.resourceContainer ?: return null
@@ -65,23 +48,47 @@ object WacsRepoLayout {
     /** The Scripture-Burrito book id: the uppercase USFM book slug, e.g. `MRK`. */
     fun bookSlug(workbook: Workbook): String = workbook.target.slug.uppercase(Locale.US)
 
-    private fun chapterSegment(chapterNumber: Int): String = chapterNumber.toString().padStart(2, '0')
+    /** The audio formats a chapter may be in; a chapter has one of them. */
+    val AUDIO_EXTENSIONS = listOf("wav", "flac")
+
+    /** The trailer that names the chapter a commit carries; the pipeline requires exactly one. */
+    const val CHAPTER_TRAILER = "Audio-Chapter"
+
+    /** The directory a book's chapters are in, e.g. `ingredients/MRK`. */
+    fun bookDirectory(bookSlug: String): String = "ingredients/$bookSlug"
+
+    /** A chapter's files without their extension: `ingredients/MRK/01`, three digits for Psalms. */
+    fun chapterStem(bookSlug: String, chapterNumber: Int): String {
+        val digits = if (bookSlug.equals("PSA", ignoreCase = true)) 3 else 2
+        return "${bookDirectory(bookSlug)}/${chapterNumber.toString().padStart(digits, '0')}"
+    }
 
     /**
      * Repo-relative path of the LFS-tracked audio ingredient for one chapter, e.g.
-     * `ingredients/MRK/01.wav`. This is the path [PublishChapterToWacs][org.bibletranslationtools.otter.common.domain.wacs.usecase.PublishChapterToWacs]
-     * writes an LFS *pointer* to — never the real audio bytes (see the plan's §0 ordering rule).
+     * `ingredients/MRK/01.wav`. Publishing writes an LFS *pointer* here, never the audio bytes.
      */
     fun audioIngredientPath(bookSlug: String, chapterNumber: Int, extension: String): String =
-        "ingredients/$bookSlug/${chapterSegment(chapterNumber)}.${extension.lowercase(Locale.US)}"
+        "${chapterStem(bookSlug, chapterNumber)}.${extension.lowercase(Locale.US)}"
 
-    /**
-     * Repo-relative path of the (non-LFS, real-content) Scripture-Burrito alignment JSON for one
-     * chapter — this IS the "timing" file; there is no separate `.timing` format (the plan
-     * explicitly corrects the client integration guide on this point).
-     */
-    fun alignmentIngredientPath(bookSlug: String, chapterNumber: Int): String =
-        "ingredients/$bookSlug/${chapterSegment(chapterNumber)}.alignment.json"
+    /** The chapter's timing file, `ingredients/MRK/01.json`: Scripture Burrito alignment, plain git. */
+    fun timingIngredientPath(bookSlug: String, chapterNumber: Int): String = "${chapterStem(bookSlug, chapterNumber)}.json"
+
+    /** Every file a chapter can have, in any audio format; a chapter commit replaces them all. */
+    fun chapterFiles(bookSlug: String, chapterNumber: Int): List<String> =
+        AUDIO_EXTENSIONS.map { audioIngredientPath(bookSlug, chapterNumber, it) } + timingIngredientPath(bookSlug, chapterNumber)
+
+    /** How the pipeline names a chapter in commits and pull requests: `MRK 1`. */
+    fun chapterId(bookSlug: String, chapterNumber: Int): String = "${bookSlug.uppercase(Locale.US)} $chapterNumber"
+
+    /** A chapter commit's message: the chapter, a blank line, and its [CHAPTER_TRAILER]. */
+    fun chapterCommitMessage(bookSlug: String, chapterNumber: Int): String {
+        val id = chapterId(bookSlug, chapterNumber)
+        return "$id\n\n$CHAPTER_TRAILER: $id"
+    }
+
+    /** The chapters a commit [message] says it carries, by its [CHAPTER_TRAILER] lines. */
+    fun chaptersInCommitMessage(message: String): List<String> =
+        Regex("^$CHAPTER_TRAILER:\\s*(.+?)\\s*$", RegexOption.MULTILINE).findAll(message).map { it.groupValues[1] }.toList()
 
     /**
      * The reverse of [repoName]/[repoNameOrNull]: given [repoName] plus the target-language slug

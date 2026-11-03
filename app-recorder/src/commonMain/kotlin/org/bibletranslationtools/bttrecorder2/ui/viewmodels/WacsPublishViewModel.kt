@@ -28,9 +28,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
-import org.bibletranslationtools.otter.common.domain.wacs.usecase.PublishChapterToWacs
+import org.bibletranslationtools.otter.common.domain.wacs.usecase.PublishChaptersToWacs
 import org.bibletranslationtools.otter.common.domain.wacs.usecase.WacsPublishException
 import org.jetbrains.compose.resources.getString
+import org.slf4j.LoggerFactory
 import org.bibletranslationtools.shared.resources.Res
 import org.bibletranslationtools.shared.resources.wacs_publish_error_auth_rejected
 import org.bibletranslationtools.shared.resources.wacs_publish_error_conflict
@@ -38,33 +39,26 @@ import org.bibletranslationtools.shared.resources.wacs_publish_error_generic
 import org.bibletranslationtools.shared.resources.wacs_publish_error_integrity
 import org.bibletranslationtools.shared.resources.wacs_publish_error_network
 import org.bibletranslationtools.shared.resources.wacs_publish_error_no_audio
-import org.bibletranslationtools.shared.resources.wacs_publish_error_no_official_repo
+import org.bibletranslationtools.shared.resources.wacs_publish_error_pipeline_rejected
+import org.bibletranslationtools.shared.resources.wacs_publish_error_pipeline_unavailable
 import org.bibletranslationtools.shared.resources.wacs_publish_error_not_authenticated
 import org.bibletranslationtools.shared.resources.wacs_publish_no_chapters
-import org.bibletranslationtools.shared.resources.wacs_publish_pr_error
 
 /**
- * M2/M4: drives [PublishChapterToWacs] for the chapters the user selected under Export Options'
+ * Drives [PublishChaptersToWacs] for the chapters the user selected under Export Options'
  * "Publish to WACS" type (see [org.bibletranslationtools.bttrecorder2.ui.screens.ProjectManagementScreen]),
  * threaded through [org.bibletranslationtools.bttrecorder2.ui.navigation.WacsPublishRoute] as
  * `sourceId`/`targetId`/`chapters`. Hosted as a Koin factory parameterized by those nav args (see
  * `RecorderKoinModules.kt`), separate from [WacsLoginViewModel] so this stays scoped to a single
  * navigation into the publish screen rather than the process-lifetime login session.
  *
- * [WacsPublishUiState.progress] carries the raw [PublishChapterToWacs.Progress] rather than an
- * already-localized string — resolving it to text is the Composable's job (`stringResource` is
- * `@Composable`-only, and [PublishChapterToWacs.publish]'s progress callback is a plain,
- * non-suspend `(Progress) -> Unit`).
- *
- * M4: once every selected chapter has been pushed to the fork, [publish] opens (or reuses) the
- * pull request back to the official repo exactly ONCE for the whole batch — see
- * [PublishChapterToWacs.openContributionPullRequest]'s KDoc for why per-session, not per-chapter,
- * is correct here. That call uses the last chapter's successful [PublishChapterToWacs.Result],
- * since every chapter in a session shares the same fork/branch.
+ * All the selected chapters go up in one call, as one pull request (or into the open pull request
+ * that already has them). [WacsPublishUiState.progress] carries the raw
+ * [PublishChaptersToWacs.Progress]; resolving it to text is the Composable's job.
  */
 class WacsPublishViewModel(
     private val workbookRepository: IWorkbookRepository,
-    private val publishChapterToWacs: PublishChapterToWacs,
+    private val publishChaptersToWacs: PublishChaptersToWacs,
     private val sourceId: Int,
     private val targetId: Int,
     private val chapterSorts: List<Int>,
@@ -76,6 +70,8 @@ class WacsPublishViewModel(
             perChapter = chapterSorts.associateWith { ChapterPublishState.Pending }
         )
     )
+    private val logger = LoggerFactory.getLogger(WacsPublishViewModel::class.java)
+
     val state: StateFlow<WacsPublishUiState> = _state.asStateFlow()
 
     fun publish() {
@@ -92,7 +88,7 @@ class WacsPublishViewModel(
                 isPublishing = true,
                 error = null,
                 progress = null,
-                perChapter = chapterSorts.associateWith { _ -> ChapterPublishState.Pending }
+                perChapter = chapterSorts.associateWith { _ -> ChapterPublishState.InProgress }
             )
         }
 
@@ -101,87 +97,59 @@ class WacsPublishViewModel(
                 val workbook = workbookRepository.getProjectsSuspend().find {
                     it.source.collectionId == sourceId && it.target.collectionId == targetId
                 } ?: throw WacsPublishException(WacsPublishException.Reason.UNKNOWN)
-
-                var publishedCount = 0
-                var lastResult: PublishChapterToWacs.Result? = null
-                for (chapterSort in chapterSorts) {
-                    _state.update {
-                        it.copy(perChapter = it.perChapter + (chapterSort to ChapterPublishState.InProgress))
-                    }
-                    try {
-                        lastResult = publishChapterToWacs.publish(
-                            PublishChapterToWacs.Request(workbook, chapterSort)
-                        ) { progress ->
-                            _state.update { it.copy(progress = progress) }
-                        }
-                        publishedCount++
-                        _state.update {
-                            it.copy(perChapter = it.perChapter + (chapterSort to ChapterPublishState.Success))
-                        }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: WacsPublishException) {
-                        _state.update {
-                            it.copy(perChapter = it.perChapter + (chapterSort to ChapterPublishState.Failed))
-                        }
-                        // Stop at the first failure — a later chapter succeeding while an earlier
-                        // one silently failed would be confusing, and NOT_AUTHENTICATED/AUTH_REJECTED
-                        // will only repeat for every remaining chapter anyway.
-                        _state.update { it.copy(isPublishing = false, error = localize(e.reason), progress = null) }
-                        return@launch
-                    }
+                val result = publishChaptersToWacs.publish(PublishChaptersToWacs.Request(workbook, chapterSorts)) { progress ->
+                    _state.update { it.copy(progress = progress) }
                 }
-
-                // M4: one PR for the whole session, opened (or reused) once every chapter above has
-                // pushed — never per chapter. A partial failure already returned above, so reaching
-                // here means every selected chapter succeeded and `lastResult` is non-null.
-                var pullRequestUrl: String? = null
-                var pullRequestError: String? = null
-                // Only when the chapters went to a fork of an existing official repo. If they were
-                // published to the user's own repo (no official repo yet), there is nothing to PR.
-                lastResult?.takeIf { it.contributesToOfficial }?.let { result ->
-                    _state.update { it.copy(progress = PublishChapterToWacs.Progress.OpeningPullRequest) }
-                    try {
-                        pullRequestUrl = publishChapterToWacs.openContributionPullRequest(result).htmlUrl
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: WacsPublishException) {
-                        // The chapters themselves are safely published to the fork either way —
-                        // report this as a soft warning, not a hard publish failure.
-                        pullRequestError = getString(Res.string.wacs_publish_pr_error, localize(e.reason))
-                    }
-                }
-
                 _state.update {
                     it.copy(
                         isPublishing = false,
                         progress = null,
-                        publishedCount = publishedCount,
-                        pullRequestUrl = pullRequestUrl,
-                        pullRequestError = pullRequestError,
+                        perChapter = chapterSorts.associateWith { ChapterPublishState.Success },
+                        publishedCount = chapterSorts.size,
+                        nothingNew = result.pullRequests.isEmpty(),
+                        pullRequestUrl = result.pullRequests.firstOrNull()?.htmlUrl,
                     )
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: WacsPublishException) {
-                _state.update { it.copy(isPublishing = false, error = localize(e.reason), progress = null) }
+                val message = localize(e)
+                _state.update {
+                    it.copy(
+                        isPublishing = false,
+                        error = message,
+                        progress = null,
+                        perChapter = chapterSorts.associateWith { ChapterPublishState.Failed },
+                    )
+                }
             } catch (e: Exception) {
+                // A WacsPublishException is logged where it's raised; anything else is unexpected.
+                logger.error("Publishing chapters {} to WACS failed unexpectedly", chapterSorts, e)
                 val message = getString(Res.string.wacs_publish_error_generic)
-                _state.update { it.copy(isPublishing = false, error = message, progress = null) }
+                _state.update {
+                    it.copy(
+                        isPublishing = false,
+                        error = message,
+                        progress = null,
+                        perChapter = chapterSorts.associateWith { ChapterPublishState.Failed },
+                    )
+                }
             }
         }
     }
 
     fun dismissError() = _state.update { it.copy(error = null) }
     fun acknowledgeSuccess() = _state.update {
-        it.copy(publishedCount = null, pullRequestUrl = null, pullRequestError = null)
+        it.copy(publishedCount = null, nothingNew = false, pullRequestUrl = null)
     }
 
-    private suspend fun localize(reason: WacsPublishException.Reason): String = when (reason) {
+    private suspend fun localize(e: WacsPublishException): String = when (e.reason) {
         WacsPublishException.Reason.NOT_AUTHENTICATED -> getString(Res.string.wacs_publish_error_not_authenticated)
         WacsPublishException.Reason.AUTH_REJECTED -> getString(Res.string.wacs_publish_error_auth_rejected)
         WacsPublishException.Reason.NETWORK -> getString(Res.string.wacs_publish_error_network)
-        WacsPublishException.Reason.NO_OFFICIAL_REPO -> getString(Res.string.wacs_publish_error_no_official_repo)
+        WacsPublishException.Reason.PIPELINE_REJECTED ->
+            getString(Res.string.wacs_publish_error_pipeline_rejected, e.detail ?: e.reason.name)
+        WacsPublishException.Reason.PIPELINE_UNAVAILABLE -> getString(Res.string.wacs_publish_error_pipeline_unavailable)
         WacsPublishException.Reason.NO_AUDIO -> getString(Res.string.wacs_publish_error_no_audio)
         WacsPublishException.Reason.CONFLICT -> getString(Res.string.wacs_publish_error_conflict)
         WacsPublishException.Reason.INTEGRITY -> getString(Res.string.wacs_publish_error_integrity)
@@ -195,11 +163,12 @@ data class WacsPublishUiState(
     val chapters: List<Int> = emptyList(),
     val perChapter: Map<Int, ChapterPublishState> = emptyMap(),
     val isPublishing: Boolean = false,
-    val progress: PublishChapterToWacs.Progress? = null,
+    val progress: PublishChaptersToWacs.Progress? = null,
     val error: String? = null,
+    /** How many chapters the last publish submitted, once it succeeds. */
     val publishedCount: Int? = null,
-    /** M4: the session's pull request URL, once [PublishChapterToWacs.openContributionPullRequest] succeeds. */
+    /** The last publish found every chapter already in the official repo, so nothing was submitted. */
+    val nothingNew: Boolean = false,
+    /** The pull request the chapters are in, opened or updated by the last publish. */
     val pullRequestUrl: String? = null,
-    /** M4: set instead of [pullRequestUrl] if chapters published fine but opening the PR failed. */
-    val pullRequestError: String? = null,
 )

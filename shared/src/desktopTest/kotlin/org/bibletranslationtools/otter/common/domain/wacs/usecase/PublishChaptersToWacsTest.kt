@@ -1,0 +1,299 @@
+package org.bibletranslationtools.otter.common.domain.wacs.usecase
+
+import com.jakewharton.rxrelay2.BehaviorRelay
+import com.jakewharton.rxrelay2.ReplayRelay
+import io.mockk.mockk
+import io.reactivex.Completable
+import io.reactivex.Observable
+import io.reactivex.Single
+import kotlinx.coroutines.runBlocking
+import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.data.primitives.ContainerType
+import org.bibletranslationtools.otter.common.data.primitives.Content
+import org.bibletranslationtools.otter.common.data.primitives.Language
+import org.bibletranslationtools.otter.common.data.primitives.MimeType
+import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
+import org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio
+import org.bibletranslationtools.otter.common.data.workbook.AssociatedTranslation
+import org.bibletranslationtools.otter.common.data.workbook.Book
+import org.bibletranslationtools.otter.common.data.workbook.Chapter
+import org.bibletranslationtools.otter.common.data.workbook.Chunk
+import org.bibletranslationtools.otter.common.data.workbook.Take
+import org.bibletranslationtools.otter.common.data.workbook.Workbook
+import org.bibletranslationtools.otter.common.domain.wacs.WacsConfig
+import org.bibletranslationtools.otter.common.domain.wacs.auth.WacsCredential
+import org.bibletranslationtools.otter.common.domain.wacs.auth.WacsSession
+import org.bibletranslationtools.otter.common.domain.wacs.fake.FakeWacs
+import org.bibletranslationtools.otter.common.domain.wacs.fake.TestTempFiles
+import org.bibletranslationtools.otter.common.domain.wacs.fake.chapterWav
+import org.bibletranslationtools.otter.common.domain.wacs.layout.WacsRepoLayout
+import org.bibletranslationtools.otter.common.domain.wacs.lfs.LfsPointer
+import org.bibletranslationtools.otter.common.domain.wacs.lfs.Sha256
+import org.bibletranslationtools.otter.common.domain.wacs.usecase.PublishChaptersToWacs.Progress
+import java.io.File
+import java.time.LocalDate
+import kotlin.io.path.createTempDirectory
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertContains
+import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
+
+/**
+ * [PublishChaptersToWacs] against an in-process WACS host and publish pipeline (see [FakeWacs]),
+ * publishing a synthesized English ULB Mark workbook, so the official repo is
+ * `AudioTranslation/en_ulb` and the user's fork `translator/en_ulb_audio`.
+ */
+class PublishChaptersToWacsTest {
+    private val root = createTempDirectory("wacs-publish").toFile()
+    private val wacs = FakeWacs(root)
+    private val password = wacs.addUser("translator", "secret")
+    private val session = WacsSession().apply { set(wacs.tokenFor("translator"), wacs.host, wacs.pipelineUrl) }
+    private val publisher = PublishChaptersToWacs(
+        wacs.apiFactory, wacs.gitClient, wacs.lfsClient, session,
+        WacsConfig(baseUrl = wacs.host, pipelineUrl = wacs.pipelineUrl), TestTempFiles(root),
+        retryDelaysMs = listOf(0, 0, 0),
+    )
+    private val takes = (1..2).associateWith { take(it, version = 1) }.toMutableMap()
+
+    @AfterTest
+    fun cleanUp() {
+        root.deleteRecursively()
+    }
+
+    /** A take of [chapter]; each [version] has different audio. */
+    private fun take(chapter: Int, version: Int) =
+        chapterWav(File(root, "takes/mrk_c0${chapter}_t$version.wav"), "mrk", chapter, verses = 2 + version)
+
+    private fun publish(vararg chapters: Int, onProgress: (Progress) -> Unit = {}) =
+        runBlocking { publisher.publish(PublishChaptersToWacs.Request(workbook(takes), chapters.toList()), onProgress) }
+
+    private fun failure(vararg chapters: Int = intArrayOf(1), book: Workbook = workbook(takes)) = assertFailsWith<WacsPublishException> {
+        runBlocking { publisher.publish(PublishChaptersToWacs.Request(book, chapters.toList())) }
+    }
+
+    private fun prepareCalls() = wacs.requests.count { it.host == FakeWacs.PIPELINE_HOST }
+
+    private fun pointerAt(checkout: File, path: String) = assertNotNull(LfsPointer.parse(File(checkout, path).readBytes()), path)
+
+    private fun audioPath(chapter: Int) = WacsRepoLayout.audioIngredientPath("MRK", chapter, "wav")
+
+    private fun timingPath(chapter: Int) = WacsRepoLayout.timingIngredientPath("MRK", chapter)
+
+    @Test
+    fun `publishing sets up the official repo and the user's fork, and opens a pull request`() {
+        val result = publish(1)
+
+        assertEquals(OFFICIAL, result.official)
+        assertEquals(FORK, result.fork)
+        assertEquals(OFFICIAL, wacs.parentOf(FORK))
+        val pull = wacs.pullRequests(OFFICIAL).single()
+        assertEquals(FORK, pull.head?.repo?.fullName)
+        assertTrue(pull.head?.ref.orEmpty().startsWith("publish/"), "a publish branch: ${pull.head?.ref}")
+        assertEquals("master", pull.base?.ref)
+        assertEquals(listOf(PublishChaptersToWacs.PullRequest(pull.number, pull.htmlUrl, listOf("MRK 1"), opened = true)), result.pullRequests)
+        assertEquals(listOf("Initial commit"), wacs.log(OFFICIAL), "the official repo changes only by merging")
+    }
+
+    @Test
+    fun `each chapter is one commit holding only its audio pointer and timing file`() {
+        publish(1, 2)
+        val branch = wacs.pullRequests(OFFICIAL).single().head!!.ref!!
+
+        val commits = wacs.commits(FORK, branch)
+        assertEquals(
+            listOf("MRK 2\n\nAudio-Chapter: MRK 2", "MRK 1\n\nAudio-Chapter: MRK 1", "Initial commit"),
+            commits.map { it.message },
+        )
+        assertEquals(setOf(audioPath(2), timingPath(2)), commits[0].changedPaths)
+        assertEquals(setOf(audioPath(1), timingPath(1)), commits[1].changedPaths)
+
+        val checkout = wacs.checkout(FORK, branch)
+        val pointer = pointerAt(checkout, audioPath(1))
+        assertEquals(LfsPointer(Sha256.hex(takes.getValue(1)), takes.getValue(1).length()), pointer)
+        assertContentEquals(takes.getValue(1).readBytes(), wacs.lfsObject(FORK, pointer.oid), "the audio is in LFS")
+        assertContains(File(checkout, timingPath(1)).readText(), "\"01.wav\"", message = "the timing names its audio")
+        assertEquals("""{"ingredients":{}}""", File(checkout, WacsRepoLayout.METADATA_PATH).readText(), "metadata.json is never edited")
+    }
+
+    @Test
+    fun `progress is reported stage by stage`() {
+        val stages = mutableListOf<Progress>()
+
+        publish(1) { stages += it }
+
+        assertEquals(
+            listOf(
+                Progress.PreparingRepos, Progress.Cloning, Progress.PreparingChapter(1),
+                Progress.UploadingAudio(1, takes.getValue(1).length()), Progress.Pushing, Progress.OpeningPullRequest, Progress.Done,
+            ),
+            stages,
+        )
+    }
+
+    @Test
+    fun `a re-recorded chapter replaces its take in the open pull request`() {
+        val first = publish(1).pullRequests.single()
+        takes[1] = take(1, version = 2)
+
+        val second = publish(1).pullRequests.single()
+
+        assertEquals(first.copy(opened = false), second)
+        assertEquals(1, wacs.pullRequests(OFFICIAL).size, "no second pull request")
+        val branch = wacs.pullRequests(OFFICIAL).single().head!!.ref!!
+        assertEquals(listOf("MRK 1\n\nAudio-Chapter: MRK 1", "Initial commit"), wacs.log(FORK, branch))
+        assertEquals(Sha256.hex(takes.getValue(1)), pointerAt(wacs.checkout(FORK, branch), audioPath(1)).oid)
+    }
+
+    @Test
+    fun `the pull request's other chapters are carried over as they were`() {
+        publish(1, 2)
+        val branch = wacs.pullRequests(OFFICIAL).single().head!!.ref!!
+        val chapterOne = pointerAt(wacs.checkout(FORK, branch), audioPath(1))
+        takes[2] = take(2, version = 2)
+
+        val result = publish(2)
+
+        assertEquals(listOf("MRK 1", "MRK 2"), result.pullRequests.single().chapters)
+        assertEquals(listOf("MRK 2", "MRK 1", "Initial commit"), wacs.log(FORK, branch).map { it.lines().first() })
+        val checkout = wacs.checkout(FORK, branch)
+        assertEquals(chapterOne, pointerAt(checkout, audioPath(1)))
+        assertEquals(Sha256.hex(takes.getValue(2)), pointerAt(checkout, audioPath(2)).oid)
+    }
+
+    @Test
+    fun `a chapter not in an open pull request gets one of its own`() {
+        publish(1)
+
+        val result = publish(2)
+
+        assertEquals(listOf("MRK 2"), result.pullRequests.single().chapters)
+        assertEquals(listOf(1L, 2L), wacs.pullRequests(OFFICIAL).map { it.number })
+    }
+
+    @Test
+    fun `chapters already on the official repo aren't submitted again`() {
+        publish(1)
+        wacs.mergePullRequest(OFFICIAL, 1)
+
+        val result = publish(1)
+
+        assertEquals(emptyList(), result.pullRequests)
+        assertEquals(listOf("closed"), wacs.pullRequests(OFFICIAL).map { it.state })
+    }
+
+    @Test
+    fun `prepare is retried while the pipeline fails, then publishing goes ahead`() {
+        wacs.fail("POST", "/v1/publish/prepare", 503, host = FakeWacs.PIPELINE_HOST, times = 2)
+
+        publish(1)
+
+        assertEquals(3, prepareCalls())
+    }
+
+    @Test
+    fun `a pipeline that keeps failing is unavailable`() {
+        wacs.fail("POST", "/v1/publish/prepare", 503, host = FakeWacs.PIPELINE_HOST)
+
+        assertEquals(WacsPublishException.Reason.PIPELINE_UNAVAILABLE, failure().reason)
+        assertEquals(4, prepareCalls(), "the first try and three retries")
+    }
+
+    @Test
+    fun `the pipeline's refusal is final and says why`() {
+        wacs.knownLanguages = setOf("fr")
+
+        val refusal = failure()
+
+        assertEquals(WacsPublishException.Reason.PIPELINE_REJECTED, refusal.reason)
+        assertEquals("\"en\" is not a known IETF language tag", refusal.detail)
+        assertEquals(1, prepareCalls(), "a 4xx isn't retried")
+    }
+
+    @Test
+    fun `the pipeline takes a token, not a password`() {
+        session.set(password, wacs.host, wacs.pipelineUrl)
+
+        assertEquals(WacsPublishException.Reason.AUTH_REJECTED, failure().reason)
+    }
+
+    @Test
+    fun `nothing is pushed when the audio can't be uploaded`() {
+        wacs.fail("PUT", "/$FORK.git/info/lfs/objects/${Sha256.hex(takes.getValue(1))}", 500)
+
+        assertEquals(WacsPublishException.Reason.NETWORK, failure().reason)
+        assertEquals(listOf("master"), wacs.branches(FORK), "no pointer without its audio")
+        assertEquals(emptyList(), wacs.pullRequests(OFFICIAL))
+    }
+
+    @Test
+    fun `publishing needs a signed-in user`() {
+        session.clear()
+
+        assertEquals(WacsPublishException.Reason.NOT_AUTHENTICATED, failure().reason)
+    }
+
+    @Test
+    fun `a chapter with no selected take stops publishing before anything is sent`() {
+        assertEquals(WacsPublishException.Reason.NO_AUDIO, failure(1, book = workbook(emptyMap())).reason)
+        assertEquals(emptyList(), wacs.requests)
+    }
+
+    @Test
+    fun `a host that can't be reached leaves the pipeline unavailable`() {
+        wacs.unreachable = true
+
+        assertEquals(WacsPublishException.Reason.PIPELINE_UNAVAILABLE, failure().reason)
+    }
+
+    /** English ULB Mark, with chapters 1 and 2; a chapter in [selected] has that file as its selected take. */
+    private fun workbook(selected: Map<Int, File>): Workbook {
+        val english = Language(slug = "en", name = "English", anglicizedName = "English", direction = "ltr", isGateway = true, region = "")
+        val ulb = ResourceMetadata(
+            conformsTo = "0.2", creator = "test", description = "", format = "text/usfm", identifier = "ulb",
+            issued = LocalDate.now(), language = english, modified = LocalDate.now(), publisher = "test",
+            subject = "Bible", type = ContainerType.Book, title = "Unlocked Literal Bible", version = "1",
+            license = "CC BY-SA 4.0", path = File("."),
+        )
+        val book = Book(
+            collectionId = 1, sort = 1, slug = "mrk", title = "Mark", label = "Mark",
+            chapters = Observable.fromIterable((1..2).map { chapter(it, selected[it]) }),
+            resourceMetadata = ulb, linkedResources = emptyList(), modifiedTs = null, subtreeResources = emptyList(),
+        )
+        return Workbook(
+            directoryProvider = mockk<IDirectoryProvider>(relaxed = true),
+            source = book,
+            target = book,
+            translation = AssociatedTranslation(BehaviorRelay.createDefault(1.0), BehaviorRelay.createDefault(1.0)),
+        )
+    }
+
+    private fun chapter(number: Int, take: File?): Chapter {
+        val audio = AssociatedAudio(ReplayRelay.create())
+        take?.let {
+            val selected = Take(name = it.name, file = it, number = 1, format = MimeType.WAV, createdTimestamp = LocalDate.now())
+            audio.insertTake(selected)
+            audio.selectTake(selected)
+        }
+        return Chapter(
+            sort = number,
+            title = "Chapter $number",
+            label = "$number",
+            audio = audio,
+            resources = emptyList(),
+            subtreeResources = emptyList(),
+            lazychunks = lazy { BehaviorRelay.createDefault<List<Chunk>>(emptyList()) },
+            chunkCount = Single.just(0),
+            addChunk = { _: List<Content> -> Completable.complete() },
+            reset = { Completable.complete() },
+        )
+    }
+
+    private companion object {
+        const val OFFICIAL = "AudioTranslation/en_ulb"
+        const val FORK = "translator/en_ulb_audio"
+    }
+}

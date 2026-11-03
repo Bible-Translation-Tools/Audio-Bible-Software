@@ -7,6 +7,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 
 class BasicAuthenticatorTest {
     private val root = createTempDirectory("wacs-auth").toFile()
@@ -18,15 +19,24 @@ class BasicAuthenticatorTest {
         root.deleteRecursively()
     }
 
-    private fun failedLogin(password: String) = assertFailsWith<WacsAuthException> {
-        runBlocking { authenticator.login(wacs.host, "translator", password) }
-    }.reason
+    private fun login(secret: String) = runBlocking { authenticator.login(wacs.host, "translator", secret) }
+
+    private fun failedLogin(secret: String) = assertFailsWith<WacsAuthException> { login(secret) }.reason
 
     @Test
-    fun `the right password gives a credential`() {
-        val credential = runBlocking { authenticator.login(wacs.host, "translator", "secret") }
+    fun `the right password gives a token that signs in`() {
+        val credential = assertIs<WacsCredential.Token>(login("secret"))
 
-        assertEquals(WacsCredential.Basic("translator", "secret"), credential)
+        assertEquals("translator", credential.username)
+        val user = runBlocking { wacs.apiFactory.create(wacs.host).whoAmI(credential.authorizationHeader()) }
+        assertEquals("translator", user.login)
+    }
+
+    @Test
+    fun `a token typed as the password is used as the token`() {
+        val token = wacs.tokenFor("translator")
+
+        assertEquals(token, login(token.token))
     }
 
     @Test

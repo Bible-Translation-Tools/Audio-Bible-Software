@@ -47,7 +47,12 @@ class WacsApiFactory(
     private val http: OkHttpClient,
     private val json: Json = Json { ignoreUnknownKeys = true; encodeDefaults = true },
 ) {
-    fun create(baseUrl: String): ForgejoApi {
+    fun create(baseUrl: String): ForgejoApi = retrofit(baseUrl).create(ForgejoApi::class.java)
+
+    /** The publish pipeline at [baseUrl], which is a separate service from WACS. */
+    fun createPipeline(baseUrl: String): PublishPipelineApi = retrofit(baseUrl).create(PublishPipelineApi::class.java)
+
+    private fun retrofit(baseUrl: String): Retrofit {
         val normalized = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
         return Retrofit.Builder()
             .baseUrl(normalized)
@@ -56,6 +61,5 @@ class WacsApiFactory(
             // module is pinned to Retrofit 2.9.0 / okhttp 3.14.9 (see LanguageDataSource).
             .addConverterFactory(json.asConverterFactory(MediaType.get("application/json")))
             .build()
-            .create(ForgejoApi::class.java)
     }
 }

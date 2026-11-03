@@ -53,8 +53,8 @@ data class WacsRepoScope(
  * audio ingredient genuinely exists — confirmed live against the prototype (2026-09); this same
  * server-authored manifest shape doesn't round-trip through that model either. `currentScope` is therefore not a reliable "what's available" source. Ground truth instead is the
  * `ingredients{}` map itself: each entry carries its own per-ingredient `scope` (book -> chapter
- * list) and `mimeType`, which is schema-stable across every manifest seen so far (M2's own writer —
- * [MetadataJsonWriter] — and the prototype's seed data both shape `ingredients{}` the same way, even
+ * list) and `mimeType`, which is schema-stable across every manifest seen so far (the app's former
+ * manifest writer and the prototype's seed data both shaped `ingredients{}` the same way, even
  * though they disagree on the top-level `type`/`type_specific` wrapper). Reading only that map with
  * generic [kotlinx.serialization.json] element navigation sidesteps the whole-document schema
  * mismatch entirely.

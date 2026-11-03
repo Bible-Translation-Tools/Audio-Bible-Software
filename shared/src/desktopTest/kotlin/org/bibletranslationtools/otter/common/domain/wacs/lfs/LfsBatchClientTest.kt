@@ -72,6 +72,17 @@ class LfsBatchClientTest {
     }
 
     @Test
+    fun `an access token goes to LFS as a git password, which is how WACS takes it`() {
+        val token = wacs.tokenFor("translator")
+
+        runBlocking { lfs.upload(lfsBase, token, pointer, audio) }
+
+        assertContentEquals(audio.readBytes(), wacs.lfsObject(repo.fullName, pointer.oid))
+        val batch = wacs.requests.first { it.path.endsWith("/objects/batch") }
+        assertEquals(WacsCredential.Basic("translator", token.token).authorizationHeader(), batch.headers["Authorization"])
+    }
+
+    @Test
     fun `the host rejects a wrong password`() {
         val failure = assertFailsWith<Exception> {
             runBlocking { lfs.upload(lfsBase, WacsCredential.Basic("translator", "wrong"), pointer, audio) }

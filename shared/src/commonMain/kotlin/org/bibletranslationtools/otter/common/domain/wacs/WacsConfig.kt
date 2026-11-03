@@ -38,6 +38,11 @@ import org.bibletranslationtools.otter.common.domain.wacs.git.IWacsGitClient
 data class WacsConfig(
     /** Must be reachable as `<baseUrl>api/v1/...`; normalized (trailing `/` added) by callers. */
     val baseUrl: String = "http://localhost:3000/",
+    /**
+     * The publish pipeline service, whose `prepare` call sets up the official repo and the user's
+     * fork before an upload. Pre-filled on the sign-in screen like [baseUrl].
+     */
+    val pipelineUrl: String = "http://localhost:8080/",
     /** The org that holds the *official* audio repos users fork from (see the plan, §4). */
     val org: String = "AudioTranslation",
     val defaultBranch: String = IWacsGitClient.DEFAULT_BRANCH,
