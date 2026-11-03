@@ -1,10 +1,5 @@
 package org.bibletranslationtools.orature.ui.screens
 
-import org.bibletranslationtools.orature.ui.components.OratureEditionChangeDialog
-import org.bibletranslationtools.orature.ui.viewmodels.OratureEditionChangeTarget
-import org.bibletranslationtools.orature.resources.updateEdition
-import org.bibletranslationtools.orature.resources.changeEdition
-import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -39,36 +35,40 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
+import org.bibletranslationtools.orature.resources.Res
+import org.bibletranslationtools.orature.resources.bookDeleted
+import org.bibletranslationtools.orature.resources.changeEdition
+import org.bibletranslationtools.orature.resources.createProjectMessageBody
+import org.bibletranslationtools.orature.resources.createProjectMessageTitle
+import org.bibletranslationtools.orature.resources.deleteProject
+import org.bibletranslationtools.orature.resources.exportFailed
+import org.bibletranslationtools.orature.resources.exportSuccessful
+import org.bibletranslationtools.orature.resources.modifyContributors
+import org.bibletranslationtools.orature.resources.projectDeleted
+import org.bibletranslationtools.orature.resources.projectGroupTitle
+import org.bibletranslationtools.orature.resources.projects
+import org.bibletranslationtools.orature.resources.showLocation
+import org.bibletranslationtools.orature.resources.undo
+import org.bibletranslationtools.orature.resources.updateEdition
 import org.bibletranslationtools.orature.ui.OratureColors
 import org.bibletranslationtools.orature.ui.components.OratureBookTable
+import org.bibletranslationtools.orature.ui.components.OratureEditionChangeDialog
 import org.bibletranslationtools.orature.ui.components.OratureImportButton
-import org.bibletranslationtools.orature.ui.components.OratureProjectWizardSection
 import org.bibletranslationtools.orature.ui.components.OratureNewProjectCard
 import org.bibletranslationtools.orature.ui.components.OratureProjectGroupCard
+import org.bibletranslationtools.orature.ui.components.OratureProjectWizardSection
 import org.bibletranslationtools.orature.ui.components.projectModeLabel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureBookUiModel
+import org.bibletranslationtools.orature.ui.viewmodels.OratureEditionChangeTarget
 import org.bibletranslationtools.orature.ui.viewmodels.OratureHomeUiState
 import org.bibletranslationtools.orature.ui.viewmodels.OratureHomeViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureProjectGroupKey
 import org.bibletranslationtools.orature.ui.viewmodels.OratureProjectGroupUiModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureProjectWizardViewModel
+import org.bibletranslationtools.shared.ui.platform.canOpenInFileManager
+import org.bibletranslationtools.shared.ui.platform.openInFileManager
 import org.jetbrains.compose.resources.stringResource
-import org.bibletranslationtools.orature.resources.Res
-import org.bibletranslationtools.orature.resources.createProjectMessageBody
-import org.bibletranslationtools.orature.resources.createProjectMessageTitle
-import org.bibletranslationtools.orature.resources.bookDeleted
-import org.bibletranslationtools.orature.resources.deleteProject
-import org.bibletranslationtools.orature.resources.exportFailed
-import org.bibletranslationtools.orature.resources.exportSuccessful
-import org.bibletranslationtools.orature.resources.modifyContributors
-import org.bibletranslationtools.orature.resources.options
-import org.bibletranslationtools.orature.resources.projectDeleted
-import org.bibletranslationtools.orature.resources.undo
-import org.bibletranslationtools.orature.resources.showLocation
-import kotlinx.coroutines.launch
-import org.bibletranslationtools.orature.resources.projectGroupTitle
-import org.bibletranslationtools.orature.resources.projects
-import org.bibletranslationtools.orature.resources.search
 
 /**
  * Orature's real home: a persistent nav rail, a 320dp Projects pane of project-group
@@ -334,7 +334,7 @@ private fun OratureBookSection(
     val exportSuccessMsg = stringResource(Res.string.exportSuccessful)
     val exportFailMsg = stringResource(Res.string.exportFailed)
     val showLocationLabel = stringResource(Res.string.showLocation)
-    val canShowLocation = org.bibletranslationtools.orature.platform.canOpenInFileManager()
+    val canShowLocation = canOpenInFileManager()
 
     Box(modifier = modifier) {
     Column(
@@ -495,7 +495,7 @@ private fun OratureBookSection(
                         actionLabel = if (withLocation) showLocationLabel else null
                     )
                     if (withLocation && result == androidx.compose.material3.SnackbarResult.ActionPerformed) {
-                        org.bibletranslationtools.orature.platform.openInFileManager(location!!)
+                        openInFileManager(location)
                     }
                 }
             }
@@ -515,7 +515,7 @@ private fun OratureBookSection(
                         actionLabel = if (withLocation) showLocationLabel else null
                     )
                     if (withLocation && result == androidx.compose.material3.SnackbarResult.ActionPerformed) {
-                        org.bibletranslationtools.orature.platform.openInFileManager(location!!)
+                        openInFileManager(location)
                     }
                 }
             }

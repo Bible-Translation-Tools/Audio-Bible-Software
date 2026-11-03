@@ -1,17 +1,5 @@
 package org.bibletranslationtools.orature.ui.components
 
-import androidx.compose.material.icons.filled.Publish
-import io.github.vinceglb.filekit.dialogs.compose.rememberDirectoryPickerLauncher
-import io.github.vinceglb.filekit.path
-import org.bibletranslationtools.orature.platform.canOpenInFileManager
-import org.bibletranslationtools.orature.resources.exportResource
-import org.bibletranslationtools.orature.resources.exportResourceDone
-import org.bibletranslationtools.orature.resources.exportResourceFailed
-import org.bibletranslationtools.orature.resources.showLocation
-import org.bibletranslationtools.orature.ui.viewmodels.OratureResourceExport
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.ExportSourceEdition
-import org.bibletranslationtools.orature.resources.languageWithNativeName
-import org.bibletranslationtools.orature.resources.resourceTitleWithType
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -27,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Publish
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -51,12 +40,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import io.github.vinceglb.filekit.dialogs.compose.rememberDirectoryPickerLauncher
+import io.github.vinceglb.filekit.path
 import org.bibletranslationtools.orature.resources.Res
 import org.bibletranslationtools.orature.resources.cancel
 import org.bibletranslationtools.orature.resources.close
+import org.bibletranslationtools.orature.resources.exportResource
+import org.bibletranslationtools.orature.resources.exportResourceDone
+import org.bibletranslationtools.orature.resources.exportResourceFailed
 import org.bibletranslationtools.orature.resources.findResources
 import org.bibletranslationtools.orature.resources.getResourcesComingSoon
 import org.bibletranslationtools.orature.resources.getResourcesTitle
+import org.bibletranslationtools.orature.resources.languageWithNativeName
 import org.bibletranslationtools.orature.resources.removeResource
 import org.bibletranslationtools.orature.resources.removeResourceInUse
 import org.bibletranslationtools.orature.resources.removeResourceMessage
@@ -67,6 +62,7 @@ import org.bibletranslationtools.orature.resources.resourceRemoveFailed
 import org.bibletranslationtools.orature.resources.resourceRemoved
 import org.bibletranslationtools.orature.resources.resourceSize
 import org.bibletranslationtools.orature.resources.resourceSizeWithAudio
+import org.bibletranslationtools.orature.resources.resourceTitleWithType
 import org.bibletranslationtools.orature.resources.resourceTypeBible
 import org.bibletranslationtools.orature.resources.resourceTypeHelp
 import org.bibletranslationtools.orature.resources.resourceUnused
@@ -75,12 +71,16 @@ import org.bibletranslationtools.orature.resources.resourcesDescription
 import org.bibletranslationtools.orature.resources.resourcesEmpty
 import org.bibletranslationtools.orature.resources.resourcesSummary
 import org.bibletranslationtools.orature.resources.resourcesTitle
+import org.bibletranslationtools.orature.resources.showLocation
 import org.bibletranslationtools.orature.ui.OratureColors
+import org.bibletranslationtools.orature.ui.viewmodels.OratureResourceExport
 import org.bibletranslationtools.orature.ui.viewmodels.OratureResourceRemoval
 import org.bibletranslationtools.orature.ui.viewmodels.OratureResourcesViewModel
 import org.bibletranslationtools.otter.common.data.primitives.ContainerType
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.ExportSourceEdition
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.InstalledResource
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.InstalledResources
+import org.bibletranslationtools.shared.ui.platform.canOpenInFileManager
 import org.jetbrains.compose.resources.stringResource
 import org.koin.mp.KoinPlatform.getKoin
 

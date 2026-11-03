@@ -1,17 +1,16 @@
 package org.bibletranslationtools.orature.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.draganddrop.dragAndDropTarget
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.draganddrop.dragAndDropTarget
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -53,17 +52,14 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import org.bibletranslationtools.orature.platform.droppedPlatformFile
-import org.bibletranslationtools.orature.platform.importPickerType
 import org.bibletranslationtools.orature.resources.Res
 import org.bibletranslationtools.orature.resources.cancel
 import org.bibletranslationtools.orature.resources.choose_file
 import org.bibletranslationtools.orature.resources.close
 import org.bibletranslationtools.orature.resources.`continue`
+import org.bibletranslationtools.orature.resources.converting_file
 import org.bibletranslationtools.orature.resources.dragAndDropDescription
 import org.bibletranslationtools.orature.resources.dragToImport
-import org.bibletranslationtools.orature.resources.converting_file
-import org.bibletranslationtools.orature.resources.importFailed
-import org.bibletranslationtools.orature.resources.importProjectSuccessfulMessage
 import org.bibletranslationtools.orature.resources.importResource
 import org.bibletranslationtools.orature.resources.import_projects
 import org.bibletranslationtools.orature.resources.importing_source_audio
@@ -74,6 +70,7 @@ import org.bibletranslationtools.orature.resources.warning
 import org.bibletranslationtools.orature.ui.OratureColors
 import org.bibletranslationtools.orature.ui.viewmodels.OratureImportState
 import org.bibletranslationtools.orature.ui.viewmodels.OratureImportViewModel
+import org.bibletranslationtools.shared.ui.platform.importPickerType
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.roundToInt
 

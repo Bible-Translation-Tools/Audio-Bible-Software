@@ -2,9 +2,9 @@ package org.bibletranslationtools.orature.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
 import org.bibletranslationtools.orature.platform.appVersion
-import org.bibletranslationtools.orature.platform.canOpenInFileManager
-import org.bibletranslationtools.orature.platform.openInFileManager
 import org.bibletranslationtools.otter.common.api.persistence.IAppDirectories
+import org.bibletranslationtools.shared.ui.platform.canOpenInFileManager
+import org.bibletranslationtools.shared.ui.platform.openInFileManager
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
