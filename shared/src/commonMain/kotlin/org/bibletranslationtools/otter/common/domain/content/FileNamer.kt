@@ -66,6 +66,13 @@ class FileNamer(
         ).joinToString("_", postfix = ".${format.extension}")
     }
 
+    /**
+     * The chapter's name with no take, content type or verse: `en_ulb_mrk_c01.wav`. A chapter is
+     * published to WACS under this name, so publishing a new take of it replaces the same file.
+     */
+    fun chapterFileName(extension: String): String =
+        listOf(languageSlug, rcSlug, bookSlug, formatChapterNumber()).joinToString("_", postfix = ".$extension")
+
     fun formatChapterNumber(): String {
         val chapterFormat = if (chapterCount > 99) "%03d" else "%02d"
         val chapterNum = chapterFormat.format(chapterTitle.toIntOrNull() ?: chapterSort)

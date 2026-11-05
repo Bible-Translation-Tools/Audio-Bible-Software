@@ -27,6 +27,8 @@ import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.audio.metadata.BurritoAlignmentMetadata
+import org.bibletranslationtools.otter.common.domain.content.FileNamer
+import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
 import org.bibletranslationtools.otter.common.domain.wacs.WacsConfig
 import org.bibletranslationtools.otter.common.domain.wacs.api.CreatePullRequestRequest
 import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoApi
@@ -61,8 +63,9 @@ import java.util.UUID
  * 3. A chapter already in one of the user's open pull requests goes back onto that pull request's
  *    branch, replacing its old take; the rest go on a new `publish/<UTC timestamp>` branch.
  * 4. Each affected branch is rebuilt from the official default branch: one commit per chapter,
- *    holding only `ingredients/<BOOK>/<CH>.<wav|flac>` (an LFS pointer) and `<CH>.json` (its
- *    timing), with the message `<BOOK> <CH>` and the trailer `Audio-Chapter: <BOOK> <CH>`. The
+ *    holding only `media/<book>/<name>.<wav|flac>` (an LFS pointer) and `<name>.json` (its timing),
+ *    where `<name>` is the chapter's [FileNamer.chapterFileName] (`en_ulb_mrk_c01`), with the
+ *    message `<BOOK> <CH>` and the trailer `Audio-Chapter: <BOOK> <CH>`. The
  *    audio is uploaded through the LFS Batch API before anything that points at it is pushed.
  * 5. Push with a lease, so a push from another device isn't overwritten.
  * 6. Open a pull request for a new branch; an existing one updates in place.
@@ -113,6 +116,9 @@ class PublishChaptersToWacs(
         data object OpeningPullRequest : Progress
         data object Done : Progress
     }
+
+    /** A chapter's selected take, and the namer that names the chapter's published files. */
+    private data class ChapterTake(val file: File, val fileNamer: FileNamer)
 
     /** An open pull request from the user's fork, with the chapters its commits carry, in order. */
     private data class OpenPullRequest(val number: Long, val htmlUrl: String, val branch: String, val chapters: List<String>)
@@ -237,7 +243,7 @@ class PublishChaptersToWacs(
         branch: String,
         previousTip: String?,
         chapters: List<String>,
-        newTakes: Map<String, File>,
+        newTakes: Map<String, ChapterTake>,
         upstreamRef: String,
         upstreamTip: String,
         onProgress: (Progress) -> Unit,
@@ -246,9 +252,8 @@ class PublishChaptersToWacs(
         gitCall { gitClient.startBranch(workDir, branch, upstreamRef) }
         for (id in chapters) {
             val (book, chapter) = parseChapterId(id)
-            val chapterFiles = WacsRepoLayout.chapterFiles(book, chapter)
             val present = gitCall { gitClient.listFiles(workDir, "HEAD", WacsRepoLayout.bookDirectory(book)) }
-                .filter { it in chapterFiles }
+                .filter { WacsRepoLayout.isChapterFile(it, book, chapter) }
             val take = newTakes[id]
             if (take != null) {
                 onProgress(Progress.PreparingChapter(chapter))
@@ -256,7 +261,7 @@ class PublishChaptersToWacs(
                 gitCall { gitClient.stage(workDir, add = written, remove = present - written.toSet()) }
             } else {
                 val previous = gitCall { gitClient.listFiles(workDir, previousTip!!, WacsRepoLayout.bookDirectory(book)) }
-                    .filter { it in chapterFiles }
+                    .filter { WacsRepoLayout.isChapterFile(it, book, chapter) }
                 gitCall {
                     gitClient.stage(workDir, add = emptyList(), remove = present - previous.toSet())
                     gitClient.restoreFiles(workDir, previousTip!!, previous)
@@ -289,24 +294,26 @@ class PublishChaptersToWacs(
         stagingDir: File,
         book: String,
         chapter: Int,
-        take: File,
+        take: ChapterTake,
         prepared: PrepareResponse,
         credential: WacsCredential,
         onProgress: (Progress) -> Unit,
     ): List<String> {
-        val extension = take.extension.lowercase()
+        val extension = take.file.extension.lowercase()
         if (extension !in WacsRepoLayout.AUDIO_EXTENSIONS) {
             throw WacsPublishException(WacsPublishException.Reason.UNKNOWN, IllegalArgumentException("Can't publish a .$extension take"))
         }
-        val audioPath = WacsRepoLayout.audioIngredientPath(book, chapter, extension)
-        val timingPath = WacsRepoLayout.timingIngredientPath(book, chapter)
+        val audioName = take.fileNamer.chapterFileName(extension)
+        val timingName = take.fileNamer.chapterFileName("json")
+        val audioPath = WacsRepoLayout.chapterFilePath(book, audioName)
+        val timingPath = WacsRepoLayout.chapterFilePath(book, timingName)
 
         val (pointer, audio) = try {
             // The take is copied under its name in the repo, so the timing file's docid is that
-            // name (`01.wav`), as the pipeline's samples have it.
+            // name (`en_ulb_mrk_c01.wav`).
             val chapterDir = File(stagingDir, "$book-$chapter").apply { mkdirs() }
-            val audio = take.copyTo(File(chapterDir, File(audioPath).name), overwrite = true)
-            val timing = File(chapterDir, File(timingPath).name)
+            val audio = take.file.copyTo(File(chapterDir, audioName), overwrite = true)
+            val timing = File(chapterDir, timingName)
             val oratureAudio = OratureAudioFile(audio)
             BurritoAlignmentMetadata(timing, audio).write(oratureAudio.getMarkers(), book.lowercase(), chapter, oratureAudio.totalFrames)
             if (!timing.exists()) {
@@ -337,8 +344,8 @@ class PublishChaptersToWacs(
         return listOf(audioPath, timingPath)
     }
 
-    /** The selected take of each chapter in [chapters], which must all have one. */
-    private suspend fun selectedTakes(workbook: Workbook, chapters: List<Int>): Map<Int, File> {
+    /** The selected take of each chapter in [chapters], which must all have one, and its namer. */
+    private suspend fun selectedTakes(workbook: Workbook, chapters: List<Int>): Map<Int, ChapterTake> {
         val all = try {
             workbook.target.chapters.toList().await()
         } catch (e: CancellationException) {
@@ -347,8 +354,16 @@ class PublishChaptersToWacs(
             throw WacsPublishException(WacsPublishException.Reason.UNKNOWN, e)
         }
         return chapters.associateWith { sort ->
-            all.find { it.sort == sort }?.getSelectedTake()?.file?.takeIf { it.exists() }
+            val chapter = all.find { it.sort == sort }
+            val file = chapter?.getSelectedTake()?.file?.takeIf { it.exists() }
                 ?: throw WacsPublishException(WacsPublishException.Reason.NO_AUDIO)
+            val namer = try {
+                // Named as the chapter's own takes are, so its files match the project's.
+                WorkbookFileNamerBuilder.createFileNamer(workbook, chapter, null, chapter, workbook.sourceMetadataSlug)
+            } catch (e: Exception) {
+                throw WacsPublishException(WacsPublishException.Reason.UNKNOWN, e)
+            }
+            ChapterTake(file, namer)
         }
     }
 

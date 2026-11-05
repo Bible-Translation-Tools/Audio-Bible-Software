@@ -103,8 +103,8 @@ class WacsRestoreTest {
         val timing = File(staged, "0$chapter.json")
         val oratureAudio = OratureAudioFile(audio)
         BurritoAlignmentMetadata(timing, audio).write(oratureAudio.getMarkers(), "mrk", chapter, oratureAudio.totalFrames)
-        val audioPath = WacsRepoLayout.audioIngredientPath("MRK", chapter, "wav")
-        val timingPath = WacsRepoLayout.timingIngredientPath("MRK", chapter)
+        val audioPath = "ingredients/MRK/0$chapter.wav"
+        val timingPath = "ingredients/MRK/0$chapter.json"
         val metadata = """
             {"languages": [{"tag": "en"}],
              "ingredients": {"$audioPath": {"mimeType": "audio/wav", "scope": {"MRK": ["$chapter"]}},
@@ -194,7 +194,7 @@ class WacsRestoreTest {
         val environment = environment()
         val project = environment.markProject()
         val titus = wacs.createRepo("translator", "audio-en-ulb-tit")
-        val ingredient = WacsChapterIngredient("TIT", 1, WacsRepoLayout.audioIngredientPath("TIT", 1, "wav"), emptyList())
+        val ingredient = WacsChapterIngredient("TIT", 1, "ingredients/TIT/01.wav", emptyList())
 
         val failure = assertFailsWith<WacsPullException> {
             runBlocking {
@@ -209,7 +209,7 @@ class WacsRestoreTest {
     @Test
     fun `a repo whose language doesn't match its name makes no project`() {
         val environment = environment()
-        val audioPath = WacsRepoLayout.audioIngredientPath("MRK", 1, "wav")
+        val audioPath = "ingredients/MRK/01.wav"
         val metadata = """
             {"languages": [{"tag": "fr"}],
              "ingredients": {"$audioPath": {"mimeType": "audio/wav", "scope": {"MRK": ["1"]}}}}

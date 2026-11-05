@@ -43,8 +43,8 @@ class PullFromWacsTest {
     }
 
     private fun audio(chapter: Int) = "chapter $chapter audio".encodeToByteArray()
-    private fun audioPath(chapter: Int) = WacsRepoLayout.audioIngredientPath("MRK", chapter, "wav")
-    private fun alignmentPath(chapter: Int) = WacsRepoLayout.timingIngredientPath("MRK", chapter)
+    private fun audioPath(chapter: Int) = "ingredients/MRK/0$chapter.wav"
+    private fun alignmentPath(chapter: Int) = "ingredients/MRK/0$chapter.json"
     private fun ingredient(chapter: Int) = WacsChapterIngredient("MRK", chapter, audioPath(chapter), listOf(alignmentPath(chapter)))
 
     /** A `metadata.json` listing [chapters]' audio and alignment, in the shape [WacsScopeReader] reads. */

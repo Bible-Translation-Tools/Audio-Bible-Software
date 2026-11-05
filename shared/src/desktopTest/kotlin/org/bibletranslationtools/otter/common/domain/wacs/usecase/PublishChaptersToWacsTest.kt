@@ -79,9 +79,9 @@ class PublishChaptersToWacsTest {
 
     private fun pointerAt(checkout: File, path: String) = assertNotNull(LfsPointer.parse(File(checkout, path).readBytes()), path)
 
-    private fun audioPath(chapter: Int) = WacsRepoLayout.audioIngredientPath("MRK", chapter, "wav")
+    private fun audioPath(chapter: Int) = WacsRepoLayout.chapterFilePath("MRK", "en_ulb_mrk_c0$chapter.wav")
 
-    private fun timingPath(chapter: Int) = WacsRepoLayout.timingIngredientPath("MRK", chapter)
+    private fun timingPath(chapter: Int) = WacsRepoLayout.chapterFilePath("MRK", "en_ulb_mrk_c0$chapter.json")
 
     @Test
     fun `publishing sets up the official repo and the user's fork, and opens a pull request`() {
@@ -115,7 +115,7 @@ class PublishChaptersToWacsTest {
         val pointer = pointerAt(checkout, audioPath(1))
         assertEquals(LfsPointer(Sha256.hex(takes.getValue(1)), takes.getValue(1).length()), pointer)
         assertContentEquals(takes.getValue(1).readBytes(), wacs.lfsObject(FORK, pointer.oid), "the audio is in LFS")
-        assertContains(File(checkout, timingPath(1)).readText(), "\"01.wav\"", message = "the timing names its audio")
+        assertContains(File(checkout, timingPath(1)).readText(), "\"en_ulb_mrk_c01.wav\"", message = "the timing names its audio")
         assertEquals("""{"ingredients":{}}""", File(checkout, WacsRepoLayout.METADATA_PATH).readText(), "metadata.json is never edited")
     }
 

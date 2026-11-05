@@ -54,28 +54,29 @@ object WacsRepoLayout {
     /** The trailer that names the chapter a commit carries; the pipeline requires exactly one. */
     const val CHAPTER_TRAILER = "Audio-Chapter"
 
-    /** The directory a book's chapters are in, e.g. `ingredients/MRK`. */
-    fun bookDirectory(bookSlug: String): String = "ingredients/$bookSlug"
+    /** The directory published chapters are in. */
+    const val MEDIA_DIRECTORY = "media"
 
-    /** A chapter's files without their extension: `ingredients/MRK/01`, three digits for Psalms. */
-    fun chapterStem(bookSlug: String, chapterNumber: Int): String {
-        val digits = if (bookSlug.equals("PSA", ignoreCase = true)) 3 else 2
-        return "${bookDirectory(bookSlug)}/${chapterNumber.toString().padStart(digits, '0')}"
-    }
+    /** The directory a book's chapters are in: `media/mrk`. */
+    fun bookDirectory(bookSlug: String): String = "$MEDIA_DIRECTORY/${bookSlug.lowercase(Locale.US)}"
 
     /**
-     * Repo-relative path of the LFS-tracked audio ingredient for one chapter, e.g.
-     * `ingredients/MRK/01.wav`. Publishing writes an LFS *pointer* here, never the audio bytes.
+     * Where a chapter file named [fileName] goes: `media/mrk/en_ulb_mrk_c01.wav`, or its timing file
+     * `media/mrk/en_ulb_mrk_c01.json`. The name comes from
+     * [FileNamer.chapterFileName][org.bibletranslationtools.otter.common.domain.content.FileNamer.chapterFileName].
+     * Publishing writes an LFS *pointer* at the audio path, never the audio bytes.
      */
-    fun audioIngredientPath(bookSlug: String, chapterNumber: Int, extension: String): String =
-        "${chapterStem(bookSlug, chapterNumber)}.${extension.lowercase(Locale.US)}"
+    fun chapterFilePath(bookSlug: String, fileName: String): String = "${bookDirectory(bookSlug)}/$fileName"
 
-    /** The chapter's timing file, `ingredients/MRK/01.json`: Scripture Burrito alignment, plain git. */
-    fun timingIngredientPath(bookSlug: String, chapterNumber: Int): String = "${chapterStem(bookSlug, chapterNumber)}.json"
-
-    /** Every file a chapter can have, in any audio format; a chapter commit replaces them all. */
-    fun chapterFiles(bookSlug: String, chapterNumber: Int): List<String> =
-        AUDIO_EXTENSIONS.map { audioIngredientPath(bookSlug, chapterNumber, it) } + timingIngredientPath(bookSlug, chapterNumber)
+    /**
+     * Whether [path] is one of chapter [chapterNumber]'s files in [bookSlug]: its audio in any format
+     * or its timing file, whatever language and edition its name carries.
+     */
+    fun isChapterFile(path: String, bookSlug: String, chapterNumber: Int): Boolean {
+        val book = Regex.escape(bookSlug.lowercase(Locale.US))
+        val extensions = (AUDIO_EXTENSIONS + "json").joinToString("|")
+        return Regex("^${Regex.escape(MEDIA_DIRECTORY)}/$book/[^/]+_${book}_c0*$chapterNumber\\.($extensions)$").matches(path)
+    }
 
     /** How the pipeline names a chapter in commits and pull requests: `MRK 1`. */
     fun chapterId(bookSlug: String, chapterNumber: Int): String = "${bookSlug.uppercase(Locale.US)} $chapterNumber"
