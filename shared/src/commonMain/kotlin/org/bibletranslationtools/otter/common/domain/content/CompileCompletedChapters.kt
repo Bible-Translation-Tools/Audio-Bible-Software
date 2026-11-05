@@ -18,22 +18,26 @@
  */
 package org.bibletranslationtools.otter.common.domain.content
 
-import io.reactivex.Completable
+import io.reactivex.Maybe
+import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
-import kotlinx.coroutines.rx2.rxCompletable
+import kotlinx.coroutines.rx2.rxSingle
 import org.bibletranslationtools.otter.common.data.audio.VerseMarker
-import org.bibletranslationtools.otter.common.data.workbook.Chapter
+import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.slf4j.LoggerFactory
 import java.io.File
-import java.util.concurrent.TimeUnit
 
 /**
  * Gives every chapter whose chunks all have a selected take, but which has no chapter take of its
- * own, a chapter take compiled from those takes, and selects it. The recorder records verses, and
- * source export only exports chapter takes. Each chunk's verse marker comes from its verse range,
- * as recorded takes carry none.
+ * own, a chapter take compiled from those takes. The recorder records verses, and source export
+ * only exports chapter takes. Each chunk's verse marker comes from its verse range, as recorded
+ * takes carry none.
+ *
+ * The new take becomes the selected one, but asynchronously, once the repository has inserted it
+ * (see [SaveAudioAsNewTake]). So [execute] returns the compiled takes by chapter, for a caller
+ * that needs them now.
  */
 class CompileCompletedChapters(
     private val concatenateAudio: ConcatenateAudio,
@@ -41,37 +45,34 @@ class CompileCompletedChapters(
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
-    /** Compiles only the chapters in [chapterFilter], or every chapter when it is null. */
-    fun execute(workbook: Workbook, chapterFilter: List<Int>?): Completable {
+    /**
+     * Compiles only the chapters in [chapterFilter], or every chapter when it is null.
+     * @return the compiled take of each chapter that was compiled, by chapter sort
+     */
+    fun execute(workbook: Workbook, chapterFilter: List<Int>?): Single<Map<Int, Take>> {
         return workbook.target.chapters
             .filter { chapterFilter?.contains(it.sort) ?: true }
             .filter { !it.hasSelectedAudio() }
-            .concatMapCompletable { chapter ->
+            .concatMapMaybe { chapter ->
                 val chunks = chapter.chunks.blockingGet()
                 if (chunks.isEmpty() || !chunks.all { it.hasSelectedAudio() }) {
-                    return@concatMapCompletable Completable.complete()
+                    return@concatMapMaybe Maybe.empty()
                 }
                 val takes = chunks.map { it.audio.getSelectedTake()!!.file }
                 logger.info("Compiling chunk/verse takes for completed chapter #${chapter.sort}")
                 concatenateAudio.execute(takes, includeMarkers = false)
                     .doOnSuccess { compiled -> addVerseMarkers(compiled, chunks.map { it.start..it.end }, takes) }
-                    .flatMapCompletable { compiled ->
-                        rxCompletable { saveAudioAsNewTake.execute(workbook, chapter, null, chapter, compiled) }
-                            .andThen(awaitSelectedTake(chapter))
+                    .flatMap { compiled ->
+                        rxSingle { saveAudioAsNewTake.execute(workbook, chapter, null, chapter, compiled) }
                             .doFinally { compiled.delete() }
                     }
+                    .map { take -> chapter.sort to take }
+                    .toMaybe()
             }
+            .collectInto(mutableMapOf<Int, Take>()) { map, (sort, take) -> map[sort] = take }
+            .map { it.toMap() }
             .doOnError { logger.error("Error while compiling completed chapters.", it) }
             .subscribeOn(Schedulers.io())
-    }
-
-    // The repository selects a newly inserted take asynchronously; callers read the selection.
-    private fun awaitSelectedTake(chapter: Chapter): Completable {
-        return chapter.audio.selected
-            .filter { it.value != null }
-            .firstOrError()
-            .ignoreElement()
-            .timeout(2, TimeUnit.SECONDS)
     }
 }
 
