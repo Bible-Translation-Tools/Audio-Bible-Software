@@ -383,7 +383,7 @@ class BurritoWrapperExporter(
                 Format.SCRIPTURE_BURRITO,
                 SourceMetaSchema(
                     dateCreated = Date.from(Instant.now()),
-                    version = MetaVersionSchema._1_0_0,
+                    version = MetaVersionSchema._2_0_0,
                     defaultLocale = it.manifest.dublinCore.language.identifier,
                     generator = SoftwareAndUserInfoSchema().apply {
                         softwareName = appName
@@ -577,7 +577,8 @@ class BurritoWrapperExporter(
                 if (audioFile.extension in listOf(AudioFileFormat.WAV.extension, AudioFileFormat.MP3.extension)) {
                     val oratureAudio = OratureAudioFile(audioFile)
                     val targetTimingFile = File(mediaDir, "${audioFile.nameWithoutExtension}.json")
-                    BurritoAlignmentMetadata(targetTimingFile, audioFile)
+                    // The timing file names the audio by its path in the burrito.
+                    BurritoAlignmentMetadata(targetTimingFile, audioFile, docid = "${RcConstants.SOURCE_MEDIA_DIR}/${audioFile.name}")
                         .write(oratureAudio.getMarkers(), book, chapterNumber, oratureAudio.totalFrames)
                 }
             }

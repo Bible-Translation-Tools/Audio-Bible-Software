@@ -23,6 +23,11 @@ class TestEnumWireValues {
             MetaVersionSchema._1_0_0,
             Json.decodeFromString(MetaVersionSchema.serializer(), "\"1.0.0\"")
         )
+        assertEquals("\"2.0.0\"", Json.encodeToString(MetaVersionSchema.serializer(), MetaVersionSchema._2_0_0))
+        assertEquals(
+            MetaVersionSchema._2_0_0,
+            Json.decodeFromString(MetaVersionSchema.serializer(), "\"2.0.0\"")
+        )
     }
 
     @Test
