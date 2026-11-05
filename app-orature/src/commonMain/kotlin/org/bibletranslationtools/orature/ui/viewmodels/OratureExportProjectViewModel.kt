@@ -36,7 +36,7 @@ data class OratureExportChapter(
     val selectable: Boolean,
     val selected: Boolean,
     /** Its chapter take has no verse markers, which a source export needs (it would drop the audio). */
-    val missingVerseMarkers: Boolean = false
+    val missingVerseMarkers: Boolean
 )
 
 /** UI state for the export dialog (JVM: `ExportProjectDialog` + `ExportProjectViewModel`). */
@@ -119,7 +119,8 @@ class OratureExportProjectViewModel(
                         selected = false,
                         missingVerseMarkers = runCatching { sourceExporter.isMissingVerseMarkers(chapter) }
                             .onFailure { logFailure("reading chapter ${chapter.sort}'s verse markers", it) }
-                            .getOrDefault(false)
+                            // Unreadable counts as missing: offering it would export the chapter without audio.
+                            .getOrDefault(true)
                     )
                 } }
                 _uiState.value = _uiState.value.copy(

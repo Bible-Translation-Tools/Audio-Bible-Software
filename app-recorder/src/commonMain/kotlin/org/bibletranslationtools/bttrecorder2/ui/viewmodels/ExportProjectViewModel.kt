@@ -146,7 +146,8 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
                         progress = progress.toFloat().coerceIn(0f, 1f),
                         missingVerseMarkers = runCatching { sourceExporter.isMissingVerseMarkers(chapter) }
                             .onFailure { logFailure("reading chapter ${chapter.sort}'s verse markers", it) }
-                            .getOrDefault(false)
+                            // Unreadable counts as missing: offering it would export the chapter without audio.
+                            .getOrDefault(true)
                     )
                 }.sortedBy { it.sort }
 
@@ -495,7 +496,7 @@ data class ExportChapter(
     val title: String,
     val progress: Float,
     /** Its chapter take has no verse markers, which a source export needs (it would drop the audio). */
-    val missingVerseMarkers: Boolean = false
+    val missingVerseMarkers: Boolean
 ) {
     /**
      * For BACKUP, any chapter with at least one selected take is fair game.
