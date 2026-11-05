@@ -309,16 +309,17 @@ class PublishChaptersToWacs(
         val timingPath = WacsRepoLayout.chapterFilePath(book, timingName)
 
         val (pointer, audio) = try {
-            // The take is copied under its name in the repo, so the timing file's docid is that
-            // name (`en_ulb_mrk_c01.wav`).
+            // The repo is the burrito, so the timing file's docid is the audio's path from the repo
+            // root (`media/mrk/en_ulb_mrk_c01.wav`).
             val chapterDir = File(stagingDir, "$book-$chapter").apply { mkdirs() }
             val audio = take.file.copyTo(File(chapterDir, audioName), overwrite = true)
             val timing = File(chapterDir, timingName)
             val oratureAudio = OratureAudioFile(audio)
-            BurritoAlignmentMetadata(timing, audio).write(oratureAudio.getMarkers(), book.lowercase(), chapter, oratureAudio.totalFrames)
+            BurritoAlignmentMetadata(timing, audio, docid = audioPath)
+                .write(oratureAudio.getMarkers(), book.lowercase(), chapter, oratureAudio.totalFrames)
             if (!timing.exists()) {
                 // A take with no markers yet still gets a valid, empty timing file.
-                BurritoAudioAlignment.create(audio, timing)
+                BurritoAudioAlignment.create(audio, timing, audioPath)
             }
             timing.copyTo(File(workDir, timingPath).apply { parentFile?.mkdirs() }, overwrite = true)
 

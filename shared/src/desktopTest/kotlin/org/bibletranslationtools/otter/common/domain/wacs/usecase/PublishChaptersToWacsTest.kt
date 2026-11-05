@@ -115,7 +115,7 @@ class PublishChaptersToWacsTest {
         val pointer = pointerAt(checkout, audioPath(1))
         assertEquals(LfsPointer(Sha256.hex(takes.getValue(1)), takes.getValue(1).length()), pointer)
         assertContentEquals(takes.getValue(1).readBytes(), wacs.lfsObject(FORK, pointer.oid), "the audio is in LFS")
-        assertContains(File(checkout, timingPath(1)).readText(), "\"en_ulb_mrk_c01.wav\"", message = "the timing names its audio")
+        assertContains(File(checkout, timingPath(1)).readText(), "\"media/mrk/en_ulb_mrk_c01.wav\"", message = "the timing names its audio by its path in the repo")
         assertEquals("""{"ingredients":{}}""", File(checkout, WacsRepoLayout.METADATA_PATH).readText(), "metadata.json is never edited")
     }
 
