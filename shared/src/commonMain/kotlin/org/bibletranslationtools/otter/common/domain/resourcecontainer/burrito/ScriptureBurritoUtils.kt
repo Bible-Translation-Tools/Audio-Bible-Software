@@ -87,7 +87,7 @@ class ScriptureBurritoUtils(
             Format.SCRIPTURE_BURRITO,
             SourceMetaSchema(
                 dateCreated = Date.from(Instant.now()),
-                version = MetaVersionSchema._1_0_0,
+                version = MetaVersionSchema._2_0_0,
                 defaultLocale = rc.manifest.dublinCore.language.identifier,
                 generator = SoftwareAndUserInfoSchema().apply {
                     softwareName = appName
@@ -221,8 +221,10 @@ class ScriptureBurritoUtils(
         val timingFile = File(tempDir, "${audioFile.nameWithoutExtension}.json")
         val oratureAudio = OratureAudioFile(audioFile)
 
-        BurritoAudioAlignment.create(audioFile, timingFile)
-        BurritoAlignmentMetadata(timingFile, audioFile)
+        // The timing file names the audio by its path in the burrito.
+        val docid = "${RcConstants.SOURCE_MEDIA_DIR}/${audioFile.name}"
+        BurritoAudioAlignment.create(audioFile, timingFile, docid)
+        BurritoAlignmentMetadata(timingFile, audioFile, docid = docid)
             .write(oratureAudio.getMarkers(), book, chapterNumber, oratureAudio.totalFrames)
 
         val ingredient = IngredientSchema().apply {
