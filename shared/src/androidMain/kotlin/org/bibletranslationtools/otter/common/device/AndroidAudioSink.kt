@@ -20,6 +20,8 @@ class AndroidAudioSink : AudioSink {
     fun getAudioTrack(): AudioTrack? = audioTrack
 
     override fun open(spec: AudioSpec) {
+        close()
+
         // 1. Map AudioSpec to Android constants
         val channelConfig = if (spec.channels == 1) {
             AudioFormat.CHANNEL_OUT_MONO
