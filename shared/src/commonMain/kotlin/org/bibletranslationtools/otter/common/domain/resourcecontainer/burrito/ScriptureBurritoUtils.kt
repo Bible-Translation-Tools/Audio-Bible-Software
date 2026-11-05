@@ -1,5 +1,16 @@
 package org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito
 
+import org.bibletranslationtools.kotlinscripturealignment.model.BurritoAudioAlignment
+import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import org.bibletranslationtools.otter.common.audio.AudioFileFormat
+import org.bibletranslationtools.otter.common.audio.AudioMetadataFileFormat
+import org.bibletranslationtools.otter.common.data.AppInfo
+import org.bibletranslationtools.otter.common.data.workbook.Workbook
+import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
+import org.bibletranslationtools.otter.common.domain.audio.metadata.BurritoAlignmentMetadata
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstants
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito.auth.AuthProvider
+import org.bibletranslationtools.scriptureburrito.BURRITO_JSON
 import org.bibletranslationtools.scriptureburrito.Checksum
 import org.bibletranslationtools.scriptureburrito.CopyrightSchema
 import org.bibletranslationtools.scriptureburrito.Flavor
@@ -8,8 +19,8 @@ import org.bibletranslationtools.scriptureburrito.IngredientSchema
 import org.bibletranslationtools.scriptureburrito.IngredientsSchema
 import org.bibletranslationtools.scriptureburrito.LanguageSchema
 import org.bibletranslationtools.scriptureburrito.Languages
-import org.bibletranslationtools.scriptureburrito.LocalizedNamesSchema
 import org.bibletranslationtools.scriptureburrito.LocalizedName
+import org.bibletranslationtools.scriptureburrito.LocalizedNamesSchema
 import org.bibletranslationtools.scriptureburrito.MetaVersionSchema
 import org.bibletranslationtools.scriptureburrito.MetadataSchema
 import org.bibletranslationtools.scriptureburrito.ScopeSchema
@@ -20,37 +31,20 @@ import org.bibletranslationtools.scriptureburrito.SourceMetadataSchema
 import org.bibletranslationtools.scriptureburrito.TypeSchema
 import org.bibletranslationtools.scriptureburrito.flavor.FlavorType
 import org.bibletranslationtools.scriptureburrito.flavor.scripture.audio.AudioFlavorSchema
-import org.bibletranslationtools.scriptureburrito.flavor.scripture.audio.AudioFormat
-import org.bibletranslationtools.scriptureburrito.flavor.scripture.audio.Compression
-import org.bibletranslationtools.scriptureburrito.flavor.scripture.audio.Formats
-import org.bibletranslationtools.scriptureburrito.flavor.scripture.audio.Performance
-import org.bibletranslationtools.otter.common.audio.AudioFileFormat
-import org.bibletranslationtools.otter.common.audio.AudioMetadataFileFormat
-import org.bibletranslationtools.otter.common.data.IAppInfo
-import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
-import org.bibletranslationtools.otter.common.domain.audio.metadata.BurritoAlignmentMetadata
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstants
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito.auth.AuthProvider
-import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import java.io.File
 import java.io.IOException
 import java.io.OutputStream
 import java.security.MessageDigest
 import java.security.NoSuchAlgorithmException
-import java.text.SimpleDateFormat
 import java.time.Instant
 import java.util.*
-import org.bibletranslationtools.kotlinscripturealignment.model.BurritoAudioAlignment
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
-import org.bibletranslationtools.scriptureburrito.BURRITO_JSON
 
 typealias ChapterNumber = Int
 
 class ScriptureBurritoUtils(
     private val idAuthorityProvider: AuthProvider,
-    private val appInfo: IAppInfo,
+    appInfo: AppInfo,
     directoryProvider: IDirectoryProvider
 ) {
 

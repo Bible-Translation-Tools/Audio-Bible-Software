@@ -1,5 +1,6 @@
 package org.bibletranslationtools.orature.ui.components
 
+import org.bibletranslationtools.orature.resources.exportMissingVerseMarkers
 import org.bibletranslationtools.orature.resources.exportMixedEditionsWarning
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -153,6 +154,14 @@ fun OratureExportProjectDialog(
                     // ---- Footer (estimated size + Export) ----
                     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp)) {
                         // A13's fallback: allowed, with a warning.
+                        if (state.unmarkedChapters.isNotEmpty()) {
+                            Text(
+                                stringResource(Res.string.exportMissingVerseMarkers, localizedList(state.unmarkedChapters.map { it.toString() })),
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                        }
                         if (state.mixedEditionChapters.isNotEmpty()) {
                             Text(
                                 stringResource(Res.string.exportMixedEditionsWarning, localizedList(state.mixedEditionChapters.map { it.toString() })),

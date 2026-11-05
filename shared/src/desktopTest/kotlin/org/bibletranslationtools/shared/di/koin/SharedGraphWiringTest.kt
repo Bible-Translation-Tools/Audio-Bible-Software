@@ -17,6 +17,7 @@ import org.bibletranslationtools.otter.common.domain.content.SaveAudioAsNewTake
 import org.bibletranslationtools.otter.common.domain.project.exporter.AudioProjectExporter
 import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.BackupProjectExporter
 import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.SourceProjectExporter
+import org.bibletranslationtools.otter.common.data.AppInfo
 import org.bibletranslationtools.otter.common.domain.project.GlSourceCatalog
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
 import org.bibletranslationtools.otter.common.domain.project.importer.NewSourceImporter
@@ -32,10 +33,8 @@ import org.koin.dsl.module
 import org.koin.test.KoinTest
 import kotlin.test.AfterTest
 import kotlin.test.Test
-import kotlin.test.assertFails
 import kotlin.test.assertNotNull
 import kotlin.test.assertSame
-import kotlin.test.assertTrue
 
 /**
  * The Koin graph in this module is wired by hand, so a dependency that is declared but never
@@ -54,6 +53,8 @@ class SharedGraphWiringTest : KoinTest {
     private val platformStubs = module {
         single<IDirectoryProvider> { mockk(relaxed = true) }
         single<DaoProvider> { mockk(relaxed = true) }
+        // Each app binds its own name and version.
+        single { AppInfo("test", "0") }
     }
 
     private fun start() = startKoin { modules(sharedCommonModules + platformStubs) }.koin
@@ -204,33 +205,7 @@ class SharedGraphWiringTest : KoinTest {
         assertNotNull(koin.get<AudioExporter>())
         assertNotNull(koin.get<AudioProjectExporter>())
         assertNotNull(koin.get<BackupProjectExporter>())
+        assertNotNull(koin.get<SourceProjectExporter>())
         assertNotNull(koin.get<IWorkbookDescriptorRepository>())
-    }
-
-    /**
-     * KNOWN GAP, pre-existing and not yet fixed — this test documents it rather than asserting
-     * the behaviour we want.
-     *
-     * [SourceProjectExporter] cannot be resolved. It needs `ScriptureBurritoUtils`, whose
-     * constructor takes `AuthProvider` and `IAppInfo`; both are interfaces with no
-     * implementation anywhere in the repo, and neither is bound in KoinModules.kt — the old
-     * JavaFX `WacsIdAuthority` and `AppInfo` were never ported. See the note above
-     * `sharedCommonModules` in KoinModules.kt.
-     *
-     * This is not dormant: both apps declare `private val sourceExporter: SourceProjectExporter
-     * by inject()` in their export ViewModels. `by inject()` resolves lazily, so it throws the
-     * first time a user chooses the source / Scripture Burrito export type.
-     *
-     * When those bindings are supplied, this test will start failing — at which point move
-     * `SourceProjectExporter` into the positive assertion above and delete this.
-     */
-    @Test
-    fun `source project exporter is unresolvable while AuthProvider and IAppInfo are unbound`() {
-        val error = assertFails { start().get<SourceProjectExporter>() }
-        val chain = generateSequence(error as Throwable?) { it.cause }.joinToString { it.message ?: "" }
-        assertTrue(
-            "AuthProvider" in chain,
-            "expected the missing AuthProvider binding to be the cause, but got: $chain"
-        )
     }
 }

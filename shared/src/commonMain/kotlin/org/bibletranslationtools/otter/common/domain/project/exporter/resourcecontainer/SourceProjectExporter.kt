@@ -22,43 +22,44 @@ import io.reactivex.Completable
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import org.bibletranslationtools.otter.common.api.io.zip.IFileWriter
-import org.slf4j.LoggerFactory
-import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
+import org.bibletranslationtools.otter.common.api.persistence.IFileIOFactory
+import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
 import org.bibletranslationtools.otter.common.audio.AudioMetadataFileFormat
 import org.bibletranslationtools.otter.common.data.OratureFileFormat
 import org.bibletranslationtools.otter.common.data.primitives.Contributor
 import org.bibletranslationtools.otter.common.data.primitives.License
+import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.domain.audio.AudioExporter
+import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
+import org.bibletranslationtools.otter.common.domain.audio.WAV_TO_MP3_COMPRESSED_RATE
+import org.bibletranslationtools.otter.common.domain.content.CompileCompletedChapters
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportOptions
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportResult
 import org.bibletranslationtools.otter.common.domain.project.exporter.ProjectExporterCallback
-import org.bibletranslationtools.otter.common.domain.audio.WAV_TO_MP3_COMPRESSED_RATE
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstants
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito.ScriptureBurritoUtils
-import org.bibletranslationtools.otter.common.api.persistence.IFileIOFactory
-import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.utils.mapNotNull
+import org.slf4j.LoggerFactory
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import org.wycliffeassociates.resourcecontainer.entity.Media
 import org.wycliffeassociates.resourcecontainer.entity.MediaManifest
 import org.wycliffeassociates.resourcecontainer.entity.MediaProject
 import java.io.File
 import java.nio.file.Files
-import java.util.*
-import java.util.regex.Pattern
+import java.util.Date
 import kotlin.io.path.deleteIfExists
 import kotlin.io.path.inputStream
 import kotlin.io.path.outputStream
-import kotlin.io.path.readText
 
 class SourceProjectExporter(
     fileIO: IFileIOFactory,
     tempFiles: ITempFileProvider,
     val burritoUtils: ScriptureBurritoUtils,
-    private val audioExporter: AudioExporter
+    private val audioExporter: AudioExporter,
+    private val compileCompletedChapters: CompileCompletedChapters
 ) : RCProjectExporter(fileIO, tempFiles) {
 
     private val logger = LoggerFactory.getLogger(this.javaClass)
@@ -89,12 +90,22 @@ class SourceProjectExporter(
         setContributorInfo(contributors, targetZip)
         callback?.onNotifyProgress(10.0, messageKey = "compilingChapters")
 
-        return compileCompletedChapters(workbook, projectSourceMetadata, projectAccessor)
-            .onErrorComplete()
-            .doOnComplete { callback?.onNotifyProgress(50.0, messageKey = "exportingTakes") }
-            .andThen(
-                export(targetZip, workbook, contributors, callback, options)
-            )
+        return compileCompletedChapters.execute(workbook, options?.chapters)
+            .doOnSuccess { callback?.onNotifyProgress(50.0, messageKey = "exportingTakes") }
+            // Built only after compiling: building the export opens the zip writer, which a failed
+            // compile would leave open.
+            .flatMap { compiled -> export(targetZip, workbook, contributors, callback, options, compiled) }
+            // A chapter that fails to compile fails the export; carrying on would export it without audio.
+            .onErrorReturnItem(ExportResult.FAILURE)
+    }
+
+    /**
+     * Whether [chapter]'s selected take has no verse markers, so this export would leave its audio
+     * out (see [exportTake]). A chapter with no take of its own is compiled with markers instead.
+     */
+    fun isMissingVerseMarkers(chapter: Chapter): Boolean {
+        val take = chapter.audio.getSelectedTake() ?: return false
+        return OratureAudioFile(take.file).getCues().isEmpty()
     }
 
     override fun estimateExportSize(workbook: Workbook, chapterFilter: List<Int>): Long {
@@ -116,7 +127,8 @@ class SourceProjectExporter(
         workbook: Workbook,
         contributors: List<Contributor>,
         callback: ProjectExporterCallback?,
-        options: ExportOptions?
+        options: ExportOptions?,
+        compiledTakes: Map<Int, Take>
     ): Single<ExportResult> {
         val fileWriter = fileIO.newFileWriter(exportFile)
 
@@ -124,6 +136,7 @@ class SourceProjectExporter(
             workbook,
             fileWriter,
             contributors,
+            compiledTakes,
             options?.chapters
         ).map { takes ->
             callback?.onNotifyProgress(80.0, "finishingUp")
@@ -153,6 +166,7 @@ class SourceProjectExporter(
         workbook: Workbook,
         fileWriter: IFileWriter,
         contributors: List<Contributor>,
+        compiledTakes: Map<Int, Take>,
         chapterFilter: List<Int>? = null
     ): Single<Map<Int, List<File>>> {
         val tempExportDir = tempFiles.tempDirectory
@@ -163,7 +177,9 @@ class SourceProjectExporter(
             .target
             .chapters
             .filter { chapterFilter?.contains(it.sort) ?: true }
-            .map { Pair(it.audio.selected.value?.value, it.sort) }
+            // A just-compiled take is used directly: the repository selects it only once its
+            // database insert has finished, which can still be in flight here.
+            .map { Pair(compiledTakes[it.sort] ?: it.audio.selected.value?.value, it.sort) }
             .filter { (take, _) -> take != null }
             .map { (take, sort) ->
                 val exportPath = tempExportDir.resolve(

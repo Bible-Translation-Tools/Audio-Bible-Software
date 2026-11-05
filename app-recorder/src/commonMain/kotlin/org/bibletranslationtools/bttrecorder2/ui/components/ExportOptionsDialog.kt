@@ -52,6 +52,7 @@ import org.bibletranslationtools.shared.resources.export_chapters_count
 import org.jetbrains.compose.resources.stringResource
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportChapter
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ExportOptionsState
+import org.bibletranslationtools.shared.resources.export_missing_verse_markers
 import org.bibletranslationtools.shared.resources.export_mixed_editions_warning
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportType
 
@@ -189,6 +190,15 @@ private fun ReadyDialog(
                         color = MaterialTheme.colorScheme.error
                     )
                 }
+                val unmarked = state.chapters.filter { it.blockedByMissingMarkers }
+                if (state.type != ExportType.BACKUP && unmarked.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = stringResource(Res.string.export_missing_verse_markers, localizedList(unmarked.map { it.sort.toString() })),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(16.dp))
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -218,7 +228,7 @@ private fun ReadyDialog(
                     items(state.chapters, key = { it.sort }) { chapter ->
                         ChapterRow(
                             chapter = chapter,
-                            selectable = isSelectable(chapter, state.type),
+                            selectable = chapter.isSelectable(state.type),
                             checked = chapter.sort in state.selectedChapterSorts,
                             onToggle = { onToggleChapter(chapter.sort) }
                         )
@@ -330,9 +340,4 @@ private fun ChapterRow(
             modifier = Modifier.width(64.dp).height(4.dp)
         )
     }
-}
-
-private fun isSelectable(chapter: ExportChapter, type: ExportType): Boolean = when (type) {
-    ExportType.BACKUP -> chapter.progress > 0f
-    else -> chapter.progress >= 1f
 }
