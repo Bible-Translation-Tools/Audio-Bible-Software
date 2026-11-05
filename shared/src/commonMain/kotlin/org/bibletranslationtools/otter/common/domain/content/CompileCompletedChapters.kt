@@ -41,8 +41,10 @@ class CompileCompletedChapters(
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
-    fun execute(workbook: Workbook): Completable {
+    /** Compiles only the chapters in [chapterFilter], or every chapter when it is null. */
+    fun execute(workbook: Workbook, chapterFilter: List<Int>?): Completable {
         return workbook.target.chapters
+            .filter { chapterFilter?.contains(it.sort) ?: true }
             .filter { !it.hasSelectedAudio() }
             .concatMapCompletable { chapter ->
                 val chunks = chapter.chunks.blockingGet()

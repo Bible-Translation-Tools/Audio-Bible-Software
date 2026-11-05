@@ -90,12 +90,12 @@ class SourceProjectExporter(
         setContributorInfo(contributors, targetZip)
         callback?.onNotifyProgress(10.0, messageKey = "compilingChapters")
 
-        return compileCompletedChapters.execute(workbook)
-            .onErrorComplete()
+        return compileCompletedChapters.execute(workbook, options?.chapters)
             .doOnComplete { callback?.onNotifyProgress(50.0, messageKey = "exportingTakes") }
-            .andThen(
-                export(targetZip, workbook, contributors, callback, options)
-            )
+            // Deferred: building the export opens the zip writer, which a failed compile would leave open.
+            .andThen(Single.defer { export(targetZip, workbook, contributors, callback, options) })
+            // A chapter that fails to compile fails the export; carrying on would export it without audio.
+            .onErrorReturnItem(ExportResult.FAILURE)
     }
 
     /**
