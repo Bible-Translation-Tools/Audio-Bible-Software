@@ -27,7 +27,7 @@ private val ALIGNMENT_JSON = Json {
 @Serializable(with = BurritoAudioAlignmentSerializer::class)
 data class BurritoAudioAlignment(
     var format: FormatType = FormatType.ALIGNMENT,
-    var version: String = "0.3",
+    var version: String = CURRENT_VERSION,
     var type: String,
     var documents: Documents? = null,
     var roles: List<String>? = null,
@@ -201,7 +201,20 @@ data class BurritoAudioAlignment(
 
     companion object {
 
-        fun create(audioFile: File, timingFile: File): BurritoAudioAlignment {
+        /** The SB-ALIGN version this library writes in new documents. */
+        const val CURRENT_VERSION = "0.4"
+
+        /**
+         * The scheme of a timing record's Scripture reference, `MRK 1:1`: the USFM Scripture
+         * Referencing Standard, as the Scripture Burrito audio flavor names it.
+         */
+        const val SCRIPTURE_REFERENCE_SCHEME = "usfm-scripture-reference"
+
+        /**
+         * Creates [timingFile] as an empty timing document for [audioFile]. [docid] identifies the
+         * audio in the document; in a burrito, it's the audio's path from the burrito's root.
+         */
+        fun create(audioFile: File, timingFile: File, docid: String = audioFile.name): BurritoAudioAlignment {
             if (!timingFile.exists()) {
                 timingFile.createNewFile()
             } else {
@@ -211,8 +224,8 @@ data class BurritoAudioAlignment(
 
             val groupDocuments = DocumentsList(
                 listOf(
-                    DocumentReference("vtt-timecode", audioFile.name),
-                    DocumentReference("u23003", null)
+                    DocumentReference("vtt-timecode", docid),
+                    DocumentReference(SCRIPTURE_REFERENCE_SCHEME, null)
                 )
             )
 
@@ -220,7 +233,7 @@ data class BurritoAudioAlignment(
 
             val alignment = BurritoAudioAlignment(
                 FormatType.ALIGNMENT,
-                "0.3",
+                CURRENT_VERSION,
                 "audio-reference",
                 null, // documents is null as it's now in groups
                 listOf("timecode", "text-reference"),
