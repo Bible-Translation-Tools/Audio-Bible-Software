@@ -18,7 +18,6 @@ import org.bibletranslationtools.otter.common.domain.project.exporter.AudioProje
 import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.BackupProjectExporter
 import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.SourceProjectExporter
 import org.bibletranslationtools.otter.common.data.AppInfo
-import org.bibletranslationtools.otter.common.data.IAppInfo
 import org.bibletranslationtools.otter.common.domain.project.GlSourceCatalog
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
 import org.bibletranslationtools.otter.common.domain.project.importer.NewSourceImporter
@@ -55,7 +54,7 @@ class SharedGraphWiringTest : KoinTest {
         single<IDirectoryProvider> { mockk(relaxed = true) }
         single<DaoProvider> { mockk(relaxed = true) }
         // Each app binds its own name and version.
-        single<IAppInfo> { AppInfo("test", "0") }
+        single { AppInfo("test", "0") }
     }
 
     private fun start() = startKoin { modules(sharedCommonModules + platformStubs) }.koin

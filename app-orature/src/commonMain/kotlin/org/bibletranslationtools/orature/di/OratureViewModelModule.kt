@@ -13,7 +13,6 @@ import org.bibletranslationtools.orature.ui.viewmodels.OratureHomeViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureProjectWizardViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureSettingsViewModel
 import org.bibletranslationtools.otter.common.data.AppInfo
-import org.bibletranslationtools.otter.common.data.IAppInfo
 import org.koin.core.parameter.parametersOf
 import org.koin.dsl.module
 
@@ -29,7 +28,7 @@ import org.koin.dsl.module
  */
 val oratureViewModelModule = module {
     // Names the app in exported Scripture Burrito metadata.
-    single<IAppInfo> { AppInfo("Orature", appVersion()) }
+    single { AppInfo("Orature", appVersion()) }
     single { OratureHomeViewModel() }
     // App-scoped bus so a successful import (global Add Files drawer in the shell) refreshes home.
     single { OratureImportEvents() }

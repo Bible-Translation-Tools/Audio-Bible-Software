@@ -2,7 +2,6 @@ package org.bibletranslationtools.di.koin
 
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.data.AppInfo
-import org.bibletranslationtools.otter.common.data.IAppInfo
 import org.bibletranslationtools.otter.common.persistence.DesktopDirectoryProvider
 import org.koin.dsl.module
 
@@ -21,5 +20,5 @@ val directoryProviderModule = module {
     }
     // Names the app in exported Scripture Burrito metadata. The packaged
     // jar's Implementation-Version when present, as Orature reads it.
-    single<IAppInfo> { AppInfo("BTT Recorder", object {}.javaClass.`package`?.implementationVersion.orEmpty()) }
+    single { AppInfo("BTT Recorder", object {}.javaClass.`package`?.implementationVersion.orEmpty()) }
 }
