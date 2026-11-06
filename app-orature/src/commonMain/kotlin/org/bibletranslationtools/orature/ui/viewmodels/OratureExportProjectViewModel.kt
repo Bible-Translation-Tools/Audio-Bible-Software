@@ -223,31 +223,17 @@ class OratureExportProjectViewModel(
         exportedFile = null
         _uiState.value = _uiState.value.copy(progress = 0f, error = null)
         launchLogged {
-            var produced: File? = null
-            val callback = object : ProjectExporterCallback {
-                override fun onNotifySuccess(project: Collection, file: File) { produced = file }
-                override fun onError(project: Collection) {}
-                override fun onNotifyProgress(percent: Double, messageKey: String?) {
-                    _uiState.value = _uiState.value.copy(progress = (percent / 100.0).toFloat().coerceIn(0f, 1f))
-                }
-            }
-            val tempDir = File(tempFiles.tempDirectory, "export-${UUID.randomUUID()}").apply { mkdirs() }
             val ok = withContext(Dispatchers.IO) {
-                runCatching {
-                    val result = exporterFor(type)
-                        .export(tempDir, wb, callback, chapters?.let { ExportOptions(it) })
-                        .await()
-                    val output = produced
-                    if (result != ExportResult.SUCCESS || output == null || !output.exists()) return@runCatching false
-                    val file = if (output.isDirectory) {
-                        File(tempDir, "${output.name}.zip").also { zip ->
-                            fileIO.newFileWriter(zip).use { it.copyDirectory(output, output.name) }
-                        }
-                    } else output
-                    destination.write(PlatformFile(file))
-                    true
-                }.onFailure { logFailure("exporting the project", it) }.getOrDefault(false)
-                    .also { tempDir.deleteRecursively() }
+                withTempDir { tempDir ->
+                    runCatching {
+                        val output = exportInto(tempDir, wb, type, chapters)
+                            ?: return@runCatching false
+                        destination.write(PlatformFile(asSingleFile(output)))
+                        true
+                    }
+                        .onFailure { logFailure("exporting the project", it) }
+                        .getOrDefault(false)
+                }
             }
             // Only desktop has a real path to reveal; on Android the destination is a content URI.
             if (ok && canOpenInFileManager()) exportedFile = File(destination.path)
@@ -257,6 +243,47 @@ class OratureExportProjectViewModel(
                 _uiState.value.copy(progress = null, error = "export_failed")
             }
         }
+    }
+
+    /**
+     * Runs the exporter into [dir], reporting progress;
+     * returns what it produced, or null on failure.
+     */
+    private suspend fun exportInto(
+        dir: File,
+        wb: Workbook,
+        type: ExportType,
+        chapters: List<Int>?
+    ): File? {
+        var produced: File? = null
+        val callback = object : ProjectExporterCallback {
+            override fun onNotifySuccess(project: Collection, file: File) { produced = file }
+            override fun onError(project: Collection) {}
+            override fun onNotifyProgress(percent: Double, messageKey: String?) {
+                _uiState.value = _uiState.value.copy(progress = (percent / 100.0).toFloat()
+                    .coerceIn(0f, 1f))
+            }
+        }
+        val result = exporterFor(type)
+            .export(dir, wb, callback, chapters
+            ?.let { ExportOptions(it) }).await()
+        return produced?.takeIf { result == ExportResult.SUCCESS && it.exists() }
+    }
+
+    /**
+     * The save dialog takes one file,
+     * so a folder result (Listen's mp3s) is zipped beside itself.
+     */
+    private fun asSingleFile(output: File): File {
+        if (!output.isDirectory) return output
+        return File(output.parentFile, "${output.name}.zip").also { zip ->
+            fileIO.newFileWriter(zip).use { it.copyDirectory(output, output.name) }
+        }
+    }
+
+    private inline fun <T> withTempDir(block: (File) -> T): T {
+        val dir = File(tempFiles.tempDirectory, "export-${UUID.randomUUID()}").apply { mkdirs() }
+        return try { block(dir) } finally { dir.deleteRecursively() }
     }
 
     fun acknowledgeError() {
