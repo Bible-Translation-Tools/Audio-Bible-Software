@@ -20,6 +20,8 @@ import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
+import org.bibletranslationtools.otter.common.domain.audio.EncodeAudioToFlac
+import org.bibletranslationtools.otter.common.audio.flac.FlacStreamDecoder
 import org.bibletranslationtools.otter.common.domain.wacs.WacsConfig
 import org.bibletranslationtools.otter.common.domain.wacs.auth.WacsCredential
 import org.bibletranslationtools.otter.common.domain.wacs.auth.WacsSession
@@ -36,7 +38,6 @@ import kotlin.io.path.createTempDirectory
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertContains
-import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
@@ -54,7 +55,7 @@ class PublishChaptersToWacsTest {
     private val session = WacsSession().apply { set(wacs.tokenFor("translator"), wacs.host, wacs.pipelineUrl) }
     private val publisher = PublishChaptersToWacs(
         wacs.apiFactory, wacs.gitClient, wacs.lfsClient, session,
-        WacsConfig(baseUrl = wacs.host, pipelineUrl = wacs.pipelineUrl), TestTempFiles(root),
+        WacsConfig(baseUrl = wacs.host, pipelineUrl = wacs.pipelineUrl), TestTempFiles(root), EncodeAudioToFlac(),
         retryDelaysMs = listOf(0, 0, 0),
     )
     private val takes = (1..2).associateWith { take(it, version = 1) }.toMutableMap()
@@ -77,9 +78,16 @@ class PublishChaptersToWacsTest {
 
     private fun prepareCalls() = wacs.requests.count { it.host == FakeWacs.PIPELINE_HOST }
 
+    /** [take] as publishing uploads it: encoding is deterministic, so this is the same file. */
+    private fun flacOf(take: File): File =
+        File(root, "expected/${take.nameWithoutExtension}.flac").apply { parentFile.mkdirs() }
+            .also { runBlocking { EncodeAudioToFlac()(take, it) } }
+
+    private fun oidOf(take: File) = Sha256.hex(flacOf(take))
+
     private fun pointerAt(checkout: File, path: String) = assertNotNull(LfsPointer.parse(File(checkout, path).readBytes()), path)
 
-    private fun audioPath(chapter: Int) = WacsRepoLayout.chapterFilePath("MRK", "en_ulb_mrk_c0$chapter.wav")
+    private fun audioPath(chapter: Int) = WacsRepoLayout.chapterFilePath("MRK", "en_ulb_mrk_c0$chapter.flac")
 
     private fun timingPath(chapter: Int) = WacsRepoLayout.chapterFilePath("MRK", "en_ulb_mrk_c0$chapter.json")
 
@@ -113,9 +121,13 @@ class PublishChaptersToWacsTest {
 
         val checkout = wacs.checkout(FORK, branch)
         val pointer = pointerAt(checkout, audioPath(1))
-        assertEquals(LfsPointer(Sha256.hex(takes.getValue(1)), takes.getValue(1).length()), pointer)
-        assertContentEquals(takes.getValue(1).readBytes(), wacs.lfsObject(FORK, pointer.oid), "the audio is in LFS")
-        assertContains(File(checkout, timingPath(1)).readText(), "\"media/mrk/en_ulb_mrk_c01.wav\"", message = "the timing names its audio by its path in the repo")
+        val flac = flacOf(takes.getValue(1))
+        assertEquals(LfsPointer(Sha256.hex(flac), flac.length()), pointer)
+        val uploaded = File(root, "uploaded.flac").apply { writeBytes(assertNotNull(wacs.lfsObject(FORK, pointer.oid), "the audio is in LFS")) }
+        assertTrue(FlacStreamDecoder.check(uploaded).lossless, "the audio in LFS is FLAC")
+        val timing = File(checkout, timingPath(1)).readText()
+        assertContains(timing, "\"media/mrk/en_ulb_mrk_c01.flac\"", message = "the timing names its audio by its path in the repo")
+        assertContains(timing, "MRK 1:3", message = "the timing carries the take's markers")
         assertEquals("""{"ingredients":{}}""", File(checkout, WacsRepoLayout.METADATA_PATH).readText(), "metadata.json is never edited")
     }
 
@@ -128,7 +140,7 @@ class PublishChaptersToWacsTest {
         assertEquals(
             listOf(
                 Progress.PreparingRepos, Progress.Cloning, Progress.PreparingChapter(1),
-                Progress.UploadingAudio(1, takes.getValue(1).length()), Progress.Pushing, Progress.OpeningPullRequest, Progress.Done,
+                Progress.UploadingAudio(1, flacOf(takes.getValue(1)).length()), Progress.Pushing, Progress.OpeningPullRequest, Progress.Done,
             ),
             stages,
         )
@@ -145,7 +157,7 @@ class PublishChaptersToWacsTest {
         assertEquals(1, wacs.pullRequests(OFFICIAL).size, "no second pull request")
         val branch = wacs.pullRequests(OFFICIAL).single().head!!.ref!!
         assertEquals(listOf("MRK 1\n\nAudio-Chapter: MRK 1", "Initial commit"), wacs.log(FORK, branch))
-        assertEquals(Sha256.hex(takes.getValue(1)), pointerAt(wacs.checkout(FORK, branch), audioPath(1)).oid)
+        assertEquals(oidOf(takes.getValue(1)), pointerAt(wacs.checkout(FORK, branch), audioPath(1)).oid)
     }
 
     @Test
@@ -161,7 +173,7 @@ class PublishChaptersToWacsTest {
         assertEquals(listOf("MRK 2", "MRK 1", "Initial commit"), wacs.log(FORK, branch).map { it.lines().first() })
         val checkout = wacs.checkout(FORK, branch)
         assertEquals(chapterOne, pointerAt(checkout, audioPath(1)))
-        assertEquals(Sha256.hex(takes.getValue(2)), pointerAt(checkout, audioPath(2)).oid)
+        assertEquals(oidOf(takes.getValue(2)), pointerAt(checkout, audioPath(2)).oid)
     }
 
     @Test
@@ -222,7 +234,7 @@ class PublishChaptersToWacsTest {
 
     @Test
     fun `nothing is pushed when the audio can't be uploaded`() {
-        wacs.fail("PUT", "/$FORK.git/info/lfs/objects/${Sha256.hex(takes.getValue(1))}", 500)
+        wacs.fail("PUT", "/$FORK.git/info/lfs/objects/${oidOf(takes.getValue(1))}", 500)
 
         assertEquals(WacsPublishException.Reason.NETWORK, failure().reason)
         assertEquals(listOf("master"), wacs.branches(FORK), "no pointer without its audio")

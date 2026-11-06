@@ -25,6 +25,7 @@ import kotlinx.serialization.json.Json
 import org.bibletranslationtools.kotlinscripturealignment.model.BurritoAudioAlignment
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
+import org.bibletranslationtools.otter.common.domain.audio.EncodeAudioToFlac
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.audio.metadata.BurritoAlignmentMetadata
 import org.bibletranslationtools.otter.common.domain.content.FileNamer
@@ -63,10 +64,11 @@ import java.util.UUID
  * 3. A chapter already in one of the user's open pull requests goes back onto that pull request's
  *    branch, replacing its old take; the rest go on a new `publish/<UTC timestamp>` branch.
  * 4. Each affected branch is rebuilt from the official default branch: one commit per chapter,
- *    holding only `media/<book>/<name>.<wav|flac>` (an LFS pointer) and `<name>.json` (its timing),
+ *    holding only `media/<book>/<name>.flac` (an LFS pointer) and `<name>.json` (its timing),
  *    where `<name>` is the chapter's [FileNamer.chapterFileName] (`en_ulb_mrk_c01`), with the
- *    message `<BOOK> <CH>` and the trailer `Audio-Chapter: <BOOK> <CH>`. The
- *    audio is uploaded through the LFS Batch API before anything that points at it is pushed.
+ *    message `<BOOK> <CH>` and the trailer `Audio-Chapter: <BOOK> <CH>`. The take is always
+ *    encoded to FLAC, and a chapter's earlier `.wav` is removed. The audio is uploaded through the
+ *    LFS Batch API before anything that points at it is pushed.
  * 5. Push with a lease, so a push from another device isn't overwritten.
  * 6. Open a pull request for a new branch; an existing one updates in place.
  *
@@ -83,6 +85,7 @@ class PublishChaptersToWacs(
     private val session: WacsSession,
     private val config: WacsConfig,
     private val tempFileProvider: ITempFileProvider,
+    private val encodeToFlac: EncodeAudioToFlac,
     /** Waits between `prepare` attempts; the pipeline's guide asks for 2 s, 8 s, then 30 s. */
     private val retryDelaysMs: List<Long> = listOf(2_000, 8_000, 30_000),
 ) {
@@ -286,8 +289,8 @@ class PublishChaptersToWacs(
     }
 
     /**
-     * Writes [take]'s LFS pointer and timing file into the working tree, uploads its audio to the
-     * fork's LFS store, and returns the two repo paths.
+     * Encodes [take] to FLAC, writes its LFS pointer and timing file into the working tree, uploads
+     * the FLAC to the fork's LFS store, and returns the two repo paths.
      */
     private suspend fun writeChapter(
         workDir: File,
@@ -299,22 +302,27 @@ class PublishChaptersToWacs(
         credential: WacsCredential,
         onProgress: (Progress) -> Unit,
     ): List<String> {
-        val extension = take.file.extension.lowercase()
-        if (extension !in WacsRepoLayout.AUDIO_EXTENSIONS) {
-            throw WacsPublishException(WacsPublishException.Reason.UNKNOWN, IllegalArgumentException("Can't publish a .$extension take"))
-        }
-        val audioName = take.fileNamer.chapterFileName(extension)
+        val audioName = take.fileNamer.chapterFileName(WacsRepoLayout.PUBLISHED_AUDIO_EXTENSION)
         val timingName = take.fileNamer.chapterFileName("json")
         val audioPath = WacsRepoLayout.chapterFilePath(book, audioName)
         val timingPath = WacsRepoLayout.chapterFilePath(book, timingName)
 
-        val (pointer, audio) = try {
+        val chapterDir = File(stagingDir, "$book-$chapter").apply { mkdirs() }
+        val audio = File(chapterDir, audioName)
+        try {
+            encodeToFlac(take.file, audio)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw WacsPublishException(WacsPublishException.Reason.UNKNOWN, e)
+        }
+
+        val pointer = try {
+            // The timing comes from the take, which holds the markers; the FLAC holds audio only.
             // The repo is the burrito, so the timing file's docid is the audio's path from the repo
-            // root (`media/mrk/en_ulb_mrk_c01.wav`).
-            val chapterDir = File(stagingDir, "$book-$chapter").apply { mkdirs() }
-            val audio = take.file.copyTo(File(chapterDir, audioName), overwrite = true)
+            // root (`media/mrk/en_ulb_mrk_c01.flac`).
             val timing = File(chapterDir, timingName)
-            val oratureAudio = OratureAudioFile(audio)
+            val oratureAudio = OratureAudioFile(take.file)
             BurritoAlignmentMetadata(timing, audio, docid = audioPath)
                 .write(oratureAudio.getMarkers(), book.lowercase(), chapter, oratureAudio.totalFrames)
             if (!timing.exists()) {
@@ -326,7 +334,7 @@ class PublishChaptersToWacs(
             // The pointer, never the audio, goes in git.
             val pointer = LfsPointer(Sha256.hex(audio), audio.length())
             File(workDir, audioPath).apply { parentFile?.mkdirs() }.writeText(pointer.serialize())
-            pointer to audio
+            pointer
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

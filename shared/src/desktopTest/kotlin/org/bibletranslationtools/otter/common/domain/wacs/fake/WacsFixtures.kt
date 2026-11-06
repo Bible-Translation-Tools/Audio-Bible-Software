@@ -35,15 +35,29 @@ class TestAppDirectories(private val root: File) : IAppDirectories {
 }
 
 /**
- * A chapter take as the recorder leaves one: a WAV at [file] with book, chapter and verse markers
- * ([verses] of them). No audio frames, which publishing doesn't need.
+ * A chapter take as the recorder leaves one: a 16-bit mono WAV at [file] with book, chapter and
+ * verse markers ([verses] of them), and a tenth of a second of audio per verse. The audio differs
+ * by [chapter] and [verses], so two takes with different values encode differently.
  */
 fun chapterWav(file: File, book: String, chapter: Int, verses: Int = 3): File {
     file.parentFile?.mkdirs()
-    val audio = OratureAudioFile(file, 1, 44100, 16)
+    file.delete()
+    val frames = SAMPLE_RATE / 10 * verses
+    OratureAudioFile(file, 1, SAMPLE_RATE, 16).writer(append = true).use { out ->
+        val pcm = ByteArray(frames * 2)
+        for (i in 0 until frames) {
+            val value = (i * (chapter + 1) * 37 + verses * 101) % 2000 - 1000
+            pcm[i * 2] = value.toByte()
+            pcm[i * 2 + 1] = (value shr 8).toByte()
+        }
+        out.write(pcm)
+    }
+    val audio = OratureAudioFile(file)
     audio.addMarker(BookMarker(book, 0))
     audio.addMarker(ChapterMarker(chapter, 0))
-    (1..verses).forEach { audio.addMarker(VerseMarker(it, it, 0)) }
+    (1..verses).forEach { audio.addMarker(VerseMarker(it, it, SAMPLE_RATE / 10 * (it - 1))) }
     audio.update()
     return file
 }
+
+private const val SAMPLE_RATE = 44100

@@ -157,6 +157,8 @@ kotlin {
                 implementation("org.digitalmediaserver:cuelib-core:$cuelibVer")
                 implementation("com.mpatric:mp3agic:$mp3TagVer")
                 implementation("be.tarsos:tarsosdsp:$tarsosDspVer")
+                // FLAC, for chapters published to WACS. Vendored source; see libs/flac/README.md.
+                implementation(project(":libs:flac"))
 
                 // Behind IAppPreferences / DataStoreAppPreferences.
                 implementation(libs.datastore.preferences)

@@ -12,6 +12,10 @@ step with the apps rather than through a publish cycle.
 | `:libs:scripture-alignment` | `org.bibletranslationtools.kotlinscripturealignment` | `org.bibletranslationtools:kotlin-scripture-alignment:1.0.0` |
 | `:libs:vtt` | `org.bibletranslationtools.vtt` | `org.bibletranslationtools:kotlin-vtt:1.0.0` |
 
+`:libs:flac` (`io.nayuki.flac`) is different: third-party source with no published artifact. It isn't
+substituted for anything, and `:shared` depends on it as `project(":libs:flac")`. See
+[flac/README.md](flac/README.md).
+
 Internal graph — `tstudio2rc` calls `resource-container`, `scripture-alignment` calls `vtt`, and
 the other two are leaves. **Order does not matter.** Sibling dependencies are declared by
 coordinate, not as `project(...)`, so substitution resolves them whichever way round you vendor

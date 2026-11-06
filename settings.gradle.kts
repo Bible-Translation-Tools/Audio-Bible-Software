@@ -75,3 +75,6 @@ include(":libs:scripture-burrito")
 include(":libs:tstudio2rc")
 include(":libs:scripture-alignment")
 include(":libs:vtt")
+
+// Vendored third-party source, depended on directly: it has no published artifact to substitute.
+include(":libs:flac")

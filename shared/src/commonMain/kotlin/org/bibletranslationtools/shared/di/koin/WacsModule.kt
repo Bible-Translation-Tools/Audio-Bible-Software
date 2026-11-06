@@ -3,6 +3,7 @@ package org.bibletranslationtools.shared.di.koin
 import java.util.concurrent.TimeUnit
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
+import org.bibletranslationtools.otter.common.domain.audio.EncodeAudioToFlac
 import org.bibletranslationtools.otter.common.domain.wacs.WacsConfig
 import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoApi
 import org.bibletranslationtools.otter.common.domain.wacs.api.WacsApiFactory
@@ -66,7 +67,9 @@ val wacsModule = module {
     // Publish: the pipeline's prepare, then a pull request from the user's fork. Takes
     // WacsApiFactory (not a fixed ForgejoApi) because it must target whatever WACS host and
     // pipeline WacsSession was signed in with, which may differ from WacsConfig's defaults.
-    single { PublishChaptersToWacs(get(), get(), get(), get(), get(), get()) }
+    // Chapters are published as FLAC.
+    single { EncodeAudioToFlac() }
+    single { PublishChaptersToWacs(get(), get(), get(), get(), get(), get(), get()) }
 
     // M3: repo-picker + clone infrastructure. ListWacsRepos/CloneWacsRepo are read-only REST + clone
     // (no fork, unlike M2's publish); PullChapter materializes one chapter's audio at a time via the

@@ -218,7 +218,11 @@ tasks.register("checkAndroidApiLevel") {
         // very source set lint cannot see) plus the vendored libraries.
         val roots = buildList {
             add(moduleClasses.get().asFile)
-            libsDir.listFiles().orEmpty().forEach { add(File(it, "build/classes/kotlin/main")) }
+            libsDir.listFiles().orEmpty().forEach {
+                add(File(it, "build/classes/kotlin/main"))
+                // libs/flac is Java.
+                add(File(it, "build/classes/java/main"))
+            }
         }.filter { it.isDirectory }
 
         if (roots.isEmpty()) {

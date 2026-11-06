@@ -67,7 +67,7 @@ class FileNamer(
     }
 
     /**
-     * The chapter's name with no take, content type or verse: `en_ulb_mrk_c01.wav`. A chapter is
+     * The chapter's name with no take, content type or verse: `en_ulb_mrk_c01.flac`. A chapter is
      * published to WACS under this name, so publishing a new take of it replaces the same file.
      */
     fun chapterFileName(extension: String): String =

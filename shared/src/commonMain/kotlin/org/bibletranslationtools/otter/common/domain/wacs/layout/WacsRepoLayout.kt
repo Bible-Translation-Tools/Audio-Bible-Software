@@ -48,8 +48,15 @@ object WacsRepoLayout {
     /** The Scripture-Burrito book id: the uppercase USFM book slug, e.g. `MRK`. */
     fun bookSlug(workbook: Workbook): String = workbook.target.slug.uppercase(Locale.US)
 
-    /** The audio formats a chapter may be in; a chapter has one of them. */
+    /**
+     * The audio formats a chapter may be in; a chapter has one of them. The app publishes only
+     * [PUBLISHED_AUDIO_EXTENSION], but a repo may still hold a `.wav` from before, which publishing
+     * the chapter again replaces.
+     */
     val AUDIO_EXTENSIONS = listOf("wav", "flac")
+
+    /** What the app publishes chapter audio as. */
+    const val PUBLISHED_AUDIO_EXTENSION = "flac"
 
     /** The trailer that names the chapter a commit carries; the pipeline requires exactly one. */
     const val CHAPTER_TRAILER = "Audio-Chapter"
@@ -61,7 +68,7 @@ object WacsRepoLayout {
     fun bookDirectory(bookSlug: String): String = "$MEDIA_DIRECTORY/${bookSlug.lowercase(Locale.US)}"
 
     /**
-     * Where a chapter file named [fileName] goes: `media/mrk/en_ulb_mrk_c01.wav`, or its timing file
+     * Where a chapter file named [fileName] goes: `media/mrk/en_ulb_mrk_c01.flac`, or its timing file
      * `media/mrk/en_ulb_mrk_c01.json`. The name comes from
      * [FileNamer.chapterFileName][org.bibletranslationtools.otter.common.domain.content.FileNamer.chapterFileName].
      * Publishing writes an LFS *pointer* at the audio path, never the audio bytes.
