@@ -123,17 +123,17 @@ class JGitWacsGitClientTest {
     }
 
     @Test
-    fun `files are listed and restored as another revision has them`() {
+    fun `files are listed as a revision has them`() {
         val repo = official()
         val dir = cloneOf(repo)
         val original = runBlocking { git.resolve(dir, "HEAD") }!!
-        commit(dir, AUDIO_PATH, "a different pointer", "Replace")
+        commit(dir, "ingredients/MRK/02.wav", "another pointer", "Add")
 
         assertEquals(listOf(AUDIO_PATH), runBlocking { git.listFiles(dir, original, "ingredients/MRK") })
-        runBlocking { git.restoreFiles(dir, original, listOf(AUDIO_PATH)) }
-
-        assertTrue(LfsPointer.isPointer(File(dir, AUDIO_PATH).readBytes()), "the original pointer is back")
-        assertFalse(runBlocking { git.commitStaged(dir, "Restore", "translator", "translator@example.org") } == null)
+        assertEquals(
+            listOf(AUDIO_PATH, "ingredients/MRK/02.wav"),
+            runBlocking { git.listFiles(dir, "HEAD", "ingredients/MRK") }.sorted(),
+        )
     }
 
     @Test

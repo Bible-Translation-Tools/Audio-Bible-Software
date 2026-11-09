@@ -24,8 +24,6 @@ import org.bibletranslationtools.otter.common.domain.wacs.api.CreatePullRequestR
 import org.bibletranslationtools.otter.common.domain.wacs.api.CreateRepoRequest
 import org.bibletranslationtools.otter.common.domain.wacs.api.CreateTokenRequest
 import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoAccessToken
-import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoCommit
-import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoCommitDetail
 import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoOwner
 import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoPrBranchInfo
 import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoPrRepo
@@ -42,7 +40,11 @@ import org.bibletranslationtools.otter.common.domain.wacs.lfs.LfsBatchClient
 import org.bibletranslationtools.otter.common.domain.wacs.lfs.LfsPointer
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.diff.DiffEntry
+import org.eclipse.jgit.lib.CommitBuilder
 import org.eclipse.jgit.lib.Constants
+import org.eclipse.jgit.lib.PersonIdent
+import org.eclipse.jgit.lib.RefUpdate
+import org.eclipse.jgit.merge.MergeStrategy
 import org.eclipse.jgit.revwalk.RevCommit
 import org.eclipse.jgit.revwalk.RevWalk
 import org.eclipse.jgit.transport.RefSpec
@@ -270,8 +272,9 @@ class FakeWacs(private val root: File) {
         }
 
     /**
-     * Merges pull request [number] on `owner/name` as a reviewer would: the head branch's commits
-     * land on the target's `master`, and the pull request is closed.
+     * Merges pull request [number] on `owner/name` as a reviewer would: a fast-forward when `master`
+     * hasn't moved since the branch was cut, otherwise a merge commit, so pull requests merge in any
+     * order. The pull request is closed; the head branch stays on the fork, as WACS leaves it.
      */
     @Synchronized
     fun mergePullRequest(fullName: String, number: Long) {
@@ -279,8 +282,37 @@ class FakeWacs(private val root: File) {
         val target = requireNotNull(repos[fullName])
         val head = requireNotNull(repos[hosted.headRepo])
         Git.open(target.remote).use { git ->
+            val repo = git.repository
+            val pullRef = "refs/pull/$number/head"
             git.fetch().setRemote(head.remote.toURI().toString())
-                .setRefSpecs(RefSpec("+refs/heads/${hosted.pull.head!!.ref}:refs/heads/$BRANCH")).call()
+                .setRefSpecs(RefSpec("+refs/heads/${hosted.pull.head!!.ref}:$pullRef")).call()
+            RevWalk(repo).use { walk ->
+                val ours = walk.parseCommit(repo.resolve("refs/heads/$BRANCH"))
+                val theirs = walk.parseCommit(repo.resolve(pullRef))
+                val merged = if (walk.isMergedInto(ours, theirs)) {
+                    theirs.id
+                } else {
+                    val merger = MergeStrategy.RECURSIVE.newMerger(repo, true)
+                    check(merger.merge(ours, theirs)) { "pull request #$number conflicts with $BRANCH" }
+                    repo.newObjectInserter().use { inserter ->
+                        val reviewer = PersonIdent("reviewer", "reviewer@example.org")
+                        val commit = CommitBuilder().apply {
+                            setTreeId(merger.resultTreeId)
+                            setParentIds(ours, theirs)
+                            author = reviewer
+                            committer = reviewer
+                            message = "Merge pull request #$number"
+                        }
+                        inserter.insert(commit).also { inserter.flush() }
+                    }
+                }
+                val update = repo.updateRef("refs/heads/$BRANCH").apply {
+                    setExpectedOldObjectId(ours)
+                    setNewObjectId(merged)
+                }
+                val result = update.update()
+                check(result == RefUpdate.Result.FAST_FORWARD || result == RefUpdate.Result.FORCED) { "merging #$number: $result" }
+            }
         }
         target.lfs.putAll(head.lfs)
         hosted.pull = hosted.pull.copy(state = "closed")
@@ -392,11 +424,6 @@ class FakeWacs(private val root: File) {
                         request.respondPage(list, ForgejoPullRequest.serializer())
                     }
                     path.size == 4 && path[3] == "pulls" && method == "POST" -> openPull(request, hosted)
-                    path.size == 6 && path[3] == "pulls" && path[5] == "commits" && method == "GET" -> {
-                        val pull = pulls.singleOrNull { it.target == fullName && it.pull.number == path[4].toLong() }
-                            ?: return request.respond(404)
-                        request.respondPage(pullCommits(pull), ForgejoCommit.serializer())
-                    }
                     else -> request.respond(404)
                 }
             }
@@ -460,29 +487,13 @@ class FakeWacs(private val root: File) {
             number = number,
             htmlUrl = "$host${target.info.fullName}/pulls/$number",
             state = "open",
+            title = body.title,
+            body = body.body,
             head = ForgejoPrBranchInfo(headRef, head.info.id, ForgejoPrRepo(head.info.fullName)),
             base = ForgejoPrBranchInfo(body.base, target.info.id, ForgejoPrRepo(target.info.fullName)),
         )
         pulls += HostedPull(target.info.fullName, pull, head.info.fullName)
         return request.respond(201, json.encodeToString(ForgejoPullRequest.serializer(), pull))
-    }
-
-    /** The commits on the pull request's head branch that its base doesn't have, oldest first. */
-    private fun pullCommits(pull: HostedPull): List<ForgejoCommit> {
-        val baseHistory = Git.open(requireNotNull(repos[pull.target]).remote).use { git ->
-            val tip = git.repository.resolve("refs/heads/${pull.pull.base!!.ref}") ?: return@use emptySet()
-            RevWalk(git.repository).use { walk ->
-                walk.markStart(walk.parseCommit(tip))
-                walk.map { it.name }.toSet()
-            }
-        }
-        return Git.open(requireNotNull(repos[pull.headRepo]).remote).use { git ->
-            val tip = git.repository.resolve("refs/heads/${pull.pull.head!!.ref}") ?: return@use emptyList()
-            RevWalk(git.repository).use { walk ->
-                walk.markStart(walk.parseCommit(tip))
-                walk.filter { it.name !in baseHistory }.map { ForgejoCommit(it.name, ForgejoCommitDetail(it.fullMessage)) }.reversed()
-            }
-        }
     }
 
     // ── The publish pipeline ───────────────────────────────────────────────────────────────

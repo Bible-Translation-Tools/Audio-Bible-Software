@@ -58,7 +58,7 @@ class PublishChaptersToWacsTest {
         WacsConfig(baseUrl = wacs.host, pipelineUrl = wacs.pipelineUrl), TestTempFiles(root), EncodeAudioToFlac(),
         retryDelaysMs = listOf(0, 0, 0),
     )
-    private val takes = (1..2).associateWith { take(it, version = 1) }.toMutableMap()
+    private val takes = (1..3).associateWith { take(it, version = 1) }.toMutableMap()
 
     @AfterTest
     fun cleanUp() {
@@ -91,6 +91,11 @@ class PublishChaptersToWacsTest {
 
     private fun timingPath(chapter: Int) = WacsRepoLayout.chapterFilePath("MRK", "en_ulb_mrk_c0$chapter.json")
 
+    private fun branch(chapter: Int) = "publish/mrk-c0$chapter"
+
+    /** The open or closed pull request from [chapter]'s branch, the latest if there are several. */
+    private fun pullFor(chapter: Int) = wacs.pullRequests(OFFICIAL).last { it.head?.ref == branch(chapter) }
+
     @Test
     fun `publishing sets up the official repo and the user's fork, and opens a pull request`() {
         val result = publish(1)
@@ -100,26 +105,33 @@ class PublishChaptersToWacsTest {
         assertEquals(OFFICIAL, wacs.parentOf(FORK))
         val pull = wacs.pullRequests(OFFICIAL).single()
         assertEquals(FORK, pull.head?.repo?.fullName)
-        assertTrue(pull.head?.ref.orEmpty().startsWith("publish/"), "a publish branch: ${pull.head?.ref}")
+        assertEquals("publish/mrk-c01", pull.head?.ref)
         assertEquals("master", pull.base?.ref)
+        assertEquals("MRK 1", pull.title)
+        assertEquals("- MRK 1", pull.body)
         assertEquals(listOf(PublishChaptersToWacs.PullRequest(pull.number, pull.htmlUrl, listOf("MRK 1"), opened = true)), result.pullRequests)
         assertEquals(listOf("Initial commit"), wacs.log(OFFICIAL), "the official repo changes only by merging")
     }
 
     @Test
-    fun `each chapter is one commit holding only its audio pointer and timing file`() {
-        publish(1, 2)
-        val branch = wacs.pullRequests(OFFICIAL).single().head!!.ref!!
+    fun `each chapter is its own branch, commit and pull request`() {
+        val result = publish(3, 1, 2)
 
-        val commits = wacs.commits(FORK, branch)
-        assertEquals(
-            listOf("MRK 2\n\nAudio-Chapter: MRK 2", "MRK 1\n\nAudio-Chapter: MRK 1", "Initial commit"),
-            commits.map { it.message },
-        )
-        assertEquals(setOf(audioPath(2), timingPath(2)), commits[0].changedPaths)
-        assertEquals(setOf(audioPath(1), timingPath(1)), commits[1].changedPaths)
+        assertEquals(listOf("MRK 1", "MRK 2", "MRK 3"), result.pullRequests.map { it.chapters.single() }, "in chapter order")
+        assertEquals(listOf("MRK 1", "MRK 2", "MRK 3"), wacs.pullRequests(OFFICIAL).map { it.title })
+        assertEquals(setOf("master", branch(1), branch(2), branch(3)), wacs.branches(FORK).toSet())
+        for (chapter in 1..3) {
+            val commits = wacs.commits(FORK, branch(chapter))
+            assertEquals(listOf("MRK $chapter\n\nAudio-Chapter: MRK $chapter", "Initial commit"), commits.map { it.message })
+            assertEquals(setOf(audioPath(chapter), timingPath(chapter)), commits.first().changedPaths, "only its own files")
+        }
+    }
 
-        val checkout = wacs.checkout(FORK, branch)
+    @Test
+    fun `a chapter's commit holds its FLAC's pointer and its timing file`() {
+        publish(1)
+
+        val checkout = wacs.checkout(FORK, branch(1))
         val pointer = pointerAt(checkout, audioPath(1))
         val flac = flacOf(takes.getValue(1))
         assertEquals(LfsPointer(Sha256.hex(flac), flac.length()), pointer)
@@ -132,69 +144,71 @@ class PublishChaptersToWacsTest {
     }
 
     @Test
-    fun `progress is reported stage by stage`() {
+    fun `progress is reported stage by stage, chapter by chapter`() {
         val stages = mutableListOf<Progress>()
 
-        publish(1) { stages += it }
+        publish(1, 2) { stages += it }
 
-        assertEquals(
+        val chapterStages = { chapter: Int ->
             listOf(
-                Progress.PreparingRepos, Progress.Cloning, Progress.PreparingChapter(1),
-                Progress.UploadingAudio(1, flacOf(takes.getValue(1)).length()), Progress.Pushing, Progress.OpeningPullRequest, Progress.Done,
-            ),
-            stages,
-        )
+                Progress.PreparingChapter(chapter), Progress.UploadingAudio(chapter, flacOf(takes.getValue(chapter)).length()),
+                Progress.Pushing(chapter), Progress.OpeningPullRequest(chapter),
+            )
+        }
+        assertEquals(listOf(Progress.PreparingRepos, Progress.Cloning) + chapterStages(1) + chapterStages(2) + Progress.Done, stages)
     }
 
     @Test
-    fun `a re-recorded chapter replaces its take in the open pull request`() {
-        val first = publish(1).pullRequests.single()
+    fun `a new take of a chapter with an open pull request updates it and opens none`() {
+        val first = publish(1, 2).pullRequests
+        val chapterTwo = wacs.commits(FORK, branch(2)).first().sha
         takes[1] = take(1, version = 2)
 
         val second = publish(1).pullRequests.single()
 
-        assertEquals(first.copy(opened = false), second)
-        assertEquals(1, wacs.pullRequests(OFFICIAL).size, "no second pull request")
-        val branch = wacs.pullRequests(OFFICIAL).single().head!!.ref!!
-        assertEquals(listOf("MRK 1\n\nAudio-Chapter: MRK 1", "Initial commit"), wacs.log(FORK, branch))
-        assertEquals(oidOf(takes.getValue(1)), pointerAt(wacs.checkout(FORK, branch), audioPath(1)).oid)
+        assertEquals(first[0].copy(opened = false), second)
+        assertEquals(2, wacs.pullRequests(OFFICIAL).size, "no new pull request")
+        assertEquals(listOf("MRK 1\n\nAudio-Chapter: MRK 1", "Initial commit"), wacs.log(FORK, branch(1)), "rebuilt, not stacked")
+        assertEquals(oidOf(takes.getValue(1)), pointerAt(wacs.checkout(FORK, branch(1)), audioPath(1)).oid)
+        assertEquals(chapterTwo, wacs.commits(FORK, branch(2)).first().sha, "the other chapter's pull request is left alone")
     }
 
     @Test
-    fun `the pull request's other chapters are carried over as they were`() {
-        publish(1, 2)
-        val branch = wacs.pullRequests(OFFICIAL).single().head!!.ref!!
-        val chapterOne = pointerAt(wacs.checkout(FORK, branch), audioPath(1))
-        takes[2] = take(2, version = 2)
-
-        val result = publish(2)
-
-        assertEquals(listOf("MRK 1", "MRK 2"), result.pullRequests.single().chapters)
-        assertEquals(listOf("MRK 2", "MRK 1", "Initial commit"), wacs.log(FORK, branch).map { it.lines().first() })
-        val checkout = wacs.checkout(FORK, branch)
-        assertEquals(chapterOne, pointerAt(checkout, audioPath(1)))
-        assertEquals(oidOf(takes.getValue(2)), pointerAt(checkout, audioPath(2)).oid)
-    }
-
-    @Test
-    fun `a chapter not in an open pull request gets one of its own`() {
+    fun `a chapter whose branch outlived its merged pull request gets a new one`() {
         publish(1)
+        wacs.mergePullRequest(OFFICIAL, 1)
+        takes[1] = take(1, version = 2)
 
-        val result = publish(2)
+        // The fork's publish/mrk-c01 is still at the merged take, so this push needs it as its lease.
+        val result = publish(1).pullRequests.single()
 
-        assertEquals(listOf("MRK 2"), result.pullRequests.single().chapters)
-        assertEquals(listOf(1L, 2L), wacs.pullRequests(OFFICIAL).map { it.number })
+        assertEquals(PublishChaptersToWacs.PullRequest(2, pullFor(1).htmlUrl, listOf("MRK 1"), opened = true), result)
+        assertEquals(listOf("closed", "open"), wacs.pullRequests(OFFICIAL).map { it.state })
+        assertEquals(oidOf(takes.getValue(1)), pointerAt(wacs.checkout(FORK, branch(1)), audioPath(1)).oid)
     }
 
     @Test
-    fun `chapters already on the official repo aren't submitted again`() {
+    fun `chapter pull requests merge in any order`() {
+        publish(1, 2, 3)
+
+        wacs.mergePullRequest(OFFICIAL, 1)
+        wacs.mergePullRequest(OFFICIAL, 3)
+
+        val official = wacs.checkout(OFFICIAL, "master")
+        assertEquals(oidOf(takes.getValue(1)), pointerAt(official, audioPath(1)).oid)
+        assertEquals(oidOf(takes.getValue(3)), pointerAt(official, audioPath(3)).oid)
+        assertTrue(!File(official, audioPath(2)).exists(), "chapter 2 isn't merged yet")
+    }
+
+    @Test
+    fun `a chapter already on the official repo as is is skipped`() {
         publish(1)
         wacs.mergePullRequest(OFFICIAL, 1)
 
-        val result = publish(1)
+        val result = publish(1, 2)
 
-        assertEquals(emptyList(), result.pullRequests)
-        assertEquals(listOf("closed"), wacs.pullRequests(OFFICIAL).map { it.state })
+        assertEquals(listOf("MRK 2"), result.pullRequests.map { it.chapters.single() })
+        assertEquals(listOf("closed", "open"), wacs.pullRequests(OFFICIAL).map { it.state })
     }
 
     @Test
@@ -261,7 +275,7 @@ class PublishChaptersToWacsTest {
         assertEquals(WacsPublishException.Reason.PIPELINE_UNAVAILABLE, failure().reason)
     }
 
-    /** English ULB Mark, with chapters 1 and 2; a chapter in [selected] has that file as its selected take. */
+    /** English ULB Mark, with chapters 1 to 3; a chapter in [selected] has that file as its selected take. */
     private fun workbook(selected: Map<Int, File>): Workbook {
         val english = Language(slug = "en", name = "English", anglicizedName = "English", direction = "ltr", isGateway = true, region = "")
         val ulb = ResourceMetadata(
@@ -272,7 +286,7 @@ class PublishChaptersToWacsTest {
         )
         val book = Book(
             collectionId = 1, sort = 1, slug = "mrk", title = "Mark", label = "Mark",
-            chapters = Observable.fromIterable((1..2).map { chapter(it, selected[it]) }),
+            chapters = Observable.fromIterable((1..3).map { chapter(it, selected[it]) }),
             resourceMetadata = ulb, linkedResources = emptyList(), modifiedTs = null, subtreeResources = emptyList(),
         )
         return Workbook(

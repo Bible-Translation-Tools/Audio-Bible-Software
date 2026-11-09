@@ -94,9 +94,16 @@ object WacsRepoLayout {
         return "$id\n\n$CHAPTER_TRAILER: $id"
     }
 
-    /** The chapters a commit [message] says it carries, by its [CHAPTER_TRAILER] lines. */
-    fun chaptersInCommitMessage(message: String): List<String> =
-        Regex("^$CHAPTER_TRAILER:\\s*(.+?)\\s*$", RegexOption.MULTILINE).findAll(message).map { it.groupValues[1] }.toList()
+    /**
+     * The branch a chapter is published on, `publish/mrk-c01`: one per chapter, so each chapter is
+     * its own pull request. The chapter is padded as in its file names, two digits or three for
+     * Psalms (the only book with more than 99 chapters).
+     */
+    fun chapterBranch(bookSlug: String, chapterNumber: Int): String {
+        val book = bookSlug.lowercase(Locale.US)
+        val digits = if (book == "psa") 3 else 2
+        return "publish/$book-c${chapterNumber.toString().padStart(digits, '0')}"
+    }
 
     /**
      * The reverse of [repoName]/[repoNameOrNull]: given [repoName] plus the target-language slug

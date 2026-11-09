@@ -159,15 +159,6 @@ class JGitWacsGitClient : IWacsGitClient {
             }
         }
 
-    override suspend fun restoreFiles(dir: File, revision: String, paths: List<String>) = withContext(Dispatchers.IO) {
-        requireSupported()
-        if (paths.isEmpty()) return@withContext
-        open(dir).use { git ->
-            git.checkout().setStartPoint(revision).addPaths(paths).call()
-            Unit
-        }
-    }
-
     override suspend fun stage(dir: File, add: List<String>, remove: List<String>) = withContext(Dispatchers.IO) {
         requireSupported()
         open(dir).use { git ->

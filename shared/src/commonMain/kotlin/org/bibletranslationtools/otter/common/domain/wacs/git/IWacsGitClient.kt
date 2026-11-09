@@ -75,9 +75,6 @@ interface IWacsGitClient {
     /** The repo-relative paths of the files under [directory] at [revision]. */
     suspend fun listFiles(dir: File, revision: String, directory: String): List<String>
 
-    /** `git checkout <revision> -- <paths>`: the files exactly as [revision] has them, staged. */
-    suspend fun restoreFiles(dir: File, revision: String, paths: List<String>)
-
     /** Stages [remove] as deleted and [add] (written by the caller) as added or changed. */
     suspend fun stage(dir: File, add: List<String>, remove: List<String> = emptyList())
 

@@ -33,6 +33,7 @@ import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBu
 import org.bibletranslationtools.otter.common.domain.wacs.WacsConfig
 import org.bibletranslationtools.otter.common.domain.wacs.api.CreatePullRequestRequest
 import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoApi
+import org.bibletranslationtools.otter.common.domain.wacs.api.ForgejoPullRequest
 import org.bibletranslationtools.otter.common.domain.wacs.api.PipelineError
 import org.bibletranslationtools.otter.common.domain.wacs.api.PrepareRequest
 import org.bibletranslationtools.otter.common.domain.wacs.api.PrepareResponse
@@ -48,31 +49,37 @@ import org.slf4j.LoggerFactory
 import retrofit2.HttpException
 import java.io.File
 import java.io.IOException
-import java.time.ZoneOffset
-import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 /**
- * Publishes recorded chapters as a pull request to the official WACS repo for the workbook's
- * language and translation, following the publish pipeline's contract (its `PUBLISH_API.md` and
- * `CLIENT_INTEGRATION_GUIDE.md` §3 and §5; `scripts/publish-chapters.sh` there is the reference):
+ * Publishes recorded chapters to the official WACS repo for the workbook's language and translation,
+ * each chapter as its own pull request, following the publish pipeline's contract (its
+ * `PUBLISH_API.md` and `CLIENT_INTEGRATION_GUIDE.md` §3 and §5; `scripts/publish-chapters.sh`
+ * there is the reference):
  *
  * 1. `prepare`: the pipeline makes sure the official repo (`AudioTranslation/<language>_<translation>`)
  *    and the user's fork exist, and returns both. Retried on 5xx and network failures.
- * 2. Clone the fork (LFS pointers only) and fetch the official repo as `upstream`.
- * 3. A chapter already in one of the user's open pull requests goes back onto that pull request's
- *    branch, replacing its old take; the rest go on a new `publish/<UTC timestamp>` branch.
- * 4. Each affected branch is rebuilt from the official default branch: one commit per chapter,
- *    holding only `media/<book>/<name>.flac` (an LFS pointer) and `<name>.json` (its timing),
- *    where `<name>` is the chapter's [FileNamer.chapterFileName] (`en_ulb_mrk_c01`), with the
- *    message `<BOOK> <CH>` and the trailer `Audio-Chapter: <BOOK> <CH>`. The take is always
- *    encoded to FLAC, and a chapter's earlier `.wav` is removed. The audio is uploaded through the
- *    LFS Batch API before anything that points at it is pushed.
- * 5. Push with a lease, so a push from another device isn't overwritten.
- * 6. Open a pull request for a new branch; an existing one updates in place.
+ * 2. Clone the fork (LFS pointers only) and fetch the official repo as `upstream`, once.
+ * 3. Then each chapter on its own, in chapter order, on its own branch,
+ *    [WacsRepoLayout.chapterBranch] (`publish/mrk-c01`):
+ *    - Rebuild the branch from the official default branch with one commit, holding only
+ *      `media/<book>/<name>.flac` (an LFS pointer) and `<name>.json` (its timing), where `<name>` is
+ *      the chapter's [FileNamer.chapterFileName] (`en_ulb_mrk_c01`), with the message
+ *      `<BOOK> <CH>` and the trailer `Audio-Chapter: <BOOK> <CH>`. The take is always encoded to
+ *      FLAC, and a chapter's earlier `.wav` is removed. The audio is uploaded through the LFS Batch
+ *      API before anything that points at it is pushed.
+ *    - If that leaves the branch the same as the official repo, the chapter is already there as is:
+ *      nothing is pushed.
+ *    - Push with a lease on the fork's current tip of the branch, if it has one, so a push from
+ *      another device isn't overwritten. A branch can outlive its merged pull request.
+ *    - An open pull request from that branch is updated by the push; otherwise one is opened,
+ *      titled `<BOOK> <CH>`.
  *
- * The pull request is then checked by the pipeline and merged by a person, so this is "submitted",
+ * So a new take of a chapter replaces the old one in the same pull request, and a chapter is never
+ * in two. The pipeline's check fails a pull request that carries more than one chapter. The pull
+ * requests don't depend on each other and merge in any order.
+ *
+ * Each pull request is then checked by the pipeline and merged by a person, so this is "submitted",
  * not "published". Not yet done: the `-detached` fallback for when `prepare` can't be reached (this
  * throws [WacsPublishException.Reason.PIPELINE_UNAVAILABLE] instead), and reading the check's result.
  *
@@ -96,14 +103,17 @@ class PublishChaptersToWacs(
         val official: String,
         /** The user's fork the chapters were pushed to, `owner/name`. */
         val fork: String,
-        /** The pull requests opened or updated; empty if every chapter was already on the official repo. */
+        /**
+         * One pull request per chapter that was submitted, opened or updated, in chapter order;
+         * empty if every chapter was already on the official repo.
+         */
         val pullRequests: List<PullRequest>,
     )
 
     data class PullRequest(
         val number: Long,
         val htmlUrl: String,
-        /** Every chapter it carries, as `MRK 1`, including ones from earlier publishes. */
+        /** The chapter it carries, as `MRK 1`; always exactly one. */
         val chapters: List<String>,
         /** False when an open pull request was updated rather than opened. */
         val opened: Boolean,
@@ -115,16 +125,13 @@ class PublishChaptersToWacs(
         data object Cloning : Progress
         data class PreparingChapter(val chapter: Int) : Progress
         data class UploadingAudio(val chapter: Int, val totalBytes: Long) : Progress
-        data object Pushing : Progress
-        data object OpeningPullRequest : Progress
+        data class Pushing(val chapter: Int) : Progress
+        data class OpeningPullRequest(val chapter: Int) : Progress
         data object Done : Progress
     }
 
     /** A chapter's selected take, and the namer that names the chapter's published files. */
     private data class ChapterTake(val file: File, val fileNamer: FileNamer)
-
-    /** An open pull request from the user's fork, with the chapters its commits carry, in order. */
-    private data class OpenPullRequest(val number: Long, val htmlUrl: String, val branch: String, val chapters: List<String>)
 
     private val json = Json { ignoreUnknownKeys = true }
     private val logger = LoggerFactory.getLogger(PublishChaptersToWacs::class.java)
@@ -170,57 +177,15 @@ class PublishChaptersToWacs(
             }
             logger.info("Cloned {}; {}/{} is at {}", prepared.fork.fullName, UPSTREAM, base, upstreamTip)
 
-            // The replace rule: a chapter already in one of the user's open pull requests goes back
-            // onto that pull request's branch, so a chapter is never in two of them.
-            val newTakes = takes.mapKeys { (chapter, _) -> WacsRepoLayout.chapterId(book, chapter) }
-            val openPulls = openPullRequests(api, auth, prepared)
-            val affected = openPulls.filter { pull -> pull.chapters.any { it in newTakes } }
-            val onNewBranch = newTakes.keys.filter { id -> affected.none { id in it.chapters } }
-            logger.info(
-                "Open pull requests from {}: {}; replacing takes in {}; new branch for {}",
-                prepared.fork.fullName,
-                openPulls.map { "#${it.number} ${it.branch} ${it.chapters}" },
-                affected.map { "#${it.number}" },
-                onNewBranch,
-            )
+            // An open pull request is found by its branch; each chapter has its own.
+            val openPulls = openPullRequestsByBranch(api, auth, prepared)
+            logger.info("Open pull requests from {}: {}", prepared.fork.fullName, openPulls.map { (branch, pull) -> "#${pull.number} $branch" })
 
-            val pullRequests = mutableListOf<PullRequest>()
-            for (pull in affected) {
-                val previousTip = gitCall { gitClient.resolve(workDir, "refs/remotes/origin/${pull.branch}") }
-                    ?: throw WacsPublishException(WacsPublishException.Reason.CONFLICT)
-                val pushed = rebuild(
-                    workDir, stagingDir, prepared, credential, email, pull.branch, previousTip,
-                    pull.chapters, newTakes, upstreamRef, upstreamTip, onProgress,
+            val pullRequests = takes.entries.sortedBy { it.key }.mapNotNull { (chapter, take) ->
+                publishChapter(
+                    api, auth, workDir, stagingDir, prepared, credential, email, book, chapter, take,
+                    upstreamRef, upstreamTip, openPulls, onProgress,
                 )
-                if (pushed) {
-                    logger.info("Updated pull request #{} in place: {}", pull.number, pull.htmlUrl)
-                    pullRequests += PullRequest(pull.number, pull.htmlUrl, pull.chapters, opened = false)
-                }
-            }
-            if (onNewBranch.isNotEmpty()) {
-                val branch = newBranchName(workDir)
-                val pushed = rebuild(
-                    workDir, stagingDir, prepared, credential, email, branch, null,
-                    onNewBranch, newTakes, upstreamRef, upstreamTip, onProgress,
-                )
-                if (pushed) {
-                    onProgress(Progress.OpeningPullRequest)
-                    val opened = wacsCall {
-                        api.createPullRequest(
-                            prepared.official.owner,
-                            prepared.official.name,
-                            auth,
-                            CreatePullRequestRequest(
-                                head = "${prepared.fork.owner}:$branch",
-                                base = base,
-                                title = pullRequestTitle(onNewBranch),
-                                body = onNewBranch.joinToString("\n") { "- $it" },
-                            ),
-                        )
-                    }
-                    logger.info("Opened pull request #{} for {}: {}", opened.number, onNewBranch, opened.htmlUrl)
-                    pullRequests += PullRequest(opened.number, opened.htmlUrl, onNewBranch, opened = true)
-                }
             }
 
             onProgress(Progress.Done)
@@ -232,60 +197,70 @@ class PublishChaptersToWacs(
     }
 
     /**
-     * `checkout -B [branch] upstream/<base>`, then one commit per chapter in [chapters]: the new take
-     * for a chapter in [newTakes], the files as [previousTip] has them for the rest. Pushes with
-     * [previousTip] as the lease and returns true, or returns false if every chapter is already on
-     * the official repo as is.
+     * Rebuilds [chapter]'s branch from the official repo with one commit holding [take], pushes it,
+     * and opens its pull request or reports the open one the push updated. Returns null, pushing
+     * nothing, if the chapter is already on the official repo as is.
      */
-    private suspend fun rebuild(
+    private suspend fun publishChapter(
+        api: ForgejoApi,
+        auth: String,
         workDir: File,
         stagingDir: File,
         prepared: PrepareResponse,
         credential: WacsCredential,
         email: String,
-        branch: String,
-        previousTip: String?,
-        chapters: List<String>,
-        newTakes: Map<String, ChapterTake>,
+        book: String,
+        chapter: Int,
+        take: ChapterTake,
         upstreamRef: String,
         upstreamTip: String,
+        openPulls: Map<String, ForgejoPullRequest>,
         onProgress: (Progress) -> Unit,
-    ): Boolean {
-        logger.info("Rebuilding {} from {} with {}", branch, upstreamRef, chapters)
+    ): PullRequest? {
+        val id = WacsRepoLayout.chapterId(book, chapter)
+        val branch = WacsRepoLayout.chapterBranch(book, chapter)
+        logger.info("{}: rebuilding {} from {}", id, branch, upstreamRef)
+
+        onProgress(Progress.PreparingChapter(chapter))
         gitCall { gitClient.startBranch(workDir, branch, upstreamRef) }
-        for (id in chapters) {
-            val (book, chapter) = parseChapterId(id)
-            val present = gitCall { gitClient.listFiles(workDir, "HEAD", WacsRepoLayout.bookDirectory(book)) }
-                .filter { WacsRepoLayout.isChapterFile(it, book, chapter) }
-            val take = newTakes[id]
-            if (take != null) {
-                onProgress(Progress.PreparingChapter(chapter))
-                val written = writeChapter(workDir, stagingDir, book, chapter, take, prepared, credential, onProgress)
-                gitCall { gitClient.stage(workDir, add = written, remove = present - written.toSet()) }
-            } else {
-                val previous = gitCall { gitClient.listFiles(workDir, previousTip!!, WacsRepoLayout.bookDirectory(book)) }
-                    .filter { WacsRepoLayout.isChapterFile(it, book, chapter) }
-                gitCall {
-                    gitClient.stage(workDir, add = emptyList(), remove = present - previous.toSet())
-                    gitClient.restoreFiles(workDir, previousTip!!, previous)
-                }
-            }
-            val commit = gitCall {
-                gitClient.commitStaged(workDir, WacsRepoLayout.chapterCommitMessage(book, chapter), credential.username, email)
-            }
-            logger.info(
-                "{} ({}): {}", id, if (take != null) "new take" else "carried over",
-                commit?.let { "committed $it" } ?: "same as upstream, no commit",
+        val present = gitCall { gitClient.listFiles(workDir, "HEAD", WacsRepoLayout.bookDirectory(book)) }
+            .filter { WacsRepoLayout.isChapterFile(it, book, chapter) }
+        val written = writeChapter(workDir, stagingDir, book, chapter, take, prepared, credential, onProgress)
+        val commit = gitCall {
+            gitClient.stage(workDir, add = written, remove = present - written.toSet())
+            gitClient.commitStaged(workDir, WacsRepoLayout.chapterCommitMessage(book, chapter), credential.username, email)
+        }
+        if (commit == null || gitCall { gitClient.resolve(workDir, "HEAD") } == upstreamTip) {
+            logger.info("{}: already on {} as is; nothing to push", id, upstreamRef)
+            return null
+        }
+
+        // The lease: the fork's branch as cloned, which may be left over from a merged pull request.
+        val forkTip = gitCall { gitClient.resolve(workDir, "refs/remotes/origin/$branch") }
+        onProgress(Progress.Pushing(chapter))
+        logger.info("{}: pushing {} as {} (expecting origin at {})", id, branch, commit, forkTip ?: "nothing: a new branch")
+        gitCall { gitClient.push(workDir, credential, branch, forkTip) }
+
+        openPulls[branch]?.let { open ->
+            logger.info("{}: updated pull request #{} in place: {}", id, open.number, open.htmlUrl)
+            return PullRequest(open.number, open.htmlUrl, listOf(id), opened = false)
+        }
+        onProgress(Progress.OpeningPullRequest(chapter))
+        val opened = wacsCall {
+            api.createPullRequest(
+                prepared.official.owner,
+                prepared.official.name,
+                auth,
+                CreatePullRequestRequest(
+                    head = "${prepared.fork.owner}:$branch",
+                    base = prepared.official.defaultBranch,
+                    title = id,
+                    body = "- $id",
+                ),
             )
         }
-        if (gitCall { gitClient.resolve(workDir, "HEAD") } == upstreamTip) {
-            logger.info("{}: every chapter is already on {}; nothing to push", branch, upstreamRef)
-            return false
-        }
-        onProgress(Progress.Pushing)
-        logger.info("Pushing {} (expecting origin at {})", branch, previousTip ?: "nothing: a new branch")
-        gitCall { gitClient.push(workDir, credential, branch, previousTip) }
-        return true
+        logger.info("{}: opened pull request #{}: {}", id, opened.number, opened.htmlUrl)
+        return PullRequest(opened.number, opened.htmlUrl, listOf(id), opened = true)
     }
 
     /**
@@ -415,38 +390,13 @@ class PublishChaptersToWacs(
         }
     }
 
-    private suspend fun openPullRequests(api: ForgejoApi, auth: String, prepared: PrepareResponse): List<OpenPullRequest> {
+    /** The user's open pull requests to the official repo, by their branch on the fork. */
+    private suspend fun openPullRequestsByBranch(api: ForgejoApi, auth: String, prepared: PrepareResponse): Map<String, ForgejoPullRequest> {
         val (owner, name) = prepared.official.owner to prepared.official.name
-        val pulls = pages { page -> wacsCall { api.listPullRequests(owner, name, auth, state = "open", page = page, limit = PAGE_SIZE) } }
+        return pages { page -> wacsCall { api.listPullRequests(owner, name, auth, state = "open", page = page, limit = PAGE_SIZE) } }
             .filter { it.head?.repo?.fullName.equals(prepared.fork.fullName, ignoreCase = true) && it.head?.ref != null }
             .sortedBy { it.number }
-        return pulls.map { pull ->
-            val commits = pages { page -> wacsCall { api.listPullRequestCommits(owner, name, pull.number, auth, page = page, limit = PAGE_SIZE) } }
-            val chapters = commits.flatMap { WacsRepoLayout.chaptersInCommitMessage(it.commit.message) }.distinct()
-            OpenPullRequest(pull.number, pull.htmlUrl, pull.head!!.ref!!, chapters)
-        }
-    }
-
-    private suspend fun newBranchName(workDir: File): String {
-        var branch = "publish/" + ZonedDateTime.now(ZoneOffset.UTC).format(BRANCH_TIME)
-        while (gitCall { gitClient.resolve(workDir, "refs/remotes/origin/$branch") } != null) branch += "-x"
-        return branch
-    }
-
-    /** `MRK 1–3, 5; LUK 2`: each book's chapters, consecutive ones as a range. */
-    private fun pullRequestTitle(chapters: List<String>): String =
-        chapters.map(::parseChapterId).groupBy({ it.first }, { it.second }).entries.joinToString("; ") { (book, numbers) ->
-            val runs = mutableListOf<IntRange>()
-            numbers.sorted().forEach { n ->
-                val last = runs.lastOrNull()
-                if (last != null && last.last + 1 == n) runs[runs.lastIndex] = last.first..n else runs += n..n
-            }
-            "$book " + runs.joinToString(", ") { if (it.first == it.last) "${it.first}" else "${it.first}–${it.last}" }
-        }
-
-    private fun parseChapterId(id: String): Pair<String, Int> {
-        val (book, number) = id.trim().split(Regex("\\s+")).let { it.first() to it.last().toIntOrNull() }
-        return book to (number ?: throw WacsPublishException(WacsPublishException.Reason.UNKNOWN, IllegalStateException("Bad chapter $id")))
+            .associateBy { it.head!!.ref!! }
     }
 
     private suspend fun <T> pages(fetch: suspend (Int) -> List<T>): List<T> {
@@ -521,6 +471,5 @@ class PublishChaptersToWacs(
     private companion object {
         const val UPSTREAM = "upstream"
         const val PAGE_SIZE = 50
-        val BRANCH_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
     }
 }

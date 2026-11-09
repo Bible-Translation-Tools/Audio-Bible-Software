@@ -84,6 +84,7 @@ import org.bibletranslationtools.shared.resources.wacs_publish_progress_preparin
 import org.bibletranslationtools.shared.resources.wacs_publish_progress_uploading_chapter
 import org.bibletranslationtools.shared.resources.wacs_publish_progress_opening_pr
 import org.bibletranslationtools.shared.resources.wacs_publish_progress_pushing
+import org.bibletranslationtools.shared.resources.wacs_publish_pr_link
 import org.bibletranslationtools.shared.resources.wacs_publish_pr_submitted_message
 import org.bibletranslationtools.shared.resources.wacs_publish_pr_submitted_title
 import org.bibletranslationtools.shared.resources.wacs_publish_status_failed
@@ -258,10 +259,9 @@ private fun LoggedInContent(
                     color = MaterialTheme.colorScheme.primary
                 )
 
-                // M4: the session's pull request back to the official repo — one per session (see
-                // WacsPublishViewModel's KDoc), shown as selectable/copyable text since desktop has
-                // no in-app browser to launch it from.
-                publishState.pullRequestUrl?.let { url ->
+                // Each chapter's pull request to the official repo, shown as selectable/copyable text
+                // since desktop has no in-app browser to launch it from.
+                if (publishState.pullRequests.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = stringResource(Res.string.wacs_publish_pr_submitted_title),
@@ -274,11 +274,15 @@ private fun LoggedInContent(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     SelectionContainer {
-                        Text(
-                            text = url,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                        Column {
+                            publishState.pullRequests.forEach { pull ->
+                                Text(
+                                    text = stringResource(Res.string.wacs_publish_pr_link, pull.chapters.first(), pull.htmlUrl),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -337,7 +341,9 @@ private fun progressLabel(progress: PublishChaptersToWacs.Progress): String = wh
         stringResource(Res.string.wacs_publish_progress_preparing_chapter, progress.chapter)
     is PublishChaptersToWacs.Progress.UploadingAudio ->
         stringResource(Res.string.wacs_publish_progress_uploading_chapter, progress.chapter)
-    is PublishChaptersToWacs.Progress.Pushing -> stringResource(Res.string.wacs_publish_progress_pushing)
-    is PublishChaptersToWacs.Progress.OpeningPullRequest -> stringResource(Res.string.wacs_publish_progress_opening_pr)
+    is PublishChaptersToWacs.Progress.Pushing ->
+        stringResource(Res.string.wacs_publish_progress_pushing, progress.chapter)
+    is PublishChaptersToWacs.Progress.OpeningPullRequest ->
+        stringResource(Res.string.wacs_publish_progress_opening_pr, progress.chapter)
     is PublishChaptersToWacs.Progress.Done -> ""
 }

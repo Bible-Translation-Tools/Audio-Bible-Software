@@ -313,8 +313,8 @@
     <string name="wacs_publish_progress_cloning">Cloning your fork…</string>
     <string name="wacs_publish_progress_preparing_chapter">Preparing chapter %1$d…</string>
     <string name="wacs_publish_progress_uploading_chapter">Uploading chapter %1$d audio…</string>
-    <string name="wacs_publish_progress_pushing">Pushing to your fork…</string>
-    <string name="wacs_publish_progress_opening_pr">Submitting your contribution…</string>
+    <string name="wacs_publish_progress_pushing">Pushing chapter %1$d to your fork…</string>
+    <string name="wacs_publish_progress_opening_pr">Submitting chapter %1$d…</string>
     <string name="wacs_publish_error_not_authenticated">You\'re not logged in. Log in and try again.</string>
     <string name="wacs_publish_error_auth_rejected">The server rejected your credentials. Log in again.</string>
     <string name="wacs_publish_error_network">Couldn\'t reach the WACS server. Check your connection and try again.</string>
@@ -327,7 +327,9 @@
 
     <!-- M4: contribute + sync -->
     <string name="wacs_publish_pr_submitted_title">Contribution submitted</string>
-    <string name="wacs_publish_pr_submitted_message">Your chapters were submitted for review. View the pull request:</string>
+    <string name="wacs_publish_pr_submitted_message">Each chapter was submitted for review as its own pull request:</string>
+    <!-- A chapter's pull request: the chapter (e.g. "MRK 1"), then the pull request's web address. -->
+    <string name="wacs_publish_pr_link">%1$s: %2$s</string>
 
     <!-- M3.1: restore from WACS (as takes) -->
     <string name="wacs_pull_menu_item">Restore from WACS</string>

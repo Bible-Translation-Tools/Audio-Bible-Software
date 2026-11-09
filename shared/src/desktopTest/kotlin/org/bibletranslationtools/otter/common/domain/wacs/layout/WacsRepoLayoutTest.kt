@@ -27,6 +27,14 @@ class WacsRepoLayoutTest {
     }
 
     @Test
+    fun `each chapter has its own branch, padded like its file names`() {
+        assertEquals("publish/mrk-c01", WacsRepoLayout.chapterBranch("MRK", 1))
+        assertEquals("publish/mrk-c16", WacsRepoLayout.chapterBranch("mrk", 16))
+        assertEquals("publish/psa-c001", WacsRepoLayout.chapterBranch("PSA", 1))
+        assertEquals("publish/psa-c119", WacsRepoLayout.chapterBranch("psa", 119))
+    }
+
+    @Test
     fun `a chapter's files are found whatever language and edition their names carry`() {
         assertTrue(WacsRepoLayout.isChapterFile("media/mrk/en_ulb_mrk_c01.wav", "MRK", 1))
         assertTrue(WacsRepoLayout.isChapterFile("media/mrk/es-419_reg_mrk_c01.json", "MRK", 1))

@@ -52,8 +52,8 @@ import org.bibletranslationtools.shared.resources.wacs_publish_no_chapters
  * `RecorderKoinModules.kt`), separate from [WacsLoginViewModel] so this stays scoped to a single
  * navigation into the publish screen rather than the process-lifetime login session.
  *
- * All the selected chapters go up in one call, as one pull request (or into the open pull request
- * that already has them). [WacsPublishUiState.progress] carries the raw
+ * All the selected chapters go up in one call, each as its own pull request (or into the open pull
+ * request that already has it). [WacsPublishUiState.progress] carries the raw
  * [PublishChaptersToWacs.Progress]; resolving it to text is the Composable's job.
  */
 class WacsPublishViewModel(
@@ -107,7 +107,7 @@ class WacsPublishViewModel(
                         perChapter = chapterSorts.associateWith { ChapterPublishState.Success },
                         publishedCount = chapterSorts.size,
                         nothingNew = result.pullRequests.isEmpty(),
-                        pullRequestUrl = result.pullRequests.firstOrNull()?.htmlUrl,
+                        pullRequests = result.pullRequests,
                     )
                 }
             } catch (e: CancellationException) {
@@ -140,7 +140,7 @@ class WacsPublishViewModel(
 
     fun dismissError() = _state.update { it.copy(error = null) }
     fun acknowledgeSuccess() = _state.update {
-        it.copy(publishedCount = null, nothingNew = false, pullRequestUrl = null)
+        it.copy(publishedCount = null, nothingNew = false, pullRequests = emptyList())
     }
 
     private suspend fun localize(e: WacsPublishException): String = when (e.reason) {
@@ -169,6 +169,6 @@ data class WacsPublishUiState(
     val publishedCount: Int? = null,
     /** The last publish found every chapter already in the official repo, so nothing was submitted. */
     val nothingNew: Boolean = false,
-    /** The pull request the chapters are in, opened or updated by the last publish. */
-    val pullRequestUrl: String? = null,
+    /** The last publish's pull requests, opened or updated, one per chapter. */
+    val pullRequests: List<PublishChaptersToWacs.PullRequest> = emptyList(),
 )
