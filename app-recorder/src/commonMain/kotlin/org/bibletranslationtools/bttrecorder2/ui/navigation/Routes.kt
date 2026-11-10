@@ -12,6 +12,9 @@ object MainMenuRoute
 object ProjectManagementRoute
 
 @Serializable
+data class BookListRoute(val groupId: String, val type: String)
+
+@Serializable
 object ProjectWizardRoute
 
 @Serializable
