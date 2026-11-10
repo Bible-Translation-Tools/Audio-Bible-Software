@@ -218,7 +218,7 @@ private fun ReadyDialog(
                     items(state.chapters, key = { it.sort }) { chapter ->
                         ChapterRow(
                             chapter = chapter,
-                            selectable = isSelectable(chapter, state.type),
+                            selectable = chapter.isSelectable(state.type),
                             checked = chapter.sort in state.selectedChapterSorts,
                             onToggle = { onToggleChapter(chapter.sort) }
                         )
@@ -330,9 +330,4 @@ private fun ChapterRow(
             modifier = Modifier.width(64.dp).height(4.dp)
         )
     }
-}
-
-private fun isSelectable(chapter: ExportChapter, type: ExportType): Boolean = when (type) {
-    ExportType.BACKUP -> chapter.progress > 0f
-    else -> chapter.progress >= 1f
 }

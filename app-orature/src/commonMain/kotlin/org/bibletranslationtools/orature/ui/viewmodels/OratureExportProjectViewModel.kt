@@ -1,11 +1,6 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
-import org.jetbrains.compose.resources.getString
-import org.bibletranslationtools.orature.resources.Res
-import org.bibletranslationtools.orature.resources.errUnknown
-import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
 import androidx.lifecycle.ViewModel
-import io.reactivex.Single
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,28 +8,37 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
-import org.bibletranslationtools.otter.common.domain.project.OpenWorkbook
+import org.bibletranslationtools.orature.resources.Res
+import org.bibletranslationtools.orature.resources.errUnknown
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
+import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
+import org.bibletranslationtools.otter.common.domain.project.OpenWorkbook
 import org.bibletranslationtools.otter.common.domain.project.exporter.AudioProjectExporter
+import org.bibletranslationtools.otter.common.domain.project.exporter.ChapterCompletion
+import org.bibletranslationtools.otter.common.domain.project.exporter.ChapterStatus
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportOptions
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportResult
+import org.bibletranslationtools.otter.common.domain.project.exporter.ExportRules
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportType
 import org.bibletranslationtools.otter.common.domain.project.exporter.IProjectExporter
 import org.bibletranslationtools.otter.common.domain.project.exporter.ProjectExporterCallback
 import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.BackupProjectExporter
 import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.SourceProjectExporter
+import org.jetbrains.compose.resources.getString
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.io.File
 
 /** One chapter row in the export dialog (JVM: `ChapterDescriptor`). Progress is binary in the JVM
- *  (1.0 when the chapter has selected audio, else 0.0). */
+ *  (1.0 when the chapter is done, else 0.0). */
 data class OratureExportChapter(
     val sort: Int,
     val progress: Double,
     val selectable: Boolean,
-    val selected: Boolean
+    val selected: Boolean,
+    /** What the export rules decide [selectable] from. */
+    val status: ChapterStatus
 )
 
 /** UI state for the export dialog (JVM: `ExportProjectDialog` + `ExportProjectViewModel`). */
@@ -72,6 +76,7 @@ class OratureExportProjectViewModel(
     private val sourceExporter: SourceProjectExporter by inject()
     private val backupExporter: BackupProjectExporter by inject()
     private val upgradeBookEdition: UpgradeBookEdition by inject()
+    private val chapterCompletion: ChapterCompletion by inject()
 
     private val _uiState = MutableStateFlow(OratureExportUiState())
     val uiState: StateFlow<OratureExportUiState> = _uiState.asStateFlow()
@@ -103,18 +108,23 @@ class OratureExportProjectViewModel(
     private fun load() {
         launchLogged {
             try {
-                // openWithChapters() dispatches to IO itself, so no withContext wrapper here.
-                val opened = openWorkbook.openWithChapters(workbookDescriptorId)
+                // open() dispatches to IO itself; openWithChapters() would also work out each
+                // chapter's completion, which the status below does again.
+                val opened = openWorkbook.open(workbookDescriptorId)
                 val wb = opened.workbook
                 workbook = wb
-                val chapters = opened.chapters.map { chapter ->
-                    // JVM: progress is 1.0 when the chapter has selected audio, else 0.0.
-                    OratureExportChapter(
-                        sort = chapter.sort,
-                        progress = if (opened.completedByChapterSort[chapter.sort] == true) 1.0 else 0.0,
-                        selectable = false,
-                        selected = false
-                    )
+                // IO: the status reads each chapter's takes and files.
+                val chapters = withContext(Dispatchers.IO) {
+                    wb.target.chapters.toList().await().sortedBy { it.sort }.map { chapter ->
+                        val status = chapterCompletion.status(wb, chapter, opened.mode)
+                        OratureExportChapter(
+                            sort = chapter.sort,
+                            progress = if (status.audioRecorded) 1.0 else 0.0,
+                            selectable = false,
+                            selected = false,
+                            status = status
+                        )
+                    }
                 }
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
@@ -166,14 +176,12 @@ class OratureExportProjectViewModel(
         recomputeEstimate()
     }
 
-    /** JVM onSelectExportType selectability rule: Backup includes any chapter with progress > 0;
-     *  every other type only fully-complete chapters (progress == 1.0). Selectable rows start
-     *  pre-selected. */
+    /** Which chapters [type] takes, per its [ExportRules]. Selectable rows start pre-selected. */
     private fun applySelectability(
         chapters: List<OratureExportChapter>,
         type: ExportType
     ): List<OratureExportChapter> = chapters.map { ch ->
-        val selectable = if (type == ExportType.BACKUP) ch.progress > 0.0 else ch.progress >= 1.0
+        val selectable = ExportRules.forType(type).canExport(ch.status)
         ch.copy(selectable = selectable, selected = selectable)
     }
 

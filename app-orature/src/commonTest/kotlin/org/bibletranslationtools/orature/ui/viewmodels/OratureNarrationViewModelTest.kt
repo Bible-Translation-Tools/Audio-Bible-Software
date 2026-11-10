@@ -3,6 +3,7 @@ package org.bibletranslationtools.orature.ui.viewmodels
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.spyk
 import io.reactivex.Observable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -51,8 +52,9 @@ class OratureNarrationViewModelTest : KoinTest {
     private val descriptorId = 7
 
     // Narration completion reads active_verses.json through ChapterRepresentation, which needs a
-    // real project directory on disk. Stubbed per-chapter by [chapter] instead.
-    private val completionStatus: ProjectCompletionStatus = mockk(relaxed = true)
+    // real project directory on disk. Stubbed per-chapter by [chapter] instead; a spy, so the
+    // mode branch in isChapterComplete still runs.
+    private val completionStatus: ProjectCompletionStatus = spyk(ProjectCompletionStatus())
 
     @BeforeTest
     fun setup() {

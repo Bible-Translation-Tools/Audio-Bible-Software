@@ -3,6 +3,7 @@ package org.bibletranslationtools.otter.common.domain.project
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.spyk
 import io.mockk.verify
 import io.reactivex.Observable
 import kotlinx.coroutines.test.runTest
@@ -29,10 +30,10 @@ class OpenWorkbookTest {
 
     private val descriptorRepo: IWorkbookDescriptorRepository = mockk(relaxed = true)
     private val workbookRepo: IWorkbookRepository = mockk(relaxed = true)
-    // Narration completion reads active_verses.json off disk through ChapterRepresentation, so it
+    // Narration progress reads active_verses.json off disk through ChapterRepresentation, so it
     // is stubbed rather than exercised — these tests are about the orchestration, and the real one
-    // needs a project directory.
-    private val completionStatus: ProjectCompletionStatus = mockk(relaxed = true)
+    // needs a project directory. A spy, so the mode branch in isChapterComplete still runs.
+    private val completionStatus: ProjectCompletionStatus = spyk(ProjectCompletionStatus())
     private val openWorkbook = OpenWorkbook(descriptorRepo, workbookRepo, completionStatus)
 
     private val descriptorId = 7

@@ -1,6 +1,7 @@
 package org.bibletranslationtools.orature.di
 
 import org.bibletranslationtools.orature.plugins.OraturePluginStore
+import org.bibletranslationtools.orature.services.OratureChapterCompletion
 import org.bibletranslationtools.orature.services.OratureImportEvents
 import org.bibletranslationtools.orature.services.OratureProjectEvents
 import org.bibletranslationtools.orature.services.OratureProjectDeletion
@@ -11,6 +12,7 @@ import org.bibletranslationtools.orature.ui.narration.OratureNarrationFactory
 import org.bibletranslationtools.orature.ui.viewmodels.OratureHomeViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureProjectWizardViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureSettingsViewModel
+import org.bibletranslationtools.otter.common.domain.project.exporter.ChapterCompletion
 import org.koin.core.parameter.parametersOf
 import org.koin.dsl.module
 
@@ -26,6 +28,8 @@ import org.koin.dsl.module
  */
 val oratureViewModelModule = module {
     single { OratureHomeViewModel() }
+    // When a chapter counts as done, for the export dialog.
+    single<ChapterCompletion> { OratureChapterCompletion(get()) }
     // App-scoped bus so a successful import (global Add Files drawer in the shell) refreshes home.
     single { OratureImportEvents() }
     single { OratureProjectEvents() }
