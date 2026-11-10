@@ -1,5 +1,6 @@
 package org.bibletranslationtools.bttrecorder2.di.koin
 
+import org.bibletranslationtools.bttrecorder2.services.RecorderChapterCompletion
 import org.bibletranslationtools.bttrecorder2.services.UnitTargetLoader
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterListViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.EditionChangeViewModel
@@ -9,6 +10,7 @@ import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectCreationViewM
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.RecorderViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.UnitListViewModel
+import org.bibletranslationtools.otter.common.domain.project.exporter.ChapterCompletion
 import org.koin.core.module.dsl.factoryOf
 import org.koin.dsl.module
 
@@ -29,6 +31,8 @@ val recorderViewModelModule = module {
     // Shared by the Recorder and Playback screens: navigation args -> the flat
     // chapter-then-chunks list both page through.
     factoryOf(::UnitTargetLoader)
+    // When a chapter counts as done, for the export dialog.
+    single<ChapterCompletion> { RecorderChapterCompletion() }
     single { ProjectManagementViewModel() }
     single { ProjectCreationViewModel() }
     single { ChapterListViewModel() }
