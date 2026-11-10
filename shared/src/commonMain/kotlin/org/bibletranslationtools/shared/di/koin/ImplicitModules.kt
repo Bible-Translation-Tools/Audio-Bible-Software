@@ -49,6 +49,8 @@ import org.bibletranslationtools.otter.common.domain.project.importer.TstudioImp
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.DeleteResourceContainer
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito.BurritoToResourceContainerConverter
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito.ScriptureBurritoUtils
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito.auth.AuthProvider
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito.auth.WacsIdAuthority
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.VersificationTreeBuilder
 import org.bibletranslationtools.otter.common.domain.project.importer.SourceStructurePlanner
 import org.bibletranslationtools.otter.common.domain.project.importer.EditionFingerprinter
@@ -146,6 +148,7 @@ val implicitCommonModule = module {
     factoryOf(::BackupEditions)
     factoryOf(::BurritoToResourceContainerConverter)
     factoryOf(::ScriptureBurritoUtils)
+    factory<AuthProvider> { WacsIdAuthority() }
 
     // Mappers
     factoryOf(::AudioPluginDataMapper)

@@ -3,7 +3,7 @@ package org.bibletranslationtools.otter.common.domain.project.exporter.resourcec
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
-import org.bibletranslationtools.otter.common.data.IAppInfo
+import org.bibletranslationtools.otter.common.data.AppInfo
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.domain.audio.AudioExporter
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportOptions
@@ -61,7 +61,7 @@ typealias ChapterNumber = Int
 class BurritoWrapperExporter(
     private val directoryProvider: IDirectoryProvider,
     private val idAuthorityProvider: AuthProvider,
-    private val appInfo: IAppInfo,
+    private val appInfo: AppInfo,
     // Constructor parameters, not the `@Inject lateinit var` fields these were on the pre-KMP
     // branch: Koin's constructor DSL (factoryOf(::BurritoWrapperExporter)) only fills
     // constructor arguments and silently leaves annotated fields uninitialized — see
