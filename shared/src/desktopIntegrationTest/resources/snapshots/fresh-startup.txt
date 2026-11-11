@@ -1,0 +1,113 @@
+# tables
+audio_plugin_entity rows=0 sha=e3b0c44298fc1c14
+checking_status rows=0 sha=e3b0c44298fc1c14
+collection_entity rows=1256 sha=b7f5630e1d99ea47
+content_derivative rows=0 sha=e3b0c44298fc1c14
+content_entity rows=33546 sha=a5c1fc3f96b836cc
+content_type rows=4 sha=00da609a0feb2cbf
+dublin_core_entity rows=1 sha=97cf316600117500
+edition_chapter rows=1189 sha=9749f7cef18930be
+installed_entity rows=9 sha=694080fdb01f0dbc
+language_entity rows=9189 sha=86a4b965ecb0c54f
+marker_entity rows=0 sha=e3b0c44298fc1c14
+preferences rows=0 sha=e3b0c44298fc1c14
+rc_link_entity rows=0 sha=e3b0c44298fc1c14
+resource_link rows=1255 sha=21887a837d53abaa
+subtree_has_resource rows=0 sha=e3b0c44298fc1c14
+take_entity rows=0 sha=e3b0c44298fc1c14
+translation_entity rows=0 sha=e3b0c44298fc1c14
+versification_entity rows=5 sha=c2bf9b1959d514de
+workbook_descriptor_entity rows=0 sha=e3b0c44298fc1c14
+workbook_type rows=0 sha=e3b0c44298fc1c14
+# files
+<app>/logs/edition-label-report.json sha=a918f99263d1bcfd
+<app>/logs/source-structure-report.json sha=33b2cb3ac3de6f41
+<app>/rc/src/.staging/ (empty)
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/.gitattributes sha=30aa4cae2bc53b7b
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/.github/CONTRIBUTING.md sha=d1519d33d61ceb96
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/.github/ISSUE_TEMPLATE.md sha=53bc98435ce3e0ff
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/.gitignore sha=9bd7175339d7fbb0
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/00-ULB_front&back/ULB-10-License.md sha=60bb3202b730a872
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/00-ULB_front&back/ULB-11-Intro.md sha=63a4e09dd1ccff9b
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/00-ULB_front&back/ULB-20-Appendix.md sha=51f2cb8a6df984d2
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/01-About_the_ULB_for_Editors/ULB-Decisions.for.ULB.Editors.md sha=a2a73a64b029da59
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/01-GEN.usfm sha=4939fc3adb889e6e
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/02-EXO.usfm sha=1b7d3989fd182d3b
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/03-LEV.usfm sha=4fe65abbdc00dc6c
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/04-NUM.usfm sha=1618cdd1b61624f4
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/05-DEU.usfm sha=17789ceb7fa31261
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/06-JOS.usfm sha=b07b8439243b47ab
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/07-JDG.usfm sha=32d795ae66356cb2
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/08-RUT.usfm sha=9493044e54d82474
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/09-1SA.usfm sha=36d64f60b0ede848
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/10-2SA.usfm sha=2285de84cd8ab087
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/11-1KI.usfm sha=d6c3a459a27655c5
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/12-2KI.usfm sha=296aee63ce73d338
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/13-1CH.usfm sha=3746fce117a3574f
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/14-2CH.usfm sha=e471895bff7ce8f3
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/15-EZR.usfm sha=1020ff7aafadd158
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/16-NEH.usfm sha=9cfd4596de178629
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/17-EST.usfm sha=b34f2e7ac06b3a10
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/18-JOB.usfm sha=fe2ed929683e8bfe
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/19-PSA.usfm sha=8c914f2478e32eff
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/20-PRO.usfm sha=fc1aea33417fcafd
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/21-ECC.usfm sha=2b3a0210e81dc1a2
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/22-SNG.usfm sha=bb7d129c939d64e8
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/23-ISA.usfm sha=8210dd25009e3f61
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/24-JER.usfm sha=e82cb767f8d17a32
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/25-LAM.usfm sha=8f9a03f9e65b3a9b
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/26-EZK.usfm sha=58f440be5c337ea9
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/27-DAN.usfm sha=e2962903ae8217d0
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/28-HOS.usfm sha=66315c7aa6daa1bd
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/29-JOL.usfm sha=26dffca51cacc75a
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/30-AMO.usfm sha=ef699fb83d8c7243
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/31-OBA.usfm sha=93d76059253c17dc
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/32-JON.usfm sha=f2be14fbd8909c82
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/33-MIC.usfm sha=482a65a49ca10a58
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/34-NAM.usfm sha=3ecbba2ba9a5c6b2
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/35-HAB.usfm sha=5189dbfb3d92e6d0
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/36-ZEP.usfm sha=c581f0974486d696
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/37-HAG.usfm sha=028a8df31069d096
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/38-ZEC.usfm sha=a10eec6dc7ed07ec
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/39-MAL.usfm sha=09870361ae9d6cfc
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/41-MAT.usfm sha=5d855b0e31557f12
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/42-MRK.usfm sha=0efb4889a99b4e35
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/43-LUK.usfm sha=0ee8c70ed1561dcb
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/44-JHN.usfm sha=b28d1adbfc9dfacc
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/45-ACT.usfm sha=6b345d84c2c3b07e
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/46-ROM.usfm sha=cd7a57e48536c6c1
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/47-1CO.usfm sha=6d7d4812ff605c36
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/48-2CO.usfm sha=bfdf4950f55c89fa
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/49-GAL.usfm sha=6d00eb57ac4c1bf4
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/50-EPH.usfm sha=50094937fc092eb4
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/51-PHP.usfm sha=393444c145760d80
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/52-COL.usfm sha=f492b59a20748099
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/53-1TH.usfm sha=3a9df7c80d4e4252
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/54-2TH.usfm sha=9d9285d42597db1a
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/55-1TI.usfm sha=59acc97370b569aa
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/56-2TI.usfm sha=448dc3639b3cefcc
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/57-TIT.usfm sha=57f2e524856ac1b3
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/58-PHM.usfm sha=91a454a375ac0b1d
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/59-HEB.usfm sha=eae5436d13d8027c
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/60-JAS.usfm sha=e1838c5b397645e3
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/61-1PE.usfm sha=fb57e911bb9d7ba9
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/62-2PE.usfm sha=0541e9d17debf4b4
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/63-1JN.usfm sha=b3420408fed3c42b
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/64-2JN.usfm sha=0bd6cb4b0824c70d
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/65-3JN.usfm sha=d7309e89cf33690c
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/66-JUD.usfm sha=d02391313c256caf
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/67-REV.usfm sha=73eee20a86634bb9
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/LICENSE.md sha=bf4fa7874cb13745
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/README.md sha=347b20c0a052effe
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/archive/00-About_the_ULB/ULB-2-Intro-tR.md sha=b3983fa439f010c6
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/archive/00-About_the_ULB/ULB-Intro_Old.md sha=3cf99bcb1608b732
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/closed_ulb_issues.md sha=c8ef13b8eb914faa
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/manifest.yaml sha=91f6892adc7856f4
+<app>/rc/src/Door43 World Missions Community/en_ulb/v12-992e8d/media.yaml sha=09d8259c5c057467
+<app>/temp/ (empty)
+<app>/versification/eng.json sha=5162023f8e0604fc
+<app>/versification/org.json sha=3b8e065fb5921002
+<app>/versification/rsc.json sha=c4a8ce2551d4f47b
+<app>/versification/ufw.json sha=43ad41feac4a864b
+<app>/versification/ulb.json sha=43ad41feac4a864b
+<user>/ (empty)

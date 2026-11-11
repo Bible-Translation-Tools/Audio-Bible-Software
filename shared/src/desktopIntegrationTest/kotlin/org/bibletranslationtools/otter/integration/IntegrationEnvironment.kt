@@ -53,12 +53,14 @@ import org.bibletranslationtools.otter.common.initialization.InitializeVersifica
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.SourceStructureFindings
 import org.bibletranslationtools.otter.common.persistence.DesktopDirectoryProvider
 import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
+import org.bibletranslationtools.otter.common.persistence.database.sqldelight.DATABASE_FILE_NAME
 import org.bibletranslationtools.otter.common.persistence.entities.ContentEntity
 import org.bibletranslationtools.otter.common.persistence.entities.CollectionEntity
 import org.bibletranslationtools.shared.di.koin.appDatabaseModule
 import org.bibletranslationtools.shared.di.koin.sharedCommonModules
 import org.koin.core.Koin
 import org.koin.core.context.startKoin
+import org.koin.core.module.Module
 import org.koin.core.context.stopKoin
 import org.koin.dsl.module
 import java.io.File
@@ -701,6 +703,19 @@ class IntegrationEnvironment private constructor(
             .mapValues { it.value.count() }
             .mapKeys { db.contentTypeDao.fetchForId(it.key)!! }
 
+    /**
+     * Asserts that everything this environment now holds, rows and files, matches the committed
+     * snapshot [name]. See [Snapshot].
+     */
+    fun assertSnapshot(name: String) {
+        val appData = directoryProvider.getAppDataDirectory()
+        Snapshot.of(
+            tempRoot = tempRoot,
+            database = appData.walkTopDown().single { it.name == DATABASE_FILE_NAME },
+            roots = mapOf(appData to "<app>", directoryProvider.getUserDataDirectory() to "<user>")
+        ).assertMatches(name, repoRoot())
+    }
+
     // ── lifecycle ────────────────────────────────────────────────────────────────────────
 
     override fun close() {
@@ -713,8 +728,11 @@ class IntegrationEnvironment private constructor(
          * Builds an environment over a fresh temp directory. The database bootstraps itself:
          * SQLDelight creates the schema from the `.sq` files when the file does not exist, then
          * applies migrations.
+         *
+         * @param overrides definitions that replace the production ones, for a test that needs one
+         *   collaborator to misbehave.
          */
-        fun create(): IntegrationEnvironment {
+        fun create(overrides: Module = module { }): IntegrationEnvironment {
             val tempRoot = File.createTempFile("orature-integration", "").let {
                 it.delete()
                 it.mkdirs()
@@ -731,7 +749,7 @@ class IntegrationEnvironment private constructor(
                 modules(
                     sharedCommonModules + appDatabaseModule + module {
                         single<IDirectoryProvider> { provider }
-                    }
+                    } + overrides
                 )
             }.koin
 

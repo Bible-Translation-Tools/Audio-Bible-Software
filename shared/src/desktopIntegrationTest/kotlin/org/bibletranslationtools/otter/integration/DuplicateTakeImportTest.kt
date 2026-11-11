@@ -1,8 +1,6 @@
 package org.bibletranslationtools.otter.integration
 
 import io.reactivex.Single
-import io.reactivex.functions.Consumer
-import io.reactivex.plugins.RxJavaPlugins
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
@@ -14,9 +12,9 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstan
 import org.junit.Assume.assumeFalse
 import java.io.File
 import java.net.URI
-import java.util.concurrent.CopyOnWriteArrayList
+import org.bibletranslationtools.otter.common.NoStrayErrorsRule
+import org.junit.Rule
 import kotlin.test.AfterTest
-import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -33,18 +31,13 @@ import kotlin.test.assertTrue
  */
 class DuplicateTakeImportTest {
     private var env: IntegrationEnvironment? = null
-    private val uncaught = CopyOnWriteArrayList<Throwable>()
-    private var previousErrorHandler: Consumer<in Throwable>? = null
 
-    @BeforeTest
-    fun watchRxErrorHandler() {
-        previousErrorHandler = RxJavaPlugins.getErrorHandler()
-        RxJavaPlugins.setErrorHandler { uncaught += it }
-    }
+    /** Fails a test in which an error reached the global handler, whatever else it asserts. */
+    @get:Rule
+    val noStrayErrors = NoStrayErrorsRule()
 
     @AfterTest
     fun tearDown() {
-        RxJavaPlugins.setErrorHandler(previousErrorHandler)
         env?.close()
     }
 
@@ -90,7 +83,6 @@ class DuplicateTakeImportTest {
         assertEquals("local recording", fileOf(takes.single().filepath).readText())
         assertEquals(takes.single().id, environment.selectedTakeOn(restored, 19, 41))
         assertEquals(Triple(false, 1, 0), callback.takes, "a second copy in the same backup isn't already there")
-        assertEquals(emptyList(), uncaught.toList())
     }
 
     @Test
@@ -105,7 +97,6 @@ class DuplicateTakeImportTest {
         assertEquals(1, takes.size)
         assertEquals("local recording", fileOf(takes.single().filepath).readText())
         assertEquals(Triple(true, 0, 1), callback.takes, "counted per recording, not per copy")
-        assertEquals(emptyList(), uncaught.toList())
     }
 
     @Test
@@ -124,7 +115,6 @@ class DuplicateTakeImportTest {
         assertEquals("imported recording", fileOf(takes[1].filepath).readText())
         assertEquals(takes[1].id, environment.selectedTakeOn(project, 19, 41), "the backup's selection is applied")
         assertEquals(Triple(true, 1, 1), callback.takes)
-        assertEquals(emptyList(), uncaught.toList())
     }
 
     @Test
@@ -141,7 +131,6 @@ class DuplicateTakeImportTest {
         } finally {
             chapterFolder.setWritable(true)
         }
-        assertEquals(emptyList(), uncaught.toList(), "the failure came back through the import, not the global handler")
     }
 
     /** A callback that keeps what the importer reports about takes. */

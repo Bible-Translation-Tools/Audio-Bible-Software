@@ -33,6 +33,8 @@ import org.bibletranslationtools.otter.common.api.persistence.IFileIOFactory
 import org.bibletranslationtools.otter.common.api.persistence.IProjectDirectories
 import org.bibletranslationtools.otter.common.api.persistence.IResourceContainerDirectories
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
+import org.bibletranslationtools.otter.common.utils.AppDispatchers
+import org.bibletranslationtools.otter.common.utils.AppScope
 import org.koin.core.module.dsl.bind
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.module
@@ -87,6 +89,13 @@ val appRepositoriesModule = module {
     singleOf(::LanguageDataSource) { bind<ILanguageDataSource>() }
 }
 
+// Coroutine plumbing for the RxJava migration: the dispatchers new suspend code runs on, and the
+// scope that owns background work and reports its failures.
+val coroutinesModule = module {
+    single { AppDispatchers() }
+    singleOf(::AppScope)
+}
+
 val zipEntryTreeBuilderModule = module {
     singleOf(::ZipEntryTreeBuilder) { bind<IZipEntryTreeBuilder>() }
 }
@@ -130,6 +139,7 @@ val sharedCommonModules = listOf(
     commonAudioModule,
     appPreferencesModule,
     appRepositoriesModule,
+    coroutinesModule,
     zipEntryTreeBuilderModule,
     bundledContentModule,
     directoryPortsModule

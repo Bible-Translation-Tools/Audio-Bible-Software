@@ -121,6 +121,50 @@ class PortBoundaryTest {
     }
 
     /**
+     * Ports should not name an async library: while they do, every caller and every fake is
+     * Rx-shaped. Not yet true, so this is a ratchet over the files that still do. A new one fails,
+     * and so does one that stopped, until it is taken off the list. The RxJava migration empties it.
+     */
+    @Test
+    fun `ports do not depend on RxJava`() {
+        val expected = setOf(
+            "io/zip/IFileReader.kt",
+            "persistence/ILanguageDataSource.kt",
+            "persistence/LanguagesApi.kt",
+            "persistence/config/Initializable.kt",
+            "persistence/repositories/ICollectionRepository.kt",
+            "persistence/repositories/IContentRepository.kt",
+            "persistence/repositories/ILanguageRepository.kt",
+            "persistence/repositories/IRepository.kt",
+            "persistence/repositories/IResourceContainerRepository.kt",
+            "persistence/repositories/IResourceMetadataRepository.kt",
+            "persistence/repositories/IResourceRepository.kt",
+            "persistence/repositories/ITakeRepository.kt",
+            "persistence/repositories/IVersificationRepository.kt",
+            "persistence/repositories/IWorkbookDatabaseAccessors.kt",
+            "persistence/repositories/IWorkbookDescriptorRepository.kt",
+            "persistence/repositories/IWorkbookRepository.kt",
+        )
+        val actual = apiSources().filter { file ->
+            importsOf(file).any {
+                it.startsWith("io.reactivex") || it.startsWith("com.jakewharton.rxrelay2") ||
+                    it.startsWith("kotlinx.coroutines.rx2")
+            }
+        }.map { it.toRelativeString(apiRoot).replace(File.separatorChar, '/') }.toSet()
+
+        val added = (actual - expected).sorted()
+        val fixed = (expected - actual).sorted()
+        if (added.isNotEmpty()) {
+            fail("api/ must not gain RxJava. Declare new port methods as suspend functions:\n" +
+                added.joinToString("\n") { "  - $it" })
+        }
+        if (fixed.isNotEmpty()) {
+            fail("These ports no longer import RxJava. Remove them from this test's list:\n" +
+                fixed.joinToString("\n") { "  - $it" })
+        }
+    }
+
+    /**
      * `api/` is interfaces (plus the `ModelTake` typealias) only — implementations live in the
      * layer that owns them.
      *

@@ -39,8 +39,11 @@ kotlin {
         // DesktopDirectoryProvider directly.
         compilations {
             val main by getting
+            val test by getting
             val integrationTest by creating {
                 associateWith(main)
+                // The unit tests' support code too: NoStrayErrorsRule and the fixture builders.
+                associateWith(test)
                 defaultSourceSet.dependencies {
                     implementation(libs.kotlin.test)
                     implementation(libs.kotlin.test.junit)
