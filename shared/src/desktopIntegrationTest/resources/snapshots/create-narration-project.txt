@@ -16,7 +16,7 @@ resource_link rows=1255 sha=e1ae14b11fb11b02
 subtree_has_resource rows=0 sha=e3b0c44298fc1c14
 take_entity rows=0 sha=e3b0c44298fc1c14
 translation_entity rows=0 sha=e3b0c44298fc1c14
-versification_entity rows=5 sha=c2bf9b1959d514de
+versification_entity rows=5 sha=fce284ad6206289b
 workbook_descriptor_entity rows=1 sha=75bc8b49697196ac
 workbook_type rows=3 sha=ff1ce644d0ad976e
 # files

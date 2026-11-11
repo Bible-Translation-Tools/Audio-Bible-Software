@@ -31,6 +31,14 @@ class Snapshot(val digest: String, val full: String) {
         private val runSpecific = Regex("""\d{8}-\d{4}|\d{8,}""")
 
         /**
+         * Tables whose rows are inserted in directory-listing order, which differs between file
+         * systems: startup inserts one versification row per file that `listFiles()` returns. Their
+         * ids follow that order, and nothing refers to them, so these are compared as a set of rows
+         * without the id.
+         */
+        private val insertedInListingOrder = setOf("versification_entity")
+
+        /**
          * @param roots absolute paths to replace by a name, e.g. the app data directory by `<app>`.
          *   Longer paths are replaced first, so a directory inside the temp root keeps its own name.
          */
@@ -60,12 +68,13 @@ class Snapshot(val digest: String, val full: String) {
                     val rows = connection.createStatement().use { statement ->
                         statement.executeQuery("SELECT * FROM $table ORDER BY rowid").use { result ->
                             val columns = result.metaData.columnCount
+                            val firstColumn = if (table in insertedInListingOrder) 2 else 1
                             generateSequence {
                                 if (!result.next()) null
-                                else (1..columns).joinToString("|") { normalize(result.getString(it) ?: "NULL") }
+                                else (firstColumn..columns).joinToString("|") { normalize(result.getString(it) ?: "NULL") }
                             }.toList()
                         }
-                    }
+                    }.let { if (table in insertedInListingOrder) it.sorted() else it }
                     digest.appendLine("$table rows=${rows.size} sha=${sha(rows.joinToString("\n"))}")
                     full.appendLine("## $table")
                     rows.forEach { full.appendLine(it) }

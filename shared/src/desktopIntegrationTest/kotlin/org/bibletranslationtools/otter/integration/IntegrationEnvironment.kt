@@ -60,8 +60,8 @@ import org.bibletranslationtools.shared.di.koin.appDatabaseModule
 import org.bibletranslationtools.shared.di.koin.sharedCommonModules
 import org.koin.core.Koin
 import org.koin.core.context.startKoin
-import org.koin.core.module.Module
 import org.koin.core.context.stopKoin
+import org.koin.core.module.Module
 import org.koin.dsl.module
 import java.io.File
 import java.util.zip.ZipEntry
@@ -388,7 +388,7 @@ class IntegrationEnvironment private constructor(
     /** Backs [project] up as the app's export does, into a file in this environment's temp directory. */
     fun backup(project: Collection): File {
         val descriptor = koin.get<IWorkbookDescriptorRepository>().getAll().blockingGet().single { it.targetCollection.id == project.id }
-        val workbook = koin.get<IWorkbookRepository>().get(descriptor.sourceCollection, descriptor.targetCollection)!!
+        val workbook = koin.get<IWorkbookRepository>().get(descriptor.sourceCollection, descriptor.targetCollection)
         val accessor = workbook.projectFilesAccessor
         if (!accessor.isInitialized()) {
             accessor.initializeResourceContainerInDir(overwrite = false)
