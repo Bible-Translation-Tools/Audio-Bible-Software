@@ -226,6 +226,11 @@ class AudioPlayerConnectionTransportTest {
             loadAndPlay(second, newTake(frames = BUFFER_FRAMES * 20))
             awaitEvent("Complete")
             awaitEventsOf(2, 3)
+            // That waited on the harness's recorder. The collectors above are other subscribers and
+            // can be an event behind it.
+            awaitCondition("both collectors to catch up") {
+                firstSaw.value.size > firstBaseline && secondSaw.value.size >= 3
+            }
 
             assertEquals(
                 listOf("Pause"),
