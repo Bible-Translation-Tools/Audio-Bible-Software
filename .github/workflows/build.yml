@@ -102,7 +102,7 @@ jobs:
 
       # The check reads api-versions.xml out of an installed platform SDK, which is the
       # only reliable source for @since — the android.jar stubs do not carry it.
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
 
       - name: Check for API calls above minSdk
         run: >-
