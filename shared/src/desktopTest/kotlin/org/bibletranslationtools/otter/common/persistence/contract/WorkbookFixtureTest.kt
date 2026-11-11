@@ -1,6 +1,7 @@
 package org.bibletranslationtools.otter.common.persistence.contract
 
 import io.mockk.spyk
+import io.reactivex.plugins.RxJavaPlugins
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
@@ -23,6 +24,9 @@ import org.bibletranslationtools.otter.common.persistence.entities.ContentEntity
 import org.bibletranslationtools.otter.common.persistence.entities.TakeEntity
 import java.io.File
 import java.time.LocalDate
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.fail
 
 /**
@@ -57,6 +61,31 @@ abstract class WorkbookFixtureTest : KoinDatabaseTest() {
 
     protected lateinit var source: Collection
     protected lateinit var project: Collection
+
+    /** Rx tasks handed to a scheduler and not yet finished: the saves still on their way. */
+    private val rxTasksInFlight = AtomicInteger()
+
+    @BeforeTest
+    fun countRxTasks() = RxJavaPlugins.setScheduleHandler { task ->
+        rxTasksInFlight.incrementAndGet()
+        Runnable {
+            try {
+                task.run()
+            } finally {
+                rxTasksInFlight.decrementAndGet()
+            }
+        }
+    }
+
+    /**
+     * Runs before the database is closed and deleted. A save that arrives after that fails with
+     * "no such table", and the error lands in whichever test runs next.
+     */
+    @AfterTest
+    fun finishSaves() {
+        settle()
+        RxJavaPlugins.setScheduleHandler(null)
+    }
 
     /** Builds the source and the derived project. Call before [openWorkbook]; add rows in between. */
     protected fun seedProject() {
@@ -136,8 +165,12 @@ abstract class WorkbookFixtureTest : KoinDatabaseTest() {
         }
     }
 
-    /** Long enough for a save that was going to happen to have happened. For asserting that none did. */
-    protected fun settle() = Thread.sleep(300)
+    /** Waits for every save under way to finish. For asserting on what was stored, and on what was not. */
+    protected fun settle() {
+        // A task cancelled before it started is never counted down, so this gives up instead of failing.
+        val deadline = System.currentTimeMillis() + 5_000
+        while (rxTasksInFlight.get() > 0 && System.currentTimeMillis() < deadline) Thread.sleep(5)
+    }
 
     /** Inserts [take] into [chunk] and waits until it is stored and selected, as the repository does on insert. */
     protected fun record(chunk: Chunk, take: Take, verse: Int = 1): TakeEntity {
