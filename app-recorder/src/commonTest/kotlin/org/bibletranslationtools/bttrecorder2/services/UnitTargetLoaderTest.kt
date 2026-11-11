@@ -3,7 +3,7 @@ package org.bibletranslationtools.bttrecorder2.services
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
-import io.reactivex.Observable
+import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.test.runTest
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.data.workbook.Book
@@ -45,7 +45,7 @@ class UnitTargetLoaderTest {
         val sourceBook: Book = mockk { every { collectionId } returns source }
         val targetBook: Book = mockk {
             every { collectionId } returns target
-            every { this@mockk.chapters } returns Observable.fromIterable(chapters)
+            every { this@mockk.chaptersFlow } returns chapters.asFlow()
         }
         val workbook: Workbook = mockk(relaxed = true) {
             every { this@mockk.source } returns sourceBook

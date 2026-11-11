@@ -1,5 +1,6 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
+import kotlinx.coroutines.flow.toList
 import org.jetbrains.compose.resources.getString
 import org.bibletranslationtools.orature.resources.Res
 import org.bibletranslationtools.orature.resources.errUnknown
@@ -160,7 +161,7 @@ class OratureChunkingViewModel(
             try {
                 val prepared = withContext(Dispatchers.IO) {
                     val wb = workbookDataStore.activeWorkbook.value ?: error("No active workbook")
-                    val chap = wb.target.chapters.toList().blockingGet().firstOrNull { it.sort == chapterSort }
+                    val chap = wb.target.chaptersFlow.toList().firstOrNull { it.sort == chapterSort }
                         ?: error("No chapter $chapterSort")
                     // Source audio must live in the project so it can be re-chunked (JVM: dock()).
                     // The project RC (manifest.yaml) is scaffolded on open (OratureWorkbookDataStore).

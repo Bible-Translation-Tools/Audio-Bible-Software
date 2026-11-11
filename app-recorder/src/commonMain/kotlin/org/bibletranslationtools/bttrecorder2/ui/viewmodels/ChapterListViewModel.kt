@@ -20,7 +20,6 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IColl
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
-import org.bibletranslationtools.otter.common.data.workbook.DateHolder
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnection
@@ -432,7 +431,7 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
         val take = shownTake(chapter) ?: return
         // Stop playback if this take is what's currently loaded.
         if (_uiState.value.loadedChapterSort == chapter.sort) unloadChapterTake()
-        take.deletedTimestamp.accept(DateHolder.now())
+        take.markDeleted()
         // selectedFlow doesn't always fire on take deletion (the selected
         // reference itself doesn't change), and deleting the selected take
         // deselects it. Update the row directly from what is left.

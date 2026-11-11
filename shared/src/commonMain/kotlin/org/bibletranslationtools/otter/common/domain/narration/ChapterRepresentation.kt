@@ -18,7 +18,6 @@
  */
 package org.bibletranslationtools.otter.common.domain.narration
 
-import io.reactivex.rxkotlin.toObservable
 import io.reactivex.subjects.PublishSubject
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.device.AudioFileReader

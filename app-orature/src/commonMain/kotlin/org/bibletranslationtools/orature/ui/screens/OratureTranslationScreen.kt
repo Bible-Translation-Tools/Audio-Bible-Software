@@ -91,7 +91,6 @@ import org.bibletranslationtools.orature.resources.choose_file
 import org.bibletranslationtools.orature.resources.cancel
 import org.bibletranslationtools.orature.resources.close
 import org.bibletranslationtools.orature.resources.`continue`
-import org.bibletranslationtools.orature.resources.overridingSource
 import org.bibletranslationtools.orature.resources.rechunk_data_loss_warning
 import org.bibletranslationtools.orature.resources.warning
 import org.bibletranslationtools.orature.resources.collapse
@@ -204,25 +203,6 @@ fun OratureTranslationScreen(
                     Text(stringResource(Res.string.importing), color = Color.White)
                 }
             }
-        }
-        // Conflict: imported source matches an existing one but with a different version +
-        // versification — confirm overwrite (JVM: ExistingSourceImporter onRequestUserInput).
-        if (importState is OratureImportState.ConflictPrompt) {
-            AlertDialog(
-                onDismissRequest = { importVm.resolveConflict(false) },
-                confirmButton = {
-                    TextButton(onClick = { importVm.resolveConflict(true) }) {
-                        Text(stringResource(Res.string.`continue`))
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { importVm.resolveConflict(false) }) {
-                        Text(stringResource(Res.string.cancel))
-                    }
-                },
-                title = { Text(stringResource(Res.string.warning)) },
-                text = { Text(stringResource(Res.string.overridingSource)) }
-            )
         }
         (importState as? OratureImportState.Error)?.let { err ->
             AlertDialog(

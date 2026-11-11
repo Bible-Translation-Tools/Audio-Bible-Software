@@ -20,7 +20,6 @@ package org.bibletranslationtools.otter.common.api.persistence.config
 
 import io.reactivex.Completable
 import io.reactivex.ObservableEmitter
-import io.reactivex.Observer
 import org.bibletranslationtools.otter.common.data.ProgressStatus
 
 /**

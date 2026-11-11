@@ -5,7 +5,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,11 +12,8 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.rx2.await
 import androidx.compose.runtime.IntState
 import androidx.compose.runtime.mutableIntStateOf
 import org.bibletranslationtools.shared.audio.engine.AudioTimeline
@@ -31,7 +27,6 @@ import org.bibletranslationtools.shared.audio.engine.WaveEditSession
 import org.bibletranslationtools.shared.audio.engine.WaveformPeakCache
 import org.bibletranslationtools.shared.audio.engine.buildPeakCache
 import org.bibletranslationtools.shared.audio.engine.formatPlaybackTime
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
 import org.bibletranslationtools.otter.common.data.audio.BookMarker
 import org.bibletranslationtools.otter.common.data.audio.ChapterMarker
@@ -39,7 +34,6 @@ import org.bibletranslationtools.otter.common.data.audio.VerseMarker
 import org.bibletranslationtools.otter.common.data.primitives.BOOK_TITLE_SORT
 import org.bibletranslationtools.otter.common.data.primitives.CHAPTER_TITLE_SORT
 import org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio
-import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
@@ -53,7 +47,6 @@ import org.bibletranslationtools.otter.common.device.IAudioPlayer
 import org.bibletranslationtools.otter.common.domain.audio.AudioBouncer
 import org.bibletranslationtools.otter.common.domain.audio.WriteTakeMarkers
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
-import org.bibletranslationtools.otter.common.domain.content.Recordable
 import org.bibletranslationtools.otter.common.domain.content.SaveAudioAsNewTake
 import org.bibletranslationtools.otter.common.domain.narration.AudioScene
 import org.bibletranslationtools.otter.common.recorder.ActiveRecordingRenderer

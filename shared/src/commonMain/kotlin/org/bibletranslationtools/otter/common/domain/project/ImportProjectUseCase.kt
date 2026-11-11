@@ -26,13 +26,11 @@ import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import kotlinx.serialization.Serializable
 
 import io.reactivex.Completable
-import io.reactivex.Maybe
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import org.bibletranslationtools.otter.common.api.io.IBundledContentSource
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.primitives.Language
-import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.domain.project.importer.BurritoImporterFactory
 import org.bibletranslationtools.otter.common.domain.project.importer.IProjectImporter
 import org.bibletranslationtools.otter.common.domain.project.importer.IProjectImporterFactory
@@ -163,16 +161,6 @@ class ImportProjectUseCase(
     fun isSourceAudioProject(file: File): Boolean {
         return fileIO.newFileReader(file).use {
             !it.exists(RcConstants.SELECTED_TAKES_FILE) && it.exists(RcConstants.SOURCE_MEDIA_DIR)
-        }
-    }
-
-    fun getSourceMetadata(file: File): Maybe<ResourceMetadata> {
-        return when (ProjectFormatIdentifier.getProjectFormat(file)) {
-            ProjectFormat.RESOURCE_CONTAINER -> {
-                rcImporter.getSourceMetadata(file)
-            }
-
-            else -> Maybe.empty()
         }
     }
 

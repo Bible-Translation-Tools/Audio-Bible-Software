@@ -19,7 +19,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
 import org.bibletranslationtools.otter.common.data.primitives.MimeType
@@ -345,9 +344,7 @@ class RecorderViewModel(
      */
     private fun specOfExistingTake(): AudioSpec? {
         val audio = associatedAudio ?: return null
-        // `takes` is an untyped RxRelay replay buffer, hence the filter.
-        val take = audio.selected.value?.value
-            ?: audio.takes.values.filterIsInstance<Take>().maxByOrNull { it.number }
+        val take = audio.getSelectedTake() ?: audio.getAllTakes().maxByOrNull { it.number }
         val file = take?.file ?: return null
         return runCatching {
             val audioFile = OratureAudioFile(file)

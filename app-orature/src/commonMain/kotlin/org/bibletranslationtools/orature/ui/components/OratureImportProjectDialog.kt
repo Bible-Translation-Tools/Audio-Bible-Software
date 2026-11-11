@@ -16,7 +16,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FileUpload
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -25,7 +24,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -55,10 +53,8 @@ import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import org.bibletranslationtools.orature.platform.droppedPlatformFile
 import org.bibletranslationtools.orature.platform.importPickerType
 import org.bibletranslationtools.orature.resources.Res
-import org.bibletranslationtools.orature.resources.cancel
 import org.bibletranslationtools.orature.resources.choose_file
 import org.bibletranslationtools.orature.resources.close
-import org.bibletranslationtools.orature.resources.`continue`
 import org.bibletranslationtools.orature.resources.dragAndDropDescription
 import org.bibletranslationtools.orature.resources.dragToImport
 import org.bibletranslationtools.orature.resources.converting_file
@@ -70,7 +66,6 @@ import org.bibletranslationtools.orature.resources.importing_source_audio
 import org.bibletranslationtools.orature.resources.importing_source_text
 import org.bibletranslationtools.orature.resources.mergingSource
 import org.bibletranslationtools.orature.resources.overridingSource
-import org.bibletranslationtools.orature.resources.warning
 import org.bibletranslationtools.orature.ui.OratureColors
 import org.bibletranslationtools.orature.ui.viewmodels.OratureImportState
 import org.bibletranslationtools.orature.ui.viewmodels.OratureImportViewModel
@@ -192,22 +187,6 @@ fun OratureImportProjectDialog(onDismiss: () -> Unit) {
                 }
             }
         }
-    }
-
-    // Conflict: the file matches an existing source with a different version/versification
-    // (JVM: ExistingSourceImporter onRequestUserInput) — overwrite or cancel.
-    if (importState is OratureImportState.ConflictPrompt) {
-        AlertDialog(
-            onDismissRequest = { importVm.resolveConflict(false) },
-            title = { Text(stringResource(Res.string.warning)) },
-            text = { Text(stringResource(Res.string.overridingSource)) },
-            confirmButton = {
-                TextButton(onClick = { importVm.resolveConflict(true) }) { Text(stringResource(Res.string.`continue`)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { importVm.resolveConflict(false) }) { Text(stringResource(Res.string.cancel)) }
-            }
-        )
     }
 
     // Failure is reported via the app-root snackbar (see OratureImportViewModel.notify), not a dialog.

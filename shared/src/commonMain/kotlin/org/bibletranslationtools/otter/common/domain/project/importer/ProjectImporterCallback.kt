@@ -18,7 +18,6 @@
  */
 package org.bibletranslationtools.otter.common.domain.project.importer
 
-import io.reactivex.Single
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 
@@ -27,22 +26,6 @@ import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
  *  related to importing a project. This interface communicates with the user.
  */
 interface ProjectImporterCallback {
-    /**
-     * Called when the importer requires input from the user. This method
-     * should be implemented by the client code.
-     *
-     * @return the user's input
-     */
-    fun onRequestUserInput(): Single<ImportOptions>
-    /**
-     * Requests for user input with the parameter provided.
-     *
-     * @param parameter presents the available options for the user.
-     * @return the user's selection
-     * @see ProjectImporterCallback.onRequestUserInput
-     */
-    fun onRequestUserInput(parameter: ImportCallbackParameter): Single<ImportOptions>
-
     /**
      * Sends progress status information to the listeners/handlers of this callback.
      *
@@ -77,9 +60,3 @@ interface ProjectImporterCallback {
      */
     fun onError(filePath: String)
 }
-
-/**
- * The import callback options presented to the user. This will associate with a callback
- * to request user's input.
- */
-data class ImportCallbackParameter(val options: List<Int>, val name: String = "")

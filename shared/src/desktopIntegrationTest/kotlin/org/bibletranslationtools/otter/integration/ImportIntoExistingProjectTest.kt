@@ -1,11 +1,8 @@
 package org.bibletranslationtools.otter.integration
 
-import io.reactivex.Single
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
-import org.bibletranslationtools.otter.common.domain.project.importer.ImportCallbackParameter
-import org.bibletranslationtools.otter.common.domain.project.importer.ImportOptions
 import org.bibletranslationtools.otter.common.domain.project.importer.ProjectImporterCallback
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
 import java.io.File
@@ -76,13 +73,7 @@ class ImportIntoExistingProjectTest {
 
     /** A recording app's callback, keeping what the importer tells it about takes. */
     private class Recording : ProjectImporterCallback {
-        var asked = false
         var takes: Triple<Boolean, Int, Int>? = null
-        override fun onRequestUserInput(): Single<ImportOptions> {
-            asked = true
-            return Single.just(ImportOptions(confirmed = true))
-        }
-        override fun onRequestUserInput(parameter: ImportCallbackParameter) = onRequestUserInput()
         override fun onNotifyProgress(localizeKey: String?, message: String?, percent: Double?) = Unit
         override fun onNotifySuccess(language: String?, project: String?, workbookDescriptor: WorkbookDescriptor?) = Unit
         override fun onNotifyTakesImported(merged: Boolean, added: Int, alreadyThere: Int) {
@@ -92,7 +83,7 @@ class ImportIntoExistingProjectTest {
     }
 
     @Test
-    fun `a book already here is merged without asking, and the app is told what came in`() {
+    fun `a book already here is merged, and the app is told what came in`() {
         val (environment, project, backup) = setup()
         val entry = environment.zipEntries(backup).single { it.endsWith("_v41_t1.wav") }
         val imported = environment.withEntryReplaced(backup, entry, "imported recording".toByteArray())
@@ -100,7 +91,6 @@ class ImportIntoExistingProjectTest {
 
         assertEquals(ImportResult.SUCCESS, environment.importer.import(imported, callback).blockingGet())
 
-        assertEquals(false, callback.asked, "nothing to ask: nothing is replaced")
         assertEquals(Triple(true, 1, 0), callback.takes)
         assertEquals(2, environment.takesOn(project, 19, 41).size)
     }

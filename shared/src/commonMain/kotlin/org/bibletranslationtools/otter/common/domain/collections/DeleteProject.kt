@@ -29,7 +29,6 @@ import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
-import java.util.concurrent.TimeUnit
 
 class DeleteProject(
     private val collectionRepository: ICollectionRepository,
@@ -88,20 +87,6 @@ class DeleteProject(
             }
             .andThen(workbookDescriptorRepo.delete(list))
             .subscribeOn(Schedulers.single()) // sequential execution of delete to avoid db transaction error
-    }
-
-    fun deleteProjectsWithTimer(
-        books: List<WorkbookDescriptor>,
-        timeoutMillis: Int,
-        onBeforeDeleteCallback: () -> Unit = {}
-    ): Completable {
-        return Completable
-            .timer(timeoutMillis.toLong(), TimeUnit.MILLISECONDS)
-            .andThen {
-                onBeforeDeleteCallback()
-                it.onComplete()
-            }
-            .andThen(deleteProjects(books))
     }
 
     private fun recreateWorkbookDescriptor(workbookDescriptor: WorkbookDescriptor): Completable {

@@ -210,16 +210,16 @@ class OratureProjectWizardViewModel(
                 // manifest via Res, not a classpath lookup — fixed alongside the recorder).
                 val result = linkedSetOf<Language>()
                 runCatching {
-                    resourceMetadataRepo.getAllSources().await().map { it.language }
+                    resourceMetadataRepo.getAllSourcesSuspend().map { it.language }
                 }.onFailure { logFailure("loading all sources for the project wizard", it) }
                     .getOrDefault(emptyList()).let(result::addAll)
                 runCatching {
-                    collectionRepo.getRootSources().await()
+                    collectionRepo.getRootSourcesSuspend()
                         .mapNotNull { it.resourceContainer }.map { it.language }
                 }.onFailure { logFailure("loading root sources for the project wizard", it) }
                     .getOrDefault(emptyList()).let(result::addAll)
                 runCatching {
-                    languageRepo.getAvailableGatewaySources().await()
+                    languageRepo.getAvailableGatewaySourcesSuspend()
                 }.onFailure { logFailure("loading available gateway sources for the project wizard", it) }
                     .getOrDefault(emptyList()).let(result::addAll)
                 result.toList()
@@ -233,7 +233,7 @@ class OratureProjectWizardViewModel(
     private fun loadTargetLanguages() {
         launchLogged {
             try {
-                val languages = withContext(ioDispatcher) { languageRepo.getAll().await() }
+                val languages = withContext(ioDispatcher) { languageRepo.getAllSuspend() }
                 _uiState.value = _uiState.value.copy(targetLanguages = languages)
             } catch (e: CancellationException) {
                 throw e
@@ -347,13 +347,13 @@ class OratureProjectWizardViewModel(
      */
     private suspend fun getResourceVersions(language: Language): List<OratureResourceVersion> {
         return withContext(ioDispatcher) {
-            val exists = resourceMetadataRepo.exists { it.language == language }.await()
+            val exists = resourceMetadataRepo.existsSuspend { it.language == language }
             if (!exists) {
                 importer.sideloadSource(language).await()
             }
             // One entry per source, titled by its newest edition; the editions come along for the
             // edition step.
-            val versions = resourceMetadataRepo.getAllSources().await()
+            val versions = resourceMetadataRepo.getAllSourcesSuspend()
                 .filter { it.language == language }
                 .sortedWith(EditionOrder.newestFirst)
                 .groupBy { it.identifier }
@@ -442,7 +442,7 @@ class OratureProjectWizardViewModel(
         }
 
         withContext(ioDispatcher) {
-            val sourceExists = collectionRepo.getRootSources().await()
+            val sourceExists = collectionRepo.getRootSourcesSuspend()
                 .any { it.resourceContainer?.language == sourceLanguage }
             if (!sourceExists) {
                 importer.sideloadSource(sourceLanguage).await()
@@ -481,7 +481,7 @@ class OratureProjectWizardViewModel(
         sourceLanguage: Language,
         targetLanguage: Language
     ) = withContext(ioDispatcher) {
-        workbookDescriptorRepo.getAll().await().firstOrNull { wb ->
+        workbookDescriptorRepo.getAllSuspend().firstOrNull { wb ->
             val sourceVersionMatches = resourceVersion?.slug?.let {
                 wb.sourceCollection.resourceContainer?.identifier == it
             } != false

@@ -18,7 +18,6 @@
  */
 package org.bibletranslationtools.otter.common.data.workbook
 
-import io.reactivex.Observable
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
 import java.util.*
 import org.bibletranslationtools.otter.common.data.primitives.ContentType

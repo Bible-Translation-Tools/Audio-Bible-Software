@@ -94,11 +94,11 @@ class ProjectCreationViewModel : ViewModel(), KoinComponent {
                 val (sources, available) = withContext(Dispatchers.IO) {
                     // One entry per source: the newest installed edition. Choosing among
                     // editions comes with the edition picker.
-                    val imported = resourceMetadataRepository.getAllSources().blockingGet()
+                    val imported = resourceMetadataRepository.getAllSourcesSuspend()
                         .sortedWith(EditionOrder.newestFirst)
                         .distinctBy { it.language.slug to it.identifier }
                     val importedLangs = imported.map { it.language.slug }.toSet()
-                    val available = languageRepository.getAvailableGatewaySources().blockingGet()
+                    val available = languageRepository.getAvailableGatewaySourcesSuspend()
                         .filter { it.slug !in importedLangs }
                     imported to available
                 }
@@ -115,7 +115,7 @@ class ProjectCreationViewModel : ViewModel(), KoinComponent {
     private fun loadTargetLanguages() {
         launchLogged {
             try {
-                val languages = languageRepository.getAll().blockingGet() // Assuming getAll() derived from IRepository implies basic fetch
+                val languages = languageRepository.getAllSuspend()
                 _uiState.update { it.copy(targetLanguages = languages) }
             } catch (e: Exception) {
                 logFailure("loading target languages", e)
@@ -172,7 +172,7 @@ class ProjectCreationViewModel : ViewModel(), KoinComponent {
             try {
                 val metadata = withContext(Dispatchers.IO) {
                     importer.sideloadSource(language).blockingAwait()
-                    resourceMetadataRepository.getAllSources().blockingGet()
+                    resourceMetadataRepository.getAllSourcesSuspend()
                         .filter { it.language.slug == language.slug }
                         .let(EditionOrder::newest)
                 }
@@ -218,11 +218,11 @@ class ProjectCreationViewModel : ViewModel(), KoinComponent {
                 // However, CreateProject logic often iterates root sources.
                 
                 // Strategy: Find the collection that corresponds to this source metadata.
-                val rootCollection = collectionRepository.getRootSources().blockingGet()
+                val rootCollection = collectionRepository.getRootSourcesSuspend()
                     .find { it.resourceContainer?.id == source.id }
                 
                 if (rootCollection != null) {
-                    val books = collectionRepository.getChildren(rootCollection).blockingGet()
+                    val books = collectionRepository.getChildrenSuspend(rootCollection)
                     _uiState.update { it.copy(availableBooks = books, isLoading = false) }
                 } else {
                      _uiState.update { it.copy(isLoading = false, error = getString(Res.string.err_source_collection_not_found)) }

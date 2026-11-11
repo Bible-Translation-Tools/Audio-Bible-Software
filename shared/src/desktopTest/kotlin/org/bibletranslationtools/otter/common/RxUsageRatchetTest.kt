@@ -22,15 +22,14 @@ class RxUsageRatchetTest {
         "app-orature:orature" to 1,
         "app-orature:orature/services" to 1,
         "app-orature:orature/ui/viewmodels" to 10,
-        "app-recorder:bttrecorder2/services" to 1,
         "app-recorder:bttrecorder2/ui" to 1,
         "app-recorder:bttrecorder2/ui/navigation" to 1,
-        "app-recorder:bttrecorder2/ui/viewmodels" to 7,
+        "app-recorder:bttrecorder2/ui/viewmodels" to 5,
         "shared:otter/common/api/io/zip" to 1,
         "shared:otter/common/api/persistence" to 2,
         "shared:otter/common/api/persistence/config" to 1,
         "shared:otter/common/api/persistence/repositories" to 12,
-        "shared:otter/common/data/workbook" to 9,
+        "shared:otter/common/data/workbook" to 8,
         "shared:otter/common/domain/audio" to 2,
         "shared:otter/common/domain/collections" to 6,
         "shared:otter/common/domain/content" to 4,
@@ -38,11 +37,10 @@ class RxUsageRatchetTest {
         "shared:otter/common/domain/model" to 1,
         "shared:otter/common/domain/narration" to 5,
         "shared:otter/common/domain/narration/teleprompter" to 1,
-        "shared:otter/common/domain/plugins" to 3,
         "shared:otter/common/domain/project" to 3,
         "shared:otter/common/domain/project/exporter" to 2,
         "shared:otter/common/domain/project/exporter/resourcecontainer" to 4,
-        "shared:otter/common/domain/project/importer" to 8,
+        "shared:otter/common/domain/project/importer" to 7,
         "shared:otter/common/domain/resourcecontainer" to 1,
         "shared:otter/common/domain/resourcecontainer/project" to 1,
         "shared:otter/common/initialization" to 13,
@@ -50,7 +48,20 @@ class RxUsageRatchetTest {
         "shared:otter/common/io/zip" to 3,
         "shared:otter/common/persistence/repositories" to 11,
         "shared:otter/common/utils" to 1,
-        "shared:shared/domain" to 1,
+    )
+
+    /**
+     * Blocking Rx calls (`blockingGet`, `blockingAwait`, ...) left in each app file. One of these on
+     * the main thread freezes the screen, and the main thread is where a ViewModel starts. None is
+     * on a repository any more; what is left blocks on a use case or an entity, on an io dispatcher.
+     */
+    private val expectedBlockingCalls = mapOf(
+        "app-orature:OratureChapterReviewViewModel.kt" to 1,
+        "app-orature:OratureNarrationViewModel.kt" to 5,
+        "app-orature:OratureTranslationViewModel.kt" to 1,
+        "app-orature:OratureVerseMarkerViewModel.kt" to 1,
+        "app-recorder:ExportProjectViewModel.kt" to 1,
+        "app-recorder:ProjectCreationViewModel.kt" to 2,
     )
 
     private val rxPackages = listOf("io.reactivex", "com.jakewharton.rxrelay2", "kotlinx.coroutines.rx2")
@@ -67,9 +78,7 @@ class RxUsageRatchetTest {
 
     /** `module:package/path` to the number of Rx-importing files in it, over every `*Main` source set. */
     private fun actual(): Map<String, Int> = listOf("shared", "app-orature", "app-recorder").flatMap { module ->
-        val sourceSets = File(repoRoot, "$module/src").listFiles { dir -> dir.isDirectory && dir.name.endsWith("Main") }
-        assertTrue(!sourceSets.isNullOrEmpty(), "found no main source sets under $module/src")
-        sourceSets!!.flatMap { sourceSet ->
+        mainSourceSets(module).flatMap { sourceSet ->
             val root = File(sourceSet, "kotlin/org/bibletranslationtools")
             root.walkTopDown().filter { it.isFile && it.extension == "kt" && importsRx(it) }.map {
                 "$module:" + it.parentFile.toRelativeString(root).replace(File.separatorChar, '/')
@@ -77,22 +86,47 @@ class RxUsageRatchetTest {
         }
     }.groupingBy { it }.eachCount()
 
-    @Test
-    fun `the number of files importing RxJava only goes down, and this table follows it`() {
-        val actual = actual()
-        val risen = actual.filter { (pkg, count) -> count > (expected[pkg] ?: 0) }
-        val fallen = expected.filter { (pkg, count) -> (actual[pkg] ?: 0) < count }
-        if (risen.isNotEmpty()) {
-            fail(
-                "New RxJava usage. Write new code with coroutines; do not raise the table to make this pass:\n" +
-                    risen.entries.joinToString("\n") { "  - ${it.key}: ${expected[it.key] ?: 0} -> ${it.value}" }
-            )
+    private fun mainSourceSets(module: String): List<File> {
+        val sourceSets = File(repoRoot, "$module/src").listFiles { dir -> dir.isDirectory && dir.name.endsWith("Main") }
+        assertTrue(!sourceSets.isNullOrEmpty(), "found no main source sets under $module/src")
+        return sourceSets.toList()
+    }
+
+    /** `module:File.kt` to the number of blocking Rx calls in it, comments left out. */
+    private fun actualBlockingCalls(): Map<String, Int> {
+        val comments = Regex("""/\*.*?\*/|//[^\n]*""", RegexOption.DOT_MATCHES_ALL)
+        val blockingCall = Regex("""\.blocking[A-Z]\w*\(""")
+        return listOf("app-orature", "app-recorder").flatMap { module ->
+            mainSourceSets(module).flatMap { sourceSet ->
+                sourceSet.walkTopDown().filter { it.isFile && it.extension == "kt" }.map {
+                    "$module:${it.name}" to blockingCall.findAll(it.readText().replace(comments, "")).count()
+                }.filter { it.second > 0 }.toList()
+            }
+        }.toMap()
+    }
+
+    private fun assertRatchet(expected: Map<String, Int>, actual: Map<String, Int>, risen: String, fallen: String) {
+        val up = actual.filter { (key, count) -> count > (expected[key] ?: 0) }
+        val down = expected.filter { (key, count) -> (actual[key] ?: 0) < count }
+        if (up.isNotEmpty()) {
+            fail("$risen\n" + up.entries.joinToString("\n") { "  - ${it.key}: ${expected[it.key] ?: 0} -> ${it.value}" })
         }
-        if (fallen.isNotEmpty()) {
-            fail(
-                "Fewer files import RxJava here. Lower the table in this test (drop the line at 0):\n" +
-                    fallen.entries.joinToString("\n") { "  - ${it.key}: ${it.value} -> ${actual[it.key] ?: 0}" }
-            )
+        if (down.isNotEmpty()) {
+            fail("$fallen\n" + down.entries.joinToString("\n") { "  - ${it.key}: ${it.value} -> ${actual[it.key] ?: 0}" })
         }
     }
+
+    @Test
+    fun `the number of files importing RxJava only goes down, and this table follows it`() = assertRatchet(
+        expected, actual(),
+        risen = "New RxJava usage. Write new code with coroutines; do not raise the table to make this pass:",
+        fallen = "Fewer files import RxJava here. Lower the table in this test (drop the line at 0):"
+    )
+
+    @Test
+    fun `the number of blocking Rx calls in the apps only goes down, and this table follows it`() = assertRatchet(
+        expectedBlockingCalls, actualBlockingCalls(),
+        risen = "New blocking Rx call in an app. Call the suspend function; do not raise the table to make this pass:",
+        fallen = "Fewer blocking Rx calls here. Lower the table in this test (drop the line at 0):"
+    )
 }

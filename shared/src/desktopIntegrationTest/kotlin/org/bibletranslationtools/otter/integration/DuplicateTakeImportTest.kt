@@ -1,11 +1,8 @@
 package org.bibletranslationtools.otter.integration
 
-import io.reactivex.Single
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
-import org.bibletranslationtools.otter.common.domain.project.importer.ImportCallbackParameter
-import org.bibletranslationtools.otter.common.domain.project.importer.ImportOptions
 import org.bibletranslationtools.otter.common.domain.project.importer.ProjectImporterCallback
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstants
@@ -136,8 +133,6 @@ class DuplicateTakeImportTest {
     /** A callback that keeps what the importer reports about takes. */
     private class TakeCounts : ProjectImporterCallback {
         var takes: Triple<Boolean, Int, Int>? = null
-        override fun onRequestUserInput(): Single<ImportOptions> = Single.just(ImportOptions(confirmed = true))
-        override fun onRequestUserInput(parameter: ImportCallbackParameter) = onRequestUserInput()
         override fun onNotifyProgress(localizeKey: String?, message: String?, percent: Double?) = Unit
         override fun onNotifySuccess(language: String?, project: String?, workbookDescriptor: WorkbookDescriptor?) = Unit
         override fun onNotifyTakesImported(merged: Boolean, added: Int, alreadyThere: Int) {

@@ -134,7 +134,6 @@ class LayerBoundaryTest {
                 "workbook/Book.kt",
                 "workbook/BookElementContainer.kt",
                 "workbook/Chapter.kt",
-                "workbook/Chunk.kt",
                 "workbook/ResourceGroup.kt",
                 "workbook/Take.kt",
                 "workbook/WorkbookDescriptor.kt"

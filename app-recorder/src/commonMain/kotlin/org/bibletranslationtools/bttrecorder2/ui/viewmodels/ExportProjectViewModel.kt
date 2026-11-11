@@ -1,5 +1,7 @@
 package org.bibletranslationtools.bttrecorder2.ui.viewmodels
 
+import org.bibletranslationtools.otter.common.utils.runCatchingCancellable
+import kotlinx.coroutines.flow.toList
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.vinceglb.filekit.PlatformFile
@@ -137,7 +139,7 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
                     return@launchLogged
                 }
 
-                val chapters = workbook.target.chapters.toList().blockingGet()
+                val chapters = workbook.target.chaptersFlow.toList()
                 val chapterDescriptors = chapters.map { chapter ->
                     val progress = when {
                         chapter.hasSelectedAudio() -> 1.0
@@ -399,9 +401,9 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
         }.getOrDefault(-1)
 
         // Count selected takes across chapters + chunks.
-        val selectedTakeCount = runCatching {
+        val selectedTakeCount = runCatchingCancellable {
             var count = 0
-            val chapters = workbook.target.chapters.toList().blockingGet()
+            val chapters = workbook.target.chaptersFlow.toList()
             chapters.forEach { chapter ->
                 if (chapter.audio.getSelectedTake() != null) count++
                 val chunks = runCatching {

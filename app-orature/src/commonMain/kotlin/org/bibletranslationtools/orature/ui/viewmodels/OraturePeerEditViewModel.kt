@@ -28,7 +28,6 @@ import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
 import org.bibletranslationtools.otter.common.data.primitives.MimeType
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Take
-import org.bibletranslationtools.otter.common.data.workbook.TakeCheckingState
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnection
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
@@ -338,7 +337,7 @@ class OraturePeerEditViewModel(
     fun confirmChunk() {
         val chunk = activeChunk ?: return
         val take = chunk.audio.getSelectedTake() ?: return
-        val current = take.checkingState.value ?: TakeCheckingState(CheckingStatus.UNCHECKED, null)
+        val current = take.currentCheckingState()
         val op = TranslationTakeApproveAction(take, checkingStatusForStep(), current).apply {
             setUndoCallback { _uiState.value = _uiState.value.copy(confirmed = false) }
             setRedoCallback { _uiState.value = _uiState.value.copy(confirmed = true) }

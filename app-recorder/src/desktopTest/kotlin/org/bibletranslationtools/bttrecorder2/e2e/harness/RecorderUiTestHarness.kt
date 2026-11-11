@@ -111,13 +111,13 @@ object RecorderUiTestHarness {
             koin.get<org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository>()
         val appPreferences = koin.get<org.bibletranslationtools.shared.preferences.IAppPreferences>()
 
-        val target = languageRepository.getAll().blockingGet().first { it.slug == "aa" }
-        val sourceMeta = resourceMetadataRepository.getAllSources().blockingGet()
+        val target = kotlinx.coroutines.runBlocking { languageRepository.getAllSuspend() }.first { it.slug == "aa" }
+        val sourceMeta = kotlinx.coroutines.runBlocking { resourceMetadataRepository.getAllSourcesSuspend() }
             .first { it.language.slug == "en" }
         val sourceLang = sourceMeta.language
-        val root = collectionRepository.getRootSources().blockingGet()
+        val root = kotlinx.coroutines.runBlocking { collectionRepository.getRootSourcesSuspend() }
             .first { it.resourceContainer?.id == sourceMeta.id }
-        val gen = collectionRepository.getChildren(root).blockingGet().first { it.slug == "gen" }
+        val gen = kotlinx.coroutines.runBlocking { collectionRepository.getChildrenSuspend(root) }.first { it.slug == "gen" }
         val targetBook = createProject.create(
             sourceProject = gen,
             targetLanguage = target,

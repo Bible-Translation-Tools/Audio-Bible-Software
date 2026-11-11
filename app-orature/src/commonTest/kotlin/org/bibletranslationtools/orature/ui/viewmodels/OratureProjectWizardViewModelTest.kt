@@ -85,12 +85,12 @@ class OratureProjectWizardViewModelTest : KoinTest {
             )
         }
         // Sensible defaults; individual tests override as needed.
-        every { collectionRepo.getRootSources() } returns Single.just(emptyList())
-        every { languageRepo.getAvailableGatewaySources() } returns Single.just(emptyList())
-        every { languageRepo.getAll() } returns Single.just(emptyList())
-        every { workbookDescriptorRepo.getAll() } returns Single.just(emptyList())
-        every { resourceMetadataRepo.getAllSources() } returns Single.just(emptyList())
-        every { resourceMetadataRepo.exists(any<(ResourceMetadata) -> Boolean>()) } returns Single.just(true)
+        coEvery { collectionRepo.getRootSourcesSuspend() } returns emptyList()
+        coEvery { languageRepo.getAvailableGatewaySourcesSuspend() } returns emptyList()
+        coEvery { languageRepo.getAllSuspend() } returns emptyList()
+        coEvery { workbookDescriptorRepo.getAllSuspend() } returns emptyList()
+        coEvery { resourceMetadataRepo.getAllSourcesSuspend() } returns emptyList()
+        coEvery { resourceMetadataRepo.existsSuspend(any<(ResourceMetadata) -> Boolean>()) } returns true
         every { importer.sideloadSource(any()) } returns Completable.complete()
         every { createProject.createAllBooks(any(), any(), any(), any()) } returns Completable.complete()
     }
@@ -181,7 +181,7 @@ class OratureProjectWizardViewModelTest : KoinTest {
     @Test
     fun `selecting a type advances to source language step`() = runVmTest {
         val english = lang("eng", "English")
-        every { collectionRepo.getRootSources() } returns Single.just(listOf(collection(english, "ulb")))
+        coEvery { collectionRepo.getRootSourcesSuspend() } returns listOf(collection(english, "ulb"))
 
         val vm = newVm()
         vm.onModeSelected(ProjectMode.TRANSLATION)
@@ -195,11 +195,10 @@ class OratureProjectWizardViewModelTest : KoinTest {
         val english = lang("eng", "English")
         val spanish = lang("spa", "Spanish")
         // Two versions -> forces the multi-step (no quick-create) path.
-        every { collectionRepo.getRootSources() } returns Single.just(listOf(collection(english, "ulb")))
-        every { resourceMetadataRepo.getAllSources() } returns Single.just(
+        coEvery { collectionRepo.getRootSourcesSuspend() } returns listOf(collection(english, "ulb"))
+        coEvery { resourceMetadataRepo.getAllSourcesSuspend() } returns
             listOf(metadata("ulb", "ULB", english), metadata("udb", "UDB", english))
-        )
-        every { languageRepo.getAll() } returns Single.just(listOf(english, spanish))
+        coEvery { languageRepo.getAllSuspend() } returns listOf(english, spanish)
 
         val vm = newVm()
         vm.onModeSelected(ProjectMode.TRANSLATION)
@@ -270,9 +269,9 @@ class OratureProjectWizardViewModelTest : KoinTest {
     @Test
     fun `single version narration quick-creates with source equal target`() = runVmTest {
         val english = lang("eng", "English")
-        every { collectionRepo.getRootSources() } returns Single.just(listOf(collection(english, "ulb")))
+        coEvery { collectionRepo.getRootSourcesSuspend() } returns listOf(collection(english, "ulb"))
         // Exactly one version for the selected language.
-        every { resourceMetadataRepo.getAllSources() } returns Single.just(listOf(metadata("ulb", "ULB", english)))
+        coEvery { resourceMetadataRepo.getAllSourcesSuspend() } returns listOf(metadata("ulb", "ULB", english))
 
         val srcSlot = slot<Language>()
         val tgtSlot = slot<Language>()
@@ -300,12 +299,12 @@ class OratureProjectWizardViewModelTest : KoinTest {
     fun `single version with source already chosen quick-creates`() = runVmTest {
         val english = lang("eng", "English")
         val spanish = lang("spa", "Spanish")
-        every { collectionRepo.getRootSources() } returns Single.just(listOf(collection(english, "ulb")))
+        coEvery { collectionRepo.getRootSourcesSuspend() } returns listOf(collection(english, "ulb"))
         // One version -> selecting the source quick-creates immediately (no target step needed
         // in the JVM flow only when source already set). Here we drive TRANSLATION: source pick
         // with a single version sets the source, then the target pick quick-creates.
-        every { resourceMetadataRepo.getAllSources() } returns Single.just(listOf(metadata("ulb", "ULB", english)))
-        every { languageRepo.getAll() } returns Single.just(listOf(english, spanish))
+        coEvery { resourceMetadataRepo.getAllSourcesSuspend() } returns listOf(metadata("ulb", "ULB", english))
+        coEvery { languageRepo.getAllSuspend() } returns listOf(english, spanish)
 
         val done = CompletableDeferred<Unit>()
         val vm = newVm(onComplete = { done.complete(Unit) })
@@ -327,11 +326,10 @@ class OratureProjectWizardViewModelTest : KoinTest {
     fun `multiple versions require version selection to create`() = runVmTest {
         val english = lang("eng", "English")
         val spanish = lang("spa", "Spanish")
-        every { collectionRepo.getRootSources() } returns Single.just(listOf(collection(english, "ulb")))
-        every { resourceMetadataRepo.getAllSources() } returns Single.just(
+        coEvery { collectionRepo.getRootSourcesSuspend() } returns listOf(collection(english, "ulb"))
+        coEvery { resourceMetadataRepo.getAllSourcesSuspend() } returns
             listOf(metadata("ulb", "ULB", english), metadata("udb", "UDB", english))
-        )
-        every { languageRepo.getAll() } returns Single.just(listOf(english, spanish))
+        coEvery { languageRepo.getAllSuspend() } returns listOf(english, spanish)
 
         val done = CompletableDeferred<Unit>()
         val vm = newVm(onComplete = { done.complete(Unit) })
@@ -357,12 +355,11 @@ class OratureProjectWizardViewModelTest : KoinTest {
     @Test
     fun `existing workbook is not recreated but still completes`() = runVmTest {
         val english = lang("eng", "English")
-        every { collectionRepo.getRootSources() } returns Single.just(listOf(collection(english, "ulb")))
-        every { resourceMetadataRepo.getAllSources() } returns Single.just(listOf(metadata("ulb", "ULB", english)))
+        coEvery { collectionRepo.getRootSourcesSuspend() } returns listOf(collection(english, "ulb"))
+        coEvery { resourceMetadataRepo.getAllSourcesSuspend() } returns listOf(metadata("ulb", "ULB", english))
         // A workbook for (eng, eng, ulb-derived) already exists -> bookmark path, no createAllBooks.
-        every { workbookDescriptorRepo.getAll() } returns Single.just(
+        coEvery { workbookDescriptorRepo.getAllSuspend() } returns
             listOf(descriptor(english, english, "ulb", ProjectMode.NARRATION))
-        )
 
         val done = CompletableDeferred<Unit>()
         val vm = newVm(onComplete = { done.complete(Unit) })
@@ -381,11 +378,10 @@ class OratureProjectWizardViewModelTest : KoinTest {
     fun `create emits a bookmark carrying the created group key`() = runVmTest {
         val english = lang("eng", "English")
         val spanish = lang("spa", "Spanish")
-        every { collectionRepo.getRootSources() } returns Single.just(listOf(collection(english, "ulb")))
-        every { resourceMetadataRepo.getAllSources() } returns Single.just(
+        coEvery { collectionRepo.getRootSourcesSuspend() } returns listOf(collection(english, "ulb"))
+        coEvery { resourceMetadataRepo.getAllSourcesSuspend() } returns
             listOf(metadata("ulb", "ULB", english), metadata("udb", "UDB", english))
-        )
-        every { languageRepo.getAll() } returns Single.just(listOf(english, spanish))
+        coEvery { languageRepo.getAllSuspend() } returns listOf(english, spanish)
 
         val vm = newVm()
         coroutineScope {
@@ -412,11 +408,10 @@ class OratureProjectWizardViewModelTest : KoinTest {
     @Test
     fun `existing workbook emits a bookmark for the matched group`() = runVmTest {
         val english = lang("eng", "English")
-        every { collectionRepo.getRootSources() } returns Single.just(listOf(collection(english, "ulb")))
-        every { resourceMetadataRepo.getAllSources() } returns Single.just(listOf(metadata("ulb", "ULB", english)))
-        every { workbookDescriptorRepo.getAll() } returns Single.just(
+        coEvery { collectionRepo.getRootSourcesSuspend() } returns listOf(collection(english, "ulb"))
+        coEvery { resourceMetadataRepo.getAllSourcesSuspend() } returns listOf(metadata("ulb", "ULB", english))
+        coEvery { workbookDescriptorRepo.getAllSuspend() } returns
             listOf(descriptor(english, english, "ulb", ProjectMode.NARRATION))
-        )
 
         val vm = newVm()
         coroutineScope {
@@ -440,9 +435,9 @@ class OratureProjectWizardViewModelTest : KoinTest {
         val english = lang("eng", "English")
         val spanish = lang("spa", "Spanish")
         // No root sources -> source metadata missing -> sideload before createAllBooks.
-        every { collectionRepo.getRootSources() } returns Single.just(emptyList())
-        every { resourceMetadataRepo.getAllSources() } returns Single.just(listOf(metadata("ulb", "ULB", english)))
-        every { languageRepo.getAll() } returns Single.just(listOf(english, spanish))
+        coEvery { collectionRepo.getRootSourcesSuspend() } returns emptyList()
+        coEvery { resourceMetadataRepo.getAllSourcesSuspend() } returns listOf(metadata("ulb", "ULB", english))
+        coEvery { languageRepo.getAllSuspend() } returns listOf(english, spanish)
 
         val done = CompletableDeferred<Unit>()
         val vm = newVm(onComplete = { done.complete(Unit) })
@@ -470,9 +465,9 @@ class OratureProjectWizardViewModelTest : KoinTest {
         val spanish = lang("spa", "Spanish")
         val v12 = edition(1, "12", "2017-11-29", english)
         val v2407 = edition(2, "24-07", "2024-07-12", english)
-        every { collectionRepo.getRootSources() } returns Single.just(listOf(collection(english, "ulb")))
-        every { resourceMetadataRepo.getAllSources() } returns Single.just(listOf(v12, v2407))
-        every { languageRepo.getAll() } returns Single.just(listOf(english, spanish))
+        coEvery { collectionRepo.getRootSourcesSuspend() } returns listOf(collection(english, "ulb"))
+        coEvery { resourceMetadataRepo.getAllSourcesSuspend() } returns listOf(v12, v2407)
+        coEvery { languageRepo.getAllSuspend() } returns listOf(english, spanish)
         every { createProject.createAllBooks(any(), any(), any(), any(), any()) } returns Completable.complete()
         val describe = mockk<DescribeSourceEditions>()
         coEvery { describe.describeAll(any()) } returns emptyMap()
@@ -500,11 +495,10 @@ class OratureProjectWizardViewModelTest : KoinTest {
     fun `back from the edition step returns to the step it came from`() = runVmTest {
         val english = lang("eng", "English")
         val spanish = lang("spa", "Spanish")
-        every { collectionRepo.getRootSources() } returns Single.just(listOf(collection(english, "ulb")))
-        every { resourceMetadataRepo.getAllSources() } returns Single.just(
+        coEvery { collectionRepo.getRootSourcesSuspend() } returns listOf(collection(english, "ulb"))
+        coEvery { resourceMetadataRepo.getAllSourcesSuspend() } returns
             listOf(edition(1, "12", "2017-11-29", english), edition(2, "24-07", "2024-07-12", english))
-        )
-        every { languageRepo.getAll() } returns Single.just(listOf(english, spanish))
+        coEvery { languageRepo.getAllSuspend() } returns listOf(english, spanish)
         val describe = mockk<DescribeSourceEditions>()
         coEvery { describe.describeAll(any()) } returns emptyMap()
         loadKoinModules(module { single { describe } })
@@ -527,11 +521,10 @@ class OratureProjectWizardViewModelTest : KoinTest {
     fun `two editions with the same dates are both labelled as such, neither as newest`() = runVmTest {
         val english = lang("eng", "English")
         val spanish = lang("spa", "Spanish")
-        every { collectionRepo.getRootSources() } returns Single.just(listOf(collection(english, "ulb")))
-        every { resourceMetadataRepo.getAllSources() } returns Single.just(
+        coEvery { collectionRepo.getRootSourcesSuspend() } returns listOf(collection(english, "ulb"))
+        coEvery { resourceMetadataRepo.getAllSourcesSuspend() } returns
             listOf(edition(1, "12", "2017-11-29", english), edition(2, "12", "2017-11-29", english))
-        )
-        every { languageRepo.getAll() } returns Single.just(listOf(english, spanish))
+        coEvery { languageRepo.getAllSuspend() } returns listOf(english, spanish)
         val describe = mockk<DescribeSourceEditions>()
         coEvery { describe.describeAll(any()) } returns emptyMap()
         loadKoinModules(module { single { describe } })

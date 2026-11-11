@@ -47,6 +47,13 @@ class Take(
     override fun hashCode() = file.hashCode()
 
     fun isDeleted() = deletedTimestamp.value?.value != null
+
+    /** Deletes this take as of today. The delete is saved, and the take is deselected if it was selected. */
+    fun markDeleted() = deletedTimestamp.accept(DateHolder.now())
+
+    /** The checking state last set on this take. */
+    fun currentCheckingState(): TakeCheckingState =
+        checkingState.value ?: TakeCheckingState(CheckingStatus.UNCHECKED, null)
 }
 
 data class DateHolder(val value: LocalDate?) {

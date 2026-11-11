@@ -23,7 +23,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
-import org.bibletranslationtools.otter.common.data.workbook.DateHolder
 import org.bibletranslationtools.otter.common.device.AudioPlayerEvent
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.koin.core.component.KoinComponent
@@ -395,7 +394,7 @@ class UnitListViewModel(
             stopProgressTicker()
         }
 
-        take.deletedTimestamp.accept(DateHolder.now())
+        take.markDeleted()
         val remaining = unit.audio.getAllTakes()
             .filter { !it.isDeleted() }
             .sortedBy { it.number }

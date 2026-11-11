@@ -38,7 +38,6 @@ import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import java.io.File
 import java.io.IOException
 import java.util.UUID
-import io.reactivex.Completable
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
 import org.bibletranslationtools.otter.common.OTTER_JSON
 

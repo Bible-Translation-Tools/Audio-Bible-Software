@@ -19,9 +19,6 @@
 package org.bibletranslationtools.otter.common.initialization
 
 import io.reactivex.ObservableEmitter
-import io.reactivex.Single
-import org.bibletranslationtools.otter.common.domain.project.importer.ImportCallbackParameter
-import org.bibletranslationtools.otter.common.domain.project.importer.ImportOptions
 import org.bibletranslationtools.otter.common.domain.project.importer.ProjectImporterCallback
 import org.bibletranslationtools.otter.common.data.ProgressStatus
 import org.bibletranslationtools.otter.common.data.primitives.Collection
@@ -36,14 +33,6 @@ internal fun setupImportCallback(
     progressStatusEmitter: ObservableEmitter<ProgressStatus>
 ): ProjectImporterCallback {
     return object : ProjectImporterCallback {
-        override fun onRequestUserInput(): Single<ImportOptions> {
-            throw NotImplementedError("no op")
-        }
-
-        override fun onRequestUserInput(parameter: ImportCallbackParameter): Single<ImportOptions> {
-            return Single.just(ImportOptions(chapters = parameter.options))
-        }
-
         override fun onNotifySuccess(language: String?, project: String?, workbookDescriptor: WorkbookDescriptor?) {
             /* no-op */
         }

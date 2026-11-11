@@ -1,6 +1,6 @@
 package org.bibletranslationtools.bttrecorder2.services
 
-import kotlinx.coroutines.rx2.await
+import kotlinx.coroutines.flow.toList
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
@@ -69,7 +69,7 @@ class UnitTargetLoader(
             it.source.collectionId == sourceId && it.target.collectionId == targetId
         } ?: return null
 
-        val chapters = workbook.target.chapters.toList().await().sortedBy { it.sort }
+        val chapters = workbook.target.chaptersFlow.toList().sortedBy { it.sort }
         if (chapters.isEmpty()) return null
 
         val targets = mutableListOf<UnitTarget>()

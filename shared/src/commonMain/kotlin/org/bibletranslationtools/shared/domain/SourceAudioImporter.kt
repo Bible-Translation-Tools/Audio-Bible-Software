@@ -3,7 +3,6 @@ package org.bibletranslationtools.shared.domain
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.readBytes
-import io.reactivex.Single
 import kotlinx.coroutines.CancellationException
 import org.bibletranslationtools.otter.common.api.persistence.IProjectDirectories
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
@@ -12,8 +11,6 @@ import org.bibletranslationtools.otter.common.data.OratureFileFormat
 import org.bibletranslationtools.otter.common.data.ScriptureBurritoFileFormat
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
-import org.bibletranslationtools.otter.common.domain.project.importer.ImportCallbackParameter
-import org.bibletranslationtools.otter.common.domain.project.importer.ImportOptions
 import org.bibletranslationtools.otter.common.domain.project.importer.ProjectImporterCallback
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
 import java.io.File
@@ -147,17 +144,9 @@ class SourceAudioImporter(
             ?: emptySet()
 
         return try {
-            // A non-interactive callback so the import pipeline doesn't block waiting for user
-            // input. Source import no longer asks anything destructive (a new edition is installed
-            // beside the old one), and if a question like that ever comes back it must be put to
-            // the user, so it is declined here rather than approved on their behalf.
+            // A callback that reports nothing. Passing none is not the same: the importers take a
+            // different path without one.
             val autoConfirm = object : ProjectImporterCallback {
-                override fun onRequestUserInput(): Single<ImportOptions> =
-                    Single.just(ImportOptions(confirmed = false))
-
-                override fun onRequestUserInput(parameter: ImportCallbackParameter): Single<ImportOptions> =
-                    Single.just(ImportOptions(confirmed = true))
-
                 override fun onNotifyProgress(localizeKey: String?, message: String?, percent: Double?) = Unit
                 override fun onNotifySuccess(language: String?, project: String?, workbookDescriptor: org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor?) = Unit
                 override fun onError(filePath: String) = Unit

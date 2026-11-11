@@ -1,5 +1,6 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
+import org.bibletranslationtools.otter.common.utils.runCatchingCancellable
 import org.bibletranslationtools.orature.resources.errUnknown
 import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
 import androidx.lifecycle.ViewModel
@@ -8,11 +9,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.rx2.asFlow
-import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.orature.resources.Res
 import org.bibletranslationtools.orature.resources.errOpenProject
@@ -273,8 +271,8 @@ class OratureTranslationViewModel(
     private fun resumeStepForChapter(chapter: Chapter, sort: Int) {
         launchLogged {
             val reachable = withContext(Dispatchers.IO) {
-                val chunkList = runCatching {
-                    chapter.chunks.blockingGet().filter { it.contentType == ContentType.TEXT }
+                val chunkList = runCatchingCancellable {
+                    chapter.chunksSuspend().filter { it.contentType == ContentType.TEXT }
                 }.getOrDefault(emptyList())
                 computeReachableStep(chunkList)
             }
@@ -468,7 +466,7 @@ class OratureTranslationViewModel(
         val chapter = chapters.firstOrNull { it.sort == chapterSort } ?: return
         launchLogged {
             val chunkList = withContext(Dispatchers.IO) {
-                runCatching { chapter.chunks.blockingGet().filter { it.contentType == ContentType.TEXT } }
+                runCatchingCancellable { chapter.chunksSuspend().filter { it.contentType == ContentType.TEXT } }
                     .getOrDefault(emptyList())
             }
             applyChunkState(chunkList)
@@ -541,7 +539,7 @@ class OratureTranslationViewModel(
         val chapter = chapters.firstOrNull { it.sort == chapterSort } ?: return
         launchLogged {
             val chunk = withContext(Dispatchers.IO) {
-                runCatching { chapter.chunks.blockingGet().firstOrNull { it.sort == sort } }.getOrNull()
+                runCatchingCancellable { chapter.chunksSuspend().firstOrNull { it.sort == sort } }.getOrNull()
             } ?: return@launchLogged
             workbookDataStore.setActiveChunk(chunk)
             _uiState.value = _uiState.value.copy(

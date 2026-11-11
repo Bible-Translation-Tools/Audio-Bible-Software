@@ -5,7 +5,6 @@ import org.bibletranslationtools.orature.resources.Res
 import org.bibletranslationtools.orature.resources.errUnknown
 import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
 import androidx.lifecycle.ViewModel
-import io.reactivex.Single
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow

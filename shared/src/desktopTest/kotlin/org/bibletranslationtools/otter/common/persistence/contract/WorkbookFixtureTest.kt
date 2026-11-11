@@ -122,10 +122,10 @@ abstract class WorkbookFixtureTest : KoinDatabaseTest() {
 
     // ── what only this class knows how to do to an entity ────────────────────────────────
 
-    protected fun delete(take: Take) = take.deletedTimestamp.accept(DateHolder.now())
+    protected fun delete(take: Take) = take.markDeleted()
     protected fun restore(take: Take) = take.deletedTimestamp.accept(DateHolder.empty)
     protected fun setChecking(take: Take, status: CheckingStatus) = take.checkingState.accept(TakeCheckingState(status, null))
-    protected fun checkingInMemory(take: Take): CheckingStatus? = take.checkingState.value?.status
+    protected fun checkingInMemory(take: Take): CheckingStatus = take.currentCheckingState().status
 
     // ── rows ─────────────────────────────────────────────────────────────────────────────
 
