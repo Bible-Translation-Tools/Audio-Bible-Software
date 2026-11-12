@@ -43,7 +43,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitMode
-import io.github.vinceglb.filekit.dialogs.FileKitType
+import org.bibletranslationtools.shared.ui.platform.importPickerType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -127,7 +127,7 @@ fun ProjectInfoDialog(
     var isImporting by remember { mutableStateOf(false) }
 
     val picker = rememberFilePickerLauncher(
-        type = FileKitType.File(extensions = SourceAudioImporter.pickerExtensions),
+        type = importPickerType(SourceAudioImporter.pickerExtensions),
         mode = FileKitMode.Multiple(),
         title = stringResource(Res.string.info_import_source_audio_title)
     ) { selectedFiles: List<PlatformFile>? ->

@@ -42,7 +42,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitMode
-import io.github.vinceglb.filekit.dialogs.FileKitType
+import org.bibletranslationtools.shared.ui.platform.importPickerType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import org.bibletranslationtools.shared.resources.Res
 import org.bibletranslationtools.shared.resources.action_back
@@ -67,7 +67,7 @@ internal fun ProjectManagementTopBar(
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     val importPicker = rememberFilePickerLauncher(
-        type = FileKitType.File(extensions = listOf("orature", "zip", "tstudio")),
+        type = importPickerType(),
         mode = FileKitMode.Single,
         title = stringResource(Res.string.import_title)
     ) { file: PlatformFile? -> if (file != null) onImportProject?.invoke(file) }

@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
-import org.bibletranslationtools.orature.platform.canOpenInFileManager
+import org.bibletranslationtools.shared.ui.platform.canOpenInFileManager
 import org.bibletranslationtools.orature.resources.Res
 import org.bibletranslationtools.orature.resources.errUnknown
 import org.bibletranslationtools.otter.common.api.persistence.IFileIOFactory

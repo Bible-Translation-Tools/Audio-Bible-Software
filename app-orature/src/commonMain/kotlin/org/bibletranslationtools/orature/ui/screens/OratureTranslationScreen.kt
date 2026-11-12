@@ -1,6 +1,5 @@
 package org.bibletranslationtools.orature.ui.screens
 
-import org.bibletranslationtools.orature.ui.components.OratureEditionBanner
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -45,7 +44,6 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.Undo
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -69,32 +67,29 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.lifecycle.viewmodel.compose.viewModel
-import io.github.vinceglb.filekit.dialogs.FileKitMode
-import io.github.vinceglb.filekit.dialogs.FileKitType
-import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import io.github.vinceglb.filekit.dialogs.FileKitMode
+import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import org.bibletranslationtools.orature.resources.Res
 import org.bibletranslationtools.orature.resources.begin_narrating_book
+import org.bibletranslationtools.orature.resources.cancel
 import org.bibletranslationtools.orature.resources.chapter
 import org.bibletranslationtools.orature.resources.chapterTitle
 import org.bibletranslationtools.orature.resources.check_online
 import org.bibletranslationtools.orature.resources.choose_file
-import org.bibletranslationtools.orature.resources.cancel
 import org.bibletranslationtools.orature.resources.close
-import org.bibletranslationtools.orature.resources.`continue`
-import org.bibletranslationtools.orature.resources.overridingSource
-import org.bibletranslationtools.orature.resources.rechunk_data_loss_warning
-import org.bibletranslationtools.orature.resources.warning
 import org.bibletranslationtools.orature.resources.collapse
+import org.bibletranslationtools.orature.resources.`continue`
 import org.bibletranslationtools.orature.resources.drag_drop_or_browse_import__template
 import org.bibletranslationtools.orature.resources.expand
 import org.bibletranslationtools.orature.resources.file_extension_supported
@@ -104,20 +99,25 @@ import org.bibletranslationtools.orature.resources.importing
 import org.bibletranslationtools.orature.resources.licenseStatement
 import org.bibletranslationtools.orature.resources.need_source_audio
 import org.bibletranslationtools.orature.resources.openIn
+import org.bibletranslationtools.orature.resources.overridingSource
+import org.bibletranslationtools.orature.resources.rechunk_data_loss_warning
 import org.bibletranslationtools.orature.resources.redo
+import org.bibletranslationtools.orature.resources.sourceText
 import org.bibletranslationtools.orature.resources.source_audio_download_description__template
 import org.bibletranslationtools.orature.resources.source_audio_missing_description
 import org.bibletranslationtools.orature.resources.source_audio_missing_for
-import org.bibletranslationtools.orature.resources.sourceText
 import org.bibletranslationtools.orature.resources.steps
 import org.bibletranslationtools.orature.resources.undo
+import org.bibletranslationtools.orature.resources.warning
 import org.bibletranslationtools.orature.ui.OratureColors
 import org.bibletranslationtools.orature.ui.components.OratureChapterSelector
+import org.bibletranslationtools.orature.ui.components.OratureEditionBanner
 import org.bibletranslationtools.orature.ui.translation.ChunkingStep
 import org.bibletranslationtools.orature.ui.viewmodels.OratureImportState
 import org.bibletranslationtools.orature.ui.viewmodels.OratureImportViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureTranslationUiState
 import org.bibletranslationtools.orature.ui.viewmodels.OratureTranslationViewModel
+import org.bibletranslationtools.shared.ui.platform.importPickerType
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -138,7 +138,7 @@ fun OratureTranslationScreen(
     val importVm = viewModel { OratureImportViewModel() }
     val importState by importVm.importState.collectAsState()
     val importPicker = rememberFilePickerLauncher(
-        type = FileKitType.File(extensions = listOf("orature", "zip", "tstudio")),
+        type = importPickerType(),
         mode = FileKitMode.Single
     ) { file -> file?.let(importVm::importFile) }
     LaunchedEffect(importState) {
