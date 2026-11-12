@@ -24,6 +24,7 @@ object TranslationRecorderTheme {
     val vividRed = Color(0xFFDE1D1D)
     val vividPink = Color(0xFFE91E63)
     val darkModerateLimeGreen = Color(0xFF459751)
+    val moderateLimeGreen = Color(0xFF63C76C) // Figma color/success/on-surface
 
     val strongRed = Color(0xFFD30202)
     val verySoftRed = Color(0xFFEA9999)
@@ -110,7 +111,7 @@ object TranslationRecorderTheme {
         primaryContainer = lightBlue,
         onPrimaryContainer = darkBlue,
         inversePrimary = lightBlue, // Or a suitable inverse color
-        secondary = saladGreen,
+        secondary = moderateLimeGreen,
         onSecondary = pureWhite,
         secondaryContainer = lightSaladGreen,
         onSecondaryContainer = darkSaladGreen,

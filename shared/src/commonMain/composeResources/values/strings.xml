@@ -10,8 +10,6 @@
     <string name="action_close">Close</string>
     <string name="action_yes">Yes</string>
     <string name="action_no">No</string>
-    <string name="action_all">All</string>
-    <string name="action_none">None</string>
     <string name="action_export">Export</string>
     <string name="action_loading">Loading…</string>
     <string name="action_collapse">Collapse</string>
@@ -75,9 +73,25 @@
     <string name="cd_progress_sort">Sort by progress</string>
     <string name="pm_sort_language">Language</string>
     <string name="pm_sort_book">Book</string>
+    <string name="pm_sort_chapter">Chapter</string>
+    <string name="pm_sort_verses">Verses</string>
+    <string name="pm_column_takes">Takes</string>
     <string name="pm_sort_progress">Progress</string>
-    <string name="pm_group_books_count">%1$d books</string>
+    <plurals name="pm_books_count">
+        <item quantity="one">%1$d book</item>
+        <item quantity="other">%1$d books</item>
+    </plurals>
     <string name="pm_group_from_source">from %1$s</string>
+    <!-- Breadcrumb back to the language list, e.g. "Cebuano from Wikang Tagalog". -->
+    <string name="pm_language_pair">%1$s from %2$s</string>
+    <string name="pm_search_books">Search books…</string>
+    <string name="pm_search_chapters">Search chapters…</string>
+    <string name="pm_search_verses">Search verses…</string>
+    <string name="cd_clear_search">Clear search</string>
+    <string name="cd_filter">Filter</string>
+    <string name="pm_filter_not_started">Not started</string>
+    <string name="pm_filter_in_progress">In progress</string>
+    <string name="pm_filter_completed">Completed</string>
     <string name="pm_sort_asc">Ascending</string>
     <string name="pm_sort_desc">Descending</string>
 
@@ -107,8 +121,6 @@
     <string name="value_source_edition_with_code">%1$s %2$s · %3$s · %4$s</string>
     <string name="label_update_available">Update available</string>
     <!-- Moving a project book to another installed edition of its source (upgrade or downgrade). -->
-    <string name="edition_change_action">Change edition</string>
-    <string name="edition_update_action">Update edition</string>
     <string name="edition_change_title">Source Edition</string>
     <string name="edition_change_current">Current: %1$s</string>
     <string name="edition_change_hint">Choose the edition this book should use. Recordings are never deleted, and you can move back to an older edition later.</string>
@@ -177,7 +189,7 @@
 
     <!-- ───────────── Unit list ───────────── -->
     <string name="unit_delete_take_title">Delete take?</string>
-    <string name="unit_chapter_title">%1$s - Chapter %2$s</string>
+    <string name="unit_chapter_title">%1$s %2$s</string>
     <string name="cd_delete_take">Delete Take</string>
     <string name="cd_open_in_playback">Open in Playback</string>
     <string name="cd_select_take">Select Take</string>
@@ -185,6 +197,7 @@
     <string name="cd_next_take">Next Take</string>
     <string name="unit_verse_label">Verse %1$s</string>
     <string name="unit_take_position">Take %1$d of %2$d</string>
+    <string name="unit_take_count">x%1$d</string>
 
     <!-- ───────────── Recorder ───────────── -->
     <string name="recorder_label_chapter">Chapter</string>
@@ -221,11 +234,9 @@
     <string name="export_options_title">Export %1$s</string>
     <string name="export_load_chapters_error_title">Couldn\'t load chapters</string>
     <string name="export_type_backup_title">Backup</string>
-    <string name="export_type_backup_subtitle">Full project archive (.orature) — restores everything, including in-progress takes.</string>
     <string name="export_type_source_audio_title">Source Audio</string>
-    <string name="export_type_source_audio_subtitle">MP3 audio + source text packaged as a source RC. Only complete chapters can be exported.</string>
-    <string name="export_type_label">Export type</string>
-    <string name="export_chapters_count">Chapters (%1$d of %2$d)</string>
+    <string name="export_estimated_size">Estimated File Size: %1$s MB</string>
+    <string name="export_book_action">Export Book</string>
 
     <!-- ───────────── Export progress dialog ───────────── -->
     <string name="export_backing_up_title">Backing up project</string>

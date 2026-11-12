@@ -12,16 +12,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
-import org.bibletranslationtools.otter.common.data.primitives.Collection as OratureCollection
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstants
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
+import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
 import org.bibletranslationtools.otter.common.domain.project.ProjectCompletionStatus
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportOptions
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportResult
@@ -30,21 +28,22 @@ import org.bibletranslationtools.otter.common.domain.project.exporter.IProjectEx
 import org.bibletranslationtools.otter.common.domain.project.exporter.ProjectExporterCallback
 import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.BackupProjectExporter
 import org.bibletranslationtools.otter.common.domain.project.exporter.resourcecontainer.SourceProjectExporter
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstants
+import org.bibletranslationtools.shared.resources.Res
+import org.bibletranslationtools.shared.resources.export_error_generic
+import org.bibletranslationtools.shared.resources.export_error_load_chapters_failed
+import org.bibletranslationtools.shared.resources.export_error_no_audio
+import org.bibletranslationtools.shared.resources.export_error_no_file
+import org.bibletranslationtools.shared.resources.export_error_no_takes_selected
+import org.bibletranslationtools.shared.resources.export_error_not_initialized
+import org.bibletranslationtools.shared.resources.export_error_packaging
+import org.bibletranslationtools.shared.resources.export_error_project_not_found
+import org.jetbrains.compose.resources.getString
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
-import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
-import org.jetbrains.compose.resources.getString
-import org.bibletranslationtools.shared.resources.Res
-import org.bibletranslationtools.shared.resources.export_error_project_not_found
-import org.bibletranslationtools.shared.resources.export_error_load_chapters_failed
-import org.bibletranslationtools.shared.resources.export_error_no_file
-import org.bibletranslationtools.shared.resources.export_error_generic
-import org.bibletranslationtools.shared.resources.export_error_not_initialized
-import org.bibletranslationtools.shared.resources.export_error_no_audio
-import org.bibletranslationtools.shared.resources.export_error_no_takes_selected
-import org.bibletranslationtools.shared.resources.export_error_packaging
 import java.io.File
 import java.util.UUID
+import org.bibletranslationtools.otter.common.data.primitives.Collection as OratureCollection
 
 /**
  * Owns three phases of project export:
@@ -92,6 +91,9 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
 
     private var exportJob: Job? = null
     private var loadOptionsJob: Job? = null
+    private var estimateJob: Job? = null
+    /** The workbook the options dialog was opened for, kept to estimate the export size. */
+    private var optionsWorkbook: Workbook? = null
 
     init {
         // Sweep orphaned temp dirs from prior killed exports.
@@ -157,12 +159,15 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
                 val heldBack = runCatching { upgradeBookEdition.editionState(descriptor.targetCollection.id) }
                     .onFailure { logFailure("loading the book's editions", it) }
                     .getOrNull()?.heldBackChapters.orEmpty()
-                _options.value = ExportOptionsState.Ready(
-                    descriptor = descriptor,
-                    chapters = chapterDescriptors,
-                    type = defaultType,
-                    selectedChapterSorts = initialSelection,
-                    heldBackChapters = heldBack
+                optionsWorkbook = workbook
+                updateOptions(
+                    ExportOptionsState.Ready(
+                        descriptor = descriptor,
+                        chapters = chapterDescriptors,
+                        type = defaultType,
+                        selectedChapterSorts = initialSelection,
+                        heldBackChapters = heldBack
+                    )
                 )
             } catch (e: CancellationException) {
                 throw e
@@ -179,6 +184,8 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
     fun closeOptions() {
         loadOptionsJob?.cancel()
         loadOptionsJob = null
+        estimateJob?.cancel()
+        optionsWorkbook = null
         _options.value = ExportOptionsState.Closed
     }
 
@@ -192,7 +199,7 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
             .filter { isChapterSelectable(it, type) }
             .map { it.sort }
             .toSet()
-        _options.value = current.copy(type = type, selectedChapterSorts = newSelection)
+        updateOptions(current.copy(type = type, selectedChapterSorts = newSelection))
     }
 
     fun toggleChapter(sort: Int) {
@@ -205,22 +212,43 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
         } else {
             current.selectedChapterSorts + sort
         }
-        _options.value = current.copy(selectedChapterSorts = newSelection)
+        updateOptions(current.copy(selectedChapterSorts = newSelection))
     }
 
     fun selectAllChapters() {
         val current = _options.value as? ExportOptionsState.Ready ?: return
-        _options.value = current.copy(
-            selectedChapterSorts = current.chapters
-                .filter { isChapterSelectable(it, current.type) }
-                .map { it.sort }
-                .toSet()
+        updateOptions(
+            current.copy(
+                selectedChapterSorts = current.chapters
+                    .filter { isChapterSelectable(it, current.type) }
+                    .map { it.sort }
+                    .toSet()
+            )
         )
     }
 
     fun deselectAllChapters() {
         val current = _options.value as? ExportOptionsState.Ready ?: return
-        _options.value = current.copy(selectedChapterSorts = emptySet())
+        updateOptions(current.copy(selectedChapterSorts = emptySet()))
+    }
+
+    /** Shows [ready] with no size yet, then fills in the exporter's size estimate for its selection. */
+    private fun updateOptions(ready: ExportOptionsState.Ready) {
+        _options.value = ready.copy(estimatedSizeBytes = null)
+        estimateJob?.cancel()
+        val workbook = optionsWorkbook ?: return
+        estimateJob = launchLogged(Dispatchers.IO) {
+            val size = runCatching {
+                exporterFor(ready.type).estimateExportSize(workbook, ready.selectedChapterSorts.toList())
+            }.onFailure { logFailure("estimating the export size", it) }.getOrNull() ?: return@launchLogged
+            // Only if the selection hasn't changed since.
+            _options.update { current ->
+                if (current is ExportOptionsState.Ready &&
+                    current.type == ready.type &&
+                    current.selectedChapterSorts == ready.selectedChapterSorts
+                ) current.copy(estimatedSizeBytes = size) else current
+            }
+        }
     }
 
     /**
@@ -493,7 +521,9 @@ sealed interface ExportOptionsState {
         val type: ExportType,
         val selectedChapterSorts: Set<Int>,
         /** Chapters that keep an earlier source edition's verses: exporting them mixes verse structures (A13). */
-        val heldBackChapters: List<Int> = emptyList()
+        val heldBackChapters: List<Int> = emptyList(),
+        /** What the export will roughly weigh, or null while it's being worked out. */
+        val estimatedSizeBytes: Long? = null
     ) : ExportOptionsState {
         val canExport: Boolean get() = selectedChapterSorts.isNotEmpty()
     }
