@@ -245,7 +245,7 @@ class AudioPlayerConnection(
         // as the playhead freezing while the audio plays on untroubled.
         val worker = factory.getPlayerWorker()
         val following = playRequested || worker.isDeliveringAudio
-        if (following && factory.isActiveConnection(id) && worker.isPositionReliable) {
+        if (following && !needsConnect && factory.isActiveConnection(id) && worker.isPositionReliable) {
             val workerPosition = worker.getLocationInFrames().toInt()
             lastPosition = workerPosition.toLong()
             return workerPosition

@@ -120,6 +120,29 @@ class AudioPlayerConnectionReplayTest {
         coVerify(exactly = 0) { factory.connect(1, reader, 0L) }
     }
 
+    /**
+     * Switching takes on one connection: the worker still reports the previous take's end, and is
+     * still "reliable" because the line keeps running after a completion. Until the new take is
+     * connected, that position is not ours and must not be reported.
+     */
+    @Test
+    fun `a newly loaded take does not report the previous take's position before it connects`() = runTest {
+        every { factory.isActiveConnection(1) } returns true
+        every { factory.getPlayerWorker() } returns mockk(relaxed = true) {
+            every { getLocationInFrames() } returns totalFrames.toLong() * 2 // the longer previous take's end
+            every { isPositionReliable } returns true
+            every { isDeliveringAudio } returns true
+        }
+        val connection = AudioPlayerConnection(id = 1, factory = factory, scope = this)
+
+        connection.load(reader)
+        connection.play()
+        // The control coroutines have not run: the connect is still pending.
+
+        kotlin.test.assertEquals(0, connection.getLocationInFrames())
+        advanceUntilIdle()
+    }
+
     @Test
     fun `a freshly loaded take plays from the start`() = runTest {
         every { factory.getPlayerWorker() } returns mockk(relaxed = true) {
