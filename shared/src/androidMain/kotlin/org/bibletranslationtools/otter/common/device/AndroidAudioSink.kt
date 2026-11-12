@@ -73,7 +73,7 @@ class AndroidAudioSink : AudioSink {
         if (audioTrack?.state != AudioTrack.STATE_INITIALIZED) {
             throw IllegalStateException("Failed to initialize AudioTrack")
         }
-        bytesPerFrame = 2 * spec.channels
+        bytesPerFrame = spec.bytesPerFrame
         framesWritten = 0
     }
 
