@@ -24,7 +24,7 @@ class BurritoAudioAlignmentCreateFunctionTest {
 
          // Verify basic structure and expected values
          assertTrue(jsonOutput.contains("\"format\":\"alignment\""))
-         assertTrue(jsonOutput.contains("\"version\":\"0.3\""))
+         assertTrue(jsonOutput.contains("\"version\":\"0.4\""))
          assertTrue(jsonOutput.contains("\"type\":\"audio-reference\""))
          assertTrue(jsonOutput.contains("\"groups\":["))
 
@@ -41,11 +41,26 @@ class BurritoAudioAlignmentCreateFunctionTest {
          assertEquals(2, documentsList.list.size)
          assertEquals("vtt-timecode", documentsList.list[0].scheme)
          assertEquals(dummyAudioFile.name, documentsList.list[0].docid)
-         assertEquals("u23003", documentsList.list[1].scheme)
+         assertEquals("usfm-scripture-reference", documentsList.list[1].scheme)
          assertEquals(null, documentsList.list[1].docid)
 
          assertNotNull(group?.records)
          assertEquals(0, group?.records?.size)
+
+         dummyAudioFile.delete()
+         dummyTimingFile.delete()
+     }
+
+     @Test
+     fun testCreateNamesTheAudioByTheGivenDocid() {
+         val dummyAudioFile = File.createTempFile("dummy_audio", ".wav")
+         val dummyTimingFile = File.createTempFile("dummy_timing", ".json")
+
+         BurritoAudioAlignment.create(dummyAudioFile, dummyTimingFile, "media/${dummyAudioFile.name}")
+
+         val group = BurritoAudioAlignment.load(dummyTimingFile).groups?.single()
+         val documentsList = group?.documents as DocumentsList
+         assertEquals("media/${dummyAudioFile.name}", documentsList.list[0].docid)
 
          dummyAudioFile.delete()
          dummyTimingFile.delete()

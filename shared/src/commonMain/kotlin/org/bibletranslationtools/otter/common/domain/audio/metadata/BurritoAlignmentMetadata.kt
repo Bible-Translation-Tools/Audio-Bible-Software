@@ -21,10 +21,16 @@ import org.bibletranslationtools.kotlinscripturealignment.model.BurritoAudioAlig
 
 private const val BIBLICAL_REFERENCE_VTT_CLASSNAME = "c.u23003"
 
+/**
+ * Reads and writes [audioFile]'s markers as a Scripture Burrito timing file, [burritoTimingFile].
+ * [docid] is how the timing file names the audio it times: in a burrito, the audio's path from the
+ * burrito's root (`media/en_ulb_mrk_c01_meta_t1.wav`); elsewhere, its file name.
+ */
 class BurritoAlignmentMetadata(
     private val burritoTimingFile: File,
     private val audioFile: File,
-    private val chapterToFilter: Int? = null
+    private val chapterToFilter: Int? = null,
+    private val docid: String = audioFile.name
 ) : CueMetadata {
 
     private val logger = LoggerFactory.getLogger(BurritoAlignmentMetadata::class.java)
@@ -119,7 +125,7 @@ class BurritoAlignmentMetadata(
         val alignment = if (burritoTimingFile.length() > 0) {
             BurritoAudioAlignment.load(burritoTimingFile)
         } else {
-            BurritoAudioAlignment.create(audioFile, burritoTimingFile)
+            BurritoAudioAlignment.create(audioFile, burritoTimingFile, docid)
         }
 
         val vttCues = markers
@@ -143,7 +149,7 @@ class BurritoAlignmentMetadata(
 
         assignEndTimes(vttCues, audioLengthInFrames)
 
-        alignment.setRecordsFromVttCueContent(audioFile.name, vttCues)
+        alignment.setRecordsFromVttCueContent(docid, vttCues)
         alignment.update()
     }
 
