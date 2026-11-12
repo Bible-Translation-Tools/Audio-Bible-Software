@@ -26,7 +26,7 @@ import org.bibletranslationtools.scriptureburrito.flavor.scripture.audio.Formats
 import org.bibletranslationtools.scriptureburrito.flavor.scripture.audio.Performance
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
 import org.bibletranslationtools.otter.common.audio.AudioMetadataFileFormat
-import org.bibletranslationtools.otter.common.data.IAppInfo
+import org.bibletranslationtools.otter.common.data.AppInfo
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.audio.metadata.BurritoAlignmentMetadata
@@ -50,7 +50,7 @@ typealias ChapterNumber = Int
 
 class ScriptureBurritoUtils(
     private val idAuthorityProvider: AuthProvider,
-    private val appInfo: IAppInfo,
+    appInfo: AppInfo,
     directoryProvider: IDirectoryProvider
 ) {
 
