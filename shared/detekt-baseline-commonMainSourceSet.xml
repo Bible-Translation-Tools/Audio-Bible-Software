@@ -1,0 +1,13 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>NotImplementedDeclaration:Mp3FileReader.kt:MP3FileReader$TODO("Not yet implemented")</ID>
+    <ID>NotImplementedDeclaration:RCProjectExporter.kt:RCProjectExporter$TODO()</ID>
+    <ID>NotImplementedDeclaration:Util.kt:&lt;no name provided&gt;$throw NotImplementedError("no op")</ID>
+    <ID>NotImplementedDeclaration:WavMetadata.kt:WavMetadata$TODO()</ID>
+    <ID>PrintStackTrace:BurritoToResourceContainerConverter.kt:e</ID>
+    <ID>PrintStackTrace:Mp3FileReader.kt:MP3FileReader$e</ID>
+    <ID>PrintStackTrace:WavOutputStream.kt:WavOutputStream$e</ID>
+  </CurrentIssues>
+</SmellBaseline>

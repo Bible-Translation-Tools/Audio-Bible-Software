@@ -1,0 +1,7 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>NotImplementedDeclaration:Link.kt:Link.Companion$TODO("10/11/16 automatically parse bible passages.")</ID>
+  </CurrentIssues>
+</SmellBaseline>

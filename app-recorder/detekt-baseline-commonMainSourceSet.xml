@@ -1,0 +1,7 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>PrintStackTrace:RecorderViewModel.kt:RecorderViewModel$e</ID>
+  </CurrentIssues>
+</SmellBaseline>

@@ -1,4 +1,7 @@
 [versions]
+# 2.x alpha because 1.23.x is built for Kotlin 2.0; alpha.6 is built against our Kotlin 2.4.
+# Pin exactly: rule names and config keys still move between alphas.
+detekt = "2.0.0-alpha.6"
 agp = "9.1.0"
 android-compileSdk = "37"
 # 24 = Android 7.0. java.time and java.nio.file only reached the platform at API 26, so this
@@ -112,3 +115,4 @@ ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 jetbrainsKotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "jetbrainsKotlinJvm" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
+detekt = { id = "dev.detekt", version.ref = "detekt" }
