@@ -8,6 +8,7 @@ plugins {
     alias(libs.plugins.kotlinMultiplatform) apply false
     alias(libs.plugins.ksp) apply false
     alias(libs.plugins.jetbrainsKotlinJvm) apply false
+    alias(libs.plugins.detekt) apply false
 }
 
 //allprojects{
@@ -43,4 +44,34 @@ subprojects {
             }
         }
     }
+}
+
+// ── Static analysis (detekt) ───────────────────────────────────────────────
+// Opt-in: only the rules switched on in config/detekt/detekt.yml run. Each module keeps
+// a detekt-baseline.xml of existing findings to burn down; the build fails only on new ones.
+// Run everything with `./gradlew detektAll`. Plain `detekt` is not enough: on the
+// multiplatform modules it checks no source sets, so detektAll depends on the
+// per-source-set tasks instead.
+subprojects {
+    apply(plugin = "dev.detekt")
+    extensions.configure<dev.detekt.gradle.extensions.DetektExtension> {
+        buildUponDefaultConfig.set(false)
+        config.setFrom(rootProject.file("config/detekt/detekt.yml"))
+        baseline.set(file("detekt-baseline.xml"))
+        parallel.set(true)
+    }
+    tasks.withType<dev.detekt.gradle.Detekt>().configureEach {
+        // Generated code (SQLDelight, Compose resources) is not ours to fix.
+        exclude { it.file.invariantSeparatorsPath.contains("/build/") }
+    }
+}
+
+tasks.register("detektAll") {
+    group = "verification"
+    description = "Runs detekt on every module and source set."
+    dependsOn(subprojects.map { p ->
+        p.tasks.withType<dev.detekt.gradle.Detekt>().matching {
+            it.name == "detekt" || it.name.endsWith("SourceSet")
+        }
+    })
 }

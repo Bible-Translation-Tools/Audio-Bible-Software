@@ -31,6 +31,31 @@ env:
   JAVA_DISTRIBUTION: temurin
 
 jobs:
+  # ── static analysis ───────────────────────────────────────────────────────
+  # detekt with the opt-in rules in config/detekt/detekt.yml. Existing findings sit in
+  # each module's detekt-baseline*.xml, so this fails only on new ones.
+  detekt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: detekt
+        run: ./gradlew detektAll --continue
+
+      - name: Upload detekt reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: detekt-reports
+          path: '**/build/reports/detekt/'
+
   # ── tests ─────────────────────────────────────────────────────────────────
   # Desktop unit tests plus the integration tier (real SQLite, real resource
   # containers). Both are headless-safe: the audio unit tests drive a

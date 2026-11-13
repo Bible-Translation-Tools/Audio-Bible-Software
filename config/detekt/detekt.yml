@@ -1,0 +1,17 @@
+# detekt config. Opt-in: build.gradle.kts sets buildUponDefaultConfig = false, so a rule
+# runs only if it is switched on here. Add rules one at a time, with a baseline for the
+# existing findings (./gradlew detektBaseline... per module) so the build fails only on
+# new ones.
+#
+# Rule names and keys are for detekt 2.0.0-alpha.6 (see gradle/libs.versions.toml).
+# config.validation fails the build on a misspelled or moved key.
+config:
+  validation: true
+
+exceptions:
+  # TODO() throws NotImplementedError, an Error that `catch (e: Exception)` does not catch.
+  NotImplementedDeclaration:
+    active: true
+  # Stack traces printed to stderr never reach the logs we collect. Use the logger.
+  PrintStackTrace:
+    active: true
