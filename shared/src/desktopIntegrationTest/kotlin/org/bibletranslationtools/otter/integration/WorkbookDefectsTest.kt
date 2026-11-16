@@ -1,9 +1,11 @@
 package org.bibletranslationtools.otter.integration
 
+import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.DateHolder
 import org.bibletranslationtools.otter.common.data.workbook.Take
+import org.bibletranslationtools.otter.common.data.workbook.TakeCheckingState
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -52,7 +54,34 @@ class WorkbookDefectsTest {
         return found!!
     }
 
-    @Ignore("Defect: undoing a delete is not saved. Fixed in step 1.1.")
+    @Test
+    fun `deleting a take keeps the checking status saved since it loaded`() {
+        val takeId = env.recordTake(project, 1, 1)
+        val take = workbookTake(env.workbook(project), 1, 1, takeId)
+        val peerEdit = env.db.checkingStatusDao.fetchId(CheckingStatus.PEER_EDIT)
+
+        take.checkingState.accept(TakeCheckingState(CheckingStatus.PEER_EDIT, take.checksum()))
+        env.eventually("the checking status is saved") { env.take(takeId).checkingFk == peerEdit }
+        take.deletedTimestamp.accept(DateHolder.now())
+        env.eventually("the delete is saved") { env.take(takeId).deletedTs != null }
+
+        assertEquals(peerEdit, env.take(takeId).checkingFk, "the delete put the old checking status back")
+    }
+
+    @Test
+    fun `approving a deleted take keeps it deleted`() {
+        val takeId = env.recordTake(project, 1, 1)
+        val take = workbookTake(env.workbook(project), 1, 1, takeId)
+        val peerEdit = env.db.checkingStatusDao.fetchId(CheckingStatus.PEER_EDIT)
+
+        take.deletedTimestamp.accept(DateHolder.now())
+        env.eventually("the delete is saved") { env.take(takeId).deletedTs != null }
+        take.checkingState.accept(TakeCheckingState(CheckingStatus.PEER_EDIT, take.checksum()))
+        env.eventually("the checking status is saved") { env.take(takeId).checkingFk == peerEdit }
+
+        assertNotNull(env.take(takeId).deletedTs, "saving the checking status restored the take")
+    }
+
     @Test
     fun `undoing a delete is saved, so the take survives the startup purge`() {
         val takeId = env.addTake(project, 1, 1)

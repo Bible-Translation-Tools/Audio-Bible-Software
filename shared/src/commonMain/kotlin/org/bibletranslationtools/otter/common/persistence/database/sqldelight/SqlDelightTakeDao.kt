@@ -82,6 +82,14 @@ internal class SqlDelightTakeDao(private val db: OtterDatabase) : TakeDao {
         queries.delete(entity.id)
     }
 
+    override fun updateDeleted(id: Int, deletedTs: String?) {
+        queries.updateDeleted(deletedTs = deletedTs, id = id)
+    }
+
+    override fun updateChecking(id: Int, checkingFk: Int, checksum: String?) {
+        queries.updateChecking(checkingFk = checkingFk, checksum = checksum, id = id)
+    }
+
     override fun fetchSoftDeletedTakes(collectionEntity: CollectionEntity): List<TakeEntity> =
         queries.fetchSoftDeletedTakesForProject(collectionEntity.id, ::Take_entity)
             .executeAsList().map { it.toEntity() }

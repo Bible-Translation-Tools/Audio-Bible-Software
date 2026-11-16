@@ -38,6 +38,12 @@ interface TakeDao {
     fun fetchAll(): List<TakeEntity>
     fun update(entity: TakeEntity)
     fun delete(entity: TakeEntity)
+
+    /** Sets only the deleted date: null restores the take. */
+    fun updateDeleted(id: Int, deletedTs: String?)
+
+    /** Sets only the checking status and the checksum it was given for. */
+    fun updateChecking(id: Int, checkingFk: Int, checksum: String?)
     fun fetchSoftDeletedTakes(collectionEntity: CollectionEntity): List<TakeEntity>
     fun fetchSoftDeletedTakes(): List<TakeEntity>
     fun fetchByCollectionId(id: Int, includeDeleted: Boolean = false): List<TakeEntity>

@@ -399,9 +399,15 @@ class WorkbookRepository(
             .subscribe(selectedTakeRelay)
     }
 
+    /**
+     * Saves every change to [take]'s deleted date, including the undo that clears it. Skips the
+     * value the take was loaded with, and writes only that one field, so a delete can't undo a
+     * checking status saved since the take was loaded.
+     */
     private fun deleteFromDbUponDelete(take: WorkbookTake, modelTake: ModelTake): Disposable {
         return take.deletedTimestamp
-            .filter { dateHolder -> dateHolder.value != null }
+            .skip(1)
+            .distinctUntilChanged()
             .doOnError { e ->
                 logger.error("Error in deleteFromDbUponDelete, wb take: $take, model take: $modelTake", e)
             }
@@ -419,14 +425,14 @@ class WorkbookRepository(
     ): Disposable {
         return take.checkingState
             .concatMapCompletable {
-                val takeToUpdate = modelTake.copy(checkingStatus = it.status, checksum = it.checksum)
-                if (content.selectedTake?.path == takeToUpdate.path) {
-                    content.selectedTake = takeToUpdate
-                    db.updateTake(takeToUpdate)
-                        .andThen(db.updateContent(content))  // update checking status of selected take
-                } else {
-                    db.updateTake(takeToUpdate)
+                // Only the checking fields: rewriting the row from the copy loaded earlier would
+                // also put back the deleted date (and markers) as they were at load.
+                modelTake.checkingStatus = it.status
+                modelTake.checksum = it.checksum
+                if (content.selectedTake?.path == modelTake.path) {
+                    content.selectedTake = modelTake
                 }
+                db.setTakeChecking(modelTake, it.status, it.checksum)
             }
             .subscribeOn(Schedulers.io())
             .doOnError { e -> logger.error("Error in Take's Checking Status subscription: $take", e) }

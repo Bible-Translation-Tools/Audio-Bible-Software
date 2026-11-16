@@ -23,6 +23,7 @@ import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.rx2.await
 import org.slf4j.LoggerFactory
+import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
@@ -87,6 +88,20 @@ class TakeRepository(
             .doOnError { e ->
                 logger.error("Error in markDeleted with take: $take", e)
             }
+            .subscribeOn(Schedulers.io())
+    }
+
+    override fun setDeleted(takeId: Int, date: LocalDate?): Completable {
+        return Completable
+            .fromAction { takeDao.updateDeleted(takeId, date?.toString()) }
+            .doOnError { e -> logger.error("Error in setDeleted for take $takeId, date: $date", e) }
+            .subscribeOn(Schedulers.io())
+    }
+
+    override fun setChecking(takeId: Int, status: CheckingStatus, checksum: String?): Completable {
+        return Completable
+            .fromAction { takeDao.updateChecking(takeId, database.checkingStatusDao.fetchId(status), checksum) }
+            .doOnError { e -> logger.error("Error in setChecking for take $takeId, status: $status", e) }
             .subscribeOn(Schedulers.io())
     }
 

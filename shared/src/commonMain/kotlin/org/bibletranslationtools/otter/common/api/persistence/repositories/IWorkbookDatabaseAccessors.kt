@@ -48,7 +48,10 @@ interface IWorkbookDatabaseAccessors {
     fun insertTakeForContent(take: ModelTake, content: Content): Single<Int>
     fun getTakeByContent(content: Content): Single<List<ModelTake>>
     fun updateTake(take: ModelTake): Completable
+    /** Sets only the take's deleted date; an empty [date] restores it. */
     fun deleteTake(take: ModelTake, date: DateHolder): Completable
+    /** Sets only the take's checking status and checksum. */
+    fun setTakeChecking(take: ModelTake, status: org.bibletranslationtools.otter.common.data.primitives.CheckingStatus, checksum: String?): Completable
     fun getSoftDeletedTakes(metadata: ResourceMetadata, projectSlug: String): Single<List<ModelTake>>
     fun getDerivedProject(sourceCollection: Collection): Maybe<Collection>
     fun getDerivedProjects(): Single<List<Collection>>

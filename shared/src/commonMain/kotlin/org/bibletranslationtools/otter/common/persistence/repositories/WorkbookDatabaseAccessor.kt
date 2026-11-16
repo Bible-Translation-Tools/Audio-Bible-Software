@@ -128,7 +128,9 @@ class WorkbookDatabaseAccessor(
     override fun insertTakeForContent(take: ModelTake, content: Content) = takeRepo.insertForContent(take, content)
     override fun getTakeByContent(content: Content) = takeRepo.getByContent(content, includeDeleted = true)
     override fun updateTake(take: ModelTake) = takeRepo.update(take)
-    override fun deleteTake(take: ModelTake, date: DateHolder) = takeRepo.update(take.copy(deleted = date.value))
+    override fun deleteTake(take: ModelTake, date: DateHolder) = takeRepo.setDeleted(take.id, date.value)
+    override fun setTakeChecking(take: ModelTake, status: org.bibletranslationtools.otter.common.data.primitives.CheckingStatus, checksum: String?) =
+        takeRepo.setChecking(take.id, status, checksum)
 
     override fun getSoftDeletedTakes(metadata: ResourceMetadata, projectSlug: String) =
         takeRepo.getSoftDeletedTakes(collectionRepo.getProjectBySlugAndMetadata(projectSlug, metadata).blockingGet())

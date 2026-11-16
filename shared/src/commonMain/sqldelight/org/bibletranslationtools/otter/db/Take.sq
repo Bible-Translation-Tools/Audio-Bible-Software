@@ -44,6 +44,14 @@ WHERE id = :id;
 delete:
 DELETE FROM take_entity WHERE id = ?;
 
+-- Single-field writes. A workbook change touches one field; rewriting the whole row from a copy
+-- loaded earlier undid other changes made since (a delete reverted checking status, and back).
+updateDeleted:
+UPDATE take_entity SET deleted_ts = :deletedTs WHERE id = :id;
+
+updateChecking:
+UPDATE take_entity SET checking_fk = :checkingFk, checksum = :checksum WHERE id = :id;
+
 fetchSoftDeletedTakes:
 SELECT * FROM take_entity WHERE deleted_ts IS NOT NULL;
 
