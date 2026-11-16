@@ -97,7 +97,6 @@ class WorkbookDefectsTest {
         assertTrue(env.takeFile(takeId).exists(), "the restored take's audio was purged")
     }
 
-    @Ignore("Defect: rechunking purges soft-deleted takes in every project. Fixed in step 1.2.")
     @Test
     fun `rechunking one project leaves another project's deleted takes alone`() {
         val source = env.sourceEditions().single()
@@ -111,7 +110,6 @@ class WorkbookDefectsTest {
         assertTrue(pendingFile.exists(), "another project's deleted take lost its audio")
     }
 
-    @Ignore("Defect: rechunking orphans the old chunks' take files. Fixed in step 1.2.")
     @Test
     fun `rechunking removes the old chunks' take files`() {
         val takeId = env.addTake(project, 1, 1)

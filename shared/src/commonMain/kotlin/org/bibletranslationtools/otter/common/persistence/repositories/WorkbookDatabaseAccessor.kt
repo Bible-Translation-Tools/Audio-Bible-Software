@@ -69,13 +69,22 @@ class WorkbookDatabaseAccessor(
                     takeRepo.getContentType(take).blockingGet() == typeFilter
                 }
             }
-            .map {
-                it.forEach {
+            .map { takes ->
+                // Only this chapter's takes. This used to run deleteExpiredTakes() too, which
+                // purges every soft-deleted take in the database: pending, undoable deletes in
+                // every other project lost their rows and their audio.
+                takes.forEach {
                     takeRepo.delete(it).blockingAwait()
                 }
-                takeRepo.deleteExpiredTakes().blockingAwait()
                 contentRepo.deleteForCollection(chapterCollection, typeFilter).blockingAwait()
-                it
+                // Files after rows: a file left behind by a failure here is harmless, while a row
+                // pointing at a deleted file is not. Deleting rows alone used to orphan the audio.
+                takes.forEach { take ->
+                    if (take.path.exists() && !take.path.delete()) {
+                        logger.warn("Could not delete the audio of a rechunked take: ${take.path}")
+                    }
+                }
+                takes
             }
     }
 
