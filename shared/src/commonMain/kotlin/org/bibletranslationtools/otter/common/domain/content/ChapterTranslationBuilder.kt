@@ -102,12 +102,10 @@ class ChapterTranslationBuilder(
 
         return chapter.audio.getNewTakeNumber()
             .map { takeNumber ->
-                takeCreator.createNewTake(
-                    takeNumber,
-                    namer.generateName(takeNumber, AudioFileFormat.WAV),
-                    chapterAudioDir,
-                    createEmpty = false
-                ).also {
+                // A file nothing else uses; the copy writes into the file this call owns.
+                takeCreator.reserveNewTake(takeNumber, chapterAudioDir) {
+                    namer.generateName(it, AudioFileFormat.WAV)
+                }.also {
                     file.copyTo(it.file, overwrite = true)
                 }
             }

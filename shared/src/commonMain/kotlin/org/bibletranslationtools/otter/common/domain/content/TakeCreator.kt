@@ -48,4 +48,20 @@ class TakeCreator(
         }
         return newTake
     }
+
+    /**
+     * A new take in [audioDir] whose file nothing else uses yet: [firstNumber] if its file is free,
+     * otherwise the next free take number. The file is created empty, so the caller owns it. See
+     * [TakeFiles.reserve].
+     */
+    fun reserveNewTake(firstNumber: Int, audioDir: File, nameFor: (Int) -> String): Take {
+        val reserved = TakeFiles.reserve(audioDir, firstNumber, nameFor)
+        return Take(
+            name = reserved.file.name,
+            file = reserved.file,
+            number = reserved.number,
+            format = MimeType.WAV,
+            createdTimestamp = LocalDate.now()
+        )
+    }
 }

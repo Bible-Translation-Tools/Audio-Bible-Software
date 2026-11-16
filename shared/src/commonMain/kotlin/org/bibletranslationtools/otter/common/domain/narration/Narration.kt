@@ -44,6 +44,7 @@ import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.device.IAudioPlayer
 import org.bibletranslationtools.otter.common.device.IAudioRecorder
 import org.bibletranslationtools.otter.common.domain.audio.AudioBouncer
+import org.bibletranslationtools.otter.common.domain.content.TakeFiles
 import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.recorder.WavFileWriter
@@ -613,11 +614,10 @@ class Narration(
                     workbook.sourceMetadataSlug
                 )
 
-                val takeName = namer.generateName(takeNumber, AudioFileFormat.WAV)
-
                 val parentDir = workbook.projectFilesAccessor.getChapterAudioDir(workbook, chapter)
-                val takeFile = File(parentDir, takeName)
-                val take = Take(takeFile.name, takeFile, takeNumber, MimeType.WAV, LocalDate.now())
+                // A file nothing else uses: the next free take number if this one's name is taken.
+                val reserved = TakeFiles.reserve(parentDir, takeNumber) { namer.generateName(it, AudioFileFormat.WAV) }
+                val take = Take(reserved.file.name, reserved.file, reserved.number, MimeType.WAV, LocalDate.now())
 
                 chapter.audio.insertTake(take)
 
@@ -658,12 +658,12 @@ class Narration(
                         chapter,
                         workbook.sourceMetadataSlug
                     )
-                Pair(namer.generateName(takeNumber, AudioFileFormat.WAV), takeNumber)
-            }
-            .map { (takeName, takeNumber) ->
                 val parentDir = workbook.projectFilesAccessor.getChapterAudioDir(workbook, chapter)
-                val takeFile = File(parentDir, takeName)
-                val take = Take(takeFile.name, takeFile, takeNumber, MimeType.WAV, LocalDate.now())
+                // A file nothing else uses: the next free take number if this one's name is taken.
+                TakeFiles.reserve(parentDir, takeNumber) { namer.generateName(it, AudioFileFormat.WAV) }
+            }
+            .map { reserved ->
+                val take = Take(reserved.file.name, reserved.file, reserved.number, MimeType.WAV, LocalDate.now())
                 chapter.audio.insertTake(take)
                 take
             }

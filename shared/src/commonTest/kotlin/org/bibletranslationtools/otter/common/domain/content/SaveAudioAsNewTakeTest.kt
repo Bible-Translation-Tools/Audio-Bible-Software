@@ -19,7 +19,6 @@ import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesAccessor
 import java.io.File
-import kotlin.test.Ignore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
@@ -155,7 +154,6 @@ class SaveAudioAsNewTakeTest {
      * A take number that is already taken on disk, by a file no row in this element knows about
      * (an older chunk layout's take, an orphan), must not have its audio replaced.
      */
-    @Ignore("Defect: new takes overwrite existing files. Fixed in step 1.3.")
     @Test
     fun `never overwrites an existing take file`() = runTest {
         val (workbook, chapter, _) = fixture(takeNumber = 1)

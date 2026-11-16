@@ -35,6 +35,7 @@ import org.bibletranslationtools.otter.common.device.AudioRecorderConnectionFact
 import org.bibletranslationtools.otter.common.device.AudioSpec
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.content.Recordable
+import org.bibletranslationtools.otter.common.domain.content.TakeFiles
 import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
 import org.bibletranslationtools.otter.common.recorder.ActiveRecordingRenderer
 import org.bibletranslationtools.otter.common.recorder.RecordingTimer
@@ -530,23 +531,28 @@ class RecorderViewModel(
                     throw IllegalStateException("Unable to finalize recording for save.")
                 }
 
-                val newTakeNumber = audio.getNewTakeNumberSuspend()
-                val filename = namer.generateName(newTakeNumber, AudioFileFormat.WAV)
-                val takeFile = File(dir, filename)
+                // Claim a take file nothing else uses (the next free take number if this one's
+                // name is already on disk), so committing below replaces only our own placeholder.
+                val reserved = TakeFiles.reserve(dir, audio.getNewTakeNumberSuspend()) {
+                    namer.generateName(it, AudioFileFormat.WAV)
+                }
+                val takeFile = reserved.file
                 val newTake = Take(
                     name = takeFile.name,
                     file = takeFile,
-                    number = newTakeNumber,
+                    number = reserved.number,
                     format = MimeType.WAV,
                     createdTimestamp = LocalDate.now()
                 )
 
-                val stagedTakeFile = File(dir, "${filename}.staging.wav")
-                runCatching { stagedTakeFile.delete() }
+                // Staged under a name that is not a take name, so a leftover is never exported or
+                // imported as a take.
+                val stagedTakeFile = File(dir, TakeFiles.stagingName())
                 sessionFile.copyTo(stagedTakeFile, overwrite = true)
                 val stagedFrames = runCatching { OratureAudioFile(stagedTakeFile).totalFrames }.getOrDefault(0)
                 if (stagedFrames <= 0) {
                     runCatching { stagedTakeFile.delete() }
+                    runCatching { takeFile.delete() }
                     throw IllegalStateException("Saved recording is invalid.")
                 }
                 commitStagedTake(stagedTakeFile, takeFile)
@@ -594,6 +600,7 @@ class RecorderViewModel(
         return frames
     }
 
+    /** Moves the staged audio over [takeFile], the empty placeholder this save reserved. */
     private fun commitStagedTake(stagedTakeFile: File, takeFile: File) {
         takeFile.parentFile?.mkdirs()
         runCatching {

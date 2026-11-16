@@ -40,6 +40,7 @@ import org.bibletranslationtools.otter.common.device.IAudioPlayer
 import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayPosition
 import org.bibletranslationtools.otter.common.domain.IUndoable
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
+import org.bibletranslationtools.otter.common.domain.content.TakeFiles
 import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
 import org.bibletranslationtools.otter.common.domain.model.UndoableActionHistory
 import org.bibletranslationtools.otter.common.domain.translation.TranslationTakeApproveAction
@@ -359,8 +360,10 @@ class OraturePeerEditViewModel(
         val takeNumber = chunk.audio.getNewTakeNumberSuspend()
         val namer = WorkbookFileNamerBuilder.createFileNamer(wb, chapter, chunk, chunk, wb.sourceMetadataSlug)
         val dir = wb.projectFilesAccessor.audioDir.resolve(namer.formatChapterNumber()).apply { mkdirs() }
-        val name = namer.generateName(takeNumber, AudioFileFormat.WAV)
-        return Take(name, dir.resolve(name), takeNumber, MimeType.WAV, LocalDate.now())
+        // A file nothing else uses: recording into an existing name truncated another take's audio,
+        // and discarding afterwards deleted it.
+        val reserved = TakeFiles.reserve(dir, takeNumber) { namer.generateName(it, AudioFileFormat.WAV) }
+        return Take(reserved.file.name, reserved.file, reserved.number, MimeType.WAV, LocalDate.now())
     }
 
     /** Re-record into a new take with the configured external recorder, else native (JVM:
