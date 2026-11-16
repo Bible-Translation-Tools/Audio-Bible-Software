@@ -88,7 +88,7 @@ class LayerBoundaryTest {
      *
      * Three are the [org.bibletranslationtools.otter.common.domain.content.Recordable] interfaces,
      * which are arguably domain types an entity may implement. `Workbook` is the real problem: it
-     * takes an `IDirectoryProvider` and constructs `SourceAudioAccessor`, `ArtworkAccessor` and
+     * takes an `IDirectoryProvider` and constructs `SourceAudioAccessor` and
      * `ProjectFilesAccessor`, so the innermost object in the codebase is a factory for filesystem
      * access and every consumer that wants a file takes a whole `Workbook` to get one.
      */
@@ -106,7 +106,7 @@ class LayerBoundaryTest {
                 "workbook/Chapter.kt",   // Recordable
                 "workbook/Chunk.kt",     // ResourceRecordable
                 "workbook/Resource.kt",  // ResourceRecordable
-                "workbook/Workbook.kt"   // ArtworkAccessor, SourceAudioAccessor, ProjectFilesAccessor
+                "workbook/Workbook.kt"   // SourceAudioAccessor, ProjectFilesAccessor
             ),
             actual = violations
         )
@@ -130,9 +130,7 @@ class LayerBoundaryTest {
                 "want it or not, and a relay push is an invisible database write.",
             expected = setOf(
                 "workbook/AssociatedAudio.kt",
-                "workbook/AssociatedTranslation.kt",
                 "workbook/Book.kt",
-                "workbook/BookElementContainer.kt",
                 "workbook/Chapter.kt",
                 "workbook/Chunk.kt",
                 "workbook/ResourceGroup.kt",

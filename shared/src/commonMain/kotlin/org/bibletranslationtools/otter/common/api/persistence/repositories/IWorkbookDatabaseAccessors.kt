@@ -25,10 +25,8 @@ import io.reactivex.Single
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
-import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.data.workbook.DateHolder
-import org.bibletranslationtools.otter.common.data.workbook.Translation
 
 typealias ModelTake = org.bibletranslationtools.otter.common.data.primitives.Take
 
@@ -56,9 +54,6 @@ interface IWorkbookDatabaseAccessors {
     fun getDerivedProject(sourceCollection: Collection): Maybe<Collection>
     fun getDerivedProjects(): Single<List<Collection>>
     fun getSourceProject(targetProject: Collection): Maybe<Collection>
-    fun getTranslation(sourceLanguage: Language, targetLanguage: Language): Single<Translation>
-    fun insertTranslation(translation: Translation): Single<Int>
-    fun updateTranslation(translation: Translation): Completable
     fun clearContentForCollection(
         chapterCollection: Collection,
         typeFilter: ContentType

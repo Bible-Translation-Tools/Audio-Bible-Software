@@ -36,7 +36,7 @@ class Chunk(
 
     val bridged: Boolean = false,
 
-    var draftNumber: Int,
+    val draftNumber: Int,
 
     override val contentType: ContentType
 

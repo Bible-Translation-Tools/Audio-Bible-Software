@@ -18,7 +18,6 @@
  */
 package org.bibletranslationtools.otter.common.data.workbook
 
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.artwork.ArtworkAccessor
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.SourceAudioAccessor
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesAccessor
 import java.util.*
@@ -27,24 +26,13 @@ import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 class Workbook(
     directoryProvider: IDirectoryProvider,
     val source: Book,
-    val target: Book,
-    val translation: AssociatedTranslation
+    val target: Book
 ) {
     val sourceAudioAccessor: SourceAudioAccessor by lazy {
         SourceAudioAccessor(
             directoryProvider,
             source.resourceMetadata,
             source.slug
-        )
-    }
-    val artworkAccessor: ArtworkAccessor by lazy {
-        // Named, because the one provider satisfies two of the accessor's ports: artwork is
-        // looked up in the images RCs and cached under the app cache directory.
-        ArtworkAccessor(
-            appDirectories = directoryProvider,
-            rcDirectories = directoryProvider,
-            metadata = source.resourceMetadata,
-            projectSlug = source.slug
         )
     }
 

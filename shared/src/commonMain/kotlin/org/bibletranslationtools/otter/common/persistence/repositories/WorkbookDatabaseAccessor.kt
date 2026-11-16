@@ -25,7 +25,6 @@ import io.reactivex.Single
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IContentRepository
-import org.bibletranslationtools.otter.common.api.persistence.repositories.ILanguageRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ITakeRepository
@@ -34,20 +33,15 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.Model
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
-import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.data.workbook.DateHolder
-import org.bibletranslationtools.otter.common.data.workbook.Translation
-import org.bibletranslationtools.otter.common.domain.collections.UpdateTranslation
 
 class WorkbookDatabaseAccessor(
     private val collectionRepo: ICollectionRepository,
     private val contentRepo: IContentRepository,
     private val resourceRepo: IResourceRepository,
     private val resourceMetadataRepo: IResourceMetadataRepository,
-    private val takeRepo: ITakeRepository,
-    private val languageRepo: ILanguageRepository,
-    private val updateTranslationUseCase: UpdateTranslation
+    private val takeRepo: ITakeRepository
 ) : IWorkbookDatabaseAccessors {
 
     private val logger = LoggerFactory.getLogger(this::class.java)
@@ -153,15 +147,6 @@ class WorkbookDatabaseAccessor(
     override fun getSourceProject(targetProject: Collection): Maybe<Collection> =
         collectionRepo.getSource(targetProject)
 
-    override fun getTranslation(sourceLanguage: Language, targetLanguage: Language): Single<Translation> {
-        return languageRepo.getTranslation(sourceLanguage, targetLanguage)
-    }
 
-    override fun insertTranslation(translation: Translation): Single<Int> {
-        return languageRepo.insertTranslation(translation)
-    }
 
-    override fun updateTranslation(translation: Translation): Completable {
-        return updateTranslationUseCase.update(translation)
-    }
 }

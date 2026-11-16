@@ -22,8 +22,6 @@ import com.jakewharton.rxrelay2.BehaviorRelay
 import io.reactivex.Completable
 import io.reactivex.Observable
 import io.reactivex.Single
-import io.reactivex.rxkotlin.cast
-import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.rx2.asFlow
 import kotlinx.coroutines.rx2.await
@@ -49,43 +47,21 @@ class Chapter(
 ) : BookElement, BookElementContainer, Recordable {
 
     override val contentType: ContentType = ContentType.META
-    override val children: Observable<BookElement> by lazy { getDraft().cast() }
-    override val childrenFlow: Flow<BookElement> by lazy { getDraft().cast<BookElement>().asFlow() }
 
     val observableChunks: Observable<List<Chunk>> by lazychunks
     val observableFlowChunks: Flow<List<Chunk>> by lazy { lazychunks.value.asFlow() }
     val chunks: Single<List<Chunk>> get() { return lazychunks.value.firstOrError() }
     val chunksSuspend: suspend () -> List<Chunk> = { chunks.await() }
 
-    var text: String = ""
-
     suspend fun addChunkSuspend(chunks: List<Content>) = addChunk(chunks).await()
     suspend fun resetSuspend() = reset().await()
 
     override val textItem
-        get() = textItem()
+        get() = TextItem("", MimeType.USFM!!)
 
     fun hasSelectedAudio() = audio.selected.value?.value != null
 
     fun getSelectedTake() = audio.selected.value?.value
-
-    fun getDraft(): Observable<Chunk> {
-        return chunks
-            .flattenAsObservable { it }
-            .subscribeOn(Schedulers.io())
-    }
-
-    private fun textItem(): TextItem {
-        return TextItem(text, MimeType.USFM!!)
-    }
-
-    private fun verseLabel(start: Int, end: Int): String {
-        return if (start != end) {
-            "$start-$end"
-        } else {
-            "$start"
-        }
-    }
 
     override fun hashCode(): Int {
         return Objects.hash(

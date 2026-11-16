@@ -27,7 +27,6 @@ import org.bibletranslationtools.otter.common.domain.content.SaveAudioAsNewTake
 import org.bibletranslationtools.otter.common.domain.content.TakeCreator
 import org.bibletranslationtools.otter.common.domain.narration.AudioFileUtils
 import org.bibletranslationtools.otter.common.domain.narration.LoadChapterSourceText
-import org.bibletranslationtools.otter.common.domain.narration.PcmTakeTransformer
 import org.bibletranslationtools.otter.common.domain.narration.SplitAudioOnCues
 import org.bibletranslationtools.otter.common.domain.languages.ImportLanguages
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
@@ -159,7 +158,6 @@ val implicitCommonModule = module {
     factoryOf(::ProjectCompletionStatus)
 
     // Narration
-    factoryOf(::PcmTakeTransformer)
     factoryOf(::AudioFileUtils)
     factoryOf(::SplitAudioOnCues)
     // Explicit for the same reason as OpenWorkbook above: it takes a defaulted ioDispatcher.

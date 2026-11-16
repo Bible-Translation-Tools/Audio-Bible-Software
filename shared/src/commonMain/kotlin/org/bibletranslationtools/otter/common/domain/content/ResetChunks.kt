@@ -52,7 +52,6 @@ class ResetChunks() {
 
     private fun markTakesForDeletion(chapter: Chapter) {
         chapter.chunks.blockingGet().forEach { chunk ->
-                chunk.draftNumber = -1
                 chunk.audio.getAllTakes()
                     .filter { it.deletedTimestamp.value?.value == null }
                     .forEach { take ->
