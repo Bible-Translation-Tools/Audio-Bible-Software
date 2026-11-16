@@ -18,6 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.persistence.repositories
 
+import org.bibletranslationtools.otter.common.persistence.database.DatabaseWriter
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionOrder
 import org.bibletranslationtools.otter.common.persistence.entities.ResourceMetadataEntity
 import java.io.File
@@ -46,6 +47,7 @@ import org.wycliffeassociates.resourcecontainer.ResourceContainer
 
 class ResourceContainerRepository(
     private val database: DaoProvider,
+    private val databaseWriter: DatabaseWriter,
     private val collectionRepository: ICollectionRepository,
     private val contentRepository: IContentRepository,
     private val resourceRepository: IResourceRepository,
@@ -104,7 +106,7 @@ class ResourceContainerRepository(
                 e.castOrFindImportException()?.result ?: ImportResult.LOAD_RC_ERROR
             }
             .doFinally { rc.close() }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     /** The installed source (not a derived row) stored at [file], if any. */
@@ -219,7 +221,7 @@ class ResourceContainerRepository(
                 logger.error("Error in removeResourceContainer.", e)
             }
             .doFinally { resourceContainer.close() }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override suspend fun importResourceContainerSuspend(

@@ -53,6 +53,7 @@ class CollectionRepositoryTest {
 
         repository = CollectionRepository(
             db,
+            immediateWriter(db),
             directoryProvider,
             collectionMapper,
             metadataMapper,

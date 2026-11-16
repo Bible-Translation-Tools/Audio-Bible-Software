@@ -18,6 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.persistence.repositories
 
+import org.bibletranslationtools.otter.common.persistence.database.DatabaseWriter
 import com.jakewharton.rxrelay2.BehaviorRelay
 import io.reactivex.Completable
 import io.reactivex.Observable
@@ -40,7 +41,8 @@ import java.lang.IllegalStateException
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.CollectionMapper
 
 class ContentRepository(
-    database: DaoProvider
+    database: DaoProvider,
+    private val databaseWriter: DatabaseWriter
 ) : IContentRepository {
     private val logger = LoggerFactory.getLogger(ContentRepository::class.java)
 
@@ -128,7 +130,7 @@ class ContentRepository(
                 }
                 logger.error("End source content", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun deleteForCollection(
@@ -158,7 +160,7 @@ class ContentRepository(
             .doOnError { e ->
                 logger.error("Error in delete for content: $obj", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun getAll(): Single<List<Content>> {
@@ -200,7 +202,7 @@ class ContentRepository(
             .doOnError { e ->
                 logger.error("Error in insertForCollection for collection: $collection", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     /**
@@ -220,7 +222,7 @@ class ContentRepository(
             .doOnError { e ->
                 logger.error("Error in updateAll for ${content.size} content row(s)", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun linkDerivedToSource(
@@ -237,7 +239,7 @@ class ContentRepository(
                     }
                 }
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun update(obj: Content): Completable {
@@ -254,7 +256,7 @@ class ContentRepository(
             .doOnError { e ->
                 logger.error("Error in update for content: $obj", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     /**

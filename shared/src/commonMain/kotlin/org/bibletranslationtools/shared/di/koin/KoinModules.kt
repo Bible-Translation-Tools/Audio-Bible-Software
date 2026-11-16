@@ -33,6 +33,7 @@ import org.bibletranslationtools.otter.common.api.persistence.IFileIOFactory
 import org.bibletranslationtools.otter.common.api.persistence.IProjectDirectories
 import org.bibletranslationtools.otter.common.api.persistence.IResourceContainerDirectories
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
+import org.bibletranslationtools.otter.common.persistence.database.DatabaseWriter
 import org.koin.core.module.dsl.bind
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.module
@@ -57,6 +58,8 @@ val appPreferencesModule = module {
 }
 
 val appRepositoriesModule = module {
+    // The one queue every database write goes through. A singleton: two would be two queues.
+    single { DatabaseWriter(get()) }
     singleOf(::LanguageRepository) { bind<ILanguageRepository>() }
     singleOf(::CollectionRepository) { bind<ICollectionRepository>() }
     singleOf(::ContentRepository) { bind<IContentRepository>() }
@@ -81,7 +84,7 @@ val appRepositoriesModule = module {
     }
     singleOf(::WorkbookDescriptorRepository) { bind<IWorkbookDescriptorRepository>() }
     singleOf(::InstalledEntityRepository) { bind<IInstalledEntityRepository>() }
-    single<IVersificationRepository> { VersificationRepository(get(), get()) }
+    single<IVersificationRepository> { VersificationRepository(get(), get(), get()) }
     singleOf(::LanguageDataSource) { bind<ILanguageDataSource>() }
 }
 

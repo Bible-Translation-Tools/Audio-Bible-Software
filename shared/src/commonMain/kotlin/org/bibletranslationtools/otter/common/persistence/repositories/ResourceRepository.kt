@@ -18,6 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.persistence.repositories
 
+import org.bibletranslationtools.otter.common.persistence.database.DatabaseWriter
 import io.reactivex.Completable
 import io.reactivex.Observable
 import io.reactivex.Single
@@ -39,7 +40,10 @@ import org.bibletranslationtools.otter.common.persistence.entities.ResourceLinkE
 import org.bibletranslationtools.otter.common.persistence.entities.ResourceMetadataEntity
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.*
 
-class ResourceRepository(private val database: DaoProvider) : IResourceRepository {
+class ResourceRepository(
+    private val database: DaoProvider,
+    private val databaseWriter: DatabaseWriter
+) : IResourceRepository {
     private val logger = LoggerFactory.getLogger(ResourceRepository::class.java)
 
     private val contentDao = database.contentDao
@@ -65,7 +69,7 @@ class ResourceRepository(private val database: DaoProvider) : IResourceRepositor
             .doOnError { e ->
                 logger.error("Error in delete with content: $obj", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun getAll(): Single<List<Content>> {
@@ -131,7 +135,7 @@ class ResourceRepository(private val database: DaoProvider) : IResourceRepositor
             .doOnError { e ->
                 logger.error("Error in insert for link: $entity", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun linkToContent(resource: Content, content: Content, dublinCoreFk: Int) = insert(
@@ -166,7 +170,7 @@ class ResourceRepository(private val database: DaoProvider) : IResourceRepositor
             .doOnError { e ->
                 logger.error("Error in update for content: $obj", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override suspend fun getAllSuspend(): List<Content> = getAll().await()

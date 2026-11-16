@@ -18,6 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.persistence.repositories
 
+import org.bibletranslationtools.otter.common.persistence.database.DatabaseWriter
 import io.reactivex.Completable
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
@@ -33,6 +34,7 @@ import org.bibletranslationtools.otter.common.persistence.repositories.mapping.T
 
 class LanguageRepository(
     database: DaoProvider,
+    private val databaseWriter: DatabaseWriter,
     private val mapper: LanguageMapper,
     private val translationMapper: TranslationMapper,
     private val glSourceCatalog: GlSourceCatalog
@@ -50,7 +52,7 @@ class LanguageRepository(
             .doOnError { e ->
                 logger.error("Error in insert for language: $language", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun insertAll(languages: List<Language>): Single<List<Int>> {
@@ -61,7 +63,7 @@ class LanguageRepository(
             .doOnError { e ->
                 logger.error("Error in insertAll", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun upsertAll(languages: List<Language>): Completable {
@@ -71,7 +73,7 @@ class LanguageRepository(
             .doOnError { e ->
                 logger.error("Error in updateAll", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun updateRegions(languages: List<Language>): Completable {
@@ -82,7 +84,7 @@ class LanguageRepository(
             .doOnError { e ->
                 logger.error("Error in updateRegions", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun getAll(): Single<List<Language>> {
@@ -165,7 +167,7 @@ class LanguageRepository(
             .doOnError { e ->
                 logger.error("Error in update for language: $obj", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun delete(obj: Language): Completable {
@@ -176,7 +178,7 @@ class LanguageRepository(
             .doOnError { e ->
                 logger.error("Error in delete for language: $obj", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun getTranslation(sourceLanguage: Language, targetLanguage: Language): Single<Translation> {
@@ -224,7 +226,7 @@ class LanguageRepository(
             .doOnError { e ->
                 logger.error("Error in insert for translation: $translation", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun updateTranslation(translation: Translation): Completable {
@@ -234,7 +236,7 @@ class LanguageRepository(
             .doOnError { e ->
                 logger.error("Error in update translation: $translation", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun deleteTranslation(translation: Translation): Completable {
@@ -245,7 +247,7 @@ class LanguageRepository(
             .doOnError { e ->
                 logger.error("Error in delete translation: $translation", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override suspend fun getAllSuspend(): List<Language> = getAll().await()

@@ -57,6 +57,7 @@ class ResourceContainerRepositoryTest {
 
         repository = ResourceContainerRepository(
             db,
+            immediateWriter(db),
             collectionRepository,
             contentRepository,
             resourceRepository,

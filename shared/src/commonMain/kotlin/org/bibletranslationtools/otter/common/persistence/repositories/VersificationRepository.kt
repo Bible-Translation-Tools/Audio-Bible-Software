@@ -18,6 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.persistence.repositories
 
+import org.bibletranslationtools.otter.common.persistence.database.DatabaseWriter
 import io.reactivex.Completable
 import io.reactivex.Maybe
 import io.reactivex.Single
@@ -36,6 +37,7 @@ import org.bibletranslationtools.otter.common.OTTER_JSON
 
 class VersificationRepository(
     database: DaoProvider,
+    private val databaseWriter: DatabaseWriter,
     private val directoryProvider: IAppDirectories
 ) : IVersificationRepository {
 
@@ -62,7 +64,7 @@ class VersificationRepository(
                 versificationDao.upsert(slug, path.name)
             }
             .ignoreElement()
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override suspend fun getVersificationSuspend(slug: String): Versification? = getVersification(slug).awaitSingleOrNull()

@@ -18,6 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.persistence.repositories
 
+import org.bibletranslationtools.otter.common.persistence.database.DatabaseWriter
 import io.reactivex.Completable
 import io.reactivex.Maybe
 import io.reactivex.Single
@@ -36,6 +37,7 @@ import org.wycliffeassociates.resourcecontainer.ResourceContainer
 
 class ResourceMetadataRepository(
     database: DaoProvider,
+    private val databaseWriter: DatabaseWriter,
     private val metadataMapper: ResourceMetadataMapper = ResourceMetadataMapper(),
     private val languageMapper: LanguageMapper = LanguageMapper()
 ) : IResourceMetadataRepository {
@@ -95,7 +97,7 @@ class ResourceMetadataRepository(
             .doOnError { e ->
                 logger.error("Error in insert for metadata: $metadata", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun getAll(): Single<List<ResourceMetadata>> {
@@ -173,7 +175,7 @@ class ResourceMetadataRepository(
             .doOnError { e ->
                 logger.error("Error in updateSource for metadata: $metadata, source: $source", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun update(obj: ResourceMetadata): Completable {
@@ -187,7 +189,7 @@ class ResourceMetadataRepository(
             .doOnError { e ->
                 logger.error("Error in update for metadata: $obj", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun update(metadata: ResourceMetadata, rc: ResourceContainer): Completable {
@@ -211,7 +213,7 @@ class ResourceMetadataRepository(
             .doOnError { e ->
                 logger.error("Error in addLink for first: $firstMetadata, second: $secondMetadata", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun removeLink(firstMetadata: ResourceMetadata, secondMetadata: ResourceMetadata): Completable {
@@ -222,7 +224,7 @@ class ResourceMetadataRepository(
             .doOnError { e ->
                 logger.error("Error in removeLink for first: $firstMetadata, second: $secondMetadata", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun delete(obj: ResourceMetadata): Completable {
@@ -233,7 +235,7 @@ class ResourceMetadataRepository(
             .doOnError { e ->
                 logger.error("Error in delete for metadata: $obj", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override suspend fun getAllSuspend(): List<ResourceMetadata> = getAll().await()

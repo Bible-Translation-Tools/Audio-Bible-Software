@@ -36,7 +36,7 @@ class ResourceMetadataRepositoryTest {
         every { db.resourceMetadataDao } returns resourceMetadataDao
         every { db.languageDao } returns languageDao
 
-        repository = ResourceMetadataRepository(db, metadataMapper, languageMapper)
+        repository = ResourceMetadataRepository(db, immediateWriter(db), metadataMapper, languageMapper)
     }
 
     @Test

@@ -18,6 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.persistence.repositories
 
+import org.bibletranslationtools.otter.common.persistence.database.DatabaseWriter
 import io.reactivex.Completable
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
@@ -39,6 +40,7 @@ import java.time.LocalDate
 
 class TakeRepository(
     private val database: DaoProvider,
+    private val databaseWriter: DatabaseWriter,
     private val markerMapper: MarkerMapper,
     private val collectionMapper: CollectionMapper
 ) : ITakeRepository {
@@ -60,7 +62,7 @@ class TakeRepository(
             .doOnError { e ->
                 logger.error("Error in delete with take: $obj", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun deleteForContent(content: Content): Completable {
@@ -75,7 +77,7 @@ class TakeRepository(
             .doOnError { e ->
                 logger.error("Error in deleteForContent: $content\n", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     /** Set the deleted timestamp to now. */
@@ -88,21 +90,21 @@ class TakeRepository(
             .doOnError { e ->
                 logger.error("Error in markDeleted with take: $take", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun setDeleted(takeId: Int, date: LocalDate?): Completable {
         return Completable
             .fromAction { takeDao.updateDeleted(takeId, date?.toString()) }
             .doOnError { e -> logger.error("Error in setDeleted for take $takeId, date: $date", e) }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun setChecking(takeId: Int, status: CheckingStatus, checksum: String?): Completable {
         return Completable
             .fromAction { takeDao.updateChecking(takeId, database.checkingStatusDao.fetchId(status), checksum) }
             .doOnError { e -> logger.error("Error in setChecking for take $takeId, status: $status", e) }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun getAll(): Single<List<Take>> {
@@ -146,7 +148,7 @@ class TakeRepository(
             .doOnError { e ->
                 logger.error("Error in insertForContent with take: $take and content $content", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun update(obj: Take): Completable {
@@ -172,7 +174,7 @@ class TakeRepository(
             .doOnError { e ->
                 logger.error("Error in update for take: $obj", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun removeNonExistentTakes(): Completable {
@@ -197,7 +199,7 @@ class TakeRepository(
             .doOnError { e ->
                 logger.error("Error in removeNonExistentTakes", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun getSoftDeletedTakes(project: Collection): Single<List<Take>> {
@@ -229,7 +231,7 @@ class TakeRepository(
                     }
                 }
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun getByCollection(chapterCollection: Collection, includeDeleted: Boolean): Single<List<Take>> {

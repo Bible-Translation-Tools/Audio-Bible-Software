@@ -18,6 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.persistence.repositories
 
+import org.bibletranslationtools.otter.common.persistence.database.DatabaseWriter
 import io.reactivex.Completable
 import io.reactivex.Maybe
 import io.reactivex.Single
@@ -54,6 +55,7 @@ import java.time.LocalDateTime
 
 class CollectionRepository(
     private val database: DaoProvider,
+    private val databaseWriter: DatabaseWriter,
     private val directoryProvider: IResourceContainerDirectories,
     private val collectionMapper: CollectionMapper,
     private val metadataMapper: ResourceMetadataMapper,
@@ -81,7 +83,7 @@ class CollectionRepository(
             .doOnError { e ->
                 log.error("Error in delete for collection $obj", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun deleteProject(project: Collection, deleteAudio: Boolean): Completable {
@@ -118,7 +120,7 @@ class CollectionRepository(
             .doOnError { e ->
                 log.error("Error in delete project, collection: $project, deleteAudio: $deleteAudio", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun deleteResources(project: Collection, deleteAudio: Boolean): Completable {
@@ -131,7 +133,7 @@ class CollectionRepository(
             .doOnError { e ->
                 log.error("Error in deleteResources for collection: $project, deleteAudio: $deleteAudio", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun collectionsWithoutTakes(project: Collection): Single<List<Collection>> {
@@ -360,7 +362,7 @@ class CollectionRepository(
             .doOnError { e ->
                 log.error("Error in update source for collection: $collection, new source: $newSource", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun updateParent(collection: Collection, newParent: Collection): Completable {
@@ -373,7 +375,7 @@ class CollectionRepository(
             .doOnError { e ->
                 log.error("Error in updateParent for collection: $collection, new parent: $collection", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun insert(collection: Collection): Single<Int> {
@@ -384,7 +386,7 @@ class CollectionRepository(
             .doOnError { e ->
                 log.error("Error in insert for collection: $collection", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun update(obj: Collection): Completable {
@@ -397,7 +399,7 @@ class CollectionRepository(
             .doOnError { e ->
                 log.error("Error in update for collection: $obj", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     override fun deriveProjects(
@@ -489,7 +491,7 @@ class CollectionRepository(
                 }
                 log.error("End Metadata", e)
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
     }
 
     /** Adds project book [book] to derived container [derived]'s manifest, if it isn't listed yet. */
