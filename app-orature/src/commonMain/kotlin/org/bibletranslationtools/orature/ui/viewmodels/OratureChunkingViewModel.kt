@@ -125,6 +125,19 @@ class OratureChunkingViewModel(
     fun currentTotalFrames(): Int = totalFrames
     fun currentMarkers(): List<OratureMarkerInfo> = markerInfos
 
+    /**
+     * Points the page header's undo and redo at this step. Called each time the step is shown: a
+     * step's ViewModel outlives leaving the step, so binding only in init left the header driving
+     * whichever step's ViewModel was created last, possibly one not on screen.
+     */
+    fun onShown() {
+        translationVm.setUndoRedoHandlers(::undo, ::redo)
+        // The save handler too: chunking ViewModels are kept per chapter, so the shell must save
+        // the chapter on screen, not the one visited last.
+        translationVm.setChunkSaveHandler(::saveSuspend)
+        translationVm.updateChunkUndoRedo(canUndo = markerModel?.canUndo() ?: false, canRedo = markerModel?.canRedo() ?: false)
+    }
+
     init {
         // The header undo/redo route here while this step is active (JVM: translationViewModel).
         translationVm.setUndoRedoHandlers(::undo, ::redo)

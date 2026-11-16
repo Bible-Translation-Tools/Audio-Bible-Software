@@ -157,6 +157,16 @@ class OratureChapterReviewViewModel(
     fun currentTotalFrames(): Int = totalFrames
     fun currentMarkers(): List<OratureMarkerInfo> = markerInfos
 
+    /**
+     * Points the page header's undo and redo at this step. Called each time the step is shown: a
+     * step's ViewModel outlives leaving the step, so binding only in init left the header driving
+     * whichever step's ViewModel was created last, possibly one not on screen.
+     */
+    fun onShown() {
+        translationVm.setUndoRedoHandlers(::undo, ::redo)
+        translationVm.updateChunkUndoRedo(canUndo = actionHistory.canUndo(), canRedo = actionHistory.canRedo())
+    }
+
     init {
         translationVm.setUndoRedoHandlers(::undo, ::redo)
         translationVm.setOpenInHandler(::processWithPlugin)

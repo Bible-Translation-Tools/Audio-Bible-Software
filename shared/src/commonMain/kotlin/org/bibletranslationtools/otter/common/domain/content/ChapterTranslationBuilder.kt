@@ -66,20 +66,21 @@ class ChapterTranslationBuilder(
 
                 val checksum = computeFileChecksum(file)
                 if (checksum != null && !needNewChapterTake(checksum, chapter)) {
-                    Single.just(
-                        chapter.audio.getSelectedTake()!!
-                    )
+                    Single.just(chapter.audio.getSelectedTake()!! to false)
                 } else {
-                    newChapterTake(workbook, chapter, file)
+                    newChapterTake(workbook, chapter, file).map { it to true }
                 }
             }
-            .doOnSuccess { take ->
+            .doOnSuccess { (take, isNew) ->
                 logger.info("Chapter ${chapter.sort} compiled successfully.")
                 take.checkingState.accept(
                     TakeCheckingState(CheckingStatus.VERSE, take.checksum())
                 )
-                chapter.audio.insertTake(take)
+                // Only a new take is added: the existing one is already the chapter's, and adding
+                // it again listed it twice.
+                if (isNew) chapter.audio.insertTake(take)
             }
+            .map { (take, _) -> take }
             .subscribeOn(Schedulers.io())
             .doOnError { e ->
                 logger.error("Error compiling chapter ${chapter.sort}", e)

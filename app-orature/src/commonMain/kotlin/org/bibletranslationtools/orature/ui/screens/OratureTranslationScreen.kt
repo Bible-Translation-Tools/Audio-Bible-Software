@@ -338,6 +338,7 @@ private fun TranslationStepContent(
                 // Step-leave persistence is handled by the translation VM's awaited chunk-save
                 // handler (selectStep), which commits BEFORE loading the next step. A second
                 // fire-and-forget save here would race it and corrupt the write, so it's gone.
+                LaunchedEffect(chunkingVm) { chunkingVm.onShown() }
                 OratureChunkingScreen(chunkingVm)
             }
         }
@@ -345,6 +346,7 @@ private fun TranslationStepContent(
             val blindDraftVm = androidx.lifecycle.viewmodel.compose.viewModel(key = "blinddraft") {
                 org.bibletranslationtools.orature.ui.viewmodels.OratureBlindDraftViewModel(viewModel)
             }
+            LaunchedEffect(blindDraftVm) { blindDraftVm.onShown() }
             OratureBlindDraftScreen(blindDraftVm)
         }
         // Peer Edit, Keyword Check, and Verse Check are the same review screen (JVM: all
@@ -354,12 +356,14 @@ private fun TranslationStepContent(
             val peerEditVm = androidx.lifecycle.viewmodel.compose.viewModel(key = "review-${uiState.selectedStep}") {
                 org.bibletranslationtools.orature.ui.viewmodels.OraturePeerEditViewModel(viewModel)
             }
+            LaunchedEffect(peerEditVm) { peerEditVm.onShown() }
             OraturePeerEditScreen(peerEditVm)
         }
         ChunkingStep.FINAL_REVIEW -> {
             val reviewVm = androidx.lifecycle.viewmodel.compose.viewModel(key = "finalreview") {
                 org.bibletranslationtools.orature.ui.viewmodels.OratureChapterReviewViewModel(viewModel)
             }
+            LaunchedEffect(reviewVm) { reviewVm.onShown() }
             OratureChapterReviewScreen(reviewVm)
         }
         else -> Text(

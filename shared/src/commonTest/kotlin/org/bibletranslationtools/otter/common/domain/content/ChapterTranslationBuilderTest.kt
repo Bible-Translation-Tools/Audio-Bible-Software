@@ -18,7 +18,6 @@ import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.utils.computeFileChecksum
 import java.io.File
 import java.time.LocalDate
-import kotlin.test.Ignore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -31,7 +30,6 @@ class ChapterTranslationBuilderTest {
      * Compiling a chapter whose chunk audio has not changed returns the chapter take it already
      * has. It must not add that take to the chapter a second time.
      */
-    @Ignore("Defect: compiling an unchanged chapter re-inserts its selected take. Fixed in step 1.4.")
     @Test
     fun `compiling an unchanged chapter does not add its take again`() {
         val compiled = tempFile(byteArrayOf(1, 2, 3))
