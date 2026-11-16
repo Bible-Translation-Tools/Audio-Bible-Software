@@ -505,6 +505,41 @@ class IntegrationEnvironment private constructor(
     /** The content row take [takeId] is on, and its stored path. */
     fun take(takeId: Int): TakeEntity = db.takeDao.fetchById(takeId)
 
+    /** Take [takeId]'s row, or null once it has been deleted. */
+    fun takeOrNull(takeId: Int): TakeEntity? = db.takeDao.fetchAll().firstOrNull { it.id == takeId }
+
+    /** The file take [takeId] points at. */
+    fun takeFile(takeId: Int): File = File(take(takeId).filepath)
+
+    /** [project] as the app opens it: a live workbook over its source and target books. */
+    fun workbook(project: Collection): org.bibletranslationtools.otter.common.data.workbook.Workbook {
+        val descriptor = koin.get<IWorkbookDescriptorRepository>().getAll(computeSourceAudio = false).blockingGet()
+            .single { it.targetCollection.id == project.id }
+        return koin.get<IWorkbookRepository>().get(descriptor.sourceCollection, descriptor.targetCollection)
+    }
+
+    /** Closes [workbook] the way the app does when it switches projects. */
+    fun closeWorkbook(workbook: org.bibletranslationtools.otter.common.data.workbook.Workbook) =
+        koin.get<IWorkbookRepository>().closeWorkbook(workbook)
+
+    /** The startup purge of soft-deleted takes, as `InitializeTakeRepository` runs it. */
+    fun purgeDeletedTakesAsStartupDoes() {
+        koin.get<org.bibletranslationtools.otter.common.api.persistence.repositories.ITakeRepository>()
+            .deleteExpiredTakes().blockingAwait()
+    }
+
+    /**
+     * Waits for [condition], which today's workbook only reaches after a background write, failing
+     * with [message] after [timeoutMillis].
+     */
+    fun eventually(message: String, timeoutMillis: Long = 5_000, condition: () -> Boolean) {
+        val deadline = System.currentTimeMillis() + timeoutMillis
+        while (!condition()) {
+            if (System.currentTimeMillis() > deadline) throw AssertionError("timed out: $message")
+            Thread.sleep(20)
+        }
+    }
+
     fun content(contentId: Int) = db.contentDao.fetchById(contentId)
 
     /** Moves [project]'s folder to where a project created before per-book pinning would have it. */
