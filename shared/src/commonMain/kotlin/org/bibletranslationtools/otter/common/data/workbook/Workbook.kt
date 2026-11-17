@@ -18,13 +18,9 @@
  */
 package org.bibletranslationtools.otter.common.data.workbook
 
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.SourceAudioAccessor
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesAccessor
 import java.util.*
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 
 class Workbook(
-    directoryProvider: IDirectoryProvider,
     val source: Book,
     val target: Book,
     private val writer: WorkbookWriter
@@ -41,22 +37,7 @@ class Workbook(
     /** Refuses later changes and waits for the change in progress to be saved. */
     suspend fun close() = writer.close()
 
-    val sourceAudioAccessor: SourceAudioAccessor by lazy {
-        SourceAudioAccessor(
-            directoryProvider,
-            source.resourceMetadata,
-            source.slug
-        )
-    }
 
-    val projectFilesAccessor: ProjectFilesAccessor by lazy {
-        ProjectFilesAccessor(
-            directoryProvider,
-            source.resourceMetadata,
-            target.resourceMetadata,
-            target.toCollection()
-        )
-    }
 
     val modifiedTs = target.modifiedTs
     val sourceMetadataSlug: String

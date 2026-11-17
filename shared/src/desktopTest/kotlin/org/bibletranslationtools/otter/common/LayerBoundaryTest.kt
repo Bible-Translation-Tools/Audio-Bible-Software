@@ -105,8 +105,7 @@ class LayerBoundaryTest {
             expected = setOf(
                 "workbook/Chapter.kt",   // Recordable
                 "workbook/Chunk.kt",     // ResourceRecordable
-                "workbook/Resource.kt",  // ResourceRecordable
-                "workbook/Workbook.kt"   // SourceAudioAccessor, ProjectFilesAccessor
+                "workbook/Resource.kt"   // ResourceRecordable
             ),
             actual = violations
         )

@@ -24,7 +24,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.rx2.awaitSingleOrNull
 import kotlinx.coroutines.withContext
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IContentRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
@@ -60,13 +59,11 @@ import java.util.concurrent.ConcurrentHashMap
  * under the workbook's own writer.
  */
 class WorkbookRepository(
-    private val directoryProvider: IDirectoryProvider,
     private val db: IWorkbookDatabaseAccessors,
     private val store: WorkbookStore
 ) : IWorkbookRepository {
 
     constructor(
-        directoryProvider: IDirectoryProvider,
         collectionRepository: ICollectionRepository,
         contentRepository: IContentRepository,
         resourceRepository: IResourceRepository,
@@ -74,7 +71,6 @@ class WorkbookRepository(
         takeRepository: ITakeRepository,
         store: WorkbookStore
     ) : this(
-        directoryProvider,
         WorkbookDatabaseAccessor(
             collectionRepository,
             contentRepository,
@@ -143,7 +139,7 @@ class WorkbookRepository(
                 db.getResources(contentStub(chunk.contentRaw), meta)
             }
         }
-        return Workbook(directoryProvider, book(source, nodes), book(target, nodes), writer)
+        return Workbook(book(source, nodes), book(target, nodes), writer)
     }
 
     private fun book(bookCollection: Collection, nodes: WorkbookNodes): Book {

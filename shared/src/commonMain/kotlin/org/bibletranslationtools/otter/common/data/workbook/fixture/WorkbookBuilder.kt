@@ -1,6 +1,5 @@
 package org.bibletranslationtools.otter.common.data.workbook.fixture
 
-import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
 import org.bibletranslationtools.otter.common.data.primitives.ContainerType
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
@@ -28,7 +27,7 @@ import java.time.LocalDate
  * Builds a workbook for tests, over a [FakeWorkbookStore] the test can inspect and make fail:
  *
  * ```
- * val workbook = WorkbookBuilder(directoryProvider).build {
+ * val workbook = WorkbookBuilder().build {
  *     target {
  *         chapter(1) {
  *             chunk(1..3) { take("chunk1_t1.wav", selected = true) }
@@ -41,7 +40,6 @@ import java.time.LocalDate
  * loads and refuses changes exactly as the app's does.
  */
 class WorkbookBuilder(
-    private val directoryProvider: IDirectoryProvider,
     val store: FakeWorkbookStore = FakeWorkbookStore()
 ) {
     fun build(block: WorkbookSpec.() -> Unit): Workbook {
@@ -49,7 +47,6 @@ class WorkbookBuilder(
         val writer = WorkbookWriter()
         val nodes = WorkbookNodes(store, writer)
         return Workbook(
-            directoryProvider,
             book(spec.source ?: BookSpec("gen", "en"), nodes),
             book(spec.target ?: BookSpec("gen", "fr"), nodes),
             writer
