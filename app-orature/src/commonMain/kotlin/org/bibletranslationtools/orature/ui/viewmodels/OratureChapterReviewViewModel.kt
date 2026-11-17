@@ -13,9 +13,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
+import org.bibletranslationtools.orature.services.OratureSaveMessages
 import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
+import org.bibletranslationtools.shared.ui.failureMessage
 import org.bibletranslationtools.shared.audio.engine.AudioTimeline
 import org.bibletranslationtools.shared.audio.engine.FilePcmSource
 import org.bibletranslationtools.shared.audio.engine.PcmSource
@@ -27,6 +28,7 @@ import org.bibletranslationtools.otter.common.data.audio.BookMarker
 import org.bibletranslationtools.otter.common.data.audio.ChapterMarker
 import org.bibletranslationtools.otter.common.data.audio.VerseMarker
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
+import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnection
@@ -47,6 +49,7 @@ import org.bibletranslationtools.otter.common.domain.translation.MoveMarkerActio
 import org.bibletranslationtools.otter.common.domain.translation.TakeEditAction
 import org.bibletranslationtools.otter.common.domain.model.UndoableActionHistory
 import org.bibletranslationtools.otter.common.domain.IUndoable
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.bibletranslationtools.orature.plugins.OraturePluginStore
 import org.bibletranslationtools.orature.plugins.OratureExternalPlugin
 import org.bibletranslationtools.orature.plugins.canLaunchPlugins
@@ -114,6 +117,8 @@ class OratureChapterReviewViewModel(
     private val saveAudioAsNewTake: SaveAudioAsNewTake by inject()
     private val pluginStore: OraturePluginStore by inject()
     private val navigationLock: org.bibletranslationtools.orature.ui.OratureNavigationLock by inject()
+    private val projectFiles: ProjectFilesService by inject()
+    private val saveMessages: OratureSaveMessages by inject()
 
     private val _uiState = MutableStateFlow(OratureChapterReviewUiState())
     val uiState: StateFlow<OratureChapterReviewUiState> = _uiState.asStateFlow()
@@ -206,13 +211,21 @@ class OratureChapterReviewViewModel(
     private fun loadChapterTake(chap: Chapter) {
         launchLogged {
             try {
-                val prepared = withContext(Dispatchers.IO) {
-                    val wb = workbookDataStore.activeWorkbook.value ?: error("No active workbook")
-                    workbook = wb
-                    // Compile (or reuse) the chapter take from the chunk takes (JVM: getOrCompile).
-                    val take = chapterTranslationBuilder.getOrCompile(wb, chap).await()
-                    prepareFromTake(wb, chap, take)
+                val wb = workbookDataStore.activeWorkbook.value ?: error("No active workbook")
+                workbook = wb
+                // Compile (or reuse) the chapter take from the chunk takes (JVM: getOrCompile).
+                val compiled = withContext(Dispatchers.IO) { chapterTranslationBuilder.getOrCompile(wb, chap) }
+                val take = (compiled as? SaveResult.Saved)?.value ?: run {
+                    // Nothing to review without the chapter take: say why in the screen's error state.
+                    logFailure("compiling the chapter take for review", IllegalStateException("Not saved: $compiled"))
+                    _uiState.value = OratureChapterReviewUiState(
+                        hasChapter = true,
+                        isLoading = false,
+                        error = compiled.failureMessage() ?: getString(Res.string.errUnknown)
+                    )
+                    return@launchLogged
                 }
+                val prepared = withContext(Dispatchers.IO) { prepareFromTake(wb, chap, take) }
                 applyPrepared(prepared, chap)
             } catch (e: CancellationException) {
                 throw e
@@ -335,7 +348,7 @@ class OratureChapterReviewViewModel(
      * when absent from source, matching JVM's `optionalMarkers` construction exactly.
      */
     private fun sourceMarkers(wb: Workbook, chap: Chapter): List<AudioMarker> {
-        val sa = runCatching { wb.sourceAudioAccessor.getChapter(chap.sort, wb.target) }.getOrNull()
+        val sa = runCatching { projectFiles.sourceAudio(wb).getChapter(chap.sort, wb.target) }.getOrNull()
         val fromSource = if (sa != null) {
             runCatching { OratureAudioFile(sa.file).getVerseAndTitleMarkers() }.getOrDefault(emptyList())
         } else {
@@ -354,8 +367,9 @@ class OratureChapterReviewViewModel(
 
     private fun prepareSourcePlayer(wb: Workbook, chap: Chapter): Pair<IAudioPlayer, Int>? {
         val sa = runCatching {
-            wb.sourceAudioAccessor.getUserMarkedChapter(chap.sort, wb.target)
-                ?: wb.sourceAudioAccessor.getChapter(chap.sort, wb.target)
+            val sourceAudio = projectFiles.sourceAudio(wb)
+            sourceAudio.getUserMarkedChapter(chap.sort, wb.target)
+                ?: sourceAudio.getChapter(chap.sort, wb.target)
         }.getOrNull() ?: return null
         val reader = OratureAudioFile(sa.file).reader().apply { open() }
         val sr = reader.spec.sampleRate.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
@@ -373,7 +387,7 @@ class OratureChapterReviewViewModel(
     /** Translation context handed to the plugin (JVM: `PluginParameters`) — chapter-scoped, no
      *  chunk fields, since Final Review edits the whole compiled chapter take. */
     private fun pluginParams(wb: Workbook, chap: Chapter): PluginParameters {
-        val sourceAudio = runCatching { wb.sourceAudioAccessor.getChapter(chap.sort, wb.target)?.file }.getOrNull()
+        val sourceAudio = runCatching { projectFiles.sourceAudio(wb).getChapter(chap.sort, wb.target)?.file }.getOrNull()
         return PluginParameters(
             languageName = wb.target.language.name,
             bookSlug = wb.target.slug,
@@ -420,30 +434,33 @@ class OratureChapterReviewViewModel(
             navigationLock.lock()
 
             // Snapshot the selected take into a fresh one for the plugin to edit in place. The use
-            // case does its file work on Dispatchers.IO and leaves the insert on this context, which
-            // is the main thread — same as the hand-rolled version it replaces. Selection follows
-            // from WorkbookRepository once the insert has an id; it is not synchronous here.
-            val newTake = saveAudioAsNewTake.execute(
-                workbook = wb,
-                chapter = chap,
-                chunk = null,
-                recordable = chap,
-                audioFile = existingTake.file
+            // case does its file work on Dispatchers.IO and saves the new take, selected, before it
+            // returns.
+            val snapshot = saveMessages.report(
+                saveAudioAsNewTake.execute(
+                    workbook = wb,
+                    chapter = chap,
+                    chunk = null,
+                    recordable = chap,
+                    audioFile = existingTake.file
+                )
             )
+            val newTake = (snapshot as? SaveResult.Saved)?.value
 
-            val success = withContext(Dispatchers.IO) {
+            // No snapshot, no edit: the plugin never gets a take the project does not know about.
+            val success = newTake != null && withContext(Dispatchers.IO) {
                 runCatching { launchPlugin(editor, newTake.file, pluginParams(wb, chap)) }.getOrDefault(false)
             }
 
-            if (success) {
+            if (success && newTake != null) {
                 val action = TakeEditAction(chap.audio, newTake, existingTake).apply {
                     setUndoCallback { reloadFromSelectedTake(chap) }
                     setRedoCallback { reloadFromSelectedTake(chap) }
                 }
-                actionHistory.execute(action)
-                onUndoableAction()
-            } else {
-                chap.audio.selectTake(existingTake)
+                saveMessages.report(actionHistory.execute(action))
+                publishUndoRedo()
+            } else if (newTake != null) {
+                saveMessages.report(chap.audio.selectTake(chap.audio.take(existingTake.id) ?: existingTake))
             }
 
             _uiState.value = _uiState.value.copy(isPluginOpen = false)
@@ -526,9 +543,7 @@ class OratureChapterReviewViewModel(
     /** Add a verse marker at the playhead (JVM: placeMarker → AddMarkerAction). */
     fun placeMarker() {
         val model = markerModel ?: return
-        actionHistory.execute(AddMarkerAction(model, positionFrames))
-        onUndoableAction()
-        refreshMarkers()
+        runAction(AddMarkerAction(model, positionFrames))
     }
 
     /** Add a Book marker at the playhead (JVM: `AddMarkerSplitButton`'s "Add Book Marker" menu
@@ -536,51 +551,60 @@ class OratureChapterReviewViewModel(
     fun addBookMarker() {
         val model = markerModel ?: return
         if (!model.hasUnplacedMarkerOfType(BookMarker::class)) return
-        actionHistory.execute(AddMarkerAction(model, positionFrames, BookMarker::class))
-        onUndoableAction()
-        refreshMarkers()
+        runAction(AddMarkerAction(model, positionFrames, BookMarker::class))
     }
 
     /** Add a Chapter marker at the playhead ("Add Chapter Marker" menu item). */
     fun addChapterMarker() {
         val model = markerModel ?: return
         if (!model.hasUnplacedMarkerOfType(ChapterMarker::class)) return
-        actionHistory.execute(AddMarkerAction(model, positionFrames, ChapterMarker::class))
-        onUndoableAction()
-        refreshMarkers()
+        runAction(AddMarkerAction(model, positionFrames, ChapterMarker::class))
     }
 
     fun moveMarker(id: Int, newFrame: Int) {
         val model = markerModel ?: return
         val original = model.markerItems.firstOrNull { it.id == id }?.frame ?: return
-        actionHistory.execute(MoveMarkerAction(model, id, original, newFrame.coerceIn(0, totalFrames)))
-        onUndoableAction()
-        refreshMarkers()
+        runAction(MoveMarkerAction(model, id, original, newFrame.coerceIn(0, totalFrames)))
     }
 
     fun deleteMarker(id: Int) {
         val model = markerModel ?: return
-        actionHistory.execute(DeleteMarkerAction(model, id))
-        onUndoableAction()
-        refreshMarkers()
+        runAction(DeleteMarkerAction(model, id))
     }
 
     fun undo() {
         if (!actionHistory.canUndo()) return
-        actionHistory.undo()
-        translationVm.updateChunkUndoRedo(canUndo = actionHistory.canUndo(), canRedo = true)
-        refreshMarkers()
+        launchLogged {
+            saveMessages.report(actionHistory.undo())
+            publishUndoRedo()
+            refreshMarkers()
+        }
     }
 
     fun redo() {
         if (!actionHistory.canRedo()) return
-        actionHistory.redo()
-        translationVm.updateChunkUndoRedo(canUndo = true, canRedo = actionHistory.canRedo())
-        refreshMarkers()
+        launchLogged {
+            saveMessages.report(actionHistory.redo())
+            publishUndoRedo()
+            refreshMarkers()
+        }
     }
 
-    private fun onUndoableAction() {
-        translationVm.updateChunkUndoRedo(canUndo = true, canRedo = false)
+    /**
+     * Runs [action] through the undo history. Marker actions change only the marker model, so they
+     * finish before the main-thread launch first suspends; the marker overlay follows at once.
+     */
+    private fun runAction(action: IUndoable) {
+        launchLogged {
+            saveMessages.report(actionHistory.execute(action))
+            publishUndoRedo()
+            refreshMarkers()
+        }
+    }
+
+    /** The page header's undo and redo follow this step's history as it now stands. */
+    private fun publishUndoRedo() {
+        translationVm.updateChunkUndoRedo(canUndo = actionHistory.canUndo(), canRedo = actionHistory.canRedo())
     }
 
     /** Advance to the next chapter (JVM: GoToNextChapterEvent). Saves markers first. */

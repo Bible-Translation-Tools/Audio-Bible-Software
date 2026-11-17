@@ -13,6 +13,7 @@ import org.bibletranslationtools.otter.common.domain.audio.AudioBouncer
 import org.bibletranslationtools.otter.common.domain.narration.AudioFileUtils
 import org.bibletranslationtools.otter.common.domain.narration.Narration
 import org.bibletranslationtools.otter.common.domain.narration.SplitAudioOnCues
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -29,14 +30,16 @@ class OratureNarrationFactory(
     private val audioFileUtils: AudioFileUtils,
     private val audioBouncer: AudioBouncer,
     private val recorderConnectionFactory: AudioRecorderConnectionFactory,
-    private val playerConnectionFactory: AudioPlayerConnectionFactory
+    private val playerConnectionFactory: AudioPlayerConnectionFactory,
+    private val projectFiles: ProjectFilesService
 ) {
     private val connectionIds = AtomicInteger(0)
 
     /**
      * Create a fresh [Narration] whose recorder/player connections live on [scope] (typically
      * the owning ViewModel's `viewModelScope`). Call [Narration.initialize] before use, and
-     * [Narration.close] when done.
+     * [Narration.close] when done. The constructor reads the chapter's chunks and files, so call
+     * this off the main thread.
      */
     fun create(workbook: Workbook, chapter: Chapter, scope: CoroutineScope): Narration {
         val id = connectionIds.incrementAndGet()
@@ -52,7 +55,8 @@ class OratureNarrationFactory(
             recorder,
             player,
             workbook,
-            chapter
+            chapter,
+            projectFiles
         )
     }
 }

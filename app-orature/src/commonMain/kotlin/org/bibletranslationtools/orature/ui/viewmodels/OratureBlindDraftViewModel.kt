@@ -16,11 +16,13 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow as MutableStateFlowOf
+import org.bibletranslationtools.orature.services.OratureSaveMessages
 import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
 import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
-import org.bibletranslationtools.otter.common.data.primitives.MimeType
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
+import org.bibletranslationtools.otter.common.data.workbook.NewTake
+import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.device.AudioConfig
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnection
@@ -34,6 +36,7 @@ import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.content.TakeFiles
 import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
 import org.bibletranslationtools.otter.common.domain.model.UndoableActionHistory
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.bibletranslationtools.otter.common.domain.translation.TranslationTakeDeleteAction
 import org.bibletranslationtools.otter.common.domain.translation.TranslationTakeRecordAction
 import org.bibletranslationtools.otter.common.domain.translation.TranslationTakeSelectAction
@@ -42,7 +45,6 @@ import org.bibletranslationtools.otter.common.recorder.WavFileWriter
 import org.bibletranslationtools.orature.plugins.PluginCapability
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
-import java.time.LocalDate
 
 /** A single take shown in the Blind Draft take list (JVM: `TakeCardModel`/`ChunkTakeCard`). */
 data class OratureTakeCard(
@@ -106,6 +108,8 @@ class OratureBlindDraftViewModel(
     private val playerFactory: AudioPlayerConnectionFactory by inject()
     private val recorderFactory: AudioRecorderConnectionFactory by inject()
     private val audioConfig: AudioConfig by inject()
+    private val projectFiles: ProjectFilesService by inject()
+    private val saveMessages: OratureSaveMessages by inject()
 
     private val _uiState = MutableStateFlow(OratureBlindDraftUiState())
     val uiState: StateFlow<OratureBlindDraftUiState> = _uiState.asStateFlow()
@@ -169,7 +173,7 @@ class OratureBlindDraftViewModel(
         val wb = workbookDataStore.activeWorkbook.value
         val chapter = workbookDataStore.activeChapter.value
         val sourceAudio = wb?.let { w ->
-            chapter?.let { runCatching { w.sourceAudioAccessor.getChapter(it.sort, w.target)?.file }.getOrNull() }
+            chapter?.let { runCatching { projectFiles.sourceAudio(w).getChapter(it.sort, w.target)?.file }.getOrNull() }
         }
         return org.bibletranslationtools.otter.common.domain.plugins.PluginParameters(
             languageName = wb?.target?.language?.name ?: "",
@@ -190,7 +194,7 @@ class OratureBlindDraftViewModel(
     private var recorder: AudioRecorderConnection? = null
     private var writer: WavFileWriter? = null
     private var activeRenderer: ActiveRecordingRenderer? = null
-    private var pendingTake: Take? = null
+    private var pendingTake: NewTake? = null
     private val recordingActiveFlow = MutableStateFlowOf(false)
     private val emptyWave = FloatArray(RECORD_WIDTH * 2)
 
@@ -350,7 +354,7 @@ class OratureBlindDraftViewModel(
         val wb = workbookDataStore.activeWorkbook.value ?: return null
         val chapterSort = workbookDataStore.activeChapter.value?.sort ?: return null
         val sa = runCatching {
-            wb.sourceAudioAccessor.getChunk(chapterSort, chunk.sort, chunk.start, wb.target)
+            projectFiles.sourceAudio(wb).getChunk(chapterSort, chunk.sort, chunk.start, wb.target)
         }.getOrNull() ?: return null
         val reader = org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile(sa.file)
             .reader(sa.start, sa.end).apply { open() }
@@ -437,16 +441,29 @@ class OratureBlindDraftViewModel(
         pluginStore.selected(PluginCapability.RECORD)
 
     /** Build a new, un-persisted take for the active chunk (JVM: recorderViewModel.createTake). */
-    private suspend fun newTake(chunk: Chunk): Take {
+    private fun newTake(chunk: Chunk): NewTake {
         val wb = workbookDataStore.activeWorkbook.value ?: error("No active workbook")
         val chapter = workbookDataStore.activeChapter.value ?: error("No active chapter")
-        val takeNumber = chunk.audio.getNewTakeNumberSuspend()
+        val takeNumber = chunk.audio.getNewTakeNumber()
         val namer = WorkbookFileNamerBuilder.createFileNamer(wb, chapter, chunk, chunk, wb.sourceMetadataSlug)
-        val dir = wb.projectFilesAccessor.audioDir.resolve(namer.formatChapterNumber()).apply { mkdirs() }
+        val dir = projectFiles.of(wb).audioDir.resolve(namer.formatChapterNumber()).apply { mkdirs() }
         // A file nothing else uses: recording into an existing name truncated another take's audio,
         // and discarding afterwards deleted it.
         val reserved = TakeFiles.reserve(dir, takeNumber) { namer.generateName(it, AudioFileFormat.WAV) }
-        return Take(reserved.file.name, reserved.file, reserved.number, MimeType.WAV, LocalDate.now())
+        return NewTake(reserved.file, reserved.number)
+    }
+
+    /**
+     * Saves the recorded [take] into [chunk], selected, as an undoable action. When it is not saved
+     * the failure is shown and the file, which nothing refers to, is removed.
+     */
+    private suspend fun keepRecording(chunk: Chunk, take: NewTake) {
+        val op = TranslationTakeRecordAction(chunk, take, chunk.audio.getSelectedTake())
+        val result = saveMessages.report(actionHistory.execute(op))
+        if (result !is SaveResult.Saved) {
+            withContext(Dispatchers.IO) { runCatching { take.file.delete() } }
+        }
+        publishUndoRedo()
     }
 
     /**
@@ -504,9 +521,7 @@ class OratureBlindDraftViewModel(
             endPluginOpen()
             val hasAudio = runCatching { OratureAudioFile(take.file).totalFrames > 0 }.getOrDefault(false)
             if (hasAudio) {
-                val op = TranslationTakeRecordAction(chunk, take, chunk.audio.getSelectedTake())
-                actionHistory.execute(op)
-                onUndoableAction()
+                keepRecording(chunk, take)
             } else {
                 runCatching { take.file.delete() }
             }
@@ -541,11 +556,9 @@ class OratureBlindDraftViewModel(
             stopRecordingPipeline()
             val hasAudio = runCatching { OratureAudioFile(take.file).totalFrames > 0 }.getOrDefault(false)
             if (hasAudio) {
-                // Insert as an undoable record action; inserting auto-selects the new take as "best"
-                // (AssociatedAudio's takes relay selects on insert). JVM: TranslationTakeRecordAction.
-                val op = TranslationTakeRecordAction(chunk, take, chunk.audio.getSelectedTake())
-                actionHistory.execute(op)
-                onUndoableAction()
+                // Insert as an undoable record action; the insert selects the new take as "best" in
+                // the same save. JVM: TranslationTakeRecordAction.
+                keepRecording(chunk, take)
             } else {
                 runCatching { take.file.delete() }
             }
@@ -585,58 +598,69 @@ class OratureBlindDraftViewModel(
 
     /** Select the best take (JVM: onSelectTake) — undoable. */
     fun selectTake(id: Int) {
-        val take = takesById[id] ?: return
         val chunk = activeChunk ?: return
-        val op = TranslationTakeSelectAction(chunk, take, chunk.audio.getSelectedTake())
-        actionHistory.execute(op)
-        onUndoableAction()
-        onChunk(chunk) // reload to reflect the new selection
-        translationVm.onChunkTakesChanged()
+        val take = takesById[id]?.let { chunk.audio.take(it.id) } ?: return
+        launchLogged {
+            val op = TranslationTakeSelectAction(chunk, take, chunk.audio.getSelectedTake())
+            saveMessages.report(actionHistory.execute(op))
+            publishUndoRedo()
+            onChunk(chunk) // reload to show the saved selection
+            translationVm.onChunkTakesChanged()
+        }
     }
 
     /** Delete a take (JVM: onDeleteTake) — undoable; reselects another take if the deleted one was best. */
     fun deleteTake(id: Int) {
-        val take = takesById[id] ?: return
         val chunk = activeChunk ?: return
+        val take = takesById[id]?.let { chunk.audio.take(it.id) } ?: return
         runCatching { takePlayer?.pause() }
-        val wasSelected = chunk.audio.getSelectedTake() == take
-        val op = TranslationTakeDeleteAction(chunk, take, wasSelected, ::handlePostDeleteTake)
-        actionHistory.execute(op)
-        onUndoableAction()
-        onChunk(chunk)
-        translationVm.onChunkTakesChanged()
+        launchLogged {
+            val wasSelected = chunk.audio.getSelectedTake() == take
+            val op = TranslationTakeDeleteAction(chunk, take, wasSelected, ::handlePostDeleteTake)
+            saveMessages.report(actionHistory.execute(op))
+            publishUndoRedo()
+            onChunk(chunk)
+            translationVm.onChunkTakesChanged()
+        }
     }
 
     /** After a delete: if the removed take was the selected one, promote the newest remaining take. */
-    private fun handlePostDeleteTake(deleted: Take, selectAnother: Boolean) {
+    private suspend fun handlePostDeleteTake(deleted: Take, selectAnother: Boolean) {
         if (!selectAnother) return
         val chunk = activeChunk ?: return
-        chunk.audio.getAllTakes()
-            .filter { !it.isDeleted() && it != deleted }
-            .maxByOrNull { it.file.lastModified() }
-            ?.let { chunk.audio.selectTake(it) }
+        val newest = withContext(Dispatchers.IO) {
+            chunk.audio.getAllTakes()
+                .filter { !it.isDeleted() && it != deleted }
+                .maxByOrNull { it.file.lastModified() }
+        } ?: return
+        saveMessages.report(chunk.audio.selectTake(newest))
     }
 
     fun undo() {
         if (!actionHistory.canUndo()) return
         runCatching { takePlayer?.pause() }
-        actionHistory.undo()
-        translationVm.updateChunkUndoRedo(canUndo = actionHistory.canUndo(), canRedo = true)
-        activeChunk?.let { onChunk(it) }
-        translationVm.onChunkTakesChanged()
+        launchLogged {
+            saveMessages.report(actionHistory.undo())
+            publishUndoRedo()
+            activeChunk?.let { onChunk(it) }
+            translationVm.onChunkTakesChanged()
+        }
     }
 
     fun redo() {
         if (!actionHistory.canRedo()) return
         runCatching { takePlayer?.pause() }
-        actionHistory.redo()
-        translationVm.updateChunkUndoRedo(canUndo = true, canRedo = actionHistory.canRedo())
-        activeChunk?.let { onChunk(it) }
-        translationVm.onChunkTakesChanged()
+        launchLogged {
+            saveMessages.report(actionHistory.redo())
+            publishUndoRedo()
+            activeChunk?.let { onChunk(it) }
+            translationVm.onChunkTakesChanged()
+        }
     }
 
-    private fun onUndoableAction() {
-        translationVm.updateChunkUndoRedo(canUndo = true, canRedo = false)
+    /** The page header's undo and redo follow this step's history as it now stands. */
+    private fun publishUndoRedo() {
+        translationVm.updateChunkUndoRedo(canUndo = actionHistory.canUndo(), canRedo = actionHistory.canRedo())
     }
 
     private fun stopAll() {

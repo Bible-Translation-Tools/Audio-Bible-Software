@@ -32,6 +32,8 @@ import org.bibletranslationtools.shared.audio.engine.buildPeakCache
 import kotlin.math.max
 import org.bibletranslationtools.orature.ui.narration.OratureNarrationFactory
 import org.bibletranslationtools.orature.services.OratureProjectEvents
+import org.bibletranslationtools.orature.services.OratureSaveMessages
+import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
 import org.bibletranslationtools.otter.common.domain.narration.LoadChapterSourceText
 import org.bibletranslationtools.otter.common.domain.project.InitializeProjectFiles
@@ -227,6 +229,7 @@ class OratureNarrationViewModel(
     private val pluginStore: org.bibletranslationtools.orature.plugins.OraturePluginStore by inject()
     private val verseMarkerEditor: OratureVerseMarkerEditor by inject()
     private val navigationLock: org.bibletranslationtools.orature.ui.OratureNavigationLock by inject()
+    private val saveMessages: OratureSaveMessages by inject()
 
     private val _uiState = MutableStateFlow(OratureNarrationUiState())
     val uiState: StateFlow<OratureNarrationUiState> = _uiState.asStateFlow()
@@ -764,16 +767,41 @@ class OratureNarrationViewModel(
         if (ctx == NarrationStateType.RECORDING || ctx == NarrationStateType.RECORDING_AGAIN) return
 
         val allRecorded = n.activeVerses.isNotEmpty() && n.activeVerses.size == n.totalVerses.size
-        val existing = chapterTake
+        // The take as the chapter holds it now: a Take is a value, and narration's own undo history
+        // can delete or restore it after it was kept here.
+        val existing = chapterTake?.let { kept ->
+            workbookDataStore.activeChapter.value?.audio?.take(kept.id) ?: kept
+        }
         if (allRecorded && (existing == null || existing.isDeleted())) {
             launchLogged(ioDispatcher) {
-                runCatching { n.createChapterTake().await() }
-                    .onSuccess { chapterTake = it }
+                runCatching { saveMessages.report(n.createChapterTake()) }
+                    .onSuccess { result -> if (result is SaveResult.Saved) chapterTake = result.value }
                     .onFailure { logFailure("creating the chapter take", it) }
             }
         } else if (existing != null && !allRecorded) {
-            n.deleteChapterTake()
-            chapterTake = null
+            // Save-first: the take is forgotten only once its deletion is saved.
+            launchLogged {
+                val result = saveMessages.report(n.deleteChapterTake())
+                if (result is SaveResult.Saved && chapterTake == existing) chapterTake = null
+            }
+        }
+    }
+
+    /**
+     * The compiled chapter take, or one compiled now from what is recorded (JVM:
+     * chapterTakeProperty ?: createChapterTakeWithAudio). Null when nothing could be compiled or the
+     * new take was not saved; a failed save is shown to the user.
+     */
+    private suspend fun chapterTakeOrCompile(n: Narration): Take? {
+        chapterTake?.let { return it }
+        val compiled = withContext(ioDispatcher) {
+            runCatching { n.createChapterTakeWithAudio() }
+                .onFailure { logFailure("compiling the chapter take", it) }
+                .getOrNull()
+        } ?: return null
+        return when (val result = saveMessages.report(compiled)) {
+            is SaveResult.Saved -> result.value.also { chapterTake = it }
+            else -> null
         }
     }
 
@@ -1057,13 +1085,10 @@ class OratureNarrationViewModel(
         _audioScene.value?.clear()
         launchLogged {
             try {
-                // Reuse the compiled chapter take, or compile one from what's recorded (JVM:
-                // chapterTakeProperty ?: createChapterTakeWithAudio) — same as launchChapterPlugin.
-                val take = chapterTake ?: withContext(ioDispatcher) {
-                    runCatching { n.createChapterTakeWithAudio().await() }.getOrNull()
-                }
-                if (take == null) return@launchLogged // nothing recorded yet to mark
-                chapterTake = take
+                // Reuse the compiled chapter take, or compile one from what's recorded — same as
+                // launchChapterPlugin.
+                val take = chapterTakeOrCompile(n)
+                    ?: return@launchLogged // nothing recorded yet to mark, or not saved
 
                 val wb = workbookDataStore.activeWorkbook.value
                 val chap = workbookDataStore.activeChapter.value
@@ -1111,13 +1136,9 @@ class OratureNarrationViewModel(
         _audioScene.value?.clear()
         launchLogged {
             try {
-                // Reuse the compiled chapter take, or compile one on the fly from what's recorded
-                // (JVM: chapterTakeProperty ?: narration.createChapterTakeWithAudio()).
-                val take = chapterTake ?: withContext(ioDispatcher) {
-                    runCatching { n.createChapterTakeWithAudio().await() }.getOrNull()
-                }
-                if (take == null) return@launchLogged // nothing recorded yet to compile
-                chapterTake = take
+                // Reuse the compiled chapter take, or compile one on the fly from what's recorded.
+                val take = chapterTakeOrCompile(n)
+                    ?: return@launchLogged // nothing recorded yet to compile, or not saved
                 beginPluginOpen()
                 org.bibletranslationtools.orature.plugins.launchPlugin(plugin, take.file, narrationPluginParams(0))
                 endPluginOpen()

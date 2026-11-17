@@ -29,6 +29,7 @@ import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactor
 import org.bibletranslationtools.otter.common.device.AudioPlayerEvent
 import org.bibletranslationtools.otter.common.device.IAudioPlayer
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayPosition
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -56,6 +57,7 @@ class OratureConsumeViewModel(
 
     private val workbookDataStore: OratureWorkbookDataStore by inject()
     private val playerFactory: AudioPlayerConnectionFactory by inject()
+    private val projectFiles: ProjectFilesService by inject()
 
     private val _uiState = MutableStateFlow(OratureConsumeUiState())
     val uiState: StateFlow<OratureConsumeUiState> = _uiState.asStateFlow()
@@ -101,7 +103,7 @@ class OratureConsumeViewModel(
             try {
                 val prepared = withContext(Dispatchers.IO) {
                     val wb = workbookDataStore.activeWorkbook.value ?: error("No active workbook")
-                    val sa = wb.sourceAudioAccessor.getChapter(chapterSort, wb.target)
+                    val sa = projectFiles.sourceAudio(wb).getChapter(chapterSort, wb.target)
                         ?: return@withContext null
                     val audioFile = OratureAudioFile(sa.file)
                     audioFile.clearCues()

@@ -16,8 +16,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
+import org.bibletranslationtools.orature.services.OratureSaveMessages
 import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
 import org.bibletranslationtools.shared.audio.engine.AudioTimeline
 import org.bibletranslationtools.shared.audio.engine.FilePcmSource
@@ -27,6 +27,7 @@ import org.bibletranslationtools.shared.audio.engine.buildPeakCache
 import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
 import org.bibletranslationtools.otter.common.data.audio.ChunkMarker
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
+import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.device.AudioFileReader
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnection
@@ -37,6 +38,9 @@ import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayPosition
 import org.bibletranslationtools.otter.common.domain.content.CreateChunks
 import org.bibletranslationtools.otter.common.domain.content.ResetChunks
+import org.bibletranslationtools.otter.common.domain.inOrder
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
+import org.bibletranslationtools.otter.common.audio.AudioCue
 import org.bibletranslationtools.otter.common.domain.model.DEFAULT_CHUNK_MARKER_TOTAL
 import org.bibletranslationtools.otter.common.domain.model.MarkerItem
 import org.bibletranslationtools.otter.common.domain.model.MarkerPlacementModel
@@ -81,6 +85,8 @@ class OratureChunkingViewModel(
     private val directoryProvider: ITempFileProvider by inject()
     private val createChunks: CreateChunks by inject()
     private val resetChunks: ResetChunks by inject()
+    private val projectFiles: ProjectFilesService by inject()
+    private val saveMessages: OratureSaveMessages by inject()
 
     private val _uiState = MutableStateFlow(OratureChunkingUiState())
     val uiState: StateFlow<OratureChunkingUiState> = _uiState.asStateFlow()
@@ -147,24 +153,54 @@ class OratureChunkingViewModel(
         load()
     }
 
-    /** Persist the chunks and WAIT for completion (JVM: saveChanges().blockingAwait() in undock). */
-    private suspend fun saveSuspend() {
-        val wb = workbook ?: return
-        val chap = chapter ?: return
-        val src = sourceFile ?: return
-        val model = markerModel ?: return
-        if (!model.canUndo()) return // nothing changed
+    /**
+     * Persist the chunks and WAIT for completion (JVM: saveChanges().blockingAwait() in undock).
+     * Returns whether the chunks are saved (or there was nothing to save); a failure is shown to the
+     * user, and the caller must not move on as if it saved.
+     */
+    private suspend fun saveSuspend(): Boolean {
+        val wb = workbook ?: return true
+        val chap = chapter ?: return true
+        val src = sourceFile ?: return true
+        val model = markerModel ?: return true
+        if (!model.canUndo()) return true // nothing changed
         val cues = model.markerItems.filter { it.placed }.map { it.toAudioCue() }
-        val accessor = wb.projectFilesAccessor
-        withContext(Dispatchers.IO) {
-            runCatching {
-                resetChunks.resetChapter(accessor, chap)
-                    .andThen(createChunks.createUserDefinedChunks(wb, chap, cues))
-                    .await()
-                ChunkAudioUseCase(directoryProvider, accessor).createChunkedSourceAudio(src, cues)
-                dirty = false
-            }.onFailure { logFailure("saving chunks", it) }
+        val saved = persistChunks(wb, chap, src, cues)
+        if (saved) dirty = false
+        return saved
+    }
+
+    /**
+     * Replaces [chap]'s chunks with the layout [cues] mark (destructive: the old chunks' takes go),
+     * then writes the chunk file and the chunked source audio. Returns whether the chunks were saved;
+     * a failure is logged and shown to the user.
+     */
+    private suspend fun persistChunks(wb: Workbook, chap: Chapter, src: File, cues: List<AudioCue>): Boolean {
+        val result = try {
+            withContext(Dispatchers.IO) {
+                val accessor = projectFiles.of(wb)
+                val rows = createChunks.buildUserDefinedChunks(wb, chap.sort, cues)
+                inOrder(
+                    { resetChunks.resetChapter(accessor, chap) },
+                    {
+                        createChunks.writeChunkFile(wb, chap.sort, rows)
+                        chap.addChunks(rows)
+                    }
+                ).also { saved ->
+                    if (saved is SaveResult.Saved) {
+                        ChunkAudioUseCase(directoryProvider, accessor).createChunkedSourceAudio(src, cues)
+                    }
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logFailure("saving chunks", e)
+            return false
         }
+        saveMessages.report(result)
+        if (result !is SaveResult.Saved) logFailure("saving chunks", IllegalStateException("Chunks not saved: $result"))
+        return result is SaveResult.Saved
     }
 
     private fun load() {
@@ -173,17 +209,18 @@ class OratureChunkingViewModel(
             try {
                 val prepared = withContext(Dispatchers.IO) {
                     val wb = workbookDataStore.activeWorkbook.value ?: error("No active workbook")
-                    val chap = wb.target.chapters.toList().blockingGet().firstOrNull { it.sort == chapterSort }
+                    val chap = wb.target.chapters().firstOrNull { it.sort == chapterSort }
                         ?: error("No chapter $chapterSort")
                     // Source audio must live in the project so it can be re-chunked (JVM: dock()).
                     // The project RC (manifest.yaml) is scaffolded on open (OratureWorkbookDataStore).
-                    val accessor = wb.projectFilesAccessor
-                    val userMarked = wb.sourceAudioAccessor.getUserMarkedChapter(chapterSort, wb.target)
+                    val accessor = projectFiles.of(wb)
+                    val sourceAudio = projectFiles.sourceAudio(wb)
+                    val userMarked = sourceAudio.getUserMarkedChapter(chapterSort, wb.target)
                     val file = (userMarked ?: run {
-                        wb.sourceAudioAccessor.getChapter(chapterSort, wb.target)?.let {
+                        sourceAudio.getChapter(chapterSort, wb.target)?.let {
                             ChunkAudioUseCase(directoryProvider, accessor).copySourceAudioToProject(it.file)
                         }
-                        wb.sourceAudioAccessor.getUserMarkedChapter(chapterSort, wb.target)
+                        sourceAudio.getUserMarkedChapter(chapterSort, wb.target)
                     })?.file ?: error("No source audio for chapter $chapterSort")
 
                     val audioFile = OratureAudioFile(file)
@@ -381,15 +418,7 @@ class OratureChunkingViewModel(
         val model = markerModel ?: return
         if (!model.canUndo()) return // nothing changed
         val cues = model.markerItems.filter { it.placed }.map { it.toAudioCue() }
-        val accessor = wb.projectFilesAccessor
-        saveScope.launch {
-            runCatching {
-                resetChunks.resetChapter(accessor, chap)
-                    .andThen(createChunks.createUserDefinedChunks(wb, chap, cues))
-                    .await()
-                ChunkAudioUseCase(directoryProvider, accessor).createChunkedSourceAudio(src, cues)
-            }.onFailure { logFailure("saving chunks on the backstop path", it) }
-        }
+        saveScope.launch { persistChunks(wb, chap, src, cues) }
     }
 
     public override fun onCleared() {

@@ -9,10 +9,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.rx2.asFlow
-import kotlinx.coroutines.rx2.await
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.orature.resources.Res
 import org.bibletranslationtools.orature.resources.errOpenProject
@@ -27,6 +28,7 @@ import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -136,6 +138,7 @@ class OratureTranslationViewModel(
     private val upgradeBookEdition: UpgradeBookEdition by inject()
     private val projectEvents: OratureProjectEvents by inject()
     private val workbookDataStore: OratureWorkbookDataStore by inject()
+    private val projectFiles: ProjectFilesService by inject()
 
     private val _uiState = MutableStateFlow(OratureTranslationUiState())
     val uiState: StateFlow<OratureTranslationUiState> = _uiState.asStateFlow()
@@ -158,7 +161,7 @@ class OratureTranslationViewModel(
     private fun hasNoSourceAudio(sort: Int?): Boolean {
         if (sort == null) return true
         val wb = workbookDataStore.activeWorkbook.value ?: return true
-        return runCatching { wb.sourceAudioAccessor.getChapter(sort, wb.target) }.getOrNull() == null
+        return runCatching { projectFiles.sourceAudio(wb).getChapter(sort, wb.target) }.getOrNull() == null
     }
 
     init {
@@ -178,7 +181,7 @@ class OratureTranslationViewModel(
         launchLogged {
             val text = withContext(Dispatchers.IO) {
                 runCatching {
-                    val accessor = wb.projectFilesAccessor
+                    val accessor = projectFiles.of(wb)
                     val slug = wb.source.slug
                     val verses = if (chunk != null) {
                         accessor.getChunkText(slug, chapterSort, chunk.start, chunk.end)
@@ -221,7 +224,7 @@ class OratureTranslationViewModel(
                         ?: opened.chapters.firstOrNull())?.sort
                     val noSource = runCatching {
                         activeSort != null &&
-                            workbook.sourceAudioAccessor.getChapter(activeSort, workbook.target) == null
+                            projectFiles.sourceAudio(workbook).getChapter(activeSort, workbook.target) == null
                     }.getOrDefault(true)
                     LoadResult(
                         workbook.target.title.ifEmpty { workbook.target.slug.uppercase() },
@@ -274,7 +277,7 @@ class OratureTranslationViewModel(
         launchLogged {
             val reachable = withContext(Dispatchers.IO) {
                 val chunkList = runCatching {
-                    chapter.chunks.blockingGet().filter { it.contentType == ContentType.TEXT }
+                    chapter.chunks().filter { it.contentType == ContentType.TEXT }
                 }.getOrDefault(emptyList())
                 computeReachableStep(chunkList)
             }
@@ -343,8 +346,9 @@ class OratureTranslationViewModel(
 
     // The active Chunking VM registers an awaited save here so leaving the step persists its chunks
     // (and they're committed + readable) BEFORE the next step loads — matching Orature's undock save.
-    private var chunkSaveHandler: (suspend () -> Unit)? = null
-    fun setChunkSaveHandler(handler: suspend () -> Unit) { chunkSaveHandler = handler }
+    // It returns whether the chunks were saved; the step changes only when they were.
+    private var chunkSaveHandler: (suspend () -> Boolean)? = null
+    fun setChunkSaveHandler(handler: suspend () -> Boolean) { chunkSaveHandler = handler }
     fun clearChunkSaveHandler() { chunkSaveHandler = null }
 
     /** Reload after an import (source audio may now exist → recompute noSourceAudio). */
@@ -401,7 +405,14 @@ class OratureTranslationViewModel(
             // Persist and WAIT before switching, so the next step reads committed chunk content
             // (JVM saves synchronously in undock before navigating).
             launchLogged {
-                runCatching { chunkSaveHandler?.invoke() }
+                val saved = runCatching { chunkSaveHandler?.invoke() ?: true }
+                    .onFailure { logFailure("saving chunks before leaving the step", it) }
+                    .getOrDefault(false)
+                if (!saved) {
+                    // Save-first: stay on Chunking with the edits; the failure has been shown.
+                    _uiState.value = _uiState.value.copy(pendingChunkNavStep = null)
+                    return@launchLogged
+                }
                 _uiState.value = _uiState.value.copy(
                     selectedStep = step,
                     activeChunkSort = null,
@@ -437,38 +448,36 @@ class OratureTranslationViewModel(
         val chapterSort = _uiState.value.activeChapterSort ?: return 0
         val chapter = chapters.firstOrNull { it.sort == chapterSort } ?: return 0
         return withContext(Dispatchers.IO) {
-            runCatching { chapter.chunkCount.blockingGet() }.getOrDefault(0)
+            runCatching { chapter.chunkCount() }.getOrDefault(0)
         }
     }
 
     /**
-     * Subscribe to the active chapter's TEXT chunks (JVM: subscribeToChunks). Reactive because chunks
-     * are created asynchronously when Chunking saves — a one-shot read would race that and find none.
-     * Keeps the current chunk selected across emissions; auto-selects the first (unrecorded) chunk
-     * when nothing is selected yet.
+     * Follow the active chapter's TEXT chunks (JVM: subscribeToChunks), from the chapter's and the
+     * chunks' state values: a new chunk layout and a take saved on any chunk both re-emit. Keeps the
+     * current chunk selected across emissions; auto-selects the first (unrecorded) chunk when nothing
+     * is selected yet.
      */
     fun loadChunks() {
         val chapterSort = _uiState.value.activeChapterSort ?: return
         val chapter = chapters.firstOrNull { it.sort == chapterSort } ?: return
         chunkJob?.cancel()
         chunkJob = launchLogged {
-            chapter.observableChunks.asFlow()
-                .map { list -> list.filter { it.contentType == ContentType.TEXT } }
-                .collect { chunkList -> applyChunkState(chunkList) }
+            textChunksOf(chapter).collect { chunkList -> applyChunkState(chunkList) }
         }
     }
 
     /**
-     * A take was recorded / selected / deleted on a chunk step (JVM: refreshChunkList). Take
-     * selection doesn't change content rows, so [observableChunks] won't re-emit — re-read the
-     * current chunk state so the drawer completion + reachable step update.
+     * A take was recorded / selected / deleted on a chunk step (JVM: refreshChunkList). The chunk
+     * flows already follow the chunks' takes; this re-reads them once more so a caller that has
+     * just saved sees the drawer and the reachable step agree with it.
      */
     fun onChunkTakesChanged() {
         val chapterSort = _uiState.value.activeChapterSort ?: return
         val chapter = chapters.firstOrNull { it.sort == chapterSort } ?: return
         launchLogged {
             val chunkList = withContext(Dispatchers.IO) {
-                runCatching { chapter.chunks.blockingGet().filter { it.contentType == ContentType.TEXT } }
+                runCatching { chapter.chunks().filter { it.contentType == ContentType.TEXT } }
                     .getOrDefault(emptyList())
             }
             applyChunkState(chunkList)
@@ -508,19 +517,16 @@ class OratureTranslationViewModel(
      * Keep [OratureTranslationUiState.reachableStep] current for the active chapter (JVM: updateStep).
      * Runs independently of the selected step so the steps drawer unlocks Blind Draft the moment
      * chunks are created, then Peer Edit once every chunk has selected audio, and so on. Re-created on
-     * each chapter change; take-selection changes (which don't re-emit here) go through
-     * [onChunkTakesChanged].
+     * each chapter change.
      */
     private fun updateReachableStep() {
         val chapterSort = _uiState.value.activeChapterSort ?: return
         val chapter = chapters.firstOrNull { it.sort == chapterSort } ?: return
         reachableJob?.cancel()
         reachableJob = launchLogged {
-            chapter.observableChunks.asFlow()
-                .map { list -> list.filter { it.contentType == ContentType.TEXT } }
-                .collect { chunkList ->
-                    _uiState.value = _uiState.value.copy(reachableStep = computeReachableStep(chunkList))
-                }
+            textChunksOf(chapter).collect { chunkList ->
+                _uiState.value = _uiState.value.copy(reachableStep = computeReachableStep(chunkList))
+            }
         }
     }
 
@@ -541,7 +547,7 @@ class OratureTranslationViewModel(
         val chapter = chapters.firstOrNull { it.sort == chapterSort } ?: return
         launchLogged {
             val chunk = withContext(Dispatchers.IO) {
-                runCatching { chapter.chunks.blockingGet().firstOrNull { it.sort == sort } }.getOrNull()
+                runCatching { chapter.chunks().firstOrNull { it.sort == sort } }.getOrNull()
             } ?: return@launchLogged
             workbookDataStore.setActiveChunk(chunk)
             _uiState.value = _uiState.value.copy(
@@ -633,3 +639,19 @@ class OratureTranslationViewModel(
         super.onCleared()
     }
 }
+
+/**
+ * [chapter]'s TEXT chunks, from its state values: emitted once the chunks are loaded, and again
+ * whenever the chunk layout changes or a take is saved on any of the chunks.
+ */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+internal fun textChunksOf(chapter: Chapter): kotlinx.coroutines.flow.Flow<List<Chunk>> =
+    kotlinx.coroutines.flow.flow {
+        chapter.loadedState()
+        emitAll(chapter.state)
+    }
+        .filter { it.loaded }
+        .flatMapLatest { state ->
+            val text = state.chunks.filter { it.contentType == ContentType.TEXT }
+            if (text.isEmpty()) flowOf(text) else combine(text.map { it.audio.state }) { text }
+        }

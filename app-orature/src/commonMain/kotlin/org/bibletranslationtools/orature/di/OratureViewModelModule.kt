@@ -4,6 +4,7 @@ import org.bibletranslationtools.orature.plugins.OraturePluginStore
 import org.bibletranslationtools.orature.services.OratureImportEvents
 import org.bibletranslationtools.orature.services.OratureProjectEvents
 import org.bibletranslationtools.orature.services.OratureProjectDeletion
+import org.bibletranslationtools.orature.services.OratureSaveMessages
 import org.bibletranslationtools.orature.services.OratureVerseMarkerEditor
 import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
 import org.bibletranslationtools.orature.ui.OratureNavigationLock
@@ -29,6 +30,8 @@ val oratureViewModelModule = module {
     // App-scoped bus so a successful import (global Add Files drawer in the shell) refreshes home.
     single { OratureImportEvents() }
     single { OratureProjectEvents() }
+    // App-scoped channel for workbook saves that failed; the app root shows them as snackbars.
+    single { OratureSaveMessages() }
     // App-scoped project-deletion coordinator + pending-delete counter (guards project creation).
     single { OratureProjectDeletion() }
     // App-scoped registry of external-editor plugins (Settings → plugins; desktop-only).
@@ -44,8 +47,8 @@ val oratureViewModelModule = module {
     single { OratureWorkbookDataStore(get(), get()) }
     // Constructs a Narration for (workbook, chapter) — the port's stand-in for the JVM's
     // Dagger NarrationFactory (resolves deps: directoryProvider, splitAudioOnCues,
-    // audioFileUtils, audioBouncer, recorder + player connection factories).
-    single { OratureNarrationFactory(get(), get(), get(), get(), get(), get()) }
+    // audioFileUtils, audioBouncer, recorder + player connection factories, project files).
+    single { OratureNarrationFactory(get(), get(), get(), get(), get(), get(), get()) }
     // Factory: each drawer open gets a fresh VM; it re-scans devices and observes prefs.
     factory { OratureSettingsViewModel(get(), get(), get()) }
     // Factory: the wizard resolves the shared use-cases/repos via KoinComponent; the caller

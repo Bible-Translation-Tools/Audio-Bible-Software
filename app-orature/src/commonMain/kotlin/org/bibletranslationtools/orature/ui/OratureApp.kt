@@ -35,6 +35,7 @@ import org.bibletranslationtools.orature.ui.navigation.OratureNavigation
 import org.bibletranslationtools.orature.ui.navigation.OratureTranslationRoute
 import org.bibletranslationtools.orature.ui.screens.OratureCrashScreen
 import org.bibletranslationtools.orature.services.OratureImportEvents
+import org.bibletranslationtools.orature.services.OratureSaveMessages
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.device.AudioConfig
 import org.bibletranslationtools.otter.common.device.AudioDeviceSelector
@@ -199,6 +200,15 @@ fun OratureApp(startWithSplash: Boolean = true) {
                 }
                 navController.navigate(route)
             }
+        }
+    }
+
+    // A workbook change the user made that was not saved: shown here so the screen they are
+    // working in stays in front of them.
+    val saveMessages = remember { getKoin().get<OratureSaveMessages>() }
+    LaunchedEffect(saveMessages) {
+        saveMessages.messages.collect { message ->
+            snackbarHostState.showSnackbar(message = message, duration = SnackbarDuration.Long)
         }
     }
 
