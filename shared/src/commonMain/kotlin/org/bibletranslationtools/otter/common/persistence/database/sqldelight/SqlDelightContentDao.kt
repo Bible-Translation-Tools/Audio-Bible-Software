@@ -162,6 +162,10 @@ internal class SqlDelightContentDao(
         }
     }
 
+    override fun updateSelectedTake(contentId: Int, takeId: Int?) {
+        queries.updateSelectedTake(takeId = takeId, id = contentId)
+    }
+
     override fun update(entity: ContentEntity) {
         queries.update(
             sort = entity.sort,

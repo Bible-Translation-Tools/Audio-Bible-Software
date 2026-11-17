@@ -48,6 +48,9 @@ interface ContentDao {
     fun fetchAll(): List<ContentEntity>
     fun updateAll(entities: List<ContentEntity>)
     fun update(entity: ContentEntity)
+
+    /** Sets only the content row's selected take; null clears it. */
+    fun updateSelectedTake(contentId: Int, takeId: Int?)
     fun delete(entity: ContentEntity)
     fun deleteForCollection(chapterCollection: CollectionEntity, contentTypeId: Int? = null)
     fun linkDerivative(contentId: Int, sourceContentId: Int)

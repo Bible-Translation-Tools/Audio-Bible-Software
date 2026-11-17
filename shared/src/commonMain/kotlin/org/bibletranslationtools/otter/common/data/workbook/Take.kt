@@ -1,57 +1,44 @@
-/**
- * Copyright (C) 2020-2024 Wycliffe Associates
- *
- * This file is part of Orature.
- *
- * Orature is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * Orature is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with Orature.  If not, see <https://www.gnu.org/licenses/>.
- */
 package org.bibletranslationtools.otter.common.data.workbook
 
-import com.jakewharton.rxrelay2.BehaviorRelay
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
 import org.bibletranslationtools.otter.common.data.primitives.MimeType
 import org.bibletranslationtools.otter.common.utils.computeFileChecksum
 import java.io.File
 import java.time.LocalDate
 
+/**
+ * A saved take: an immutable value. A change to a take (deleting, restoring, checking) is made
+ * through the [AssociatedAudio] that owns it, which saves the change and then replaces this value
+ * in its state.
+ *
+ * Two takes are the same take when their [id]s are equal, whatever else differs, so an updated copy
+ * still finds its place in a list.
+ */
 class Take(
+    val id: TakeId,
     val name: String,
     val file: File,
     val number: Int,
     val format: MimeType,
     val createdTimestamp: LocalDate,
-    val deletedTimestamp: BehaviorRelay<DateHolder> = BehaviorRelay.createDefault(DateHolder.empty),
-    val checkingState: BehaviorRelay<TakeCheckingState> = BehaviorRelay.createDefault(TakeCheckingState(CheckingStatus.UNCHECKED, null))
+    val deletedOn: LocalDate? = null,
+    val checking: TakeCheckingState = TakeCheckingState(CheckingStatus.UNCHECKED, null)
 ) {
+    fun isDeleted() = deletedOn != null
+
+    /** Reads the file; call off the main thread. */
     fun checksum() = computeFileChecksum(file)
 
-    fun getSavedChecksum() = checkingState.value?.checksum
+    fun getSavedChecksum() = checking.checksum
 
-    override fun equals(other: Any?): Boolean {
-        return (other as? Take)?.let {
-            it.file == this.file
-        } ?: false
-    }
+    fun copy(
+        deletedOn: LocalDate? = this.deletedOn,
+        checking: TakeCheckingState = this.checking
+    ) = Take(id, name, file, number, format, createdTimestamp, deletedOn, checking)
 
-    override fun hashCode() = file.hashCode()
+    override fun equals(other: Any?): Boolean = other is Take && other.id == id
 
-    fun isDeleted() = deletedTimestamp.value?.value != null
-}
+    override fun hashCode(): Int = id.hashCode()
 
-data class DateHolder(val value: LocalDate?) {
-    companion object {
-        val empty = DateHolder(null)
-        fun now() = DateHolder(LocalDate.now())
-    }
+    override fun toString(): String = "Take($name, number=$number, deletedOn=$deletedOn, checking=${checking.status})"
 }

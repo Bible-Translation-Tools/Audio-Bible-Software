@@ -60,6 +60,9 @@ val appPreferencesModule = module {
 val appRepositoriesModule = module {
     // The one queue every database write goes through. A singleton: two would be two queues.
     single { DatabaseWriter(get()) }
+    single<org.bibletranslationtools.otter.common.data.workbook.WorkbookStore> {
+        org.bibletranslationtools.otter.common.persistence.repositories.SqlWorkbookStore(get(), get())
+    }
     singleOf(::LanguageRepository) { bind<ILanguageRepository>() }
     singleOf(::CollectionRepository) { bind<ICollectionRepository>() }
     singleOf(::ContentRepository) { bind<IContentRepository>() }

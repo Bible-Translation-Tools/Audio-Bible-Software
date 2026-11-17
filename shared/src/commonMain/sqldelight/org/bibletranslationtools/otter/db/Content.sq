@@ -69,6 +69,11 @@ SET sort = :sort, label = :label, start = :start, v_end = :vEnd, selected_take_f
     text = :text, format = :format, type_fk = :typeFk, draft_number = :draftNumber, bridged = :bridged
 WHERE id = :id;
 
+-- The selection alone: a workbook change sets one field rather than rewriting the row from a
+-- copy loaded earlier.
+updateSelectedTake:
+UPDATE content_entity SET selected_take_fk = :takeId WHERE id = :id;
+
 delete:
 DELETE FROM content_entity WHERE id = ?;
 
