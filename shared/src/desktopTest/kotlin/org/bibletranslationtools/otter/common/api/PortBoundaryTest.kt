@@ -80,6 +80,8 @@ class PortBoundaryTest {
             .filter { it.isFile && it.extension == "kt" }
             .filterNot { it.path.contains("${File.separator}persistence${File.separator}") }
             .filterNot { it.name == "WorkbookIds.kt" }
+            // The test fixture is a store implementation too, like persistence/.
+            .filterNot { it.path.contains("${File.separator}workbook${File.separator}fixture${File.separator}") }
             .flatMap { file ->
                 file.readLines().withIndex()
                     .filter { (_, line) -> raw.containsMatchIn(line) && !line.trimStart().startsWith("*") && !line.trimStart().startsWith("//") }
