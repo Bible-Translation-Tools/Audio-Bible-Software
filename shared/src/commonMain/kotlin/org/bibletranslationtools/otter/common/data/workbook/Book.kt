@@ -18,9 +18,8 @@
  */
 package org.bibletranslationtools.otter.common.data.workbook
 
-import io.reactivex.Observable
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.rx2.asFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.data.primitives.Collection
@@ -33,7 +32,7 @@ class Book(
     val slug: String,
     val title: String,
     val label: String,
-    val chapters: Observable<Chapter>,
+    private val loadChapters: suspend () -> List<Chapter>,
     val resourceMetadata: ResourceMetadata,
     val linkedResources: List<ResourceMetadata>,
     val modifiedTs: LocalDateTime?,
@@ -45,7 +44,15 @@ class Book(
         get() = resourceMetadata.language
 
 
-    val chaptersFlow: Flow<Chapter> get() = chapters.asFlow()
+    private val loading = Mutex()
+    private var loaded: List<Chapter>? = null
+
+    /**
+     * The book's chapters, in order. Read from storage the first time and kept, so every caller gets
+     * the same [Chapter] objects: one per chapter for as long as the workbook is open.
+     */
+    suspend fun chapters(): List<Chapter> =
+        loaded ?: loading.withLock { loaded ?: loadChapters().also { loaded = it } }
 
     fun toCollection(): Collection = Collection(
         sort,

@@ -26,8 +26,21 @@ import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 class Workbook(
     directoryProvider: IDirectoryProvider,
     val source: Book,
-    val target: Book
+    val target: Book,
+    private val writer: WorkbookWriter
 ) {
+    /**
+     * Whether this workbook's changes are saved. Shows failures that no screen is waiting on, such
+     * as settling a chapter's drafts when the user leaves it.
+     */
+    val saveStatus: kotlinx.coroutines.flow.StateFlow<SaveStatus> get() = writer.status
+
+    /** True once [close] has run; a closed workbook refuses every change. */
+    val isClosed: Boolean get() = writer.isClosed
+
+    /** Refuses later changes and waits for the change in progress to be saved. */
+    suspend fun close() = writer.close()
+
     val sourceAudioAccessor: SourceAudioAccessor by lazy {
         SourceAudioAccessor(
             directoryProvider,

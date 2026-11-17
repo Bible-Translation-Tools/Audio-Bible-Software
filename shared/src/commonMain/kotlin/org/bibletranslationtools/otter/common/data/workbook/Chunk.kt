@@ -1,96 +1,52 @@
-/**
- * Copyright (C) 2020-2024 Wycliffe Associates
- *
- * This file is part of Orature.
- *
- * Orature is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * Orature is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with Orature.  If not, see <https://www.gnu.org/licenses/>.
- */
 package org.bibletranslationtools.otter.common.data.workbook
 
-import io.reactivex.Observable
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
-import java.util.*
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.domain.content.ResourceRecordable
 
-class Chunk(
+/**
+ * A chunk (or verse) of a chapter: one row of the chapter's chunk layout, with its takes.
+ *
+ * A chunk belongs to one [draft] of its chapter. It is [retired] once that draft is no longer the
+ * chapter's active one (after a rechunk, or after an undo of one); a retired chunk's [audio] refuses
+ * every change with [RejectReason.RETIRED] instead of writing to a layout nobody sees. Whether it is
+ * retired is worked out from the chapter each time, never stored, so it can't disagree with the
+ * chapter.
+ */
+class Chunk internal constructor(
+    val id: ChunkId,
+    val draft: DraftId,
     override val sort: Int,
     override val label: String,
-    override val audio: AssociatedAudio,
-    override val resources: List<ResourceGroup>,
-
-    override val textItem: TextItem,
     val start: Int,
     val end: Int,
-
-    val bridged: Boolean = false,
-
-    val draftNumber: Int,
-
-    override val contentType: ContentType
-
+    val bridged: Boolean,
+    override val contentType: ContentType,
+    override val textItem: TextItem,
+    override val resources: List<ResourceGroup>,
+    private val isRetired: () -> Boolean,
+    audioFactory: (gate: () -> RejectReason?) -> AssociatedAudio
 ) : BookElement, ResourceRecordable {
-    override val title
-        get() = if (start != end) "${start}-${end}" else "$start"
 
-    fun hasSelectedAudio(): Boolean {
-        return audio.selected.value?.value?.let { take ->
-            !take.isDeleted()
-        } ?: false
-    }
+    override val audio: AssociatedAudio = audioFactory { if (isRetired()) RejectReason.RETIRED else null }
 
-    fun checkingStatus(): CheckingStatus {
-        return audio.getSelectedTake()?.let { take ->
-            if (take.checkingState.value?.checksum == take.checksum()) {
-                take.checkingState.value?.status
-            } else {
-                take.checkingState.accept(TakeCheckingState(CheckingStatus.UNCHECKED))
-                null
-            }
-        } ?: CheckingStatus.UNCHECKED
-    }
+    /** True once this chunk's layout is no longer the chapter's active one. */
+    val retired: Boolean get() = isRetired()
 
-    override fun hashCode(): Int {
-        return Objects.hash(
-            sort,
-            title,
-            label,
-            textItem,
-            start,
-            end,
-            contentType
-        )
-    }
+    override val title: String
+        get() = if (start != end) "$start-$end" else "$start"
 
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (javaClass != other?.javaClass) return false
+    fun hasSelectedAudio(): Boolean = audio.getSelectedTake()?.isDeleted() == false
 
-        other as Chunk
+    /**
+     * The selected take's checking status, or unchecked. A pure read: a status saved for audio that
+     * has changed since is reset once, when the chapter loads, not here.
+     */
+    fun checkingStatus(): CheckingStatus = audio.getSelectedTake()?.checking?.status ?: CheckingStatus.UNCHECKED
 
-        if (sort != other.sort) return false
-        if (label != other.label) return false
-        if (contentType != other.contentType) return false
-        if (textItem != other.textItem) return false
-        if (start != other.start) return false
-        if (end != other.end) return false
-        if (draftNumber != other.draftNumber) return false
+    override fun equals(other: Any?): Boolean = other is Chunk && other.id == id
 
-        return true
-    }
+    override fun hashCode(): Int = id.hashCode()
 
-    override fun toString(): String {
-        return "Chunk(sort=$sort, label=$label, textItem=$textItem, start=$start, end=$end, draftNumber=$draftNumber)"
-    }
+    override fun toString(): String = "Chunk(sort=$sort, label=$label, start=$start, end=$end, draft=$draft)"
 }
