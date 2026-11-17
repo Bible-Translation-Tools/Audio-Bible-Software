@@ -83,6 +83,7 @@
     <string name="remove">Remove</string>
     <string name="add">Add</string>
     <string name="confirm">Confirm</string>
+    <string name="rechunk_data_loss_warning">Modifying chunks will result in losing your recordings for this chapter. Do you wish to continue?</string>
     <string name="undo_rechunk_title">Undo the chunk changes?</string>
     <plurals name="undo_rechunk_message">
         <item quantity="one">%1$d recording was made since the chunks were changed. If you undo, it will be discarded when you leave this chapter, unless you redo first.</item>

@@ -83,6 +83,7 @@
     <string name="remove">Remover</string>
     <string name="add">Adicionar</string>
     <string name="confirm">Confirmar</string>
+    <string name="rechunk_data_loss_warning">Modifying chunks will result in losing your recordings for this chapter. Do you wish to continue?</string>
     <string name="createProjectMessageTitle">Criar um projeto para iniciar</string>
     <string name="createProjectMessageBody">Clique no botão para criar um novo projeto </string>
     <string name="newProject">Novo Projeto</string>
