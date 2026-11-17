@@ -40,9 +40,6 @@ class TakeRepositoryTest {
         every { Schedulers.io() } returns Schedulers.trampoline()
 
         every { db.takeDao } returns takeDao
-        // Multi-row writes run in a transaction: run the block as the database would.
-        every { db.transactionResult(any<() -> Any>()) } answers { firstArg<() -> Any>().invoke() }
-        every { db.transaction(any()) } answers { firstArg<() -> Unit>().invoke() }
         every { db.markerDao } returns markerDao
         every { db.contentDao } returns contentDao
         every { db.contentTypeDao } returns contentTypeDao

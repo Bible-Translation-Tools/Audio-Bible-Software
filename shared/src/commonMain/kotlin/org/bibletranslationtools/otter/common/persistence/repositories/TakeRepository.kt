@@ -24,7 +24,6 @@ import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.rx2.await
 import org.slf4j.LoggerFactory
-import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
@@ -93,20 +92,6 @@ class TakeRepository(
             .subscribeOn(databaseWriter.scheduler)
     }
 
-    override fun setDeleted(takeId: Int, date: LocalDate?): Completable {
-        return Completable
-            .fromAction { takeDao.updateDeleted(takeId, date?.toString()) }
-            .doOnError { e -> logger.error("Error in setDeleted for take $takeId, date: $date", e) }
-            .subscribeOn(databaseWriter.scheduler)
-    }
-
-    override fun setChecking(takeId: Int, status: CheckingStatus, checksum: String?): Completable {
-        return Completable
-            .fromAction { takeDao.updateChecking(takeId, database.checkingStatusDao.fetchId(status), checksum) }
-            .doOnError { e -> logger.error("Error in setChecking for take $takeId, status: $status", e) }
-            .subscribeOn(databaseWriter.scheduler)
-    }
-
     override fun getAll(): Single<List<Take>> {
         return Single
             .fromCallable {
@@ -136,16 +121,14 @@ class TakeRepository(
     override fun insertForContent(take: Take, content: Content): Single<Int> {
         return Single
             .fromCallable {
-                // One transaction: a marker that fails to insert leaves no take row behind.
-                database.transactionResult {
-                    val takeId = takeDao.insert(takeMapper.mapToEntity(take, content.id))
-                    take.markers.forEach {
-                        val entity = markerMapper.mapToEntity(it, takeId)
-                        entity.id = 0
-                        markerDao.insert(entity)
-                    }
-                    takeId
+                val takeId = takeDao.insert(takeMapper.mapToEntity(take, content.id))
+                // Insert the markers
+                take.markers.forEach {
+                    val entity = markerMapper.mapToEntity(it, takeId)
+                    entity.id = 0
+                    markerDao.insert(entity)
                 }
+                takeId
             }
             .doOnError { e ->
                 logger.error("Error in insertForContent with take: $take and content $content", e)
@@ -156,24 +139,21 @@ class TakeRepository(
     override fun update(obj: Take): Completable {
         return Completable
             .fromAction {
-                // One transaction, so a failure can't leave the take without its markers.
-                database.transaction {
-                    val existing = takeDao.fetchById(obj.id)
-                    val entity = takeMapper.mapToEntity(obj, existing.contentFk)
-                    takeDao.update(entity)
+                val existing = takeDao.fetchById(obj.id)
+                val entity = takeMapper.mapToEntity(obj, existing.contentFk)
+                takeDao.update(entity)
 
-                    // Delete and replace markers
-                    markerDao
-                        .fetchByTakeId(obj.id)
-                        .forEach {
-                            markerDao.delete(it)
-                        }
-
-                    obj.markers.forEach {
-                        val markerEntity = markerMapper.mapToEntity(it, obj.id)
-                        markerEntity.id = 0
-                        markerDao.insert(markerEntity)
+                // Delete and replace markers
+                markerDao
+                    .fetchByTakeId(obj.id)
+                    .forEach {
+                        markerDao.delete(it)
                     }
+
+                obj.markers.forEach {
+                    val markerEntity = markerMapper.mapToEntity(it, obj.id)
+                    markerEntity.id = 0
+                    markerDao.insert(markerEntity)
                 }
             }
             .doOnError { e ->
@@ -222,21 +202,19 @@ class TakeRepository(
     override fun deleteExpiredTakes(expiry: Int): Completable {
         return Completable
             .fromAction {
+                val takes = takeDao.fetchSoftDeletedTakes()
                 val expired = LocalDate.now().minusDays(expiry.toLong())
                 logger.info("Deleting soft deleted takes on or before: $expired")
-                // Rows in one transaction, then files: a file left behind by a failure is harmless,
-                // a row pointing at a deleted file is not.
-                val purged = database.transactionResult {
-                    takeDao.fetchSoftDeletedTakes()
-                        .filter { take ->
-                            take.deletedTs?.let { LocalDate.parse(it) }?.let { !it.isAfter(expired) } == true
-                        }
-                        .onEach { take ->
+                takes.forEach { take ->
+                    take.deletedTs?.let { timestamp ->
+                        val parsed = LocalDate.parse(timestamp)
+                        if (parsed.isBefore(expired) || parsed.isEqual(expired)) {
                             logger.info("Deleting: ${take.filename}, soft delete date is: ${take.deletedTs}")
+                            File(take.filepath).delete()
                             takeDao.delete(take)
                         }
+                    }
                 }
-                purged.forEach { File(it.filepath).delete() }
             }
             .subscribeOn(databaseWriter.scheduler)
     }

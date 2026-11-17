@@ -31,12 +31,6 @@ interface ITakeRepository : IRepository<Take> {
     fun deleteForContent(content: Content): Completable
     fun removeNonExistentTakes(): Completable
     fun markDeleted(take: Take): Completable
-
-    /** Sets only take [takeId]'s deleted date; null restores it. */
-    fun setDeleted(takeId: Int, date: java.time.LocalDate?): Completable
-
-    /** Sets only take [takeId]'s checking status and the checksum it was given for. */
-    fun setChecking(takeId: Int, status: org.bibletranslationtools.otter.common.data.primitives.CheckingStatus, checksum: String?): Completable
     fun getSoftDeletedTakes(project: Collection): Single<List<Take>>
     fun deleteExpiredTakes(expiry: Int = 0): Completable
     fun getByCollection(chapterCollection: Collection, includeDeleted: Boolean = false): Single<List<Take>>

@@ -19,6 +19,7 @@
 package org.bibletranslationtools.otter.common.api.persistence.repositories
 
 import io.reactivex.Completable
+import io.reactivex.Observable
 import io.reactivex.Single
 import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.Collection
@@ -31,13 +32,13 @@ interface IContentRepository : IRepository<Content> {
     fun insertForCollection(contentList: List<Content>, collection: Collection): Single<List<Content>>
     // Get all the chunks for a collection
     fun getByCollection(collection: Collection): Single<List<Content>>
+    fun getByCollectionWithPersistentConnection(collection: Collection): Observable<List<Content>>
     // Get the collection meta-chunk
     fun getCollectionMetaContent(collection: Collection): Single<Content>
     // Get sources this content is derived from
     fun getSources(content: Content): Single<List<Content>>
     // Update the sources for a content
     fun updateSources(content: Content, sourceContents: List<Content>): Completable
-
     fun deleteForCollection(
         chapterCollection: Collection,
         typeFilter: ContentType? = null

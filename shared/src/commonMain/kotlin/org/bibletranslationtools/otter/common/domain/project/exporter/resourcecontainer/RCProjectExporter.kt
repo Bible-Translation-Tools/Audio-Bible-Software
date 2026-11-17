@@ -78,15 +78,39 @@ abstract class RCProjectExporter(
         }
     }
 
-    /**
-     * Compiling completed chapters before a source export was never ported: this used to be a
-     * `TODO()` that threw as soon as it was called, so source export failed before writing
-     * anything. It now compiles nothing and lets the export go ahead.
-     */
-    @Suppress("UNUSED_PARAMETER")
     protected fun compileCompletedChapters(
         workbook: Workbook,
         resourceMetadata: ResourceMetadata,
         projectFilesAccessor: ProjectFilesAccessor
-    ): Completable = Completable.complete()
+    ): Completable {
+//        return filterChaptersReadyToCompile(workbook.target.chapters)
+//            .flatMapCompletable { chapter ->
+//                // compile the chapter
+//                chapter.chunks.blockingGet()
+//                    .mapNotNull { chunk -> chunk.audio.selected.value?.value?.file }
+//                    .let { takes ->
+//                        logger.info("Compiling chunk/verse takes for completed chapter #${chapter.sort}")
+//                        concatenateAudio.execute(takes)
+//                    }
+//                    .flatMapCompletable { compiledTake ->
+//                        logger.info("Importing the new compiled chapter take ${compiledTake.name}")
+//                        pluginActions.import(
+//                            chapter.audio,
+//                            projectFilesAccessor.audioDir,
+//                            createFileNamer(workbook, chapter, resourceMetadata.identifier),
+//                            compiledTake
+//                        ).andThen(
+//                            subscribeToSelectedChapter(chapter)
+//                        )
+//                    }
+//            }
+//            .doOnError {
+//                logger.error("Error while compiling completed chapters.", it)
+//            }
+//            .doFinally {
+//                compositeDisposable.clear()
+//            }
+//            .subscribeOn(Schedulers.io())
+        TODO()
+    }
 }
