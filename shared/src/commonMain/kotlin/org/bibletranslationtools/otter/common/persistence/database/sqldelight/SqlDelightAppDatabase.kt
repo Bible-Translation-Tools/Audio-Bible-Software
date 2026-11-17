@@ -153,12 +153,13 @@ class SqlDelightAppDatabase(
         fun open(
             driver: SqlDriver,
             isNewDatabase: Boolean,
-            directoryProvider: ITempFileProvider
+            directoryProvider: ITempFileProvider,
+            beforeMigrate: (fromVersion: Int) -> Unit = {}
         ): SqlDelightAppDatabase {
             if (isNewDatabase) {
                 return createFresh(driver)
             }
-            SqlDelightDatabaseMigrator(directoryProvider).migrate(driver)
+            SqlDelightDatabaseMigrator(directoryProvider, beforeMigrate).migrate(driver)
             return SqlDelightAppDatabase(driver, buildOtterDatabase(driver))
         }
     }

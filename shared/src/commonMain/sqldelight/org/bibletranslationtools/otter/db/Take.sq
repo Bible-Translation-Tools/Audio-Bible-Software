@@ -64,14 +64,25 @@ WHERE content_fk IN (
     )
 ) AND deleted_ts IS NOT NULL;
 
+-- Takes of the chapter's active chunk layout only (see ChapterDraft.sq).
 fetchByCollectionId:
 SELECT * FROM take_entity
-WHERE content_fk IN (SELECT id FROM content_entity WHERE collection_fk = :collectionId)
+WHERE content_fk IN (SELECT id FROM content_entity WHERE collection_fk = :collectionId
+  AND (
+      type_fk NOT IN (SELECT id FROM content_type WHERE lower(name) = 'text')
+      OR NOT EXISTS (SELECT 1 FROM chapter_draft d WHERE d.chapter_fk = content_entity.collection_fk)
+      OR draft_number = (SELECT d.active_draft FROM chapter_draft d WHERE d.chapter_fk = content_entity.collection_fk)
+    ))
   AND deleted_ts IS NULL;
 
 fetchByCollectionIdIncludingDeleted:
 SELECT * FROM take_entity
-WHERE content_fk IN (SELECT id FROM content_entity WHERE collection_fk = :collectionId);
+WHERE content_fk IN (SELECT id FROM content_entity WHERE collection_fk = :collectionId
+  AND (
+      type_fk NOT IN (SELECT id FROM content_type WHERE lower(name) = 'text')
+      OR NOT EXISTS (SELECT 1 FROM chapter_draft d WHERE d.chapter_fk = content_entity.collection_fk)
+      OR draft_number = (SELECT d.active_draft FROM chapter_draft d WHERE d.chapter_fk = content_entity.collection_fk)
+    ));
 
 -- CollectionRepository.deleteResources: delete take rows of the project's resource content that is
 -- linked under RCs derived from the source. Folds getSourceLinkedRCs + fetchContentByProjectSlug + delete.

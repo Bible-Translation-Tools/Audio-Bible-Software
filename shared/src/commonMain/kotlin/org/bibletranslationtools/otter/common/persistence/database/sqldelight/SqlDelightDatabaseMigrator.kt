@@ -43,13 +43,24 @@ import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus as 
  * way.
  */
 class SqlDelightDatabaseMigrator(
-    private val directoryProvider: ITempFileProvider
+    private val directoryProvider: ITempFileProvider,
+    /**
+     * Called once before an existing database is migrated, with its current version, after the WAL
+     * has been folded into the main file, so a copy of that file is a complete backup.
+     */
+    private val beforeMigrate: (fromVersion: Int) -> Unit = {}
 ) {
     private val logger = LoggerFactory.getLogger(SqlDelightDatabaseMigrator::class.java)
 
     fun migrate(driver: SqlDriver) {
         var current = currentVersion(driver)
         if (current != SCHEMA_VERSION) {
+            if (current > 0) {
+                runCatching {
+                    driver.executeQuery(null, "PRAGMA wal_checkpoint(TRUNCATE);", { c -> c.next(); app.cash.sqldelight.db.QueryResult.Value(Unit) }, 0)
+                }
+                beforeMigrate(current)
+            }
             if (current <= 8) { // Ot1
                 extractSelectedTakeInfo(driver)
             }
@@ -71,6 +82,7 @@ class SqlDelightDatabaseMigrator(
             current = migrate15to16(driver, current)
             current = migrate16to17(driver, current)
             current = migrate17to18(driver, current)
+            current = migrate18to19(driver, current)
             exec(driver, "UPDATE installed_entity SET version = $current WHERE name = '$DATABASE_INSTALLABLE_NAME'")
         }
     }
@@ -550,6 +562,28 @@ class SqlDelightDatabaseMigrator(
      * takes and markers; their files were already deleted. Each table is cleared explicitly, children
      * after parents, so this doesn't depend on the connection's foreign key setting.
      */
+    /**
+     * 18 -> 19: `chapter_draft`, which records each chapter's active chunk layout so a rechunk can
+     * keep the old layout for undo. Existing chapters get no row: each has one layout, all current.
+     */
+    private fun migrate18to19(driver: SqlDriver, current: Int): Int {
+        return if (current < 19) {
+            exec(
+                driver,
+                """
+                CREATE TABLE IF NOT EXISTS chapter_draft (
+                    chapter_fk INTEGER PRIMARY KEY REFERENCES collection_entity(id) ON DELETE CASCADE,
+                    active_draft INTEGER NOT NULL
+                );
+                """.trimIndent()
+            )
+            logger.info("Updated database from version 18 to 19")
+            19
+        } else {
+            current
+        }
+    }
+
     private fun migrate17to18(driver: SqlDriver, current: Int): Int {
         return if (current < 18) {
             try {
