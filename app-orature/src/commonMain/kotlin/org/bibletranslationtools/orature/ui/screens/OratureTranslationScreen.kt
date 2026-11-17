@@ -92,8 +92,7 @@ import org.bibletranslationtools.orature.resources.cancel
 import org.bibletranslationtools.orature.resources.close
 import org.bibletranslationtools.orature.resources.`continue`
 import org.bibletranslationtools.orature.resources.overridingSource
-import org.bibletranslationtools.orature.resources.undo_rechunk_message
-import org.bibletranslationtools.orature.resources.undo_rechunk_title
+import org.bibletranslationtools.orature.resources.rechunk_data_loss_warning
 import org.bibletranslationtools.orature.resources.warning
 import org.bibletranslationtools.orature.resources.collapse
 import org.bibletranslationtools.orature.resources.drag_drop_or_browse_import__template
@@ -119,7 +118,6 @@ import org.bibletranslationtools.orature.ui.viewmodels.OratureImportState
 import org.bibletranslationtools.orature.ui.viewmodels.OratureImportViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureTranslationUiState
 import org.bibletranslationtools.orature.ui.viewmodels.OratureTranslationViewModel
-import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -241,12 +239,12 @@ fun OratureTranslationScreen(
         // Undoing a rechunk that recordings were made into since: the earlier layout becomes active
         // again, and the recordings stay with the newer one, which is deleted when the user leaves
         // the chapter unless they redo first. Cancelling keeps the rechunk.
-        uiState.undoRechunkRecordings?.let { count ->
+        if (uiState.undoRechunkRecordings != null) {
             AlertDialog(
                 onDismissRequest = viewModel::cancelUndoRechunk,
                 confirmButton = {
                     TextButton(onClick = viewModel::confirmUndoRechunk) {
-                        Text(stringResource(Res.string.undo))
+                        Text(stringResource(Res.string.`continue`))
                     }
                 },
                 dismissButton = {
@@ -254,8 +252,8 @@ fun OratureTranslationScreen(
                         Text(stringResource(Res.string.cancel))
                     }
                 },
-                title = { Text(stringResource(Res.string.undo_rechunk_title)) },
-                text = { Text(pluralStringResource(Res.plurals.undo_rechunk_message, count, count)) }
+                title = { Text(stringResource(Res.string.warning)) },
+                text = { Text(stringResource(Res.string.rechunk_data_loss_warning)) }
             )
         }
     }

@@ -266,8 +266,6 @@
     <string name="err_save_disk_full">Couldn’t save: the disk is full. Free some space and try again.</string>
     <string name="err_save_file_missing">Couldn’t save: a file it needs is missing.</string>
     <string name="err_save_failed">Couldn’t save your change. Try again.</string>
-    <string name="save_status_saving">Saving…</string>
-    <string name="save_status_not_saved">Not saved</string>
 
     <!-- ───────────── Export errors (ViewModel) ───────────── -->
     <string name="export_error_project_not_found">Project not found.</string>

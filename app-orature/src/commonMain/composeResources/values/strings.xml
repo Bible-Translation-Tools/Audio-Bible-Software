@@ -84,11 +84,6 @@
     <string name="add">Add</string>
     <string name="confirm">Confirm</string>
     <string name="rechunk_data_loss_warning">Modifying chunks will result in losing your recordings for this chapter. Do you wish to continue?</string>
-    <string name="undo_rechunk_title">Undo the chunk changes?</string>
-    <plurals name="undo_rechunk_message">
-        <item quantity="one">%1$d recording was made since the chunks were changed. If you undo, it will be discarded when you leave this chapter, unless you redo first.</item>
-        <item quantity="other">%1$d recordings were made since the chunks were changed. If you undo, they will be discarded when you leave this chapter, unless you redo first.</item>
-    </plurals>
     <string name="createProjectMessageTitle">Create a Project to Get Started</string>
     <string name="createProjectMessageBody">Click the + button to create a new project </string>
     <string name="newProject">New Project</string>
