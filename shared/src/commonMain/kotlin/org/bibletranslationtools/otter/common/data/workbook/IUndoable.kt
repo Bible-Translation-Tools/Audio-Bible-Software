@@ -1,6 +1,4 @@
-package org.bibletranslationtools.otter.common.domain
-
-import org.bibletranslationtools.otter.common.data.workbook.SaveResult
+package org.bibletranslationtools.otter.common.data.workbook
 
 /**
  * An action that can be undone and redone. Each step returns a [SaveResult]: an action that changes

@@ -162,7 +162,7 @@ class WorkbookBehaviourTest {
         val kept = chapter.chunks().first { it.contentType == ContentType.TEXT }.audio
             .insertTake(env.newTake(project, 1, "chunk_1_t1.wav")).saved()
 
-        chapter.settleDrafts().saved()
+        chapter.settle().saved()
 
         assertNull(env.takeOrNull(oldTake), "the old layout's take row is still there")
         assertFalse(oldFile.exists(), "the old layout's take audio is still on disk")

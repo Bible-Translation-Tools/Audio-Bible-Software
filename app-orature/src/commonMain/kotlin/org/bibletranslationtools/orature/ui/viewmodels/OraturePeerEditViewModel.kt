@@ -16,7 +16,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.orature.ui.translation.ChunkingStep
-import org.bibletranslationtools.orature.services.OratureChapterSession
 import org.bibletranslationtools.orature.services.OratureSaveMessages
 import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
 import org.bibletranslationtools.otter.common.device.AudioConfig
@@ -29,6 +28,7 @@ import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.NewTake
+import org.bibletranslationtools.otter.common.data.workbook.IUndoable
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
@@ -139,10 +139,9 @@ class OraturePeerEditViewModel(
 
     // Confirming a chunk is undoable in the chapter's one history: the page header's undo and redo
     // drive it from any step.
-    private val session: OratureChapterSession by inject()
     private val undoRedo = StepUndoRedo(
-        beforeSession = { runCatching { takePlayer?.pause() } },
-        afterSession = { showSavedState() }
+        beforeHistory = { runCatching { takePlayer?.pause() } },
+        afterHistory = { showSavedState() }
     )
 
     // Waveform providers read by the screen each display frame.
@@ -153,6 +152,10 @@ class OraturePeerEditViewModel(
     fun currentPosition(): Int = positionFrames
     fun currentTotalFrames(): Int = totalFrames
     fun currentRecordingWaveform(): FloatArray = activeRenderer?.floatBuffer?.array ?: emptyWave
+
+    /** Runs [op] in the active chapter's undo history. */
+    private suspend fun execute(op: IUndoable): SaveResult<Unit> =
+        workbookDataStore.activeChapter.value?.execute(op) ?: op.execute()
 
     /**
      * Points the page header's undo and redo at this step. Called each time the step is shown: a
@@ -205,7 +208,7 @@ class OraturePeerEditViewModel(
 
     private fun onChunk(chunk: Chunk?) {
         stopAll()
-        // The undo history is the chapter's (OratureChapterSession), so it outlives a chunk change.
+        // The undo history is the chapter's, so it outlives a chunk change.
         activeChunk = chunk
         if (chunk == null) {
             _uiState.value = OraturePeerEditUiState(hasChunk = false)
@@ -374,7 +377,7 @@ class OraturePeerEditViewModel(
         val op = TranslationTakeApproveAction(chunk.audio, take, checkingStatusForStep(), take.checking)
         launchLogged {
             // Save-first: the chunk shows as confirmed only once its checking status is saved.
-            val result = saveMessages.report(session.execute(op))
+            val result = saveMessages.report(execute(op))
             if (result is SaveResult.Saved && activeChunk == chunk) _uiState.value = _uiState.value.copy(confirmed = true)
             translationVm.onChunkTakesChanged()
         }

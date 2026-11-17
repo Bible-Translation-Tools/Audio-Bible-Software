@@ -86,7 +86,7 @@ class Chapter internal constructor(
     /**
      * Replaces the chapter's chunks with [rows], as a new layout, in one transaction. The previous
      * layout and its takes are kept, inactive, so this can be undone with [switchDraft] until
-     * [settleDrafts] runs. Chunks of the previous layout are retired.
+     * [settle] runs. Chunks of the previous layout are retired.
      */
     suspend fun rechunk(rows: List<Content>): SaveResult<RechunkReceipt> {
         // Loaded first, outside the save: loading can itself save (a stale checking status), and the
@@ -108,11 +108,41 @@ class Chapter internal constructor(
         }
     }
 
+    // The chapter's undo history: every saved change made to it through [execute], from any of its
+    // steps, so a rechunk stays undoable while the user moves between them. Its own lock: an action
+    // saves through the workbook's writer, whose lock is not reentrant.
+    private val historyLock = Mutex()
+    private val history = UndoableActionHistory<IUndoable>()
+    private val _canUndo = MutableStateFlow(false)
+    private val _canRedo = MutableStateFlow(false)
+    val canUndo: StateFlow<Boolean> = _canUndo.asStateFlow()
+    val canRedo: StateFlow<Boolean> = _canRedo.asStateFlow()
+
+    /** Runs [action] and, once it is saved, adds it to the chapter's undo history. */
+    suspend fun execute(action: IUndoable): SaveResult<Unit> =
+        historyLock.withLock { history.execute(action).also { publishHistory() } }
+
+    suspend fun undo(): SaveResult<Unit> = historyLock.withLock { history.undo().also { publishHistory() } }
+
+    suspend fun redo(): SaveResult<Unit> = historyLock.withLock { history.redo().also { publishHistory() } }
+
+    /** The action the next [undo] would undo, if any. */
+    fun peekUndo(): IUndoable? = history.peekUndo()
+
     /**
-     * Deletes every layout but the active one, with their takes: what makes a rechunk stick. Called
-     * when the user leaves the chapter, when the workbook closes, and at startup.
+     * Ends the chapter's undo history and deletes every layout but the active one, with their takes:
+     * what makes a rechunk stick. Called when the user leaves the chapter, and at startup.
      */
-    suspend fun settleDrafts(): SaveResult<Unit> = writer.save { store.deleteInactiveDrafts(id) }
+    suspend fun settle(): SaveResult<Unit> = historyLock.withLock {
+        history.clear()
+        publishHistory()
+        writer.save { store.deleteInactiveDrafts(id) }
+    }
+
+    private fun publishHistory() {
+        _canUndo.value = history.canUndo()
+        _canRedo.value = history.canRedo()
+    }
 
     fun hasSelectedAudio() = audio.getSelectedTake() != null
 

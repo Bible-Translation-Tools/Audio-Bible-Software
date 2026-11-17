@@ -48,7 +48,7 @@ class WorkbookDefectsTest {
                 Content(sort = 2, labelKey = "chunk", start = 11, end = 25, text = null, format = null, type = ContentType.TEXT, draftNumber = 0)
             )
         ).saved()
-        chapter.settleDrafts().saved()
+        chapter.settle().saved()
     }
 
     @Test

@@ -9,8 +9,8 @@ import org.bibletranslationtools.otter.common.data.workbook.NewTake
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.TakeCheckingState
-import org.bibletranslationtools.otter.common.domain.IUndoable
-import org.bibletranslationtools.otter.common.domain.inOrder
+import org.bibletranslationtools.otter.common.data.workbook.IUndoable
+import org.bibletranslationtools.otter.common.data.workbook.inOrder
 
 /**
  * Records [newTake] into [chunk]. Undo deletes it and selects [previouslySelectedTake] again; redo

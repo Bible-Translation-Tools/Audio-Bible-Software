@@ -14,7 +14,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
-import org.bibletranslationtools.orature.services.OratureChapterSession
 import org.bibletranslationtools.orature.services.OratureSaveMessages
 import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
 import org.bibletranslationtools.shared.ui.failureMessage
@@ -48,8 +47,8 @@ import org.bibletranslationtools.otter.common.domain.translation.AddMarkerAction
 import org.bibletranslationtools.otter.common.domain.translation.DeleteMarkerAction
 import org.bibletranslationtools.otter.common.domain.translation.MoveMarkerAction
 import org.bibletranslationtools.otter.common.domain.translation.TakeEditAction
-import org.bibletranslationtools.otter.common.domain.model.UndoableActionHistory
-import org.bibletranslationtools.otter.common.domain.IUndoable
+import org.bibletranslationtools.otter.common.data.workbook.UndoableActionHistory
+import org.bibletranslationtools.otter.common.data.workbook.IUndoable
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.bibletranslationtools.orature.plugins.OraturePluginStore
 import org.bibletranslationtools.orature.plugins.OratureExternalPlugin
@@ -156,14 +155,13 @@ class OratureChapterReviewViewModel(
     // Two histories behind the page header's undo and redo. Marker edits change only the in-memory
     // marker model (written to the take later, see writeMarkersBlocking), so they keep this step's
     // own history, undone first. Editing the take in a plugin is saved, so it goes to the chapter's
-    // one history (OratureChapterSession), which every step shares.
+    // undo history, which every step shares.
     private val actionHistory = UndoableActionHistory<IUndoable>()
-    private val session: OratureChapterSession by inject()
     private val undoRedo = StepUndoRedo(
         localUndo = ::undo,
         localRedo = ::redo,
-        beforeSession = { runCatching { takePlayer?.pause() } },
-        afterSession = { showSelectedTake() }
+        beforeHistory = { runCatching { takePlayer?.pause() } },
+        afterHistory = { showSelectedTake() }
     )
     /** The take file the waveform and markers were built from. */
     private var shownTakeFile: java.io.File? = null
@@ -480,7 +478,7 @@ class OratureChapterReviewViewModel(
             if (success && newTake != null) {
                 // Its undo and redo may come from another step: showSelectedTake follows the saved take.
                 val action = TakeEditAction(chap.audio, newTake, existingTake)
-                saveMessages.report(session.execute(action))
+                saveMessages.report(chap.execute(action))
             } else if (newTake != null) {
                 saveMessages.report(chap.audio.selectTake(chap.audio.take(existingTake.id) ?: existingTake))
             }

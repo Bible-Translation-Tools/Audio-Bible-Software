@@ -9,9 +9,9 @@ import org.bibletranslationtools.otter.common.data.workbook.TakeCheckingState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
-import org.bibletranslationtools.otter.common.domain.IUndoable
-import org.bibletranslationtools.otter.common.domain.NOTHING_TO_SAVE
-import org.bibletranslationtools.otter.common.domain.inOrder
+import org.bibletranslationtools.otter.common.data.workbook.IUndoable
+import org.bibletranslationtools.otter.common.data.workbook.NOTHING_TO_SAVE
+import org.bibletranslationtools.otter.common.data.workbook.inOrder
 import org.bibletranslationtools.otter.common.domain.model.MarkerPlacementModel
 
 /** [ofType] optionally targets a SPECIFIC marker type (e.g. Book or Chapter) instead of just the

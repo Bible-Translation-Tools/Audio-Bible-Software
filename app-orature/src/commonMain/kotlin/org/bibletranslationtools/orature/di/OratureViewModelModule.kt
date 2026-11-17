@@ -1,7 +1,6 @@
 package org.bibletranslationtools.orature.di
 
 import org.bibletranslationtools.orature.plugins.OraturePluginStore
-import org.bibletranslationtools.orature.services.OratureChapterSession
 import org.bibletranslationtools.orature.services.OratureImportEvents
 import org.bibletranslationtools.orature.services.OratureProjectEvents
 import org.bibletranslationtools.orature.services.OratureProjectDeletion
@@ -45,11 +44,8 @@ val oratureViewModelModule = module {
     single { OratureNavigationLock() }
     // Shared open-project state (JVM: WorkbookDataStore) — written by the narration VM,
     // read by the mode-page components. Single so it survives across the mode screens.
-    // Opening a workbook leaves the chapter session first (see OratureWorkbookDataStore.open).
-    single { OratureWorkbookDataStore(get(), get(), get()) }
-    // The chapter in progress and its one undo history for every step; leaving it settles a rechunk.
-    // Its leave() from a closed screen runs in :shared's app-lifetime CoroutineScope single.
-    single { OratureChapterSession() }
+    // Opening a workbook settles the active chapter first (see OratureWorkbookDataStore.open).
+    single { OratureWorkbookDataStore(get(), get()) }
     // Constructs a Narration for (workbook, chapter) — the port's stand-in for the JVM's
     // Dagger NarrationFactory (resolves deps: directoryProvider, splitAudioOnCues,
     // audioFileUtils, audioBouncer, recorder + player connection factories, project files).

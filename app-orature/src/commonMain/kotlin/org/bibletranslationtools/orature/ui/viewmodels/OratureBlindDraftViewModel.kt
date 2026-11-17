@@ -16,13 +16,13 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow as MutableStateFlowOf
-import org.bibletranslationtools.orature.services.OratureChapterSession
 import org.bibletranslationtools.orature.services.OratureSaveMessages
 import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
 import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.NewTake
+import org.bibletranslationtools.otter.common.data.workbook.IUndoable
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.device.AudioConfig
@@ -121,10 +121,9 @@ class OratureBlindDraftViewModel(
 
     // Take select/delete/record are undoable (JVM: BlindDraftViewModel.actionHistory), in the
     // chapter's one history: the page header's undo and redo drive it from any step.
-    private val session: OratureChapterSession by inject()
     private val undoRedo = StepUndoRedo(
-        beforeSession = { runCatching { takePlayer?.pause() } },
-        afterSession = { activeChunk?.let { onChunk(it) } }
+        beforeHistory = { runCatching { takePlayer?.pause() } },
+        afterHistory = { activeChunk?.let { onChunk(it) } }
     )
 
     // External-editor plugin support (JVM: edit-take-in-plugin). Desktop-only.
@@ -200,6 +199,10 @@ class OratureBlindDraftViewModel(
     private var pendingTake: NewTake? = null
     private val recordingActiveFlow = MutableStateFlowOf(false)
     private val emptyWave = FloatArray(RECORD_WIDTH * 2)
+
+    /** Runs [op] in the active chapter's undo history. */
+    private suspend fun execute(op: IUndoable): SaveResult<Unit> =
+        workbookDataStore.activeChapter.value?.execute(op) ?: op.execute()
 
     /**
      * Points the page header's undo and redo at this step. Called each time the step is shown: a
@@ -285,7 +288,7 @@ class OratureBlindDraftViewModel(
 
     private fun onChunk(chunk: Chunk?) {
         stopAll()
-        // The undo history is the chapter's (OratureChapterSession), so it outlives a chunk change.
+        // The undo history is the chapter's, so it outlives a chunk change.
         activeChunk = chunk
         if (chunk == null) {
             _uiState.value = OratureBlindDraftUiState(hasChunk = false)
@@ -463,7 +466,7 @@ class OratureBlindDraftViewModel(
      */
     private suspend fun keepRecording(chunk: Chunk, take: NewTake) {
         val op = TranslationTakeRecordAction(chunk, take, chunk.audio.getSelectedTake())
-        val result = saveMessages.report(session.execute(op))
+        val result = saveMessages.report(execute(op))
         if (result !is SaveResult.Saved) {
             withContext(Dispatchers.IO) { runCatching { take.file.delete() } }
         }
@@ -605,7 +608,7 @@ class OratureBlindDraftViewModel(
         val take = takesById[id]?.let { chunk.audio.take(it.id) } ?: return
         launchLogged {
             val op = TranslationTakeSelectAction(chunk, take, chunk.audio.getSelectedTake())
-            saveMessages.report(session.execute(op))
+            saveMessages.report(execute(op))
             onChunk(chunk) // reload to show the saved selection
             translationVm.onChunkTakesChanged()
         }
@@ -619,7 +622,7 @@ class OratureBlindDraftViewModel(
         launchLogged {
             val wasSelected = chunk.audio.getSelectedTake()?.id == take.id
             val op = TranslationTakeDeleteAction(chunk, take, wasSelected, ::handlePostDeleteTake)
-            saveMessages.report(session.execute(op))
+            saveMessages.report(execute(op))
             onChunk(chunk)
             translationVm.onChunkTakesChanged()
         }
