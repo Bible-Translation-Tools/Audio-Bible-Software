@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import org.bibletranslationtools.orature.services.OratureChapterSession
 import org.bibletranslationtools.orature.services.OratureSaveMessages
 import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
 import org.bibletranslationtools.shared.ui.failureMessage
@@ -152,7 +153,20 @@ class OratureChapterReviewViewModel(
     )
     private var clockEventsJob: Job? = null
 
+    // Two histories behind the page header's undo and redo. Marker edits change only the in-memory
+    // marker model (written to the take later, see writeMarkersBlocking), so they keep this step's
+    // own history, undone first. Editing the take in a plugin is saved, so it goes to the chapter's
+    // one history (OratureChapterSession), which every step shares.
     private val actionHistory = UndoableActionHistory<IUndoable>()
+    private val session: OratureChapterSession by inject()
+    private val undoRedo = StepUndoRedo(
+        localUndo = ::undo,
+        localRedo = ::redo,
+        beforeSession = { runCatching { takePlayer?.pause() } },
+        afterSession = { showSelectedTake() }
+    )
+    /** The take file the waveform and markers were built from. */
+    private var shownTakeFile: java.io.File? = null
 
     fun currentTimeline(): AudioTimeline? = timeline
     fun peakCacheFor(source: PcmSource): WaveformPeakCache? =
@@ -168,12 +182,21 @@ class OratureChapterReviewViewModel(
      * whichever step's ViewModel was created last, possibly one not on screen.
      */
     fun onShown() {
-        translationVm.setUndoRedoHandlers(::undo, ::redo)
-        translationVm.updateChunkUndoRedo(canUndo = actionHistory.canUndo(), canRedo = actionHistory.canRedo())
+        translationVm.bindStepUndoRedo(undoRedo, actionHistory.canUndo(), actionHistory.canRedo())
+        // An undo made on another step may have changed the chapter's selected take meanwhile.
+        showSelectedTake()
+    }
+
+    /** Rebuilds the view when the chapter's selected take is no longer the one shown (an undo or redo). */
+    private fun showSelectedTake() {
+        val chap = chapter ?: return
+        if (_uiState.value.isLoading || _uiState.value.isPluginOpen || shownTakeFile == null) return
+        val selected = chap.audio.getSelectedTake() ?: return
+        if (selected.file != shownTakeFile) reloadFromSelectedTake(chap)
     }
 
     init {
-        translationVm.setUndoRedoHandlers(::undo, ::redo)
+        translationVm.bindStepUndoRedo(undoRedo)
         translationVm.setOpenInHandler(::processWithPlugin)
         launchLogged {
             workbookDataStore.activeChapter.collect { chap -> onChapter(chap) }
@@ -195,7 +218,8 @@ class OratureChapterReviewViewModel(
         writeMarkersBlocking()
         stopAll()
         actionHistory.clear()
-        translationVm.updateChunkUndoRedo(canUndo = false, canRedo = false)
+        shownTakeFile = null
+        publishUndoRedo()
         chapter = chap
         if (chap == null) {
             _uiState.value = OratureChapterReviewUiState(hasChapter = false, isLoading = false)
@@ -272,7 +296,11 @@ class OratureChapterReviewViewModel(
      *  waveform ticker. If a source player was already running (kept alive across a plugin-edit
      *  reload), it's left untouched instead of being replaced. */
     private fun applyPrepared(prepared: Prepared, chap: Chapter) {
+        // A new marker model: the marker edits in the history were made on the old one.
+        actionHistory.clear()
+        publishUndoRedo()
         markerModel = prepared.model
+        shownTakeFile = prepared.takeFile
         sampleRate = prepared.sampleRate
         totalFrames = prepared.totalFrames
         positionFrames = 0
@@ -453,12 +481,9 @@ class OratureChapterReviewViewModel(
             }
 
             if (success && newTake != null) {
-                val action = TakeEditAction(chap.audio, newTake, existingTake).apply {
-                    setUndoCallback { reloadFromSelectedTake(chap) }
-                    setRedoCallback { reloadFromSelectedTake(chap) }
-                }
-                saveMessages.report(actionHistory.execute(action))
-                publishUndoRedo()
+                // Its undo and redo may come from another step: showSelectedTake follows the saved take.
+                val action = TakeEditAction(chap.audio, newTake, existingTake)
+                saveMessages.report(session.execute(action))
             } else if (newTake != null) {
                 saveMessages.report(chap.audio.selectTake(chap.audio.take(existingTake.id) ?: existingTake))
             }
@@ -602,9 +627,9 @@ class OratureChapterReviewViewModel(
         }
     }
 
-    /** The page header's undo and redo follow this step's history as it now stands. */
+    /** The page header's undo and redo follow this step's marker edits as they now stand. */
     private fun publishUndoRedo() {
-        translationVm.updateChunkUndoRedo(canUndo = actionHistory.canUndo(), canRedo = actionHistory.canRedo())
+        translationVm.updateLocalUndoRedo(undoRedo, canUndo = actionHistory.canUndo(), canRedo = actionHistory.canRedo())
     }
 
     /** Advance to the next chapter (JVM: GoToNextChapterEvent). Saves markers first. */
@@ -716,7 +741,7 @@ class OratureChapterReviewViewModel(
     }
 
     public override fun onCleared() {
-        translationVm.clearUndoRedoHandlers()
+        translationVm.unbindStepUndoRedo(undoRedo)
         translationVm.clearOpenInHandler()
         translationVm.setHighlightedVerse(null)
         // Safety net: normal navigation is blocked while a plugin is open (see processWithPlugin),

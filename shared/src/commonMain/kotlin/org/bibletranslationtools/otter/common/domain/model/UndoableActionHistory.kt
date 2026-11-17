@@ -48,6 +48,9 @@ class UndoableActionHistory<T : IUndoable> {
         redoStack.clear()
     }
 
+    /** The action the next [undo] would undo, if any. */
+    fun peekUndo(): IUndoable? = undoStack.peek()
+
     fun canUndo() = undoStack.isNotEmpty()
     fun canRedo() = redoStack.isNotEmpty()
 }

@@ -16,6 +16,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.orature.ui.translation.ChunkingStep
+import org.bibletranslationtools.orature.services.OratureChapterSession
 import org.bibletranslationtools.orature.services.OratureSaveMessages
 import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
 import org.bibletranslationtools.otter.common.device.AudioConfig
@@ -39,11 +40,9 @@ import org.bibletranslationtools.otter.common.device.AudioSpec
 import org.bibletranslationtools.otter.common.device.AudioPlayerEvent
 import org.bibletranslationtools.otter.common.device.IAudioPlayer
 import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayPosition
-import org.bibletranslationtools.otter.common.domain.IUndoable
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.content.TakeFiles
 import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
-import org.bibletranslationtools.otter.common.domain.model.UndoableActionHistory
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.bibletranslationtools.otter.common.domain.translation.TranslationTakeApproveAction
 import org.bibletranslationtools.otter.common.recorder.ActiveRecordingRenderer
@@ -138,7 +137,13 @@ class OraturePeerEditViewModel(
     private val recordingActiveFlow = MutableStateFlow(false)
     private val emptyWave = FloatArray(RECORD_WIDTH * 2)
 
-    private val actionHistory = UndoableActionHistory<IUndoable>()
+    // Confirming a chunk is undoable in the chapter's one history: the page header's undo and redo
+    // drive it from any step.
+    private val session: OratureChapterSession by inject()
+    private val undoRedo = StepUndoRedo(
+        beforeSession = { runCatching { takePlayer?.pause() } },
+        afterSession = { showSavedState() }
+    )
 
     // Waveform providers read by the screen each display frame.
     fun currentTimeline(): AudioTimeline? = timeline
@@ -155,12 +160,27 @@ class OraturePeerEditViewModel(
      * whichever step's ViewModel was created last, possibly one not on screen.
      */
     fun onShown() {
-        translationVm.setUndoRedoHandlers(::undo, ::redo)
-        translationVm.updateChunkUndoRedo(canUndo = actionHistory.canUndo(), canRedo = actionHistory.canRedo())
+        translationVm.bindStepUndoRedo(undoRedo)
+        // An undo made on another step may have changed this chunk meanwhile.
+        if (!_uiState.value.isLoading && !_uiState.value.recording) showSavedState()
+    }
+
+    /**
+     * Shows the active chunk as saved, after an undo or redo in the chapter's history: reloads it
+     * when its selected take changed, otherwise just its confirmed mark.
+     */
+    private fun showSavedState() {
+        val chunk = activeChunk ?: return
+        if (chunk.audio.getSelectedTake() != selectedTake) {
+            onChunk(chunk)
+            return
+        }
+        val confirmed = chunk.checkingStatus().ordinal >= checkingStatusForStep().ordinal
+        if (_uiState.value.confirmed != confirmed) _uiState.value = _uiState.value.copy(confirmed = confirmed)
     }
 
     init {
-        translationVm.setUndoRedoHandlers(::undo, ::redo)
+        translationVm.bindStepUndoRedo(undoRedo)
         launchLogged {
             workbookDataStore.activeChunk.collect { chunk -> onChunk(chunk) }
         }
@@ -185,10 +205,7 @@ class OraturePeerEditViewModel(
 
     private fun onChunk(chunk: Chunk?) {
         stopAll()
-        if (chunk?.sort != activeChunk?.sort) {
-            actionHistory.clear()
-            translationVm.updateChunkUndoRedo(canUndo = false, canRedo = false)
-        }
+        // The undo history is the chapter's (OratureChapterSession), so it outlives a chunk change.
         activeChunk = chunk
         if (chunk == null) {
             _uiState.value = OraturePeerEditUiState(hasChunk = false)
@@ -210,6 +227,7 @@ class OraturePeerEditViewModel(
                     val sourcePrep = prepareSourcePlayer(chunk)
                     Prepared(take, playerReader.totalFrames, sr, source, tl, cache, sourcePrep?.first, sourcePrep?.second ?: 0)
                 } ?: run {
+                    selectedTake = null
                     _uiState.value = OraturePeerEditUiState(hasChunk = true, noTake = true)
                     return@launchLogged
                 }
@@ -352,15 +370,12 @@ class OraturePeerEditViewModel(
     fun confirmChunk() {
         val chunk = activeChunk ?: return
         val take = chunk.audio.getSelectedTake() ?: return
-        val op = TranslationTakeApproveAction(chunk.audio, take, checkingStatusForStep(), take.checking).apply {
-            setUndoCallback { _uiState.value = _uiState.value.copy(confirmed = false) }
-            setRedoCallback { _uiState.value = _uiState.value.copy(confirmed = true) }
-        }
+        // Its undo or redo may come from another chunk or step; showSavedState follows the saved status.
+        val op = TranslationTakeApproveAction(chunk.audio, take, checkingStatusForStep(), take.checking)
         launchLogged {
             // Save-first: the chunk shows as confirmed only once its checking status is saved.
-            val result = saveMessages.report(actionHistory.execute(op))
-            if (result is SaveResult.Saved) _uiState.value = _uiState.value.copy(confirmed = true)
-            publishUndoRedo()
+            val result = saveMessages.report(session.execute(op))
+            if (result is SaveResult.Saved && activeChunk == chunk) _uiState.value = _uiState.value.copy(confirmed = true)
             translationVm.onChunkTakesChanged()
         }
     }
@@ -551,29 +566,6 @@ class OraturePeerEditViewModel(
         }
     }
 
-    fun undo() {
-        if (!actionHistory.canUndo()) return
-        launchLogged {
-            saveMessages.report(actionHistory.undo())
-            publishUndoRedo()
-            translationVm.onChunkTakesChanged()
-        }
-    }
-
-    fun redo() {
-        if (!actionHistory.canRedo()) return
-        launchLogged {
-            saveMessages.report(actionHistory.redo())
-            publishUndoRedo()
-            translationVm.onChunkTakesChanged()
-        }
-    }
-
-    /** The page header's undo and redo follow this step's history as it now stands. */
-    private fun publishUndoRedo() {
-        translationVm.updateChunkUndoRedo(canUndo = actionHistory.canUndo(), canRedo = actionHistory.canRedo())
-    }
-
     /** Polls the take player for the playhead position + play/pause state. The target-take waveform
      *  is drawn by the shared renderer sampling the peak cache in the draw pass. */
     private fun startWaveformTicker() {
@@ -649,7 +641,7 @@ class OraturePeerEditViewModel(
     }
 
     public override fun onCleared() {
-        translationVm.clearUndoRedoHandlers()
+        translationVm.unbindStepUndoRedo(undoRedo)
         // Safety net: normal navigation is blocked while a plugin is open (see beginPluginOpen),
         // but don't leave the shell's navigation lock stuck on if this VM is ever cleared anyway.
         if (_uiState.value.isPluginOpen) {

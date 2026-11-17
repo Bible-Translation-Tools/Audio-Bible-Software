@@ -1,5 +1,6 @@
 package org.bibletranslationtools.orature.services
 
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -8,7 +9,9 @@ import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
+import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.domain.project.InitializeProjectFiles
+import kotlinx.coroutines.withContext
 
 /**
  * Orature's central open-project state, shared across the mode-page components (header,
@@ -23,7 +26,8 @@ import org.bibletranslationtools.otter.common.domain.project.InitializeProjectFi
  */
 class OratureWorkbookDataStore(
     private val workbookRepository: IWorkbookRepository,
-    private val initializeProjectFiles: InitializeProjectFiles
+    private val initializeProjectFiles: InitializeProjectFiles,
+    private val chapterSession: OratureChapterSession
 ) {
     private val _activeWorkbook = MutableStateFlow<Workbook?>(null)
     val activeWorkbook: StateFlow<Workbook?> = _activeWorkbook.asStateFlow()
@@ -50,8 +54,12 @@ class OratureWorkbookDataStore(
      * Set the active workbook + mode (JVM: `activeWorkbookProperty` / `currentModeProperty`) and
      * make sure the project's on-disk files exist.
      *
-     * Closes the previously-open workbook (freeing its Rx connections) when switching projects,
-     * matching the JVM app's cached `workbookRepo` lifecycle.
+     * Closes the previously-open workbook when switching projects, so its changes in progress finish
+     * and no later ones start.
+     *
+     * Every open first leaves the chapter in session ([OratureChapterSession.leave]), before the
+     * previous workbook closes: opening a project, switching to another, and opening narration on
+     * the book all end the chapter's undo history and make its rechunk stick.
      *
      * The scaffolding stays wired to this call rather than being left to each screen: two screens
      * open projects today, and anything that reaches `ResourceContainer.load(projectDir)` depends
@@ -64,6 +72,7 @@ class OratureWorkbookDataStore(
      *   project should not be presented as open.
      */
     suspend fun open(workbook: Workbook, mode: ProjectMode): InitializeProjectFiles.Result {
+        chapterSession.leave()
         val previous = _activeWorkbook.value
         if (previous != null && previous !== workbook) {
             workbookRepository.closeWorkbook(previous)
@@ -73,6 +82,36 @@ class OratureWorkbookDataStore(
         _activeChapter.value = null
         _activeChunk.value = null
         return initializeProjectFiles.execute(workbook, mode)
+    }
+
+    /**
+     * Closes the open project: leaves the chapter in session, then closes its workbook, which waits
+     * for a change being saved and refuses any after it. For closing the app.
+     */
+    suspend fun close() = withContext(NonCancellable) {
+        chapterSession.leave()
+        _activeWorkbook.value?.let { workbookRepository.closeWorkbook(it) }
+        _activeWorkbook.value = null
+        _activeChapter.value = null
+        _activeChunk.value = null
+    }
+
+    /**
+     * Closes [project]'s workbook before its files are deleted or reset, so nothing writes to the
+     * project while it goes: the open one, and the repository's live copy if another screen opened
+     * one. A project whose books cannot be built has no workbook to close, and must still be deletable.
+     */
+    suspend fun closeProject(project: WorkbookDescriptor) = withContext(NonCancellable) {
+        val open = _activeWorkbook.value
+        if (open != null &&
+            open.source.collectionId == project.sourceCollection.id &&
+            open.target.collectionId == project.targetCollection.id
+        ) {
+            close()
+        }
+        val live = runCatching { workbookRepository.get(project.sourceCollection, project.targetCollection) }
+            .getOrNull() ?: return@withContext
+        workbookRepository.closeWorkbook(live)
     }
 
     /** Set the active chapter and remember it for [workbookDescriptorId] (JVM: `updateLastSelectedChapter`). */

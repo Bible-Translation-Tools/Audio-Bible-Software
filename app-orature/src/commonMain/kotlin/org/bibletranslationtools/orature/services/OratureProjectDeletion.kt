@@ -18,6 +18,7 @@ import org.koin.core.component.inject
 class OratureProjectDeletion : KoinComponent {
 
     private val deleteProject: DeleteProject by inject()
+    private val workbookDataStore: OratureWorkbookDataStore by inject()
 
     private val _pending = MutableStateFlow(0)
     val pending: StateFlow<Int> = _pending
@@ -26,13 +27,15 @@ class OratureProjectDeletion : KoinComponent {
     fun beginPending() { _pending.value += 1 }
     fun endPending() { _pending.value = (_pending.value - 1).coerceAtLeast(0) }
 
-    /** Reset a single book to its initial state (JVM: deleteBook → DeleteProject.delete). */
+    /** Reset a single book to its initial state (JVM: deleteBook → DeleteProject.delete); its workbook closes first. */
     suspend fun deleteBook(descriptor: WorkbookDescriptor) {
+        workbookDataStore.closeProject(descriptor)
         deleteProject.delete(descriptor).await()
     }
 
     /** Delete a whole project group and remove its descriptors (JVM: deleteProjects). */
     suspend fun deleteGroup(descriptors: List<WorkbookDescriptor>) {
+        descriptors.forEach { workbookDataStore.closeProject(it) }
         deleteProject.deleteProjects(descriptors).await()
     }
 

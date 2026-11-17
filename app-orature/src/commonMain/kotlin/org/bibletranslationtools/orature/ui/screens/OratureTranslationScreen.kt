@@ -133,6 +133,8 @@ fun OratureTranslationScreen(
     onGoToNarration: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    // Back on this page (e.g. from narration, which left the chapter): re-enter the chapter shown.
+    LaunchedEffect(viewModel) { viewModel.onScreenShown() }
 
     // Source-audio import (Phase 9 partial) — reachable from the SourceAudioMissing "Choose File".
     val importVm = viewModel { OratureImportViewModel() }

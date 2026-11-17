@@ -18,8 +18,11 @@ import androidx.compose.ui.window.rememberWindowState
 import java.awt.Taskbar
 import java.awt.Toolkit
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import org.bibletranslationtools.orature.di.oratureDirectoryProviderModule
 import org.bibletranslationtools.orature.di.oratureViewModelModule
+import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
 import org.bibletranslationtools.orature.ui.OratureApp
 import org.bibletranslationtools.orature.ui.OratureNavigationLock
 import org.bibletranslationtools.orature.ui.OratureTheme
@@ -104,6 +107,7 @@ fun main() {
     }
 
     val navigationLock = koin.get<OratureNavigationLock>()
+    val workbookDataStore = koin.get<OratureWorkbookDataStore>()
 
     application {
         // JVM Orature shows the splash in a SEPARATE undecorated window while the main (maximized)
@@ -136,6 +140,10 @@ fun main() {
                     if (navigationLock.locked.value) {
                         navigationLock.notifyCloseBlocked()
                     } else {
+                        // Leave the chapter in progress so its rechunk sticks, and close the workbook so
+                        // a change being saved finishes (a crash or a hung save is settled at the next
+                        // startup instead), then quit.
+                        runBlocking { withTimeoutOrNull(CLOSE_LEAVE_TIMEOUT_MS) { workbookDataStore.close() } }
                         exitApplication()
                     }
                 },
@@ -149,6 +157,9 @@ fun main() {
         }
     }
 }
+
+/** How long closing the window waits for the open project to close before quitting anyway. */
+private const val CLOSE_LEAVE_TIMEOUT_MS = 5_000L
 
 /**
  * Splash window content: runs the backend init (DB migrate + seed) showing progress, then signals

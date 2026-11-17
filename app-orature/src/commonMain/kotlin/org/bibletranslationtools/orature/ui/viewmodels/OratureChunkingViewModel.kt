@@ -137,16 +137,23 @@ class OratureChunkingViewModel(
      * whichever step's ViewModel was created last, possibly one not on screen.
      */
     fun onShown() {
-        translationVm.setUndoRedoHandlers(::undo, ::redo)
+        translationVm.bindStepUndoRedo(
+            undoRedo,
+            canUndo = markerModel?.canUndo() ?: false,
+            canRedo = markerModel?.canRedo() ?: false
+        )
         // The save handler too: chunking ViewModels are kept per chapter, so the shell must save
         // the chapter on screen, not the one visited last.
         translationVm.setChunkSaveHandler(::saveSuspend)
-        translationVm.updateChunkUndoRedo(canUndo = markerModel?.canUndo() ?: false, canRedo = markerModel?.canRedo() ?: false)
     }
+
+    // The unsaved chunk-marker edits are MarkerPlacementModel's own in-memory undo; the page header
+    // undoes them before the chapter session's history (JVM: translationViewModel).
+    private val undoRedo = StepUndoRedo(localUndo = ::undo, localRedo = ::redo)
 
     init {
         // The header undo/redo route here while this step is active (JVM: translationViewModel).
-        translationVm.setUndoRedoHandlers(::undo, ::redo)
+        translationVm.bindStepUndoRedo(undoRedo)
         // The translation VM awaits this before leaving the step, so the chunk DB writes commit
         // (and are readable) BEFORE Blind Draft loads — matching Orature's synchronous undock save.
         translationVm.setChunkSaveHandler(::saveSuspend)
@@ -372,7 +379,7 @@ class OratureChunkingViewModel(
         val canUndo = model?.canUndo() ?: false
         val canRedo = model?.canRedo() ?: false
         _uiState.value = _uiState.value.copy(canUndo = canUndo, canRedo = canRedo, markers = markerInfos)
-        translationVm.updateChunkUndoRedo(canUndo, canRedo)
+        translationVm.updateLocalUndoRedo(undoRedo, canUndo, canRedo)
         updateAddDisabled()
     }
 
@@ -422,7 +429,7 @@ class OratureChunkingViewModel(
     }
 
     public override fun onCleared() {
-        translationVm.clearUndoRedoHandlers()
+        translationVm.unbindStepUndoRedo(undoRedo)
         translationVm.clearChunkSaveHandler()
         // Only save if there are unsaved edits AND we're being torn down because the user moved
         // FORWARD past Chunking — the JVM's `undock()` condition
