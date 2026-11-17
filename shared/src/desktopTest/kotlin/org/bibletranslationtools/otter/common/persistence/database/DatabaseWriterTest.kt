@@ -119,4 +119,32 @@ class DatabaseWriterTest {
         }
         assertTrue(writer.write { true }, "the queue still works after a refused wait")
     }
+
+    /**
+     * An Rx write delivers its result on the queue's thread, inside the same task, so code chained
+     * after it (the bundled-source import marking itself installed) runs holding the queue. A
+     * blocking write there used to queue itself behind the task waiting for it, and hang.
+     */
+    @Test
+    fun `a blocking write downstream of an Rx write runs instead of hanging`() = runBlocking {
+        val done = writer.single { db.languageDao.insert(language("rx")) }
+            .map { writer.writeBlocking { db.languageDao.insert(language("after")) } }
+            .timeout(10, TimeUnit.SECONDS)
+            .blockingGet()
+
+        assertTrue(done > 0)
+        val slugs = db.languageDao.fetchAll().map { it.slug }
+        assertTrue("rx" in slugs && "after" in slugs, "both writes committed: $slugs")
+        assertTrue(writer.write { true }, "the queue still works afterwards")
+    }
+
+    @Test
+    fun `an Rx write can still chain another Rx write`() {
+        val second = writer.completable { db.languageDao.insert(language("one")) }
+            .andThen(writer.single { db.languageDao.insert(language("two")) })
+            .timeout(10, TimeUnit.SECONDS)
+            .blockingGet()
+
+        assertTrue(second > 0)
+    }
 }

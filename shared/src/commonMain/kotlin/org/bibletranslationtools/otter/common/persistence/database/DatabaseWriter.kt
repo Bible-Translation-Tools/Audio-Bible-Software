@@ -3,11 +3,12 @@ package org.bibletranslationtools.otter.common.persistence.database
 import io.reactivex.Completable
 import io.reactivex.Scheduler
 import io.reactivex.Single
+import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.rx2.asScheduler
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.EmptyCoroutineContext
 import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 
 /**
@@ -38,8 +39,15 @@ class DatabaseWriter(
 ) {
     private val queue: CoroutineDispatcher = dispatcher
 
-    /** The queue as an Rx scheduler, for code that has not moved to coroutines yet. */
-    val scheduler: Scheduler = queue.asScheduler()
+    /**
+     * The queue as an Rx scheduler, for code that has not moved to coroutines yet. Its tasks are
+     * marked as running on the queue: an Rx write delivers its result on the queue's thread, inside
+     * the same task, so whatever runs downstream of it synchronously holds the queue too (see
+     * [writeBlocking]).
+     */
+    val scheduler: Scheduler = Schedulers.from { task ->
+        queue.dispatch(EmptyCoroutineContext, Runnable { inQueueTask { task.run() } })
+    }
 
     /** Runs [block] as one transaction on the queue and returns its result. */
     suspend fun <T> write(block: () -> T): T {
@@ -62,26 +70,38 @@ class DatabaseWriter(
         }
 
     /**
-     * [write] for blocking code. Called from code already running on the queue, it runs [block]
-     * there and then, inside the running transaction, instead of waiting for a turn it would never
-     * get.
+     * [write] for blocking code. Called from code already holding the queue, it runs [block] there
+     * and then instead of waiting for a turn it would never get: inside the running transaction when
+     * called from a write block, or as its own transaction when called downstream of an Rx write on
+     * the queue's thread.
      */
     fun <T> writeBlocking(block: () -> T): T =
-        if (isOnQueue()) {
+        if (isOnQueue() || inQueueTask.get() == true) {
             database.transactionResult(block)
         } else {
             kotlinx.coroutines.runBlocking { write(block) }
         }
 
-    /** True while the calling thread is running a block on the queue. */
+    /** True while the calling thread is running a write block on the queue. */
     fun isOnQueue(): Boolean = onQueue.get() == true
 
     private fun <T> runOnQueue(block: () -> T): T {
+        val outer = onQueue.get()
         onQueue.set(true)
         try {
             return database.transactionResult(block)
         } finally {
-            onQueue.remove()
+            if (outer == null) onQueue.remove() else onQueue.set(outer)
+        }
+    }
+
+    private inline fun inQueueTask(task: () -> Unit) {
+        val outer = inQueueTask.get()
+        inQueueTask.set(true)
+        try {
+            task()
+        } finally {
+            if (outer == null) inQueueTask.remove() else inQueueTask.set(outer)
         }
     }
 
@@ -92,6 +112,9 @@ class DatabaseWriter(
     private companion object {
         /** Thread-local because a queued block is plain blocking code that runs on one thread. */
         val onQueue = ThreadLocal<Boolean>()
+
+        /** Set while an Rx task scheduled on the queue runs; it holds the queue until it returns. */
+        val inQueueTask = ThreadLocal<Boolean>()
 
         @OptIn(ExperimentalCoroutinesApi::class)
         fun defaultDispatcher(): CoroutineDispatcher = Dispatchers.IO.limitedParallelism(1)
