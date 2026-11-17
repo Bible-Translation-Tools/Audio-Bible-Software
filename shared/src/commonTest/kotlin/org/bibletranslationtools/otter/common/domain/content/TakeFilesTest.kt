@@ -49,9 +49,4 @@ class TakeFilesTest {
 
         assertTrue(reserved.file.exists())
     }
-
-    @Test
-    fun `a staging name is never mistaken for a take`() {
-        assertFalse(FileNamer.takeFilenamePattern.matcher(TakeFiles.stagingName()).find())
-    }
 }

@@ -39,12 +39,7 @@ class AndroidDatabaseDriverFactory(private val context: Context) : DatabaseDrive
         val callback = object : AndroidSqliteDriver.Callback(OtterDatabase.Schema) {
             override fun onCreate(db: SupportSQLiteDatabase) { /* no-op: open()/createFresh owns schema */ }
             override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) { /* no-op */ }
-            override fun onConfigure(db: SupportSQLiteDatabase) {
-                db.setForeignKeyConstraintsEnabled(true)
-                // WAL for every install, not only a freshly seeded one: reads can run while the
-                // write queue (DatabaseWriter) is writing.
-                db.enableWriteAheadLogging()
-            }
+            override fun onConfigure(db: SupportSQLiteDatabase) { db.setForeignKeyConstraintsEnabled(true) }
         }
         return AndroidSqliteDriver(OtterDatabase.Schema, context, name = databaseFile.name, callback = callback)
     }

@@ -33,11 +33,4 @@ object TakeFiles {
             number++
         }
     }
-
-    /**
-     * A name for staging a recording before it is moved into its reserved take file. It doesn't
-     * match the take file name pattern, so export and import never mistake a leftover staging file
-     * for a take.
-     */
-    fun stagingName(): String = "recording-${System.nanoTime()}.part"
 }

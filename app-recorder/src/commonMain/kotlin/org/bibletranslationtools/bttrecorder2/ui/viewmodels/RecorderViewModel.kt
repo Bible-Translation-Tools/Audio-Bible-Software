@@ -529,9 +529,8 @@ class RecorderViewModel(
                 }
                 val takeFile = reserved.file
 
-                // Staged under a name that is not a take name, so a leftover is never exported or
-                // imported as a take.
-                val stagedTakeFile = File(dir, TakeFiles.stagingName())
+                val stagedTakeFile = File(dir, "${takeFile.name}.staging.wav")
+                runCatching { stagedTakeFile.delete() }
                 sessionFile.copyTo(stagedTakeFile, overwrite = true)
                 val stagedFrames = runCatching { OratureAudioFile(stagedTakeFile).totalFrames }.getOrDefault(0)
                 if (stagedFrames <= 0) {

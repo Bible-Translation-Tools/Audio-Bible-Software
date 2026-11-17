@@ -40,10 +40,7 @@ class SqlDelightDatabaseProvider(
         val dbFile = directoryProvider.databaseDirectory.resolve(File(databaseFileName))
         val isNew = !dbFile.exists() || dbFile.length() == 0L
         val driver = driverFactory.create(dbFile)
-        val database = SqlDelightAppDatabase.open(driver, isNew, directoryProvider) { fromVersion ->
-            // A copy of the database as it was, in case a migration goes wrong on a user's data.
-            runCatching { dbFile.copyTo(dbFile.resolveSibling("${dbFile.name}.before-migration-v$fromVersion"), overwrite = true) }
-        }
+        val database = SqlDelightAppDatabase.open(driver, isNew, directoryProvider)
         onOpened(driver)
         return database
     }

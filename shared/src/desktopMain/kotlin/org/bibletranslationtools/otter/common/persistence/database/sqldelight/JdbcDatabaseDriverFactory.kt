@@ -31,25 +31,12 @@ import java.util.Properties
  * connection it runs on, so it is set as a connection property: sqlite-jdbc applies it to every
  * connection it opens. A one-off PRAGMA after opening left every other thread's connection without
  * foreign keys, so, for example, deleting a project on the IO scheduler left its chapters behind.
- *
- * The same goes for the journal and the busy timeout. WAL lets reads run while a write is in progress,
- * which matters now that every write waits its turn on one queue (`DatabaseWriter`); it used to be set
- * only when a fresh install was seeded, so existing installs stayed on the rollback journal. The busy
- * timeout makes a connection wait for a lock instead of failing at once with SQLITE_BUSY.
  */
 class JdbcDatabaseDriverFactory : DatabaseDriverFactory {
-    companion object {
-        const val BUSY_TIMEOUT_MILLIS = 5_000
-    }
-
     override fun create(databaseFile: File): SqlDriver =
         JdbcSqliteDriver(
             "jdbc:sqlite:${databaseFile.absolutePath}",
-            Properties().apply {
-                put("foreign_keys", "true")
-                put("journal_mode", "WAL")
-                put("busy_timeout", BUSY_TIMEOUT_MILLIS.toString())
-            }
+            Properties().apply { put("foreign_keys", "true") }
         )
 }
 

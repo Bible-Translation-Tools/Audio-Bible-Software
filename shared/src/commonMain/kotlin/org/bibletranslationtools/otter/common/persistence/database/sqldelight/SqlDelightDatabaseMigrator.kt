@@ -43,24 +43,13 @@ import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus as 
  * way.
  */
 class SqlDelightDatabaseMigrator(
-    private val directoryProvider: ITempFileProvider,
-    /**
-     * Called once before an existing database is migrated, with its current version, after the WAL
-     * has been folded into the main file, so a copy of that file is a complete backup.
-     */
-    private val beforeMigrate: (fromVersion: Int) -> Unit = {}
+    private val directoryProvider: ITempFileProvider
 ) {
     private val logger = LoggerFactory.getLogger(SqlDelightDatabaseMigrator::class.java)
 
     fun migrate(driver: SqlDriver) {
         var current = currentVersion(driver)
         if (current != SCHEMA_VERSION) {
-            if (current > 0) {
-                runCatching {
-                    driver.executeQuery(null, "PRAGMA wal_checkpoint(TRUNCATE);", { c -> c.next(); app.cash.sqldelight.db.QueryResult.Value(Unit) }, 0)
-                }
-                beforeMigrate(current)
-            }
             if (current <= 8) { // Ot1
                 extractSelectedTakeInfo(driver)
             }
@@ -556,13 +545,6 @@ class SqlDelightDatabaseMigrator(
     }
 
     /**
-     * Version 18
-     * Removes rows left behind by deleted projects. Desktop enabled foreign keys on one connection
-     * only, so a project deleted on another thread lost its book row but kept its chapters, verses,
-     * takes and markers; their files were already deleted. Each table is cleared explicitly, children
-     * after parents, so this doesn't depend on the connection's foreign key setting.
-     */
-    /**
      * 18 -> 19: `chapter_draft`, which records each chapter's active chunk layout so a rechunk can
      * keep the old layout for undo. Existing chapters get no row: each has one layout, all current.
      */
@@ -584,6 +566,13 @@ class SqlDelightDatabaseMigrator(
         }
     }
 
+    /**
+     * Version 18
+     * Removes rows left behind by deleted projects. Desktop enabled foreign keys on one connection
+     * only, so a project deleted on another thread lost its book row but kept its chapters, verses,
+     * takes and markers; their files were already deleted. Each table is cleared explicitly, children
+     * after parents, so this doesn't depend on the connection's foreign key setting.
+     */
     private fun migrate17to18(driver: SqlDriver, current: Int): Int {
         return if (current < 18) {
             try {

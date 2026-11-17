@@ -296,9 +296,6 @@ class OratureChapterReviewViewModel(
      *  waveform ticker. If a source player was already running (kept alive across a plugin-edit
      *  reload), it's left untouched instead of being replaced. */
     private fun applyPrepared(prepared: Prepared, chap: Chapter) {
-        // A new marker model: the marker edits in the history were made on the old one.
-        actionHistory.clear()
-        publishUndoRedo()
         markerModel = prepared.model
         shownTakeFile = prepared.takeFile
         sampleRate = prepared.sampleRate
