@@ -89,8 +89,6 @@ class RecorderViewModel(
         val bookLabel: String = "",
         val chapterValue: String = "",
         val unitValue: String = "",
-        val title: String = "",
-        val subtitle: String = "",
         val canGoPreviousChapter: Boolean = false,
         val canGoNextChapter: Boolean = false,
         val canGoPreviousUnit: Boolean = false,
@@ -279,12 +277,6 @@ class RecorderViewModel(
 
         associatedAudio = target.recordable.audio
 
-        val title = if (target.chunk == null) {
-            "Chapter ${target.chapter.label}"
-        } else {
-            "Unit ${target.chunk.label}"
-        }
-        val subtitle = "Chapter ${target.chapter.label}"
         val chapterValue = target.chapter.sort.toString()
         val unitValue = (target.chunk?.sort ?: 0).toString()
         val chapterSorts = targets.map { it.chapter.sort }.distinct().sorted()
@@ -298,8 +290,6 @@ class RecorderViewModel(
             bookLabel = wb.target.label,
             chapterValue = chapterValue,
             unitValue = unitValue,
-            title = title,
-            subtitle = subtitle,
             canGoPreviousChapter = chapterSorts.any { it < target.chapter.sort } && _recordingState.value == RecordingUiState.Idle,
             canGoNextChapter = chapterSorts.any { it > target.chapter.sort } && _recordingState.value == RecordingUiState.Idle,
             canGoPreviousUnit = target.chunk != null && chunkSortsInChapter.any { it < target.chunk.sort } && _recordingState.value == RecordingUiState.Idle,

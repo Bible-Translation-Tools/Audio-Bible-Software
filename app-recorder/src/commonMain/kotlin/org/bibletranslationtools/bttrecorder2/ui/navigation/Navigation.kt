@@ -39,6 +39,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.toRoute
 import org.koin.mp.KoinPlatform.getKoin
+import org.bibletranslationtools.shared.resources.Res
+import org.bibletranslationtools.shared.resources.action_back
+import org.bibletranslationtools.shared.resources.recorder_blocked_by_backup_message
+import org.bibletranslationtools.shared.resources.recorder_blocked_by_backup_title
+import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun Navigation(
@@ -351,13 +356,13 @@ private fun RecorderBlockedByExportScreen(onBackClick: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(24.dp)
         ) {
-            Text("This project is being backed up.")
+            Text(stringResource(Res.string.recorder_blocked_by_backup_title))
             Text(
-                text = "Recording is paused until the backup finishes.",
+                text = stringResource(Res.string.recorder_blocked_by_backup_message),
                 modifier = Modifier.padding(top = 8.dp)
             )
             TextButton(onClick = onBackClick, modifier = Modifier.padding(top = 16.dp)) {
-                Text("Back")
+                Text(stringResource(Res.string.action_back))
             }
         }
     }
