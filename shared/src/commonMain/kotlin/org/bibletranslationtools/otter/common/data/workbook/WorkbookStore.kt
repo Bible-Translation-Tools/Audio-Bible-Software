@@ -48,7 +48,29 @@ interface WorkbookStore {
 
     /** Adds [rows] to [chapter], linked to their source rows, in one transaction. */
     suspend fun addChunks(chapter: ChapterId, rows: List<Content>)
+
+    /**
+     * Adds [rows] as a new chunk layout (draft) of [chapter], linked to their source rows, and makes it
+     * the active one, in one transaction. The previous layout's rows and takes are kept, inactive, so
+     * the rechunk can be undone with [switchDraft]. Returns the new draft.
+     */
+    suspend fun rechunk(chapter: ChapterId, rows: List<Content>): DraftId
+
+    /** Makes [to] the active chunk layout of [chapter]; nothing is deleted. */
+    suspend fun switchDraft(chapter: ChapterId, to: DraftId)
+
+    /**
+     * Deletes every chunk layout of [chapter] except the active one: their rows and their takes' rows
+     * in one transaction, then the takes' audio files.
+     */
+    suspend fun deleteInactiveDrafts(chapter: ChapterId)
+
+    /** Chapters that may have inactive chunk layouts, for the clean-up at startup. */
+    suspend fun chaptersWithDrafts(): List<ChapterId>
 }
+
+/** The layouts before and after a rechunk: what undo and redo switch between. */
+data class RechunkReceipt(val previous: DraftId, val next: DraftId)
 
 /** An element's takes and its selection, as one value: the two must always agree. */
 data class AudioState(

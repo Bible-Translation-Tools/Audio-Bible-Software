@@ -129,6 +129,38 @@ class FakeWorkbookStore : WorkbookStore {
         Unit
     }
 
+    private val inactive = mutableMapOf<Int, MutableMap<Int, ChapterLayout>>()
+
+    override suspend fun rechunk(chapter: ChapterId, rows: List<Content>): DraftId = write("rechunk") {
+        val current = layouts[chapter.raw] ?: ChapterLayout(DraftId(1), emptyList())
+        inactive.getOrPut(chapter.raw) { mutableMapOf() }[current.draft.raw] = current
+        val next = DraftId((inactive[chapter.raw]!!.keys + current.draft.raw).max() + 1)
+        layouts[chapter.raw] = ChapterLayout(next, rows.map { row ->
+            val id = newContentId().also { row.id = it }
+            ChunkRecord(
+                id = ChunkId(id), sort = row.sort, label = row.labelKey, start = row.start, end = row.end,
+                bridged = row.bridged, contentType = row.type, textItem = TextItem(row.text ?: "", MimeType.USFM),
+                draft = next, audio = AudioState.EMPTY
+            )
+        })
+        next
+    }
+
+    override suspend fun switchDraft(chapter: ChapterId, to: DraftId) = write("switchDraft") {
+        val drafts = inactive.getOrPut(chapter.raw) { mutableMapOf() }
+        val current = layouts[chapter.raw]
+        val target = drafts.remove(to.raw) ?: error("no draft ${to.raw} for chapter ${chapter.raw}")
+        current?.let { drafts[it.draft.raw] = it }
+        layouts[chapter.raw] = target
+    }
+
+    override suspend fun deleteInactiveDrafts(chapter: ChapterId) = write("deleteInactiveDrafts") {
+        inactive.remove(chapter.raw)?.values?.forEach { layout -> layout.chunks.forEach { audio.remove(it.id.contentRaw) } }
+        Unit
+    }
+
+    override suspend fun chaptersWithDrafts(): List<ChapterId> = inactive.keys.map(::ChapterId)
+
     private fun updateTake(id: TakeId, change: (Take) -> Take) {
         audio.entries.forEach { (key, state) ->
             if (state.takes.any { it.id == id }) {

@@ -98,6 +98,37 @@ class Chapter internal constructor(
         _state.value = layoutState(store.loadChunks(id))
     }
 
+    /**
+     * Replaces the chapter's chunks with [rows], as a new layout, in one transaction. The previous
+     * layout and its takes are kept, inactive, so this can be undone with [switchDraft] until
+     * [settleDrafts] runs. Chunks of the previous layout are retired.
+     */
+    suspend fun rechunk(rows: List<Content>): SaveResult<RechunkReceipt> {
+        // Loaded first, outside the save: loading can itself save (a stale checking status), and the
+        // workbook's lock is not reentrant.
+        val previous = loadedState().activeDraft ?: DraftId(1)
+        return writer.save {
+            val next = store.rechunk(id, rows)
+            _state.value = layoutState(store.loadChunks(id))
+            RechunkReceipt(previous, next)
+        }
+    }
+
+    /** Makes [to] the active layout: undo and redo of a rechunk. The other layout's chunks are retired. */
+    suspend fun switchDraft(to: DraftId): SaveResult<Unit> {
+        loadedState()
+        return writer.save {
+            store.switchDraft(id, to)
+            _state.value = layoutState(store.loadChunks(id))
+        }
+    }
+
+    /**
+     * Deletes every layout but the active one, with their takes: what makes a rechunk stick. Called
+     * when the user leaves the chapter, when the workbook closes, and at startup.
+     */
+    suspend fun settleDrafts(): SaveResult<Unit> = writer.save { store.deleteInactiveDrafts(id) }
+
     fun hasSelectedAudio() = audio.getSelectedTake() != null
 
     fun getSelectedTake() = audio.getSelectedTake()

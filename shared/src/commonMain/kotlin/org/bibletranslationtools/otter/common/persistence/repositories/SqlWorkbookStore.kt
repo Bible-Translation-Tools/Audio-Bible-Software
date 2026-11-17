@@ -63,7 +63,7 @@ class SqlWorkbookStore(
             .filter { (it.type_fk == text || it.type_fk == title) && !it.bridged }
             .sortedWith(compareBy({ it.sort }, { it.start }))
         val takesByRow = takeDao.fetchByCollectionId(chapter.raw, includeDeleted = true).groupBy { it.contentFk }
-        val draft = DraftId(rows.maxOfOrNull { it.draftNumber } ?: 1)
+        val draft = DraftId(contentDao.activeDraft(chapter.raw) ?: rows.filter { it.type_fk == text }.maxOfOrNull { it.draftNumber } ?: 1)
         ChapterLayout(
             draft = draft,
             chunks = rows.map { row ->
@@ -145,17 +145,65 @@ class SqlWorkbookStore(
     }
 
     override suspend fun addChunks(chapter: ChapterId, rows: List<Content>) {
-        writer.write {
-            val sources = database.collectionDao.fetchById(chapter.raw).sourceFk
-                ?.let { contentDao.fetchByCollectionId(it) }
-                .orEmpty()
-            rows.forEach { content ->
-                val id = contentDao.insert(contentMapper.mapToEntity(content, chapter.raw).apply { collectionFk = chapter.raw })
-                content.id = id
-                val type = database.contentTypeDao.fetchId(content.type)
-                sources.filter { it.labelKey == content.labelKey && it.type_fk == type }
-                    .forEach { contentDao.linkDerivative(id, it.id) }
+        writer.write { insertLinked(chapter, rows, draft = null) }
+    }
+
+    override suspend fun rechunk(chapter: ChapterId, rows: List<Content>): DraftId = writer.write {
+        val text = database.contentTypeDao.fetchId(ContentType.TEXT)
+        val textRows = contentDao.fetchAllDraftsByCollectionId(chapter.raw).filter { it.type_fk == text }
+        val active = contentDao.activeDraft(chapter.raw)
+        if (active == null) {
+            // The first rechunk of a chapter: its rows so far are one layout. Give them one number,
+            // so switching back to it brings back all of them.
+            val previous = textRows.maxOfOrNull { it.draftNumber } ?: 1
+            textRows.filter { it.draftNumber != previous }.forEach { contentDao.update(it.copy(draftNumber = previous)) }
+            contentDao.setActiveDraft(chapter.raw, previous)
+        }
+        val next = (textRows.maxOfOrNull { it.draftNumber } ?: 0).coerceAtLeast(active ?: 0) + 1
+        insertLinked(chapter, rows, draft = next)
+        contentDao.setActiveDraft(chapter.raw, next)
+        DraftId(next)
+    }
+
+    override suspend fun switchDraft(chapter: ChapterId, to: DraftId) = writer.write {
+        contentDao.setActiveDraft(chapter.raw, to.raw)
+    }
+
+    override suspend fun deleteInactiveDrafts(chapter: ChapterId) {
+        val files = writer.write {
+            val active = contentDao.activeDraft(chapter.raw) ?: return@write emptyList()
+            val text = database.contentTypeDao.fetchId(ContentType.TEXT)
+            val inactive = contentDao.fetchAllDraftsByCollectionId(chapter.raw)
+                .filter { it.type_fk == text && it.draftNumber != active }
+            // Takes are deleted explicitly: databases migrated from before version 13 have no
+            // take-to-content cascade.
+            val takes = inactive.flatMap { takeDao.fetchByContentId(it.id, includeDeleted = true) }
+            takes.forEach { takeDao.delete(it) }
+            inactive.forEach { contentDao.delete(it) }
+            takes.map { File(it.filepath) }
+        }
+        withContext(Dispatchers.IO) {
+            files.forEach { file ->
+                if (file.exists() && !file.delete()) logger.warn("Could not delete the audio of a settled draft's take: $file")
             }
+        }
+    }
+
+    override suspend fun chaptersWithDrafts(): List<ChapterId> =
+        withContext(Dispatchers.IO) { contentDao.chaptersWithDrafts().map(::ChapterId) }
+
+    /** Inserts [rows] into [chapter], under [draft] when given, each linked to its source row. */
+    private fun insertLinked(chapter: ChapterId, rows: List<Content>, draft: Int?) {
+        val sources = database.collectionDao.fetchById(chapter.raw).sourceFk
+            ?.let { contentDao.fetchByCollectionId(it) }
+            .orEmpty()
+        rows.forEach { content ->
+            if (draft != null) content.draftNumber = draft
+            val id = contentDao.insert(contentMapper.mapToEntity(content, chapter.raw).apply { collectionFk = chapter.raw })
+            content.id = id
+            val type = database.contentTypeDao.fetchId(content.type)
+            sources.filter { it.labelKey == content.labelKey && it.type_fk == type }
+                .forEach { contentDao.linkDerivative(id, it.id) }
         }
     }
 
