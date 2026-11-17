@@ -20,7 +20,6 @@ package org.bibletranslationtools.otter.common.domain.narration
 
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 
@@ -32,8 +31,8 @@ import org.bibletranslationtools.otter.common.data.workbook.Workbook
  * its chunks, keyed both by verse label (for looking up one verse) and in order (for the
  * whole-chapter view).
  *
- * Reads through the [Workbook] object rather than a repository — the chunk observables are already
- * hanging off it — but it is still database-backed work behind those observables, hence
+ * Reads through the [Workbook] object rather than a repository — the chapters and chunks are
+ * already hanging off it — but loading them is still database-backed work, hence
  * [Dispatchers.IO].
  */
 class LoadChapterSourceText(
@@ -56,9 +55,9 @@ class LoadChapterSourceText(
 
     suspend fun execute(workbook: Workbook, chapterSort: Int): ChapterSourceText =
         withContext(ioDispatcher) {
-            val sourceChunks = workbook.source.chapters.toList().await()
+            val sourceChunks = workbook.source.chapters()
                 .firstOrNull { it.sort == chapterSort }
-                ?.chunksSuspend()
+                ?.chunks()
                 .orEmpty()
             ChapterSourceText(
                 byVerseLabel = sourceChunks.associate { it.title to it.textItem.text },

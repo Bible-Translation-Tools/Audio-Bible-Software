@@ -20,6 +20,8 @@ package org.bibletranslationtools.otter.common.domain.narration
 
 import io.reactivex.rxkotlin.toObservable
 import io.reactivex.subjects.PublishSubject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.device.AudioFileReader
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
@@ -29,10 +31,12 @@ import org.bibletranslationtools.otter.common.data.audio.VerseMarker
 import org.bibletranslationtools.otter.common.data.primitives.BOOK_TITLE_SORT
 import org.bibletranslationtools.otter.common.data.primitives.CHAPTER_TITLE_SORT
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
+import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.device.AudioFileReaderProvider
 import org.bibletranslationtools.otter.common.device.AudioSpec
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import java.io.File
 import java.io.RandomAccessFile
 import java.util.concurrent.atomic.AtomicInteger
@@ -45,9 +49,16 @@ import kotlinx.serialization.json.Json
 private const val ACTIVE_VERSES_FILE_NAME = "active_verses.json"
 private const val CHAPTER_NARRATION_FILE_NAME = "chapter_narration.pcm"
 
-internal class ChapterRepresentation(
+/**
+ * Built with [load], which reads the chapter's chunks and audio folder first, so that nothing in
+ * here has to wait on the workbook.
+ */
+internal class ChapterRepresentation private constructor(
     private val workbook: Workbook,
-    private val chapter: Chapter
+    private val chapter: Chapter,
+    chunks: List<Chunk>,
+    /** The chapter's audio folder in the project. */
+    private val chapterDir: File
 ) : AudioFileReaderProvider {
     private val openReaderConnections = mutableListOf<ChapterRepresentationConnection>()
 
@@ -100,16 +111,13 @@ internal class ChapterRepresentation(
         private set
 
     init {
-        totalVerses = initializeActiveVerses()
+        totalVerses = initializeActiveVerses(chunks)
         initializeWorkingAudioFile()
         initializeSerializedVersesFile()
     }
 
-    private fun initializeActiveVerses(): MutableList<VerseNode> {
-        return chapter
-            .observableChunks
-            .filter { it.isNotEmpty() }
-            .blockingFirst()
+    private fun initializeActiveVerses(chunks: List<Chunk>): MutableList<VerseNode> {
+        return chunks
             .map { chunk ->
                 val marker = when (chunk.sort) {
                     BOOK_TITLE_SORT -> BookMarker(workbook.source.slug, 0)
@@ -207,7 +215,6 @@ internal class ChapterRepresentation(
     }
 
     private fun trimScratchAudio() {
-        val chapterDir = workbook.projectFilesAccessor.getChapterAudioDir(workbook, chapter)
         val newScratchAudio = chapterDir.resolve("new_$CHAPTER_NARRATION_FILE_NAME")
 
         newScratchAudio.outputStream().use { writer ->
@@ -273,8 +280,7 @@ internal class ChapterRepresentation(
     }
 
     private fun initializeSerializedVersesFile() {
-        val projectChapterDir = workbook.projectFilesAccessor.getChapterAudioDir(workbook, chapter)
-        serializedVersesFile = File(projectChapterDir, ACTIVE_VERSES_FILE_NAME).also {
+        serializedVersesFile = File(chapterDir, ACTIVE_VERSES_FILE_NAME).also {
             if (!it.exists()) {
                 it.createNewFile()
             }
@@ -282,8 +288,7 @@ internal class ChapterRepresentation(
     }
 
     private fun initializeWorkingAudioFile() {
-        val projectChapterDir = workbook.projectFilesAccessor.getChapterAudioDir(workbook, chapter)
-        File(projectChapterDir, CHAPTER_NARRATION_FILE_NAME).also {
+        File(chapterDir, CHAPTER_NARRATION_FILE_NAME).also {
             if (!it.exists()) {
                 it.createNewFile()
             }
@@ -658,4 +663,22 @@ internal class ChapterRepresentation(
 
     private fun frameToIndex(frame: Int) = frame * frameSizeInBytes
     private fun indexToFrame(index: Int) = index / frameSizeInBytes
+
+    companion object {
+        /**
+         * Reads [chapter]'s chunks and finds its audio folder, then builds its representation,
+         * creating the working files if they are missing. The file work runs on [Dispatchers.IO].
+         */
+        suspend fun load(
+            workbook: Workbook,
+            chapter: Chapter,
+            projectFiles: ProjectFilesService
+        ): ChapterRepresentation {
+            val chunks = chapter.chunks()
+            return withContext(Dispatchers.IO) {
+                val chapterDir = projectFiles.of(workbook).getChapterAudioDir(workbook, chapter)
+                ChapterRepresentation(workbook, chapter, chunks, chapterDir)
+            }
+        }
+    }
 }

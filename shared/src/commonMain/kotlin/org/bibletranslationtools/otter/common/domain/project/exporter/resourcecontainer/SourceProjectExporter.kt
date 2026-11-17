@@ -21,6 +21,8 @@ package org.bibletranslationtools.otter.common.domain.project.exporter.resourcec
 import io.reactivex.Completable
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.rx2.rxSingle
 import org.bibletranslationtools.otter.common.api.io.zip.IFileWriter
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
@@ -38,9 +40,9 @@ import org.bibletranslationtools.otter.common.domain.project.exporter.ProjectExp
 import org.bibletranslationtools.otter.common.domain.audio.WAV_TO_MP3_COMPRESSED_RATE
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstants
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito.ScriptureBurritoUtils
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.bibletranslationtools.otter.common.api.persistence.IFileIOFactory
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
-import org.bibletranslationtools.otter.common.utils.mapNotNull
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import org.wycliffeassociates.resourcecontainer.entity.Media
 import org.wycliffeassociates.resourcecontainer.entity.MediaManifest
@@ -58,7 +60,8 @@ class SourceProjectExporter(
     fileIO: IFileIOFactory,
     tempFiles: ITempFileProvider,
     val burritoUtils: ScriptureBurritoUtils,
-    private val audioExporter: AudioExporter
+    private val audioExporter: AudioExporter,
+    private val projectFiles: ProjectFilesService
 ) : RCProjectExporter(fileIO, tempFiles) {
 
     private val logger = LoggerFactory.getLogger(this.javaClass)
@@ -78,7 +81,7 @@ class SourceProjectExporter(
             .firstOrNull { it.identifier == resourceMetadata.identifier }
             ?: workbook.source.resourceMetadata
 
-        val projectAccessor = workbook.projectFilesAccessor
+        val projectAccessor = projectFiles.of(workbook)
         val contributors = projectAccessor.getContributorInfo()
         val zipFilename = makeExportFilename(workbook, projectSourceMetadata)
         val targetZip = outputDirectory.resolve(zipFilename)
@@ -97,18 +100,17 @@ class SourceProjectExporter(
             )
     }
 
-    override fun estimateExportSize(workbook: Workbook, chapterFilter: List<Int>): Long {
-        return workbook.target.chapters
+    override suspend fun estimateExportSize(workbook: Workbook, chapterFilter: List<Int>): Long {
+        return workbook.target.chapters()
             .filter { it.sort in chapterFilter }
             .mapNotNull { it.getSelectedTake()?.file }
-            .reduce(0L) { size, nextFile ->
+            .fold(0L) { size, nextFile ->
                 when (AudioFileFormat.of(nextFile.extension)) {
                     AudioFileFormat.MP3 -> size + nextFile.length()
                     AudioFileFormat.WAV -> size + nextFile.length() / WAV_TO_MP3_COMPRESSED_RATE
                     else -> size
                 }
             }
-            .blockingGet()
     }
 
     private fun export(
@@ -159,11 +161,10 @@ class SourceProjectExporter(
             .resolve("export${Date().time}")
             .apply { mkdirs() }
         val license = License.get(workbook.target.resourceMetadata.license)
-        return workbook
-            .target
-            .chapters
+        return rxSingle(Dispatchers.IO) { workbook.target.chapters() }
+            .flattenAsObservable { it }
             .filter { chapterFilter?.contains(it.sort) ?: true }
-            .map { Pair(it.audio.selected.value?.value, it.sort) }
+            .map { Pair(it.audio.getSelectedTake(), it.sort) }
             .filter { (take, _) -> take != null }
             .map { (take, sort) ->
                 val exportPath = tempExportDir.resolve(

@@ -24,6 +24,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 
 /**
  * Scaffolds a project's on-disk files, so that opening it twice is the same as opening it once.
@@ -44,6 +45,7 @@ import org.bibletranslationtools.otter.common.data.workbook.Workbook
  * Contributor info is deliberately not written here (metadata-only, deferred).
  */
 class InitializeProjectFiles(
+    private val projectFiles: ProjectFilesService,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
 
@@ -93,7 +95,7 @@ class InitializeProjectFiles(
      * four consequential ones.
      */
     suspend fun execute(workbook: Workbook, mode: ProjectMode): Result = withContext(ioDispatcher) {
-        val accessor = workbook.projectFilesAccessor
+        val accessor = projectFiles.of(workbook)
         val steps: List<Pair<Step, () -> Unit>> = listOf(
             Step.RESOURCE_CONTAINER to { accessor.initializeResourceContainerInDir(overwrite = false) },
             Step.SOURCE_FILES to { accessor.copySourceFiles() },

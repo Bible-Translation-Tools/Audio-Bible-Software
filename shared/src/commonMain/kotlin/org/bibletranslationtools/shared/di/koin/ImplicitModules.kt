@@ -101,8 +101,8 @@ val implicitCommonModule = module {
     // Koin's constructor DSL resolves every parameter from the graph rather than honouring
     // Kotlin defaults — factoryOf would fail looking for a CoroutineDispatcher binding.
     // Production wants the default (Dispatchers.IO); only tests pass their own.
-    factory { OpenWorkbook(get(), get()) }
-    factory { InitializeProjectFiles() }
+    factory { OpenWorkbook(get(), get(), get()) }
+    factory { InitializeProjectFiles(get()) }
     factoryOf(::ImportLanguages)
 
     // Exporters

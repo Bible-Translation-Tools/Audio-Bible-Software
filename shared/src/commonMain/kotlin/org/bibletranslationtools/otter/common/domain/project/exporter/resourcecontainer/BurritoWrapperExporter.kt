@@ -2,6 +2,8 @@ package org.bibletranslationtools.otter.common.domain.project.exporter.resourcec
 
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.rx2.rxSingle
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.data.IAppInfo
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
@@ -11,6 +13,7 @@ import org.bibletranslationtools.otter.common.domain.project.exporter.ExportResu
 import org.bibletranslationtools.otter.common.domain.project.exporter.IProjectExporter
 import org.bibletranslationtools.otter.common.domain.project.exporter.ProjectExporterCallback
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito.auth.AuthProvider
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.bibletranslationtools.scriptureburrito.Checksum
 import org.bibletranslationtools.scriptureburrito.CopyrightSchema
 import org.bibletranslationtools.scriptureburrito.Flavor
@@ -67,7 +70,8 @@ class BurritoWrapperExporter(
     // constructor arguments and silently leaves annotated fields uninitialized — see
     // SharedGraphWiringTest, which exists because six other classes hit exactly this.
     private val audioExporter: AudioExporter,
-    private val audioConverter: AudioConverter
+    private val audioConverter: AudioConverter,
+    private val projectFiles: ProjectFilesService
 ) : IProjectExporter {
 
     private val logger = LoggerFactory.getLogger(this.javaClass)
@@ -80,14 +84,14 @@ class BurritoWrapperExporter(
         callback: ProjectExporterCallback?,
         options: ExportOptions?
     ): Single<ExportResult> {
-        return Single.fromCallable {
+        return rxSingle(Dispatchers.IO) {
             val projectSourceMetadata = workbook.source.linkedResources
                 .firstOrNull { it.identifier == workbook.target.resourceMetadata.identifier }
                 ?: workbook.source.resourceMetadata
 
-            val projectAccessor = workbook.projectFilesAccessor
+            val projectAccessor = projectFiles.of(workbook)
             if (!projectAccessor.isInitialized()) {
-                return@fromCallable ExportResult.FAILURE
+                return@rxSingle ExportResult.FAILURE
             }
 
             val zipFilename = makeExportFilename(workbook, projectSourceMetadata)
@@ -190,7 +194,7 @@ class BurritoWrapperExporter(
         }.subscribeOn(Schedulers.io())
     }
 
-    override fun estimateExportSize(workbook: Workbook, chapterFilter: List<Int>): Long {
+    override suspend fun estimateExportSize(workbook: Workbook, chapterFilter: List<Int>): Long {
         val takes = gatherAudioFiles(workbook, chapterFilter)
         // Estimate audio size - assume MP3 conversion (default)
         val audioSize = takes.values.flatten().sumOf { audioFile ->
@@ -584,19 +588,17 @@ class BurritoWrapperExporter(
         }
     }
 
-    private fun gatherAudioFiles(
+    private suspend fun gatherAudioFiles(
         workbook: Workbook,
         chapterFilter: List<Int>?
     ): Map<ChapterNumber, List<File>> {
         val takes = mutableMapOf<ChapterNumber, List<File>>()
 
-        val chapters = workbook.target.chapters
+        val chapters = workbook.target.chapters()
             .filter { chapterFilter?.contains(it.sort) ?: true }
-            .toList()
-            .blockingGet()
 
         chapters.forEach { chapter ->
-            val selectedTake = chapter.audio.selected.value?.value
+            val selectedTake = chapter.audio.getSelectedTake()
             if (selectedTake != null && selectedTake.file.exists()) {
                 takes[chapter.sort] = listOf(selectedTake.file)
             }

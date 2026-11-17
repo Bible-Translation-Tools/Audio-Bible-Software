@@ -20,10 +20,9 @@ package org.bibletranslationtools.otter.common.domain.resourcecontainer.project
 
 import io.reactivex.Completable
 import io.reactivex.Observable
-import io.reactivex.rxkotlin.cast
-import io.reactivex.rxkotlin.toMap
-import io.reactivex.rxkotlin.toObservable
-import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.rx2.rxCompletable
 import org.bibletranslationtools.otter.common.api.io.zip.IFileReader
 import org.bibletranslationtools.otter.common.api.io.zip.IFileWriter
 import org.slf4j.LoggerFactory
@@ -32,7 +31,6 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstan
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.projectimportexport.buildManifest
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
-import org.bibletranslationtools.otter.common.utils.mapNotNull
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import org.wycliffeassociates.resourcecontainer.ZipAccessor
 import org.wycliffeassociates.resourcecontainer.entity.Project
@@ -56,7 +54,6 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.u
 import org.wycliffeassociates.usfmtools.USFMParser
 import org.wycliffeassociates.usfmtools.models.markers.CMarker
 import org.wycliffeassociates.usfmtools.models.markers.VMarker
-import java.util.concurrent.TimeUnit
 import org.bibletranslationtools.otter.common.OTTER_JSON
 import org.bibletranslationtools.otter.common.domain.project.TAKE_CHECKING
 import org.bibletranslationtools.otter.common.data.CHUNKIFICATION
@@ -101,14 +98,14 @@ class ProjectFilesAccessor(
         project
     )
 
-    fun getChapterAudioDir(workbook: Workbook, chapter: Chapter): File {
+    suspend fun getChapterAudioDir(workbook: Workbook, chapter: Chapter): File {
         val namer = FileNamer(
             bookSlug = workbook.target.slug,
             languageSlug = workbook.target.language.slug,
-            chapterCount = workbook.target.chapters.count().blockingGet(),
+            chapterCount = workbook.target.chapters().size.toLong(),
             chapterTitle = chapter.title,
             chapterSort = chapter.sort,
-            chunkCount = chapter.chunkCount.blockingGet().toLong(),
+            chunkCount = chapter.chunkCount().toLong(),
             contentType = ContentType.TEXT,
             rcSlug = if (workbook.source.language.slug == workbook.target.language.slug) {
                 workbook.sourceMetadataSlug
@@ -123,7 +120,7 @@ class ProjectFilesAccessor(
         return chapterDir
     }
 
-    fun getInProgressNarrationFiles(workbook: Workbook, chapter: Chapter): List<File> {
+    suspend fun getInProgressNarrationFiles(workbook: Workbook, chapter: Chapter): List<File> {
         val chapterDir = getChapterAudioDir(workbook, chapter)
         val chapterNarrationPath = RcConstants.CHAPTER_NARRATION_FILE.format(chapterDir.name)
         val activeVersesPath = RcConstants.ACTIVE_VERSES_FILE.format(chapterDir.name)
@@ -335,42 +332,48 @@ class ProjectFilesAccessor(
     }
 
     fun updateSelectedTakesFile(workbook: Workbook): Completable {
-        return Completable
-            .fromCallable {
-                writeSelectedTakesFile(workbook, true)
-            }
-            .subscribeOn(Schedulers.io())
-    }
-
-    fun writeSelectedTakesFile(workbook: Workbook, isBook: Boolean) {
-        val selectedTakes = projectDir.resolve(RcConstants.SELECTED_TAKES_FILE)
-        selectedTakes.outputStream().use { stream ->
-            fetchSelectedTakes(workbook, isBook)
-                .map(::relativeTakePath)
-                .doOnError { e ->
-                    log.error("Error in updateSelectedMarker", e)
-                }
-                .blockingSubscribe {
-                    stream.write("$it\n".toByteArray())
-                }
+        return rxCompletable(Dispatchers.IO) {
+            writeSelectedTakesFile(workbook, true)
         }
     }
 
-    fun writeSelectedTakesFile(
+    /**
+     * Rewrites the project's selected takes file. A failure to read the selections is logged and
+     * leaves the file with what was written so far; it is not thrown to the caller.
+     */
+    suspend fun writeSelectedTakesFile(workbook: Workbook, isBook: Boolean) {
+        val selectedTakes = projectDir.resolve(RcConstants.SELECTED_TAKES_FILE)
+        selectedTakes.outputStream().use { stream ->
+            try {
+                fetchSelectedTakes(workbook, isBook)
+                    .map(::relativeTakePath)
+                    .forEach { stream.write("$it\n".toByteArray()) }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                log.error("Error in updateSelectedMarker", e)
+            }
+        }
+    }
+
+    /**
+     * Writes the selected takes file into an export. A failure to read the selections is logged
+     * and leaves the file with what was written so far; it is not thrown to the caller.
+     */
+    suspend fun writeSelectedTakesFile(
         fileWriter: IFileWriter,
         workbook: Workbook,
         isBook: Boolean,
         takeFilter: (String) -> Boolean = { true }
     ) {
         fileWriter.bufferedWriter(RcConstants.SELECTED_TAKES_FILE).use { _fileWriter ->
-            fetchSelectedTakes(workbook, isBook, filter = takeFilter)
-                .map(::relativeTakePath)
-                .doOnError { e ->
-                    log.error("Error in writeSelectedTakesFile", e)
-                }
-                .blockingSubscribe {
-                    _fileWriter.appendLine(it)
-                }
+            try {
+                fetchSelectedTakes(workbook, isBook, filter = takeFilter)
+                    .map(::relativeTakePath)
+                    .forEach { _fileWriter.appendLine(it) }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                log.error("Error in writeSelectedTakesFile", e)
+            }
         }
     }
 
@@ -396,26 +399,22 @@ class ProjectFilesAccessor(
         }
     }
 
-    fun writeTakeCheckingStatus(
+    suspend fun writeTakeCheckingStatus(
         fileWriter: IFileWriter,
         workbook: Workbook,
         takeFilter: (String) -> Boolean = { true }
-    ): Completable {
-        return fetchTakes(workbook)
+    ) {
+        val takeCheckingMap: TakeCheckingStatusMap = fetchTakes(workbook)
             .filter { takeFilter(it.name) }
-            .map { take ->
+            .associate { take ->
                 val path = relativeTakePath(take)
                 val checking = TakeCheckingState(
-                    take.checkingState.value!!.status,
+                    take.checking.status,
                     take.getSavedChecksum()
                 )
                 Pair(path, checking)
             }
-            .toMap()
-            .doOnSuccess { takeCheckingMap: TakeCheckingStatusMap ->
-                writeTakeChecking(fileWriter, takeCheckingMap)
-            }
-            .ignoreElement()
+        writeTakeChecking(fileWriter, takeCheckingMap)
     }
 
     /**
@@ -454,7 +453,7 @@ class ProjectFilesAccessor(
             }
     }
 
-    fun copyTakeFiles(
+    suspend fun copyTakeFiles(
         fileWriter: IFileWriter,
         workbook: Workbook,
         workbookRepository: IWorkbookRepository,
@@ -628,32 +627,21 @@ class ProjectFilesAccessor(
         return chunkText
     }
 
-    private fun fetchTakes(
+    /** Every take of the target's chapters and their chunks, deleted ones included. */
+    private suspend fun fetchTakes(
         workbook: Workbook
-    ): Observable<Take> {
-        return workbook.target.chapters
+    ): List<Take> {
+        return workbook.target.chapters()
             .flatMap { chapter ->
-                val chunkCount = chapter.chunkCount.blockingGet()
-                val chunks: Observable<BookElement> = if (chunkCount > 0) {
-                    chapter.observableChunks
-                        .filter { it.isNotEmpty() }
-                        .firstOrError()
-                        .flattenAsObservable { it }
-                        .cast<BookElement>()
+                // A chunk's takes load with the chunk, so reading the chunks is enough.
+                val chunks: List<BookElement> = if (chapter.chunkCount() > 0) {
+                    chapter.chunks()
                 } else {
-                    Observable.empty()
+                    emptyList()
                 }
 
-                chunks
-                    .startWith(chapter as BookElement)
-                    .concatMap { content ->
-                        val takesNotEmitted = content.audio.getSelectedTake() != null &&
-                                content.audio.getAllTakes().isEmpty()
-                        if (takesNotEmitted) {
-                            content.audio.takes.blockingFirst() // force-subscribe to emit items from relay
-                        }
-                        content.audio.getAllTakes().toObservable()
-                    }
+                (listOf<BookElement>(chapter) + chunks)
+                    .flatMap { content -> content.audio.getAllTakes() }
             }
     }
 
@@ -744,43 +732,35 @@ class ProjectFilesAccessor(
         return newSourceFile
     }
 
-    fun selectedChapterFilePaths(workbook: Workbook, isBook: Boolean): Set<String> {
+    suspend fun selectedChapterFilePaths(workbook: Workbook, isBook: Boolean): Set<String> {
         return fetchSelectedTakes(workbook, isBook, true)
-            .map(this::relativeTakePath)
-            .collectInto(hashSetOf<String>(), { set, path -> set.add(path) })
-            .blockingGet()
+            .mapTo(hashSetOf<String>()) { relativeTakePath(it) }
     }
 
-    private fun fetchSelectedTakes(
+    private suspend fun fetchSelectedTakes(
         workbook: Workbook,
         isBook: Boolean,
         chaptersOnly: Boolean = false,
         filter: (String) -> Boolean = { true }
-    ): Observable<Take> {
+    ): List<Take> {
         val chapters = when {
-            isBook -> workbook.target.chapters
+            isBook -> workbook.target.chapters()
             // Work around a quirk that records resource takes to the source tree
-            else -> Observable.concat(workbook.source.chapters, workbook.target.chapters)
+            else -> workbook.source.chapters() + workbook.target.chapters()
         }
 
-        val bookElements: Observable<BookElement> = when {
-            chaptersOnly -> chapters.cast()
+        val bookElements: List<BookElement> = when {
+            chaptersOnly -> chapters
             else -> {
                 chapters.flatMap { chapter ->
-                    chapter.chunks
-                        .flattenAsObservable { it }
-                        .cast<BookElement>()
-                        .startWith(chapter)
+                    listOf<BookElement>(chapter) + chapter.chunks()
                 }
             }
         }
 
         return bookElements
             .flatMap { getAudioForCurrentResource(it, isBook) }
-            .mapNotNull { audio ->
-                val take = audio.selected.value?.value
-                take
-            }
+            .mapNotNull { audio -> audio.getSelectedTake() }
             .filter {
                 filter(it.file.name)
             }
@@ -801,21 +781,21 @@ class ProjectFilesAccessor(
         return deletedTakes + targetTakes
     }
 
-    private fun getAudioForCurrentResource(
+    private suspend fun getAudioForCurrentResource(
         bookElement: BookElement,
         isBook: Boolean
-    ): Observable<AssociatedAudio> {
+    ): List<AssociatedAudio> {
         return when (isBook) {
-            true -> Observable.just(bookElement.audio)
+            true -> listOf(bookElement.audio)
             false -> {
                 val resourceGroup = bookElement.resources
                     .firstOrNull { it.metadata.identifier == targetMetadata.identifier }
 
                 resourceGroup?.let { _resourceGroup ->
-                    _resourceGroup.resources.flatMapIterable { resource ->
+                    _resourceGroup.resources().flatMap { resource ->
                         listOfNotNull(resource.title.audio, resource.body?.audio)
                     }
-                } ?: Observable.empty()
+                } ?: emptyList()
             }
         }
     }

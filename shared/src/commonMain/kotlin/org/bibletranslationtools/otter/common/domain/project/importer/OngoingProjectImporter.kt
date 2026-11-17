@@ -82,6 +82,7 @@ import kotlinx.serialization.SerializationException
 import org.bibletranslationtools.otter.common.OTTER_JSON
 import org.bibletranslationtools.otter.common.data.CHUNKIFICATION
 import org.bibletranslationtools.otter.common.domain.project.TAKE_CHECKING
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 
 class OngoingProjectImporter(
     private val directoryProvider: IDirectoryProvider,
@@ -97,7 +98,8 @@ class OngoingProjectImporter(
     private val concatAudioUseCase: ConcatenateAudio,
     private val backupEditions: BackupEditions,
     private val upgradeBookEdition: UpgradeBookEdition,
-    private val editionFingerprinter: EditionFingerprinter
+    private val editionFingerprinter: EditionFingerprinter,
+    private val projectFiles: ProjectFilesService
 ) : RCImporter(directoryProvider, resourceMetadataRepository) {
     private val logger = LoggerFactory.getLogger(this.javaClass)
 
@@ -194,8 +196,9 @@ class OngoingProjectImporter(
                         languageSlug == existingProject.target.language.slug &&
                         projectSlug == existingProject.target.slug
                 }?.let {
-                    workbookRepository.closeWorkbook(it)
-                    it.projectFilesAccessor.isInitialized().also { initialized ->
+                    // Called from the importer's blocking Rx chain, off the main thread.
+                    runBlocking { workbookRepository.closeWorkbook(it) }
+                    projectFiles.of(it).isInitialized().also { initialized ->
                         if (initialized) existingProjectSource = it.source.toCollection()
                     }
                 } ?: false

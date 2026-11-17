@@ -11,12 +11,14 @@ import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.TakeCheckingState
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.bibletranslationtools.otter.common.utils.computeFileChecksum
 import org.slf4j.LoggerFactory
 import java.io.File
 
 class ChapterTranslationBuilder(
-    private val concatenateAudio: ConcatenateAudio
+    private val concatenateAudio: ConcatenateAudio,
+    private val projectFiles: ProjectFilesService
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -62,7 +64,7 @@ class ChapterTranslationBuilder(
             rcSlug = workbook.sourceMetadataSlug
         )
         return withContext(Dispatchers.IO) {
-            val chapterAudioDir = workbook.projectFilesAccessor.audioDir.resolve(namer.formatChapterNumber())
+            val chapterAudioDir = projectFiles.of(workbook).audioDir.resolve(namer.formatChapterNumber())
             // A file nothing else uses; the copy writes into the file this call owns.
             val reserved = TakeFiles.reserve(chapterAudioDir, chapter.audio.getNewTakeNumber()) {
                 namer.generateName(it, AudioFileFormat.WAV)

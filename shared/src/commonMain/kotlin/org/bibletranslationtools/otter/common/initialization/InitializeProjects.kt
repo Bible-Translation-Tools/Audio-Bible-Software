@@ -21,6 +21,7 @@ package org.bibletranslationtools.otter.common.initialization
 
 import io.reactivex.Completable
 import io.reactivex.ObservableEmitter
+import kotlinx.coroutines.runBlocking
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.api.persistence.config.Installable
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IInstalledEntityRepository
@@ -113,7 +114,8 @@ class InitializeProjects(
 
         projectFilesAccessor.initializeResourceContainerInDir()
         projectFilesAccessor.copySourceFiles(linkedResource)
-        projectFilesAccessor.writeSelectedTakesFile(workbook, projectIsBook)
+        // Runs inside the installer's blocking Completable, off the main thread.
+        runBlocking { projectFilesAccessor.writeSelectedTakesFile(workbook, projectIsBook) }
     }
 
     private fun migrateSourcesToVersion2() {

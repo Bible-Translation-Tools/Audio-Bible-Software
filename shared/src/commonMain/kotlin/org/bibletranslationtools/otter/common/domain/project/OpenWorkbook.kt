@@ -20,7 +20,6 @@ package org.bibletranslationtools.otter.common.domain.project
 
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
@@ -33,7 +32,7 @@ import org.bibletranslationtools.otter.common.data.workbook.Workbook
  *
  * Screens are navigated to with a descriptor id and nothing else, so every one of them had to
  * repeat the same three steps: look the descriptor up, ask the workbook repository for the
- * (source, target) pair it names, then drain the target book's chapters off its Rx observable.
+ * (source, target) pair it names, then read the target book's chapters.
  * Four of Orature's ViewModels — narration, translation, contributor and export — each carried a
  * copy, two of them also sorting the chapters and one deriving the completion map.
  *
@@ -48,7 +47,7 @@ import org.bibletranslationtools.otter.common.data.workbook.Workbook
 class OpenWorkbook(
     private val workbookDescriptorRepository: IWorkbookDescriptorRepository,
     private val workbookRepository: IWorkbookRepository,
-    private val projectCompletionStatus: ProjectCompletionStatus = ProjectCompletionStatus(),
+    private val projectCompletionStatus: ProjectCompletionStatus,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
 
@@ -100,7 +99,7 @@ class OpenWorkbook(
     suspend fun openWithChapters(workbookDescriptorId: Int): OpenedWorkbook =
         withContext(ioDispatcher) {
             val opened = open(workbookDescriptorId)
-            val chapters = opened.workbook.target.chapters.toList().await().sortedBy { it.sort }
+            val chapters = opened.workbook.target.chapters().sortedBy { it.sort }
             OpenedWorkbook(
                 workbook = opened.workbook,
                 mode = opened.mode,
@@ -127,7 +126,7 @@ class OpenWorkbook(
      * "complete" for the same chapter is the actual defect; this makes the mode the only thing that
      * decides, and matches WorkbookDescriptorRepository.getProgress case for case.
      */
-    private fun isChapterComplete(workbook: Workbook, chapter: Chapter, mode: ProjectMode): Boolean =
+    private suspend fun isChapterComplete(workbook: Workbook, chapter: Chapter, mode: ProjectMode): Boolean =
         when (mode) {
             ProjectMode.NARRATION, ProjectMode.DIALECT ->
                 projectCompletionStatus.getChapterNarrationProgress(workbook, chapter) == 1.0

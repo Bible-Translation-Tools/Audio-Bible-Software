@@ -23,14 +23,17 @@ import io.reactivex.Completable
 import io.reactivex.Maybe
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.rx2.awaitSingleOrNull
+import kotlinx.coroutines.rx2.rxSingle
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.domain.project.ProjectCompletionStatus
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.SourceAudioAccessor
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IContentRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
@@ -44,7 +47,8 @@ class WorkbookDescriptorRepository(
     private val contentRepository: IContentRepository,
     private val workbookRepository: IWorkbookRepository,
     private val projectCompletionStatus: ProjectCompletionStatus,
-    private val databaseWriter: DatabaseWriter
+    private val databaseWriter: DatabaseWriter,
+    private val projectFiles: ProjectFilesService
 ) : IWorkbookDescriptorRepository {
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -154,11 +158,9 @@ class WorkbookDescriptorRepository(
         // part callers may defer). Absent → false until resolved via getSourceAudioSuspend.
         val hasSourceAudio = sourceAudioCache["${sourceRc.path}|${sourceCollection.slug}"] ?: false
         val mode = typeCache.getOrPut(entity.typeFk) { workbookTypeDao.fetchById(entity.typeFk)!! }
-        val progress = Single
-            .fromCallable {
-                getProgress(sourceCollection, targetCollection, mode)
-            }
-            .subscribeOn(Schedulers.io())
+        val progress = rxSingle(Dispatchers.IO) {
+            getProgress(sourceCollection, targetCollection, mode)
+        }
 
         return WorkbookDescriptor(
             entity.id,
@@ -170,7 +172,7 @@ class WorkbookDescriptorRepository(
         )
     }
 
-    private fun getProgress(
+    private suspend fun getProgress(
         source: Collection,
         target: Collection,
         mode: ProjectMode
@@ -196,18 +198,18 @@ class WorkbookDescriptorRepository(
         return chapters.count { it.selectedTake != null }.toDouble() / chapters.size
     }
 
-    private fun calculateNarrationProgress(
+    private suspend fun calculateNarrationProgress(
         source: Collection,
         target: Collection
     ): Double {
         val workbook = workbookRepository.get(source, target)
-        val chapters = workbook.target.chapters.toList().blockingGet()
+        val chapters = workbook.target.chapters()
         // The per-book RC that isInitialized() checks is only written when a book is first OPENED
         // (InitializeProjectFiles), so a freshly imported project fails it and every book would read 0%
         // until opened. Recorded work is the real signal: a chapter with a selected take — restored on
         // import — means there is completion to show. Un-worked books have no selected takes and still
         // short-circuit to 0 here with no per-chapter file I/O.
-        val hasWork = workbook.projectFilesAccessor.isInitialized() ||
+        val hasWork = projectFiles.of(workbook).isInitialized() ||
             chapters.any { it.getSelectedTake() != null }
         if (!hasWork) return 0.0
 

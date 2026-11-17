@@ -30,5 +30,5 @@ interface IProjectExporter {
         options: ExportOptions? = null
     ): Single<ExportResult>
 
-    fun estimateExportSize(workbook: Workbook, chapterFilter: List<Int>): Long
+    suspend fun estimateExportSize(workbook: Workbook, chapterFilter: List<Int>): Long
 }

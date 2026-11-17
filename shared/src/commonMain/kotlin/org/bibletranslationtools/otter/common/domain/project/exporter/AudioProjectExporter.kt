@@ -20,6 +20,8 @@ package org.bibletranslationtools.otter.common.domain.project.exporter
 
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.rx2.rxSingle
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
 import org.bibletranslationtools.otter.common.data.primitives.License
@@ -29,7 +31,6 @@ import org.bibletranslationtools.otter.common.domain.audio.AudioExporter
 import org.bibletranslationtools.otter.common.domain.audio.WAV_TO_MP3_COMPRESSED_RATE
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesAccessor
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
-import org.bibletranslationtools.otter.common.utils.mapNotNull
 import java.io.File
 
 class AudioProjectExporter(
@@ -55,18 +56,17 @@ class AudioProjectExporter(
         return exportBookMp3(outputDirectory, workbook, projectAccessor, callback, options)
     }
 
-    override fun estimateExportSize(workbook: Workbook, chapterFilter: List<Int>): Long {
-        return workbook.target.chapters
+    override suspend fun estimateExportSize(workbook: Workbook, chapterFilter: List<Int>): Long {
+        return workbook.target.chapters()
             .filter { it.sort in chapterFilter }
-            .mapNotNull {it.getSelectedTake()?.file }
-            .reduce(0L) { size, nextFile ->
+            .mapNotNull { it.getSelectedTake()?.file }
+            .fold(0L) { size, nextFile ->
                 when (AudioFileFormat.of(nextFile.extension)) {
                     AudioFileFormat.MP3 -> size + nextFile.length()
                     AudioFileFormat.WAV -> size + nextFile.length() / WAV_TO_MP3_COMPRESSED_RATE
                     else -> size
                 }
             }
-            .blockingGet()
     }
 
     private fun exportBookMp3(
@@ -81,10 +81,11 @@ class AudioProjectExporter(
         val contributors = projectFilesAccessor.getContributorInfo()
         val license = License.get(workbook.target.resourceMetadata.license)
 
-        return workbook.target.chapters
+        return rxSingle(Dispatchers.IO) { workbook.target.chapters() }
+            .flattenAsObservable { it }
             .filter { chapterFilter(it, options) }
             .flatMapCompletable { chapter ->
-                chapter.audio.selected.value!!.value!!.let {
+                chapter.audio.getSelectedTake()!!.let {
                     val outputFile = outputProjectDir.resolve("chapter-${chapter.sort}.mp3")
                     val metadata = AudioExporter.ExportMetadata(license, contributors)
                     audioExporter.exportMp3(it.file, outputFile, metadata)

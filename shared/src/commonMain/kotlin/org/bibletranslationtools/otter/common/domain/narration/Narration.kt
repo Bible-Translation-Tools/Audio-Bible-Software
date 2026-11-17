@@ -34,6 +34,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.audio.AudioFile
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
@@ -48,6 +49,7 @@ import org.bibletranslationtools.otter.common.device.IAudioRecorder
 import org.bibletranslationtools.otter.common.domain.audio.AudioBouncer
 import org.bibletranslationtools.otter.common.domain.content.TakeFiles
 import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.recorder.WavFileWriter
 import java.io.File
@@ -64,14 +66,17 @@ class Narration(
     private val recorder: IAudioRecorder,
     private val player: IAudioPlayer,
     private val workbook: Workbook,
-    private val chapter: Chapter
+    private val chapter: Chapter,
+    private val projectFiles: ProjectFilesService
 ) {
 
     private val DEFAULT_FRAME_SIZE_BYTES = 2
     private val logger = LoggerFactory.getLogger(Narration::class.java)
 
     private val history = NarrationHistory()
-    private var chapterRepresentation = ChapterRepresentation(workbook, chapter)
+    // A narration is built off the main thread (it reads the chapter's files), so waiting here for
+    // the chapter's chunks is safe.
+    private var chapterRepresentation = runBlocking { ChapterRepresentation.load(workbook, chapter, projectFiles) }
     private val chapterReaderConnection =
         chapterRepresentation.getAudioFileReader() as ChapterRepresentation.ChapterRepresentationConnection
 
@@ -620,7 +625,7 @@ class Narration(
     suspend fun createChapterTakeWithAudio(): SaveResult<Take> {
         val namer = WorkbookFileNamerBuilder.createFileNamer(workbook, chapter, null, chapter, workbook.sourceMetadataSlug)
         val newTake = withContext(Dispatchers.IO) {
-            val parentDir = workbook.projectFilesAccessor.getChapterAudioDir(workbook, chapter)
+            val parentDir = projectFiles.of(workbook).getChapterAudioDir(workbook, chapter)
             // A file nothing else uses: the next free take number if this one's name is taken.
             val reserved = TakeFiles.reserve(parentDir, chapter.audio.getNewTakeNumber()) {
                 namer.generateName(it, AudioFileFormat.WAV)
@@ -644,7 +649,7 @@ class Narration(
     suspend fun createChapterTake(): SaveResult<Take> {
         val namer = WorkbookFileNamerBuilder.createFileNamer(workbook, chapter, null, chapter, workbook.sourceMetadataSlug)
         val reserved = withContext(Dispatchers.IO) {
-            val parentDir = workbook.projectFilesAccessor.getChapterAudioDir(workbook, chapter)
+            val parentDir = projectFiles.of(workbook).getChapterAudioDir(workbook, chapter)
             // A file nothing else uses: the next free take number if this one's name is taken.
             TakeFiles.reserve(parentDir, chapter.audio.getNewTakeNumber()) { namer.generateName(it, AudioFileFormat.WAV) }
         }

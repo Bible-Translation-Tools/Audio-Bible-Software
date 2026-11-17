@@ -3,11 +3,13 @@ package org.bibletranslationtools.otter.common.domain.project
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.domain.narration.ChapterRepresentation
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 
-class ProjectCompletionStatus() {
+class ProjectCompletionStatus(private val projectFiles: ProjectFilesService) {
 
-    fun getChapterNarrationProgress(workbook: Workbook, chapter: Chapter): Double {
-        val chapterRepresentation = ChapterRepresentation(workbook, chapter)
+    /** Reads the chapter's narration files; call off the main thread. */
+    suspend fun getChapterNarrationProgress(workbook: Workbook, chapter: Chapter): Double {
+        val chapterRepresentation = ChapterRepresentation.load(workbook, chapter, projectFiles)
         chapterRepresentation.loadFromSerializedVerses()
         val fileProgress = chapterRepresentation.getCompletionProgress()
         if (fileProgress >= 1.0) return fileProgress
@@ -21,16 +23,12 @@ class ProjectCompletionStatus() {
         return maxOf(fileProgress, chapterRepresentation.getCompletionProgressFromTake(takeFile))
     }
 
-    fun getChapterTranslationProgress(chapter: Chapter): Double {
-        val chunkCount = chapter.chunkCount.blockingGet()
+    suspend fun getChapterTranslationProgress(chapter: Chapter): Double {
+        val chunkCount = chapter.chunkCount()
 
         if (chunkCount == 0) return 0.0
 
-        val chunkWithAudio = chapter.chunks
-            .map {
-                it.count { it.hasSelectedAudio() }
-            }
-            .blockingGet()
+        val chunkWithAudio = chapter.chunks().count { it.hasSelectedAudio() }
 
         return chunkWithAudio.toDouble() / chunkCount
     }
