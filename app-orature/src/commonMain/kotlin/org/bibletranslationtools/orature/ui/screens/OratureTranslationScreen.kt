@@ -92,7 +92,8 @@ import org.bibletranslationtools.orature.resources.cancel
 import org.bibletranslationtools.orature.resources.close
 import org.bibletranslationtools.orature.resources.`continue`
 import org.bibletranslationtools.orature.resources.overridingSource
-import org.bibletranslationtools.orature.resources.rechunk_data_loss_warning
+import org.bibletranslationtools.orature.resources.undo_rechunk_message
+import org.bibletranslationtools.orature.resources.undo_rechunk_title
 import org.bibletranslationtools.orature.resources.warning
 import org.bibletranslationtools.orature.resources.collapse
 import org.bibletranslationtools.orature.resources.drag_drop_or_browse_import__template
@@ -118,6 +119,7 @@ import org.bibletranslationtools.orature.ui.viewmodels.OratureImportState
 import org.bibletranslationtools.orature.ui.viewmodels.OratureImportViewModel
 import org.bibletranslationtools.orature.ui.viewmodels.OratureTranslationUiState
 import org.bibletranslationtools.orature.ui.viewmodels.OratureTranslationViewModel
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -236,24 +238,24 @@ fun OratureTranslationScreen(
                 text = { Text(err.message) }
             )
         }
-        // Re-chunk data-loss warning (JVM: `ChunkingViewModel.requestToNavigate`'s ConfirmDialog):
-        // moving forward out of Chunking with unsaved chunk edits will delete this chapter's
-        // recordings. Cancelling keeps the edits unsaved so they can be undone and the takes kept.
-        if (uiState.pendingChunkNavStep != null) {
+        // Undoing a rechunk that recordings were made into since: the earlier layout becomes active
+        // again, and the recordings stay with the newer one, which is deleted when the user leaves
+        // the chapter unless they redo first. Cancelling keeps the rechunk.
+        uiState.undoRechunkRecordings?.let { count ->
             AlertDialog(
-                onDismissRequest = viewModel::cancelPendingChunkNav,
+                onDismissRequest = viewModel::cancelUndoRechunk,
                 confirmButton = {
-                    TextButton(onClick = viewModel::confirmPendingChunkNav) {
-                        Text(stringResource(Res.string.`continue`))
+                    TextButton(onClick = viewModel::confirmUndoRechunk) {
+                        Text(stringResource(Res.string.undo))
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = viewModel::cancelPendingChunkNav) {
+                    TextButton(onClick = viewModel::cancelUndoRechunk) {
                         Text(stringResource(Res.string.cancel))
                     }
                 },
-                title = { Text(stringResource(Res.string.warning)) },
-                text = { Text(stringResource(Res.string.rechunk_data_loss_warning)) }
+                title = { Text(stringResource(Res.string.undo_rechunk_title)) },
+                text = { Text(pluralStringResource(Res.plurals.undo_rechunk_message, count, count)) }
             )
         }
     }
@@ -337,9 +339,9 @@ private fun TranslationStepContent(
                 val chunkingVm = androidx.lifecycle.viewmodel.compose.viewModel(key = "chunking-$sort") {
                     org.bibletranslationtools.orature.ui.viewmodels.OratureChunkingViewModel(sort, viewModel)
                 }
-                // Step-leave persistence is handled by the translation VM's awaited chunk-save
-                // handler (selectStep), which commits BEFORE loading the next step. A second
-                // fire-and-forget save here would race it and corrupt the write, so it's gone.
+                // Leaving the step forward saves the markers as a rechunk through the translation
+                // VM's awaited chunk-save handler (selectStep), BEFORE the next step loads; nothing
+                // else saves them.
                 LaunchedEffect(chunkingVm) { chunkingVm.onShown() }
                 OratureChunkingScreen(chunkingVm)
             }

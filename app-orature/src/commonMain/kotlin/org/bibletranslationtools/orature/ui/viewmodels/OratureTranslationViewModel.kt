@@ -62,36 +62,17 @@ class StepUndoRedo(
     val afterSession: () -> Unit = {}
 )
 
-/** What a requested step change should do — see [chunkNavAction]. */
-internal enum class ChunkNavAction {
-    /** Switch steps without touching chunks (never destructive). */
-    NAVIGATE,
-    /** Commit chunk edits (destructive: deletes the chapter's takes) and then switch. */
-    SAVE_THEN_NAVIGATE,
-    /** Ask first — committing would delete existing recordings. */
-    CONFIRM_DATA_LOSS
-}
-
 /**
- * The chunk-navigation rules, mirroring the JVM (`ChunkingViewModel.requestToNavigate` +
- * `undock`). Committing chunk edits runs `resetChapter`, which DELETES the chapter's takes, so:
- *  - only moving FORWARD out of Chunking may commit (going back to Consume must not);
- *  - and if that commit would destroy existing recordings ([existingChunkCount] > 0) while there
- *    are unsaved edits, the user must confirm first — cancelling leaves the edits unsaved so they
- *    can be undone with the takes intact.
+ * Whether changing from step [current] to [target] commits Chunking's marker edits, mirroring the
+ * JVM's `undock` (`selectedStep.ordinal > CHUNKING.ordinal`): only moving FORWARD out of Chunking
+ * does. Going back to Consume keeps the edits unsaved, to carry on with later.
+ *
+ * Committing is one undoable rechunk in the chapter session: the old layout and its takes stay,
+ * inactive, until the user leaves the chapter, so it needs no warning. The warning is on undoing it
+ * ([OratureTranslationUiState.undoRechunkRecordings]).
  */
-internal fun chunkNavAction(
-    current: ChunkingStep,
-    target: ChunkingStep,
-    hasUnsavedChunkEdits: Boolean,
-    existingChunkCount: Int
-): ChunkNavAction {
-    val leavingChunkingForward =
-        current == ChunkingStep.CHUNKING && target.ordinal > ChunkingStep.CHUNKING.ordinal
-    if (!leavingChunkingForward) return ChunkNavAction.NAVIGATE
-    if (hasUnsavedChunkEdits && existingChunkCount > 0) return ChunkNavAction.CONFIRM_DATA_LOSS
-    return ChunkNavAction.SAVE_THEN_NAVIGATE
-}
+internal fun commitsChunkEdits(current: ChunkingStep, target: ChunkingStep): Boolean =
+    current == ChunkingStep.CHUNKING && target.ordinal > ChunkingStep.CHUNKING.ordinal
 
 data class OratureTranslationUiState(
     val isLoading: Boolean = true,
@@ -119,13 +100,12 @@ data class OratureTranslationUiState(
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
     /**
-     * Set when the user tried to navigate FORWARD out of Chunking with unsaved chunk edits while the
-     * chapter already has chunks (and therefore recordings) that the save would destroy. Holds the
-     * step they asked for until they confirm or cancel (JVM: `ChunkingViewModel.requestToNavigate`'s
-     * `rechunk_data_loss_warning` ConfirmDialog). Cancelling leaves the chunk edits unsaved, so the
-     * user can undo them and keep their existing takes.
+     * Set when the header's undo would undo a rechunk that recordings were made into since: how many.
+     * Undoing makes the layout they were recorded in inactive, and it is deleted when the user
+     * leaves the chapter (unless they redo first), so the user confirms
+     * ([OratureTranslationViewModel.confirmUndoRechunk]) or cancels first.
      */
-    val pendingChunkNavStep: ChunkingStep? = null,
+    val undoRechunkRecordings: Int? = null,
     /** Source scripture text for the right-hand drawer. */
     val sourceText: String = "",
     /** The source resource's title (JVM: `SourceTextDrawer.sourceInfoProperty`), e.g.
@@ -379,6 +359,29 @@ class OratureTranslationViewModel(
         val local = step?.localUndo
         if (local != null && stepCanUndo) { local(); return }
         if (!session.canUndo.value) return
+        // Undoing a rechunk makes the layout recorded into since inactive, and it is deleted with
+        // those recordings when the user leaves the chapter (unless they redo first): ask first.
+        val atRisk = session.recordingsAtRiskOnUndo()
+        if (atRisk > 0) {
+            _uiState.value = _uiState.value.copy(undoRechunkRecordings = atRisk)
+            return
+        }
+        undoSession(step)
+    }
+
+    /** The user accepted the rechunk warning: undo it. */
+    fun confirmUndoRechunk() {
+        if (_uiState.value.undoRechunkRecordings == null) return
+        _uiState.value = _uiState.value.copy(undoRechunkRecordings = null)
+        undoSession(stepUndoRedo)
+    }
+
+    /** The user kept the rechunk: nothing is undone. */
+    fun cancelUndoRechunk() {
+        _uiState.value = _uiState.value.copy(undoRechunkRecordings = null)
+    }
+
+    private fun undoSession(step: StepUndoRedo?) {
         launchLogged {
             step?.beforeSession?.invoke()
             saveMessages.report(session.undo())
@@ -398,10 +401,23 @@ class OratureTranslationViewModel(
         }
     }
 
-    /** The step on screen and the steps drawer show what the session undo or redo saved. */
-    private fun afterSessionUndoRedo(step: StepUndoRedo?) {
+    /**
+     * The step on screen and the steps drawer show what the session undo or redo saved. Undoing a
+     * chapter's first chunking leaves it with no chunks: a later step then has nothing to show, so
+     * the page goes back to Chunking.
+     */
+    private suspend fun afterSessionUndoRedo(step: StepUndoRedo?) {
         if (stepUndoRedo === step) step?.afterSession?.invoke()
         onChunkTakesChanged()
+        val chapterSort = _uiState.value.activeChapterSort ?: return
+        val chapter = chapters.firstOrNull { it.sort == chapterSort } ?: return
+        val noChunks = withContext(Dispatchers.IO) {
+            runCatching { chapter.chunks().none { it.contentType == ContentType.TEXT } }.getOrDefault(false)
+        }
+        val s = _uiState.value
+        if (noChunks && s.activeChapterSort == chapterSort && s.selectedStep.ordinal > ChunkingStep.CHUNKING.ordinal) {
+            showStep(ChunkingStep.CHUNKING)
+        }
     }
 
     /**
@@ -450,9 +466,10 @@ class OratureTranslationViewModel(
         }
     }
 
-    // The active Chunking VM registers an awaited save here so leaving the step persists its chunks
-    // (and they're committed + readable) BEFORE the next step loads — matching Orature's undock save.
-    // It returns whether the chunks were saved; the step changes only when they were.
+    // The active Chunking VM registers an awaited save here so leaving the step forward saves its
+    // marker edits as a rechunk (committed + readable) BEFORE the next step loads — matching
+    // Orature's undock save. It returns whether the layout was saved (or there was nothing to save);
+    // the step changes only when it was.
     private var chunkSaveHandler: (suspend () -> Boolean)? = null
     fun setChunkSaveHandler(handler: suspend () -> Boolean) { chunkSaveHandler = handler }
     fun clearChunkSaveHandler() { chunkSaveHandler = null }
@@ -475,96 +492,40 @@ class OratureTranslationViewModel(
         if (s.pluginOpen) return
         if (step.ordinal > s.reachableStep.ordinal) return
 
-        // Committing chunk edits is DESTRUCTIVE (resetChapter deletes the chapter's takes before
-        // re-creating chunks), so navigating FORWARD out of Chunking with unsaved edits must be
-        // confirmed when the chapter already has chunks. Until the user confirms we neither save nor
-        // navigate — that's what lets them cancel, undo the chunk move, and keep their takes.
-        // chunkCount is only read when it can matter (a forward leave with unsaved edits), so the
-        // common path stays synchronous.
-        // Unsaved chunk edits are Chunking's own in-memory undo, not the chapter session's history.
-        val mayNeedConfirm = chunkNavAction(s.selectedStep, step, stepCanUndo, existingChunkCount = 1) ==
-            ChunkNavAction.CONFIRM_DATA_LOSS
-        if (mayNeedConfirm) {
+        // Moving FORWARD out of Chunking saves its marker edits first, as one undoable rechunk in
+        // the chapter session (nothing is deleted until the user leaves the chapter). Wait for it,
+        // so the next step reads the new layout (JVM saves synchronously in undock before
+        // navigating); the handler itself no-ops when the markers did not change.
+        val save = chunkSaveHandler
+        if (commitsChunkEdits(s.selectedStep, step) && save != null) {
             launchLogged {
-                val action = chunkNavAction(s.selectedStep, step, stepCanUndo, activeChapterChunkCount())
-                if (action == ChunkNavAction.CONFIRM_DATA_LOSS) {
-                    _uiState.value = _uiState.value.copy(pendingChunkNavStep = step)
-                } else {
-                    commitStepNavigation(step) // nothing recorded yet — nothing to lose
+                val saved = try {
+                    save()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    logFailure("saving chunks before leaving the step", e)
+                    false
                 }
+                // Save-first: stay on Chunking with the edits when it did not save; the failure has
+                // been shown.
+                if (saved) showStep(step)
             }
             return
         }
-        commitStepNavigation(step)
+        showStep(step)
     }
 
-    /** Proceed with a step change, saving Chunking's edits first when moving FORWARD past it. */
-    private fun commitStepNavigation(step: ChunkingStep) {
-        val s = _uiState.value
-        // Save ONLY when navigating forward past Chunking (JVM `undock()`'s
-        // `selectedStep.ordinal > CHUNKING.ordinal`). Going backward (e.g. to Consume) must not run
-        // the destructive reset — previously any step change out of Chunking saved, silently
-        // destroying takes. The handler itself no-ops when there are no edits.
-        val saveFirst = chunkNavAction(
-            s.selectedStep, step, hasUnsavedChunkEdits = stepCanUndo, existingChunkCount = 0
-        ) == ChunkNavAction.SAVE_THEN_NAVIGATE && chunkSaveHandler != null
-        if (saveFirst) {
-            // Persist and WAIT before switching, so the next step reads committed chunk content
-            // (JVM saves synchronously in undock before navigating).
-            launchLogged {
-                val saved = runCatching { chunkSaveHandler?.invoke() ?: true }
-                    .onFailure { logFailure("saving chunks before leaving the step", it) }
-                    .getOrDefault(false)
-                if (!saved) {
-                    // Save-first: stay on Chunking with the edits; the failure has been shown.
-                    _uiState.value = _uiState.value.copy(pendingChunkNavStep = null)
-                    return@launchLogged
-                }
-                leaveStepUndoRedo(step)
-                _uiState.value = _uiState.value.copy(
-                    selectedStep = step,
-                    activeChunkSort = null,
-                    pendingChunkNavStep = null
-                )
-                if (step.ordinal >= ChunkingStep.BLIND_DRAFT.ordinal) loadChunks()
-            }
-        } else {
-            leaveStepUndoRedo(step)
-            _uiState.value = _uiState.value.copy(
-                selectedStep = step,
-                activeChunkSort = null,
-                pendingChunkNavStep = null
-            )
-            if (step.ordinal >= ChunkingStep.BLIND_DRAFT.ordinal) loadChunks()
-        }
+    private fun showStep(step: ChunkingStep) {
+        leaveStepUndoRedo(step)
+        _uiState.value = _uiState.value.copy(selectedStep = step, activeChunkSort = null)
+        if (step.ordinal >= ChunkingStep.BLIND_DRAFT.ordinal) loadChunks()
     }
 
     /** The step being left no longer drives the header; the next step's screen binds itself when shown. */
     private fun leaveStepUndoRedo(next: ChunkingStep) {
         if (next == _uiState.value.selectedStep) return
         stepUndoRedo?.let(::unbindStepUndoRedo)
-    }
-
-    /** The user accepted losing this chapter's recordings — commit the chunk edits and navigate. */
-    fun confirmPendingChunkNav() {
-        val step = _uiState.value.pendingChunkNavStep ?: return
-        commitStepNavigation(step)
-    }
-
-    /** Dismiss the warning and stay on Chunking with the edits still UNSAVED (so undo can restore
-     *  the previous chunk layout and the existing takes remain intact). */
-    fun cancelPendingChunkNav() {
-        _uiState.value = _uiState.value.copy(pendingChunkNavStep = null)
-    }
-
-    /** The active chapter's existing chunk count (JVM: `workbookDataStore.chapter.chunkCount`) —
-     *  non-zero means there are chunks whose takes a chunk-edit save would delete. */
-    private suspend fun activeChapterChunkCount(): Int {
-        val chapterSort = _uiState.value.activeChapterSort ?: return 0
-        val chapter = chapters.firstOrNull { it.sort == chapterSort } ?: return 0
-        return withContext(Dispatchers.IO) {
-            runCatching { chapter.chunkCount() }.getOrDefault(0)
-        }
     }
 
     /**

@@ -83,7 +83,6 @@
     <string name="remove">Menghapus</string>
     <string name="add">Tambahkan</string>
     <string name="confirm">Mengkonfirmasi</string>
-    <string name="rechunk_data_loss_warning">Modifying chunks will result in losing your recordings for this chapter. Do you wish to continue?</string>
     <string name="createProjectMessageTitle">Buatlah Proyek untuk Memulai</string>
     <string name="createProjectMessageBody">Klik tombol  untuk membuat proyek baru</string>
     <string name="newProject">Proyek Baru</string>

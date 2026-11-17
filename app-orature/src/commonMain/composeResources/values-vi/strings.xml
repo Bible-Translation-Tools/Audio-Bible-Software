@@ -83,7 +83,6 @@
     <string name="remove">Gỡ bỏ</string>
     <string name="add">Thêm</string>
     <string name="confirm">Xác nhận</string>
-    <string name="rechunk_data_loss_warning">Modifying chunks will result in losing your recordings for this chapter. Do you wish to continue?</string>
     <string name="createProjectMessageTitle">Tạo Dự án mới để Bắt đầu</string>
     <string name="createProjectMessageBody">Bấm nút để tạo Dự án mới </string>
     <string name="newProject">Tạo Dự án mới</string>
