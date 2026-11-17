@@ -185,8 +185,6 @@
     <string name="cd_next_take">Next Take</string>
     <string name="unit_verse_label">Verse %1$s</string>
     <string name="unit_take_position">Take %1$d of %2$d</string>
-    <string name="recorder_blocked_by_backup_title">This project is being backed up.</string>
-    <string name="recorder_blocked_by_backup_message">Recording is paused until the backup finishes.</string>
 
     <!-- ───────────── Recorder ───────────── -->
     <string name="recorder_label_chapter">Chapter</string>
