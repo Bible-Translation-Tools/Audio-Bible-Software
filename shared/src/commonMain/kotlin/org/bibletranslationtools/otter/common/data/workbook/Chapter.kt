@@ -1,10 +1,13 @@
 package org.bibletranslationtools.otter.common.data.workbook
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
 import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.primitives.MimeType
@@ -45,11 +48,33 @@ class Chapter internal constructor(
     /** The chapter's state, loading the chunks first if nothing has read them yet. */
     suspend fun loadedState(): ChapterState {
         if (!_state.value.loaded) {
-            loading.withLock {
-                if (!_state.value.loaded) _state.value = layoutState(store.loadChunks(id))
+            val loadedNow = loading.withLock {
+                if (_state.value.loaded) {
+                    false
+                } else {
+                    _state.value = layoutState(store.loadChunks(id))
+                    true
+                }
             }
+            if (loadedNow) resetStaleChecking(_state.value)
         }
         return _state.value
+    }
+
+    /**
+     * A checking status belongs to the audio it was given for. Once per load, any chunk whose selected
+     * take's audio has changed since (an edit in an external program) goes back to unchecked. Reading
+     * a status never writes; this is the one place a stale one is reset.
+     */
+    private suspend fun resetStaleChecking(state: ChapterState) {
+        state.chunks.forEach { chunk ->
+            val take = chunk.audio.getSelectedTake() ?: return@forEach
+            if (take.checking.status == CheckingStatus.UNCHECKED) return@forEach
+            val current = withContext(Dispatchers.IO) { take.checksum() }
+            if (current != take.checking.checksum) {
+                chunk.audio.setChecking(take, TakeCheckingState(CheckingStatus.UNCHECKED, null))
+            }
+        }
     }
 
     /** The active layout's chunks, loading them if needed. */
