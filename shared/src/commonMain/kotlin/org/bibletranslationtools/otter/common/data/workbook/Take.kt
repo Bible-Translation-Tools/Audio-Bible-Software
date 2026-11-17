@@ -11,10 +11,10 @@ import java.time.LocalDate
  * through the [AssociatedAudio] that owns it, which saves the change and then replaces this value
  * in its state.
  *
- * Two takes are the same take when their [id]s are equal, whatever else differs, so an updated copy
- * still finds its place in a list.
+ * Equality is by value, all fields: an updated copy is a different value, so the state flows that hold
+ * takes see the change. To ask whether two values are the same take, compare their [id]s.
  */
-class Take(
+data class Take(
     val id: TakeId,
     val name: String,
     val file: File,
@@ -30,15 +30,6 @@ class Take(
     fun checksum() = computeFileChecksum(file)
 
     fun getSavedChecksum() = checking.checksum
-
-    fun copy(
-        deletedOn: LocalDate? = this.deletedOn,
-        checking: TakeCheckingState = this.checking
-    ) = Take(id, name, file, number, format, createdTimestamp, deletedOn, checking)
-
-    override fun equals(other: Any?): Boolean = other is Take && other.id == id
-
-    override fun hashCode(): Int = id.hashCode()
 
     override fun toString(): String = "Take($name, number=$number, deletedOn=$deletedOn, checking=${checking.status})"
 }

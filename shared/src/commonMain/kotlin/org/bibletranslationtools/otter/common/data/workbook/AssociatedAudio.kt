@@ -80,10 +80,13 @@ class AssociatedAudio internal constructor(
         _state.update { s -> s.copy(takes = s.takes.map { if (it.id == take.id) it.copy(deletedOn = null) else it }) }
     }
 
-    /** Sets [take]'s checking status. Returns the updated take. */
+    /**
+     * Sets [take]'s checking status. Returns the updated take: the one this element holds, so a
+     * caller's older copy (from before a delete, say) does not bring back stale fields.
+     */
     suspend fun setChecking(take: Take, checking: TakeCheckingState): SaveResult<Take> = writer.save(gate) {
         store.setChecking(take.id, checking)
-        val updated = take.copy(checking = checking)
+        val updated = (take(take.id) ?: take).copy(checking = checking)
         _state.update { s -> s.copy(takes = s.takes.map { if (it.id == take.id) updated else it }) }
         updated
     }

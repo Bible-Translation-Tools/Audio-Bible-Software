@@ -617,7 +617,7 @@ class OratureBlindDraftViewModel(
         val take = takesById[id]?.let { chunk.audio.take(it.id) } ?: return
         runCatching { takePlayer?.pause() }
         launchLogged {
-            val wasSelected = chunk.audio.getSelectedTake() == take
+            val wasSelected = chunk.audio.getSelectedTake()?.id == take.id
             val op = TranslationTakeDeleteAction(chunk, take, wasSelected, ::handlePostDeleteTake)
             saveMessages.report(session.execute(op))
             onChunk(chunk)

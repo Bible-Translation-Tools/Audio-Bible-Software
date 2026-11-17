@@ -171,7 +171,7 @@ class OraturePeerEditViewModel(
      */
     private fun showSavedState() {
         val chunk = activeChunk ?: return
-        if (chunk.audio.getSelectedTake() != selectedTake) {
+        if (chunk.audio.getSelectedTake()?.id != selectedTake?.id) {
             onChunk(chunk)
             return
         }
