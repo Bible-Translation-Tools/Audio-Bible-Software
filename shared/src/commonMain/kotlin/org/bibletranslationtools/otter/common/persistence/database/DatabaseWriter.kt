@@ -46,7 +46,9 @@ class DatabaseWriter(
      * [writeBlocking]).
      */
     val scheduler: Scheduler = Schedulers.from { task ->
-        queue.dispatch(EmptyCoroutineContext, Runnable { inQueueTask { task.run() } })
+        val marked = Runnable { inQueueTask { task.run() } }
+        // A dispatcher that runs in place (tests' Unconfined) must not be dispatched to.
+        if (queue.isDispatchNeeded(EmptyCoroutineContext)) queue.dispatch(EmptyCoroutineContext, marked) else marked.run()
     }
 
     /** Runs [block] as one transaction on the queue and returns its result. */
