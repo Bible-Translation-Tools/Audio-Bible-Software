@@ -18,24 +18,17 @@
  */
 package org.bibletranslationtools.otter.common.persistence.repositories
 
-import io.reactivex.Completable
 import io.reactivex.Maybe
-import io.reactivex.Observable
 import io.reactivex.Single
-import io.reactivex.schedulers.Schedulers
-import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IContentRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ITakeRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDatabaseAccessors
-import org.bibletranslationtools.otter.common.api.persistence.repositories.ModelTake
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.Content
-import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
-import org.bibletranslationtools.otter.common.data.workbook.DateHolder
 
 class WorkbookDatabaseAccessor(
     private val collectionRepo: ICollectionRepository,
@@ -45,55 +38,9 @@ class WorkbookDatabaseAccessor(
     private val takeRepo: ITakeRepository
 ) : IWorkbookDatabaseAccessors {
 
-    private val logger = LoggerFactory.getLogger(this::class.java)
-
-    override fun getChunkCount(chapterCollection: Collection): Single<Int> {
-        return contentRepo
-            .getByCollection(chapterCollection)
-            .map { it.count { it.type == ContentType.TEXT } }
-    }
-
-    override fun clearContentForCollection(
-        chapterCollection: Collection,
-        typeFilter: ContentType
-    ): Completable {
-        // Only this chapter's takes, rows and content in one transaction. This used to run
-        // deleteExpiredTakes() too, which purges every soft-deleted take in the database: pending,
-        // undoable deletes in every other project lost their rows and their audio.
-        return contentRepo.clearForCollection(chapterCollection, typeFilter)
-            .doOnSuccess { files ->
-                // Files after rows: a file left behind by a failure here is harmless, while a row
-                // pointing at a deleted file is not. Deleting rows alone used to orphan the audio.
-                files.forEach { file ->
-                    if (file.exists() && !file.delete()) {
-                        logger.warn("Could not delete the audio of a rechunked take: $file")
-                    }
-                }
-            }
-            .ignoreElement()
-    }
-
-    override fun addContentForCollection(collection: Collection, chunks: List<Content>): Completable {
-        return Single
-            .fromCallable {
-                collectionRepo.getSource(collection).blockingGet()
-                    ?.let { source -> contentRepo.getByCollection(source).blockingGet() }
-                    ?: emptyList()
-            }
-            .subscribeOn(Schedulers.io())
-            .flatMap { sourceContents -> contentRepo.insertForCollectionLinked(chunks, collection, sourceContents) }
-            .ignoreElement()
-    }
-
     override fun getChildren(collection: Collection) = collectionRepo.getChildren(collection)
 
     override fun getCollectionMetaContent(collection: Collection) = contentRepo.getCollectionMetaContent(collection)
-    override fun getContentByCollection(collection: Collection) = contentRepo.getByCollection(collection)
-    override fun getContentByCollectionActiveConnection(collection: Collection): Observable<List<Content>> {
-        return contentRepo.getByCollectionWithPersistentConnection(collection)
-    }
-
-    override fun updateContent(content: Content) = contentRepo.update(content)
 
     override fun getResources(content: Content, metadata: ResourceMetadata) =
         resourceRepo.getResources(content, metadata)
@@ -110,13 +57,6 @@ class WorkbookDatabaseAccessor(
     override fun getSubtreeResourceMetadata(collection: Collection) =
         resourceRepo.getSubtreeResourceMetadata(collection)
 
-    override fun insertTakeForContent(take: ModelTake, content: Content) = takeRepo.insertForContent(take, content)
-    override fun getTakeByContent(content: Content) = takeRepo.getByContent(content, includeDeleted = true)
-    override fun updateTake(take: ModelTake) = takeRepo.update(take)
-    override fun deleteTake(take: ModelTake, date: DateHolder) = takeRepo.setDeleted(take.id, date.value)
-    override fun setTakeChecking(take: ModelTake, status: org.bibletranslationtools.otter.common.data.primitives.CheckingStatus, checksum: String?) =
-        takeRepo.setChecking(take.id, status, checksum)
-
     override fun getSoftDeletedTakes(metadata: ResourceMetadata, projectSlug: String) =
         takeRepo.getSoftDeletedTakes(collectionRepo.getProjectBySlugAndMetadata(projectSlug, metadata).blockingGet())
 
@@ -128,7 +68,4 @@ class WorkbookDatabaseAccessor(
 
     override fun getSourceProject(targetProject: Collection): Maybe<Collection> =
         collectionRepo.getSource(targetProject)
-
-
-
 }

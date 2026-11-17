@@ -28,12 +28,20 @@ import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 
 interface IWorkbookRepository {
+    /**
+     * The project's workbook. There is one live copy per project: every caller gets the same
+     * workbook until it is closed.
+     */
     fun get(source: Collection, target: Collection): Workbook
     fun getSoftDeletedTakes(book: Book): Single<List<Take>>
     fun getProjects(): Single<List<Workbook>>
     fun getProjects(translation: Translation): Single<List<Workbook>>
     fun getWorkbook(project: Collection): Maybe<Workbook>
-    fun closeWorkbook(workbook: Workbook)
+    /**
+     * Closes [workbook]: it refuses later changes, the change in progress is saved first, and the
+     * next [get] for its project builds a fresh copy from storage.
+     */
+    suspend fun closeWorkbook(workbook: Workbook)
 
     suspend fun getSoftDeletedTakesSuspend(book: Book): List<Take>
     suspend fun getProjectsSuspend(): List<Workbook>

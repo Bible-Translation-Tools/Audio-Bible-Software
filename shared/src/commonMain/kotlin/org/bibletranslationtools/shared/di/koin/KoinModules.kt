@@ -82,7 +82,8 @@ val appRepositoriesModule = module {
             get(), // contentRepository
             get(), // resourceRepository
             get(), // resourceMetadataRepo
-            get()  // takeRepository
+            get(), // takeRepository
+            get()  // workbook store
         )
     }
     singleOf(::WorkbookDescriptorRepository) { bind<IWorkbookDescriptorRepository>() }

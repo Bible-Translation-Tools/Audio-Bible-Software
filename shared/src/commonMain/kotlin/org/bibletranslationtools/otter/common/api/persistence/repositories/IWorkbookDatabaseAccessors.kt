@@ -18,47 +18,27 @@
  */
 package org.bibletranslationtools.otter.common.api.persistence.repositories
 
-import io.reactivex.Completable
 import io.reactivex.Maybe
 import io.reactivex.Observable
 import io.reactivex.Single
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.Content
-import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
-import org.bibletranslationtools.otter.common.data.workbook.DateHolder
 
 typealias ModelTake = org.bibletranslationtools.otter.common.data.primitives.Take
 
+/** The reads the workbook loader needs. The workbook's writes go through its WorkbookStore. */
 interface IWorkbookDatabaseAccessors {
-    fun addContentForCollection(collection: Collection, chunks: List<Content>): Completable
     fun getChildren(collection: Collection): Single<List<Collection>>
     fun getCollectionMetaContent(collection: Collection): Single<Content>
-    fun getContentByCollection(collection: Collection): Single<List<Content>>
-    fun getContentByCollectionActiveConnection(collection: Collection): Observable<List<Content>>
-    fun updateContent(content: Content): Completable
     fun getResources(content: Content, metadata: ResourceMetadata): Observable<Content>
     fun getResources(collection: Collection, metadata: ResourceMetadata): Observable<Content>
     fun getResourceMetadata(content: Content): List<ResourceMetadata>
     fun getResourceMetadata(collection: Collection): List<ResourceMetadata>
     fun getLinkedResourceMetadata(metadata: ResourceMetadata): List<ResourceMetadata>
     fun getSubtreeResourceMetadata(collection: Collection): List<ResourceMetadata>
-    fun insertTakeForContent(take: ModelTake, content: Content): Single<Int>
-    fun getTakeByContent(content: Content): Single<List<ModelTake>>
-    fun updateTake(take: ModelTake): Completable
-    /** Sets only the take's deleted date; an empty [date] restores it. */
-    fun deleteTake(take: ModelTake, date: DateHolder): Completable
-    /** Sets only the take's checking status and checksum. */
-    fun setTakeChecking(take: ModelTake, status: org.bibletranslationtools.otter.common.data.primitives.CheckingStatus, checksum: String?): Completable
     fun getSoftDeletedTakes(metadata: ResourceMetadata, projectSlug: String): Single<List<ModelTake>>
     fun getDerivedProject(sourceCollection: Collection): Maybe<Collection>
     fun getDerivedProjects(): Single<List<Collection>>
     fun getSourceProject(targetProject: Collection): Maybe<Collection>
-    /** Deletes the chapter's [typeFilter] content and its takes in one transaction, then their audio. */
-    fun clearContentForCollection(
-        chapterCollection: Collection,
-        typeFilter: ContentType
-    ): Completable
-
-    fun getChunkCount(chapterCollection: Collection): Single<Int>
 }

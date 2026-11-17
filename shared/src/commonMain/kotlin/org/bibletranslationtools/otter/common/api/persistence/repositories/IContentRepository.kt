@@ -19,7 +19,6 @@
 package org.bibletranslationtools.otter.common.api.persistence.repositories
 
 import io.reactivex.Completable
-import io.reactivex.Observable
 import io.reactivex.Single
 import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.Collection
@@ -32,7 +31,6 @@ interface IContentRepository : IRepository<Content> {
     fun insertForCollection(contentList: List<Content>, collection: Collection): Single<List<Content>>
     // Get all the chunks for a collection
     fun getByCollection(collection: Collection): Single<List<Content>>
-    fun getByCollectionWithPersistentConnection(collection: Collection): Observable<List<Content>>
     // Get the collection meta-chunk
     fun getCollectionMetaContent(collection: Collection): Single<Content>
     // Get sources this content is derived from
@@ -40,14 +38,6 @@ interface IContentRepository : IRepository<Content> {
     // Update the sources for a content
     fun updateSources(content: Content, sourceContents: List<Content>): Completable
 
-    /**
-     * Deletes [chapterCollection]'s content rows of [typeFilter] and their takes' rows, in one
-     * transaction. Returns the deleted takes' files, for the caller to delete once the rows are gone.
-     */
-    fun clearForCollection(chapterCollection: Collection, typeFilter: ContentType): Single<List<java.io.File>>
-
-    /** Inserts [contentList] into [collection] and links each to its match in [sourceContents], in one transaction. */
-    fun insertForCollectionLinked(contentList: List<Content>, collection: Collection, sourceContents: List<Content>): Single<List<Content>>
     fun deleteForCollection(
         chapterCollection: Collection,
         typeFilter: ContentType? = null

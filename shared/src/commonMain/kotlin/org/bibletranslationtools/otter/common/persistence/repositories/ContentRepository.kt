@@ -18,15 +18,11 @@
  */
 package org.bibletranslationtools.otter.common.persistence.repositories
 
-import java.io.File
 import org.bibletranslationtools.otter.common.persistence.database.DatabaseWriter
-import com.jakewharton.rxrelay2.BehaviorRelay
 import io.reactivex.Completable
-import io.reactivex.Observable
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.rx2.asFlow
 import kotlinx.coroutines.rx2.await
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.primitives.Collection
@@ -47,7 +43,6 @@ class ContentRepository(
 ) : IContentRepository {
     private val logger = LoggerFactory.getLogger(ContentRepository::class.java)
 
-    private val activeConnections = mutableMapOf<Collection, BehaviorRelay<List<Content>>>()
 
     private val contentDao = database.contentDao
     private val takeDao = database.takeDao
@@ -70,21 +65,6 @@ class ContentRepository(
                 logger.error("Error in getByCollection for collection: $collection", e)
             }
             .subscribeOn(Schedulers.io())
-    }
-
-    override fun getByCollectionWithPersistentConnection(collection: Collection): Observable<List<Content>> {
-        activeConnections.getOrDefault(collection, null)?.let { return it }
-
-        val connection = BehaviorRelay.create<List<Content>>()
-        activeConnections[collection] = connection
-        getByCollection(collection)
-            .map {
-                connection.accept(it)
-            }
-            .subscribeOn(Schedulers.io())
-            .subscribe()
-
-        return connection
     }
 
     override fun getCollectionMetaContent(collection: Collection): Single<Content> {
@@ -142,49 +122,12 @@ class ContentRepository(
             contentTypeDao.fetchId(typeFilter)
         }
 
-        activeConnections.getOrDefault(chapterCollection, null)
-            ?.let { it.value?.forEach { chunk -> chunk.draftNumber = -1 } }
-
         return Completable.fromCallable {
             contentDao.deleteForCollection(
                 collectionMapper.mapToEntity(chapterCollection),
                 typeId
             )
         }.subscribeOn(databaseWriter.scheduler)
-    }
-
-    override fun clearForCollection(chapterCollection: Collection, typeFilter: ContentType): Single<List<File>> {
-        val typeId = contentTypeDao.fetchId(typeFilter)
-        activeConnections.getOrDefault(chapterCollection, null)
-            ?.let { it.value?.forEach { chunk -> chunk.draftNumber = -1 } }
-
-        return databaseWriter.single {
-            val takes = takeDao.fetchByCollectionId(chapterCollection.id, includeDeleted = true)
-                .filter { take -> contentDao.fetchById(take.contentFk).type_fk == typeId }
-            takes.forEach { takeDao.delete(it) }
-            contentDao.deleteForCollection(collectionMapper.mapToEntity(chapterCollection), typeId)
-            takes.map { File(it.filepath) }
-        }.doOnError { e -> logger.error("Error in clearForCollection for collection: $chapterCollection", e) }
-    }
-
-    override fun insertForCollectionLinked(
-        contentList: List<Content>,
-        collection: Collection,
-        sourceContents: List<Content>
-    ): Single<List<Content>> {
-        return Single
-            .fromCallable {
-                // Rows and their source links in one transaction: a failure leaves neither.
-                database.transaction {
-                    insertRows(contentList, collection)
-                    linkRows(contentList, sourceContents)
-                }
-                val contentsAfterInsertion = getByCollection(collection).blockingGet()
-                activeConnections.getOrDefault(collection, null)?.accept(contentsAfterInsertion)
-                contentsAfterInsertion
-            }
-            .doOnError { e -> logger.error("Error in insertForCollectionLinked for collection: $collection", e) }
-            .subscribeOn(databaseWriter.scheduler)
     }
 
     private fun insertRows(contentList: List<Content>, collection: Collection) {
@@ -244,8 +187,6 @@ class ContentRepository(
                 // One transaction; the read below runs after it commits, so it sees the new rows.
                 database.transaction { insertRows(contentList, collection) }
                 val contentsAfterInsertion = getByCollection(collection).blockingGet()
-                activeConnections.getOrDefault(collection, null)
-                    ?.accept(contentsAfterInsertion)
 
                 contentsAfterInsertion
             }
@@ -292,44 +233,11 @@ class ContentRepository(
                 // Make sure we don't overwrite the collection relationship
                 entity.collectionFk = existing.collectionFk
                 contentDao.update(entity)
-
-                updateConnection(obj, entity.collectionFk)
             }
             .doOnError { e ->
                 logger.error("Error in update for content: $obj", e)
             }
             .subscribeOn(databaseWriter.scheduler)
-    }
-
-    /**
-     * Updates the content stored inside the active connections.
-     * Calls this method when making a change to the content in the database
-     * to avoid out-of-sync between the database and connections.
-     */
-    private fun updateConnection(
-        newContent: Content,
-        collectionId: Int
-    ) {
-        activeConnections.keys.find { it.id == collectionId }?.let { collection ->
-            activeConnections[collection]?.let { connection ->
-                connection.value?.find {
-                    it.id == newContent.id
-                }?.let { contentInRelay ->
-                    contentInRelay.apply {
-                        sort = newContent.sort
-                        labelKey = newContent.labelKey
-                        start = newContent.start
-                        end = newContent.end
-                        selectedTake = newContent.selectedTake
-                        text = newContent.text
-                        format = newContent.format
-                        type = newContent.type
-                        draftNumber = newContent.draftNumber
-                        bridged = newContent.bridged
-                    }
-                }
-            }
-        }
     }
 
     override suspend fun getAllSuspend(): List<Content> = getAll().await()
@@ -343,7 +251,7 @@ class ContentRepository(
         getByCollection(collection).await()
 
     override fun getByCollectionFlow(collection: Collection): Flow<List<Content>> =
-        getByCollectionWithPersistentConnection(collection).asFlow()
+        kotlinx.coroutines.flow.flow { emit(getByCollection(collection).await()) }
 
     override suspend fun getCollectionMetaContentSuspend(collection: Collection): Content =
         getCollectionMetaContent(collection).await()
