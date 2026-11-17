@@ -1,10 +1,10 @@
 package org.bibletranslationtools.otter.common.domain.project
 
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
-import io.reactivex.Observable
 import kotlinx.coroutines.test.runTest
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
@@ -40,11 +40,11 @@ class OpenWorkbookTest {
     private fun chapter(sort: Int, completed: Boolean = false): Chapter = mockk {
         every { this@mockk.sort } returns sort
         every { hasSelectedAudio() } returns completed
-        every { completionStatus.getChapterNarrationProgress(any(), this@mockk) } returns
+        coEvery { completionStatus.getChapterNarrationProgress(any(), this@mockk) } returns
             if (completed) 1.0 else 0.0
     }
 
-    /** @param emitted the chapters as the target book's observable emits them */
+    /** @param emitted the chapters in the order the target book lists them */
     private fun stub(
         emitted: List<Chapter>,
         mode: ProjectMode = ProjectMode.NARRATION
@@ -57,7 +57,7 @@ class OpenWorkbookTest {
             every { this@mockk.mode } returns mode
         }
         val targetBook: Book = mockk {
-            every { chapters } returns Observable.fromIterable(emitted)
+            coEvery { chapters() } returns emitted
         }
         val workbook: Workbook = mockk(relaxed = true) {
             every { target } returns targetBook
@@ -90,15 +90,16 @@ class OpenWorkbookTest {
     /**
      * The whole reason [OpenWorkbook.open] exists alongside [OpenWorkbook.openWithChapters]:
      * screens with no chapter list should not pay a `hasSelectedAudio()` query per chapter. If
-     * `open` ever starts draining the chapter observable, this catches it.
+     * `open` ever starts loading the chapters, this catches it.
      */
     @Test
     fun `open does not touch chapter completion`() = runTest {
         val chapters = listOf(chapter(1, completed = true), chapter(2), chapter(3))
-        stub(chapters, mode = ProjectMode.TRANSLATION)
+        val targetBook = stub(chapters, mode = ProjectMode.TRANSLATION).target
 
         openWorkbook.open(descriptorId)
 
+        coVerify(exactly = 0) { targetBook.chapters() }
         chapters.forEach { verify(exactly = 0) { it.hasSelectedAudio() } }
     }
 
@@ -112,7 +113,7 @@ class OpenWorkbookTest {
     }
 
     /**
-     * The chapter observable emits in whatever order the query returns. Callers index the list
+     * The book lists its chapters in whatever order the query returns. Callers index the list
      * positionally to build the chapter grid and to step next/previous, so sorting here is the
      * contract rather than an incidental detail.
      */
@@ -150,7 +151,7 @@ class OpenWorkbookTest {
             every { sort } returns 1
             // No compiled take, yet every verse is recorded.
             every { hasSelectedAudio() } returns false
-            every { completionStatus.getChapterNarrationProgress(any(), this@mockk) } returns 1.0
+            coEvery { completionStatus.getChapterNarrationProgress(any(), this@mockk) } returns 1.0
         }
         stub(listOf(narrated), mode = ProjectMode.NARRATION)
 
@@ -164,7 +165,7 @@ class OpenWorkbookTest {
         val partial: Chapter = mockk {
             every { sort } returns 1
             every { hasSelectedAudio() } returns true
-            every { completionStatus.getChapterNarrationProgress(any(), this@mockk) } returns 0.5
+            coEvery { completionStatus.getChapterNarrationProgress(any(), this@mockk) } returns 0.5
         }
         stub(listOf(partial), mode = ProjectMode.DIALECT)
 

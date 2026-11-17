@@ -57,7 +57,9 @@ class WorkbookBuilder(
         val chapters = spec.chapters.map { chapter ->
             val chapterId = store.newContentId()
             val audioId = store.newContentId()
-            store.putAudio(audioId, audioState(chapter.takes))
+            // One state for the store and the node: each audioState call mints new take ids.
+            val chapterAudio = audioState(chapter.takes)
+            store.putAudio(audioId, chapterAudio)
             store.putLayout(
                 chapterId,
                 ChapterLayout(
@@ -77,7 +79,7 @@ class WorkbookBuilder(
             )
             nodes.chapter(
                 id = ChapterId(chapterId), sort = chapter.sort, title = "${chapter.sort}", label = "chapter",
-                audioOwner = ChapterAudioId(audioId), audio = audioState(chapter.takes)
+                audioOwner = ChapterAudioId(audioId), audio = chapterAudio
             )
         }
         val metadata = metadata(spec.languageSlug)

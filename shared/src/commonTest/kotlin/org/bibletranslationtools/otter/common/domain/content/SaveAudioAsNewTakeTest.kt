@@ -4,24 +4,22 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.verify
-import io.reactivex.Observable
-import io.reactivex.Single
 import kotlinx.coroutines.test.runTest
-import org.bibletranslationtools.otter.common.audio.wav.IWaveFileCreator
-import org.bibletranslationtools.otter.common.data.primitives.ContentType
-import org.bibletranslationtools.otter.common.data.primitives.Language
-import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
-import org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio
-import org.bibletranslationtools.otter.common.data.workbook.Book
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
+import org.bibletranslationtools.otter.common.data.workbook.SaveFailure
+import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
+import org.bibletranslationtools.otter.common.data.workbook.fixture.FakeWorkbookStore
+import org.bibletranslationtools.otter.common.data.workbook.fixture.WorkbookBuilder
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesAccessor
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
@@ -34,62 +32,50 @@ import kotlin.test.assertTrue
  */
 class SaveAudioAsNewTakeTest {
 
-    private val waveFileCreator = mockk<IWaveFileCreator>(relaxed = true)
-    private val saveAudioAsNewTake = SaveAudioAsNewTake(TakeCreator(waveFileCreator))
+    private val store = FakeWorkbookStore()
+    private val accessor = mockk<ProjectFilesAccessor>(relaxed = true)
+    private val projectFiles = mockk<ProjectFilesService>()
+    private val saveAudioAsNewTake = SaveAudioAsNewTake(projectFiles)
 
     private lateinit var chapterAudioDir: File
-    private lateinit var audio: AssociatedAudio
 
-    /** A workbook whose file layout points at [chapterAudioDir], with one chapter. */
-    private fun fixture(takeNumber: Int = 3): Triple<Workbook, Chapter, AssociatedAudio> {
+    /**
+     * A workbook whose file layout points at [chapterAudioDir], with one chapter whose next take
+     * number is [takeNumber] (it already has takes 1 to takeNumber - 1).
+     */
+    private suspend fun fixture(takeNumber: Int = 3): Pair<Workbook, Chapter> {
         chapterAudioDir = File.createTempFile("chapter-audio", "").let {
-            it.delete(); it.mkdirs(); it
+            it.delete(); it.mkdirs(); it.deleteOnExit(); it
         }
 
-        audio = mockk(relaxed = true)
-        coEvery { audio.getNewTakeNumberSuspend() } returns takeNumber
+        val workbook = WorkbookBuilder(store).build {
+            target {
+                chapter(1) { (1 until takeNumber).forEach { take("chapter_t$it.wav") } }
+            }
+        }
+        coEvery { accessor.getChapterAudioDir(any(), any()) } returns chapterAudioDir
+        every { projectFiles.of(workbook) } returns accessor
 
-        val chapter = mockk<Chapter>(relaxed = true)
-        every { chapter.sort } returns 1
-        every { chapter.title } returns "1"
-        every { chapter.label } returns "chapter"
-        every { chapter.chunkCount } returns Single.just(0)
-        every { chapter.contentType } returns ContentType.META
-        every { chapter.audio } returns audio
-
-        val language = mockk<Language>(relaxed = true)
-        every { language.slug } returns "en"
-        val metadata = mockk<ResourceMetadata>(relaxed = true)
-        every { metadata.identifier } returns "ulb"
-
-        val book = mockk<Book>(relaxed = true)
-        every { book.slug } returns "gen"
-        every { book.language } returns language
-        every { book.resourceMetadata } returns metadata
-        every { book.chapters } returns Observable.just(chapter)
-
-        val accessor = mockk<ProjectFilesAccessor>(relaxed = true)
-        every { accessor.getChapterAudioDir(any(), any()) } returns chapterAudioDir
-
-        val workbook = mockk<Workbook>(relaxed = true)
-        every { workbook.source } returns book
-        every { workbook.target } returns book
-        every { workbook.sourceMetadataSlug } returns "ulb"
-        every { workbook.projectFilesAccessor } returns accessor
-
-        return Triple(workbook, chapter, audio)
+        val chapter = workbook.target.chapters().single()
+        store.calls.clear()
+        return workbook to chapter
     }
 
     private fun sourceAudio(bytes: ByteArray = byteArrayOf(1, 2, 3, 4)): File =
         File.createTempFile("edited", ".wav").apply { writeBytes(bytes); deleteOnExit() }
 
+    /** The store's writes, without its reads (the file namer loads the chapter's chunks). */
+    private fun writes() = store.calls.filterNot { it.startsWith("load") }
+
+    private fun SaveResult<Take>.saved(): Take = assertIs<SaveResult.Saved<Take>>(this).value
+
     @Test
     fun `creates the take in the chapter audio directory and copies the audio in`() = runTest {
-        val (workbook, chapter, _) = fixture()
+        val (workbook, chapter) = fixture()
         val bytes = byteArrayOf(9, 8, 7, 6, 5)
         val edited = sourceAudio(bytes)
 
-        val take = saveAudioAsNewTake.execute(workbook, chapter, null, chapter, edited)
+        val take = saveAudioAsNewTake.execute(workbook, chapter, null, chapter, edited).saved()
 
         assertEquals(
             chapterAudioDir.canonicalFile,
@@ -106,9 +92,9 @@ class SaveAudioAsNewTakeTest {
 
     @Test
     fun `uses the next take number the associated audio reports`() = runTest {
-        val (workbook, chapter, _) = fixture(takeNumber = 7)
+        val (workbook, chapter) = fixture(takeNumber = 7)
 
-        val take = saveAudioAsNewTake.execute(workbook, chapter, null, chapter, sourceAudio())
+        val take = saveAudioAsNewTake.execute(workbook, chapter, null, chapter, sourceAudio()).saved()
 
         assertEquals(7, take.number)
         assertTrue(
@@ -119,35 +105,35 @@ class SaveAudioAsNewTakeTest {
 
     /**
      * Registering is the whole point — a take created on disk but never inserted is invisible to the
-     * project.
+     * project. It must be in the store, not only in the chapter's in-memory state.
      */
     @Test
     fun `inserts the new take`() = runTest {
-        val (workbook, chapter, audio) = fixture()
+        val (workbook, chapter) = fixture()
 
-        val take = saveAudioAsNewTake.execute(workbook, chapter, null, chapter, sourceAudio())
+        val take = saveAudioAsNewTake.execute(workbook, chapter, null, chapter, sourceAudio()).saved()
 
-        verify(exactly = 1) { audio.insertTake(take) }
+        assertEquals(listOf("addTake"), writes())
+        assertTrue(take in store.saved(chapter.audio.owner).takes, "the take was not saved")
+        assertTrue(take in chapter.audio.getAllTakes(), "the chapter does not show the saved take")
     }
 
     /**
-     * Selecting from here is a foreign-key violation, and this test is the guard against it coming
-     * back. `WorkbookRepository` inserts on `Schedulers.io` and only assigns the take's id in that
-     * subscribe; selecting synchronously on this thread beforehand read the take back out of
-     * `takeMap` while its id was still 0 and wrote `selected_take_fk = 0`, which failed the insert
-     * and broke saving a recording outright.
-     *
-     * The take still ends up selected: the repository selects every take it inserts, after the id
-     * lands. The JavaFX app relied on exactly that — ChapterReviewViewModel, PeerEditViewModel and
-     * NarrationHistory all insert and never select — and so does the recorder's commitStagedTake.
+     * Selecting in a separate write is the foreign-key violation this used to guard against: the old
+     * repository assigned the take's id asynchronously, and selecting beforehand wrote
+     * `selected_take_fk = 0`, which failed the insert and broke saving a recording outright. The take
+     * is now saved and selected in one write, so nothing can select it before it has an id — and
+     * both the store and the chapter agree it is the selected take.
      */
     @Test
-    fun `does not select the take itself`() = runTest {
-        val (workbook, chapter, audio) = fixture()
+    fun `saves and selects the take in one write`() = runTest {
+        val (workbook, chapter) = fixture()
 
-        saveAudioAsNewTake.execute(workbook, chapter, null, chapter, sourceAudio())
+        val take = saveAudioAsNewTake.execute(workbook, chapter, null, chapter, sourceAudio()).saved()
 
-        verify(exactly = 0) { audio.selectTake(any<Take>()) }
+        assertEquals(listOf("addTake"), writes(), "selecting must not be a separate write")
+        assertEquals(take.id, store.saved(chapter.audio.owner).selected, "the saved take was not selected")
+        assertEquals(take, chapter.audio.getSelectedTake())
     }
 
     /**
@@ -156,10 +142,17 @@ class SaveAudioAsNewTakeTest {
      */
     @Test
     fun `never overwrites an existing take file`() = runTest {
-        val (workbook, chapter, _) = fixture(takeNumber = 1)
-        val first = saveAudioAsNewTake.execute(workbook, chapter, null, chapter, sourceAudio(byteArrayOf(1)))
+        val (workbook, chapter) = fixture(takeNumber = 1)
+        val first = saveAudioAsNewTake.execute(workbook, chapter, null, chapter, sourceAudio(byteArrayOf(1))).saved()
+        // Forget the first take, as an orphan on disk would be: the next number is 1 again.
+        val again = WorkbookBuilder(store).build { target { chapter(1) } }
+        every { projectFiles.of(again) } returns accessor
+        val orphanChapter = again.target.chapters().single()
+        assertEquals(1, orphanChapter.audio.getNewTakeNumber())
 
-        val second = saveAudioAsNewTake.execute(workbook, chapter, null, chapter, sourceAudio(byteArrayOf(2)))
+        val second = saveAudioAsNewTake
+            .execute(again, orphanChapter, null, orphanChapter, sourceAudio(byteArrayOf(2)))
+            .saved()
 
         assertNotEquals(first.file.canonicalFile, second.file.canonicalFile)
         assertEquals(listOf<Byte>(1), first.file.readBytes().toList(), "the existing take's audio was replaced")
@@ -170,14 +163,15 @@ class SaveAudioAsNewTakeTest {
      * A missing input file must fail loudly and leave nothing half-registered. The recorder wraps
      * this call in `runCatching` and surfaces the message, so throwing is the contract.
      *
-     * The `getNewTakeNumberSuspend` assertion is the part worth having: `copyTo` would throw on a
-     * missing file regardless, so without it this test passes whether or not the explicit guard
-     * exists. What the guard actually buys is rejecting the input *before* allocating a take
-     * number and building a Take for audio that was never going to arrive.
+     * The empty-directory assertion is the part worth having: `copyTo` would throw on a missing file
+     * regardless, so without it this test passes whether or not the explicit guard exists. What the
+     * guard actually buys is rejecting the input *before* reserving a take file for audio that was
+     * never going to arrive.
      */
     @Test
     fun `fails fast without touching the take list when the audio file is missing`() = runTest {
-        val (workbook, chapter, audio) = fixture()
+        val (workbook, chapter) = fixture()
+        val takesBefore = chapter.audio.getAllTakes()
         val missing = File(chapterAudioDir, "not-there.wav")
 
         val error = assertFails { saveAudioAsNewTake.execute(workbook, chapter, null, chapter, missing) }
@@ -190,8 +184,26 @@ class SaveAudioAsNewTakeTest {
             missing.path in (error.message ?: ""),
             "the message should name the offending file, was: ${error.message}"
         )
-        coVerify(exactly = 0) { audio.getNewTakeNumberSuspend() }
-        verify(exactly = 0) { audio.insertTake(any()) }
-        verify(exactly = 0) { audio.selectTake(any<Take>()) }
+        coVerify(exactly = 0) { accessor.getChapterAudioDir(any(), any()) }
+        assertTrue(chapterAudioDir.listFiles().isNullOrEmpty(), "a take file was reserved for missing audio")
+        assertTrue(writes().isEmpty(), "nothing should have been written, calls were ${store.calls}")
+        assertEquals(takesBefore, chapter.audio.getAllTakes())
+    }
+
+    /** A save that fails leaves no take behind: not in the store, not in the chapter, not on disk. */
+    @Test
+    fun `a failed save removes the copied file and reports the failure`() = runTest {
+        val (workbook, chapter) = fixture()
+        val takesBefore = chapter.audio.getAllTakes()
+        val savedBefore = store.saved(chapter.audio.owner).takes
+        store.failNextWrite()
+
+        val result = saveAudioAsNewTake.execute(workbook, chapter, null, chapter, sourceAudio())
+
+        assertEquals(SaveFailure.COULD_NOT_SAVE, assertIs<SaveResult.Failed>(result).failure)
+        assertTrue(chapterAudioDir.listFiles().isNullOrEmpty(), "the copied take file was left behind")
+        assertEquals(savedBefore, store.saved(chapter.audio.owner).takes)
+        assertEquals(takesBefore, chapter.audio.getAllTakes())
+        assertFalse(chapter.hasSelectedAudio())
     }
 }

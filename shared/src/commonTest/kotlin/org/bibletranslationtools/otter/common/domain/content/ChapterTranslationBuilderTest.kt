@@ -1,25 +1,22 @@
 package org.bibletranslationtools.otter.common.domain.content
 
-import com.jakewharton.rxrelay2.BehaviorRelay
-import com.jakewharton.rxrelay2.ReplayRelay
 import io.mockk.every
 import io.mockk.mockk
 import io.reactivex.Single
-import org.bibletranslationtools.otter.common.audio.wav.IWaveFileCreator
+import kotlinx.coroutines.test.runTest
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
-import org.bibletranslationtools.otter.common.data.primitives.MimeType
-import org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio
-import org.bibletranslationtools.otter.common.data.workbook.Chapter
-import org.bibletranslationtools.otter.common.data.workbook.Chunk
-import org.bibletranslationtools.otter.common.data.workbook.Take
+import org.bibletranslationtools.otter.common.data.workbook.NewTake
+import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.TakeCheckingState
-import org.bibletranslationtools.otter.common.data.workbook.TakeHolder
-import org.bibletranslationtools.otter.common.data.workbook.Workbook
+import org.bibletranslationtools.otter.common.data.workbook.fixture.FakeWorkbookStore
+import org.bibletranslationtools.otter.common.data.workbook.fixture.WorkbookBuilder
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.bibletranslationtools.otter.common.utils.computeFileChecksum
 import java.io.File
-import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 class ChapterTranslationBuilderTest {
 
@@ -31,36 +28,34 @@ class ChapterTranslationBuilderTest {
      * has. It must not add that take to the chapter a second time.
      */
     @Test
-    fun `compiling an unchanged chapter does not add its take again`() {
+    fun `compiling an unchanged chapter does not add its take again`() = runTest {
         val compiled = tempFile(byteArrayOf(1, 2, 3))
-        val existing = Take(
-            name = "chapter_t1.wav", file = tempFile(byteArrayOf(1, 2, 3)), number = 1,
-            format = MimeType.WAV, createdTimestamp = LocalDate.now(),
-            checkingState = BehaviorRelay.createDefault(
-                TakeCheckingState(CheckingStatus.VERSE, computeFileChecksum(compiled))
+        val store = FakeWorkbookStore()
+        val workbook = WorkbookBuilder(store).build {
+            target { chapter(1) { chunk(1..1) { take("chunk_t1.wav", selected = true) } } }
+        }
+        val chapter = workbook.target.chapters().single()
+        val existing = assertIs<SaveResult.Saved<*>>(
+            chapter.audio.insertTake(
+                NewTake(
+                    file = tempFile(byteArrayOf(1, 2, 3)),
+                    number = 1,
+                    checking = TakeCheckingState(CheckingStatus.VERSE, computeFileChecksum(compiled))
+                ),
+                select = true
             )
-        )
-        val chapterAudio = AssociatedAudio(ReplayRelay.create(), BehaviorRelay.createDefault(TakeHolder(existing)))
-        chapterAudio.insertTake(existing)
-
-        val chunkTake = Take(
-            name = "chunk_t1.wav", file = tempFile(byteArrayOf(9)), number = 1,
-            format = MimeType.WAV, createdTimestamp = LocalDate.now()
-        )
-        val chunk = mockk<Chunk>(relaxed = true)
-        every { chunk.hasSelectedAudio() } returns true
-        every { chunk.audio } returns AssociatedAudio(ReplayRelay.create(), BehaviorRelay.createDefault(TakeHolder(chunkTake)))
-        val chapter = mockk<Chapter>(relaxed = true)
-        every { chapter.chunks } returns Single.just(listOf(chunk))
-        every { chapter.audio } returns chapterAudio
+        ).value
+        store.calls.clear()
 
         val concatenate = mockk<ConcatenateAudio>()
         every { concatenate.execute(any(), includeMarkers = false) } answers { Single.just(tempFile(byteArrayOf(1, 2, 3))) }
-        val builder = ChapterTranslationBuilder(concatenate, TakeCreator(mockk<IWaveFileCreator>(relaxed = true)))
+        val builder = ChapterTranslationBuilder(concatenate, mockk<ProjectFilesService>(relaxed = true))
 
-        val result = builder.getOrCompile(mockk<Workbook>(relaxed = true), chapter).blockingGet()
+        val result = builder.getOrCompile(workbook, chapter)
 
-        assertEquals(existing, result)
-        assertEquals(1, chapterAudio.getAllTakes().size, "the chapter's take was added a second time")
+        assertEquals(existing, assertIs<SaveResult.Saved<*>>(result).value)
+        assertEquals(1, chapter.audio.getAllTakes().size, "the chapter's take was added a second time")
+        assertEquals(1, store.saved(chapter.audio.owner).takes.size, "the chapter's take was saved a second time")
+        assertTrue("addTake" !in store.calls, "no take should have been written, calls were ${store.calls}")
     }
 }

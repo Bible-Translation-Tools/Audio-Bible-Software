@@ -8,7 +8,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
+import org.bibletranslationtools.otter.common.data.workbook.fixture.WorkbookBuilder
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesAccessor
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -25,10 +27,11 @@ import kotlin.test.assertTrue
 class InitializeProjectFilesTest {
 
     private val accessor: ProjectFilesAccessor = mockk(relaxed = true)
-    private val workbook: Workbook = mockk {
-        every { projectFilesAccessor } returns accessor
+    private val workbook: Workbook = WorkbookBuilder().build {}
+    private val projectFiles: ProjectFilesService = mockk {
+        every { of(workbook) } returns accessor
     }
-    private val useCase = InitializeProjectFiles()
+    private val useCase = InitializeProjectFiles(projectFiles)
     private val mode = ProjectMode.TRANSLATION
 
     @Test
@@ -129,11 +132,11 @@ class InitializeProjectFilesTest {
             // A fresh mock per case, so each starts from every-step-succeeding.
             val freshAccessor: ProjectFilesAccessor = mockk(relaxed = true)
             freshAccessor.breakThatStep()
-            val freshWorkbook: Workbook = mockk {
-                every { projectFilesAccessor } returns freshAccessor
+            val freshFiles: ProjectFilesService = mockk {
+                every { of(workbook) } returns freshAccessor
             }
 
-            val result = InitializeProjectFiles().execute(freshWorkbook, mode)
+            val result = InitializeProjectFiles(freshFiles).execute(workbook, mode)
 
             val failed = result as InitializeProjectFiles.Result.Failed
             assertEquals(step, failed.step)

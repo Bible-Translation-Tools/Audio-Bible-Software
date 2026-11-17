@@ -1,26 +1,28 @@
 package org.bibletranslationtools.otter.common.domain.project
 
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
-import io.reactivex.Observable
+import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import org.bibletranslationtools.otter.common.data.audio.VerseMarker
-import org.bibletranslationtools.otter.common.data.primitives.MimeType
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
-import org.bibletranslationtools.otter.common.data.workbook.Chunk
-import org.bibletranslationtools.otter.common.data.workbook.Take
+import org.bibletranslationtools.otter.common.data.workbook.NewTake
+import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
+import org.bibletranslationtools.otter.common.data.workbook.fixture.WorkbookBuilder
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.audio.WriteTakeMarkers
 import org.bibletranslationtools.otter.common.domain.narration.VerseNode
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesAccessor
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import java.io.File
 import java.nio.file.Files
-import java.time.LocalDate
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
@@ -31,7 +33,7 @@ import kotlin.test.assertTrue
  * off the selected take when the working file alone says "nothing placed" — but must NOT report
  * complete if the take is itself missing markers for some verses.
  *
- * These drive the real [ProjectCompletionStatus] through a real (mocked-collaborators)
+ * These drive the real [ProjectCompletionStatus] through a real
  * [org.bibletranslationtools.otter.common.domain.narration.ChapterRepresentation], with real files
  * on disk for active_verses.json / chapter_narration.pcm / the take's WAV — that class does file
  * I/O itself and is not designed to be swapped out from underneath ProjectCompletionStatus, so a
@@ -40,7 +42,8 @@ import kotlin.test.assertTrue
  */
 class ProjectCompletionStatusTest {
 
-    private val completionStatus = ProjectCompletionStatus()
+    private val projectFiles: ProjectFilesService = mockk()
+    private val completionStatus = ProjectCompletionStatus(projectFiles)
     private val tempDirs = mutableListOf<File>()
 
     @AfterTest
@@ -55,28 +58,23 @@ class ProjectCompletionStatusTest {
     }
 
     /**
-     * Stubs a Workbook/Chapter pair whose ChapterRepresentation (built internally by
-     * [ProjectCompletionStatus]) resolves its chapter directory to [chapterDir] and has
-     * [verseCount] verse chunks sorted 1..verseCount (matching [VerseMarker] labels "1".."N").
+     * A workbook whose target chapter 1 has [verseCount] verse chunks sorted 1..verseCount (matching
+     * [VerseMarker] labels "1".."N"), and whose project files resolve the chapter's directory to
+     * [chapterDir]. A [selectedTake] file is saved as the chapter's selected take.
      */
-    private fun stubChapter(chapterDir: File, verseCount: Int, selectedTake: Take? = null): Pair<Workbook, Chapter> {
-        val chunks = (1..verseCount).map { n ->
-            mockk<Chunk>(relaxed = true) {
-                every { sort } returns n
-                every { start } returns n
-                every { end } returns n
-            }
+    private suspend fun stubChapter(chapterDir: File, verseCount: Int, selectedTake: File? = null): Pair<Workbook, Chapter> {
+        val workbook = WorkbookBuilder().build {
+            target { chapter(1) { (1..verseCount).forEach { verse(it) } } }
         }
-        val chapter: Chapter = mockk(relaxed = true) {
-            every { observableChunks } returns Observable.just(chunks)
-            every { getSelectedTake() } returns selectedTake
+        val chapter = workbook.target.chapters().single()
+        if (selectedTake != null) {
+            val saved = chapter.audio.insertTake(NewTake(selectedTake, 1), select = true)
+            assertIs<SaveResult.Saved<*>>(saved, "the selected take should have been saved")
         }
-        val projectFilesAccessor: ProjectFilesAccessor = mockk(relaxed = true) {
-            every { getChapterAudioDir(any(), any()) } returns chapterDir
+        val accessor: ProjectFilesAccessor = mockk(relaxed = true) {
+            coEvery { getChapterAudioDir(any(), any()) } returns chapterDir
         }
-        val workbook: Workbook = mockk(relaxed = true) {
-            every { this@mockk.projectFilesAccessor } returns projectFilesAccessor
-        }
+        every { projectFiles.of(workbook) } returns accessor
         return workbook to chapter
     }
 
@@ -95,8 +93,8 @@ class ProjectCompletionStatusTest {
         File(chapterDir, "active_verses.json").writeText(json)
     }
 
-    /** A compiled chapter take: a real short WAV with [markerVerseNumbers] embedded as verse cues. */
-    private fun takeWithMarkers(markerVerseNumbers: List<Int>): Take {
+    /** A compiled chapter take's file: a real short WAV with [markerVerseNumbers] embedded as verse cues. */
+    private fun takeWithMarkers(markerVerseNumbers: List<Int>): File {
         val file = File.createTempFile("chapter-take", ".wav").apply { deleteOnExit() }
         tempDirs.add(file) // deleteRecursively() on a plain file just deletes it
         OratureAudioFile(file, 1, 44_100, 16)
@@ -107,17 +105,11 @@ class ProjectCompletionStatusTest {
             markerVerseNumbers.map { n -> VerseMarker(n, n, 0) },
             WriteTakeMarkers.ALL_CUE_TYPES
         )
-        return Take(
-            name = file.name,
-            file = file,
-            number = 1,
-            format = MimeType.WAV,
-            createdTimestamp = LocalDate.now()
-        )
+        return file
     }
 
     @Test
-    fun `imported chapter with empty working file but fully-marked take reads as complete`() {
+    fun `imported chapter with empty working file but fully-marked take reads as complete`() = runTest {
         val chapterDir = newChapterDir()
         val take = takeWithMarkers(listOf(1, 2, 3))
         val (workbook, chapter) = stubChapter(chapterDir, verseCount = 3, selectedTake = take)
@@ -128,7 +120,7 @@ class ProjectCompletionStatusTest {
     }
 
     @Test
-    fun `imported chapter whose take is missing a verse marker is not counted complete`() {
+    fun `imported chapter whose take is missing a verse marker is not counted complete`() = runTest {
         val chapterDir = newChapterDir()
         // Only 2 of the chapter's 3 verses have a cue on the take.
         val take = takeWithMarkers(listOf(1, 2))
@@ -141,7 +133,7 @@ class ProjectCompletionStatusTest {
     }
 
     @Test
-    fun `no selected take falls back to the working file's own partial progress`() {
+    fun `no selected take falls back to the working file's own partial progress`() = runTest {
         val chapterDir = newChapterDir()
         writePartiallyPlacedWorkingFile(chapterDir, placedVerseNumbers = listOf(1, 2))
         val (workbook, chapter) = stubChapter(chapterDir, verseCount = 3, selectedTake = null)
@@ -152,7 +144,7 @@ class ProjectCompletionStatusTest {
     }
 
     @Test
-    fun `no selected take and an empty working file reads as zero`() {
+    fun `no selected take and an empty working file reads as zero`() = runTest {
         val chapterDir = newChapterDir()
         val (workbook, chapter) = stubChapter(chapterDir, verseCount = 3, selectedTake = null)
 
@@ -167,7 +159,7 @@ class ProjectCompletionStatusTest {
      * `fileProgress >= 1.0` short-circuit in getChapterNarrationProgress are for.
      */
     @Test
-    fun `a fully placed working file is never overridden by a weaker take`() {
+    fun `a fully placed working file is never overridden by a weaker take`() = runTest {
         val chapterDir = newChapterDir()
         writePartiallyPlacedWorkingFile(chapterDir, placedVerseNumbers = listOf(1, 2, 3))
         // A take present but missing markers entirely - should be irrelevant once the file is complete.
