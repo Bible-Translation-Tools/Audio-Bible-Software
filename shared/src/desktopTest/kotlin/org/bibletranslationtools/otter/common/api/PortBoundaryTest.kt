@@ -68,6 +68,29 @@ class PortBoundaryTest {
         }
     }
 
+    /**
+     * The workbook's ids are opaque: only the persistence adapter may read the database key inside
+     * them. Code elsewhere that reads `.raw` or `.contentRaw` starts depending on how storage
+     * identifies rows, which is exactly what the id types exist to hide.
+     */
+    @Test
+    fun `only persistence reads the raw value of a workbook id`() {
+        val raw = Regex("""\b(take|chapter|draft|chunk|owner|element)\w*(Id)?\??\.(raw|contentRaw)\b""", RegexOption.IGNORE_CASE)
+        val violations = commonMainRoot.walkTopDown()
+            .filter { it.isFile && it.extension == "kt" }
+            .filterNot { it.path.contains("${File.separator}persistence${File.separator}") }
+            .filterNot { it.name == "WorkbookIds.kt" }
+            .flatMap { file ->
+                file.readLines().withIndex()
+                    .filter { (_, line) -> raw.containsMatchIn(line) && !line.trimStart().startsWith("*") && !line.trimStart().startsWith("//") }
+                    .map { (i, line) -> "${file.name}:${i + 1}: ${line.trim()}" }
+            }
+            .toList()
+        if (violations.isNotEmpty()) {
+            fail("Only persistence/ may read a workbook id's raw value:\n" + violations.joinToString("\n") { "  - $it" })
+        }
+    }
+
     @Test
     fun `ports do not depend on the database library`() = assertNoImportMatching(
         forbidden = "SQLDelight",
