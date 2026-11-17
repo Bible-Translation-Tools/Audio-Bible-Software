@@ -126,28 +126,6 @@ class SqlWorkbookStore(
         takeDao.updateChecking(take.raw, database.checkingStatusDao.fetchId(checking.status), checking.checksum)
     }
 
-    override suspend fun clearChunks(chapter: ChapterId, type: ContentType) {
-        val files = writer.write {
-            val typeId = database.contentTypeDao.fetchId(type)
-            val takes = takeDao.fetchByCollectionId(chapter.raw, includeDeleted = true)
-                .filter { take -> contentDao.fetchById(take.contentFk).type_fk == typeId }
-            takes.forEach { takeDao.delete(it) }
-            contentDao.deleteForCollection(database.collectionDao.fetchById(chapter.raw), typeId)
-            takes.map { File(it.filepath) }
-        }
-        // Files after rows: a file left behind by a failure here is harmless, a row pointing at a
-        // deleted file is not.
-        withContext(Dispatchers.IO) {
-            files.forEach { file ->
-                if (file.exists() && !file.delete()) logger.warn("Could not delete the audio of a cleared take: $file")
-            }
-        }
-    }
-
-    override suspend fun addChunks(chapter: ChapterId, rows: List<Content>) {
-        writer.write { insertLinked(chapter, rows, draft = null) }
-    }
-
     override suspend fun rechunk(chapter: ChapterId, rows: List<Content>): DraftId = writer.write {
         val text = database.contentTypeDao.fetchId(ContentType.TEXT)
         val textRows = contentDao.fetchAllDraftsByCollectionId(chapter.raw).filter { it.type_fk == text }
@@ -192,13 +170,13 @@ class SqlWorkbookStore(
     override suspend fun chaptersWithDrafts(): List<ChapterId> =
         withContext(Dispatchers.IO) { contentDao.chaptersWithDrafts().map(::ChapterId) }
 
-    /** Inserts [rows] into [chapter], under [draft] when given, each linked to its source row. */
-    private fun insertLinked(chapter: ChapterId, rows: List<Content>, draft: Int?) {
+    /** Inserts [rows] into [chapter] under [draft], each linked to its source row. */
+    private fun insertLinked(chapter: ChapterId, rows: List<Content>, draft: Int) {
         val sources = database.collectionDao.fetchById(chapter.raw).sourceFk
             ?.let { contentDao.fetchByCollectionId(it) }
             .orEmpty()
         rows.forEach { content ->
-            if (draft != null) content.draftNumber = draft
+            content.draftNumber = draft
             val id = contentDao.insert(contentMapper.mapToEntity(content, chapter.raw).apply { collectionFk = chapter.raw })
             content.id = id
             val type = database.contentTypeDao.fetchId(content.type)

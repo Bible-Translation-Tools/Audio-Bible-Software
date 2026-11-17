@@ -84,21 +84,6 @@ class Chapter internal constructor(
     suspend fun chunkCount(): Int = chunks().count { it.contentType == ContentType.TEXT }
 
     /**
-     * Deletes the chapter's chunks and their takes. The old [Chunk]s are retired.
-     * Replaced by an undoable rechunk in a later step.
-     */
-    suspend fun resetChunks(): SaveResult<Unit> = writer.save {
-        store.clearChunks(id)
-        _state.value = ChapterState(activeDraft = null, chunks = emptyList(), loaded = true)
-    }
-
-    /** Adds [rows] as the chapter's chunks, linked to their source rows. */
-    suspend fun addChunks(rows: List<Content>): SaveResult<Unit> = writer.save {
-        store.addChunks(id, rows)
-        _state.value = layoutState(store.loadChunks(id))
-    }
-
-    /**
      * Replaces the chapter's chunks with [rows], as a new layout, in one transaction. The previous
      * layout and its takes are kept, inactive, so this can be undone with [switchDraft] until
      * [settleDrafts] runs. Chunks of the previous layout are retired.

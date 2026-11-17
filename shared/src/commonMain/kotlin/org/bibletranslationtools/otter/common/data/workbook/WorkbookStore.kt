@@ -41,15 +41,6 @@ interface WorkbookStore {
     suspend fun setChecking(take: TakeId, checking: TakeCheckingState)
 
     /**
-     * Deletes [chapter]'s rows of [type] and their takes' rows in one transaction, then the takes'
-     * audio files.
-     */
-    suspend fun clearChunks(chapter: ChapterId, type: ContentType = ContentType.TEXT)
-
-    /** Adds [rows] to [chapter], linked to their source rows, in one transaction. */
-    suspend fun addChunks(chapter: ChapterId, rows: List<Content>)
-
-    /**
      * Adds [rows] as a new chunk layout (draft) of [chapter], linked to their source rows, and makes it
      * the active one, in one transaction. The previous layout's rows and takes are kept, inactive, so
      * the rechunk can be undone with [switchDraft]. Returns the new draft.

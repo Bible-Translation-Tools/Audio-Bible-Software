@@ -107,28 +107,6 @@ class FakeWorkbookStore : WorkbookStore {
         updateTake(take) { it.copy(checking = checking) }
     }
 
-    override suspend fun clearChunks(chapter: ChapterId, type: ContentType) = write("clearChunks") {
-        layouts[chapter.raw]?.let { layout ->
-            layout.chunks.filter { it.contentType == type }.forEach { audio.remove(it.id.contentRaw) }
-            layouts[chapter.raw] = layout.copy(chunks = layout.chunks.filterNot { it.contentType == type })
-        }
-        Unit
-    }
-
-    override suspend fun addChunks(chapter: ChapterId, rows: List<Content>) = write("addChunks") {
-        val layout = layouts[chapter.raw] ?: ChapterLayout(DraftId(1), emptyList())
-        val added = rows.map { row ->
-            val id = newContentId().also { row.id = it }
-            ChunkRecord(
-                id = ChunkId(id), sort = row.sort, label = row.labelKey, start = row.start, end = row.end,
-                bridged = row.bridged, contentType = row.type, textItem = TextItem(row.text ?: "", MimeType.USFM),
-                draft = DraftId(row.draftNumber), audio = AudioState.EMPTY
-            )
-        }
-        layouts[chapter.raw] = layout.copy(draft = added.firstOrNull()?.draft ?: layout.draft, chunks = layout.chunks + added)
-        Unit
-    }
-
     private val inactive = mutableMapOf<Int, MutableMap<Int, ChapterLayout>>()
 
     override suspend fun rechunk(chapter: ChapterId, rows: List<Content>): DraftId = write("rechunk") {
