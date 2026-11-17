@@ -55,6 +55,14 @@ import org.bibletranslationtools.otter.common.persistence.DesktopDirectoryProvid
 import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.bibletranslationtools.otter.common.persistence.entities.ContentEntity
 import org.bibletranslationtools.otter.common.persistence.entities.CollectionEntity
+import org.bibletranslationtools.otter.common.data.workbook.Chapter
+import org.bibletranslationtools.otter.common.data.workbook.Chunk
+import org.bibletranslationtools.otter.common.data.workbook.NewTake
+import org.bibletranslationtools.otter.common.data.workbook.SaveResult
+import org.bibletranslationtools.otter.common.data.workbook.Take
+import org.bibletranslationtools.otter.common.data.workbook.Workbook
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
+import org.bibletranslationtools.otter.common.initialization.InitializeTakeRepository
 import org.bibletranslationtools.shared.di.koin.appDatabaseModule
 import org.bibletranslationtools.shared.di.koin.sharedCommonModules
 import org.koin.core.Koin
@@ -387,11 +395,11 @@ class IntegrationEnvironment private constructor(
     fun backup(project: Collection): File {
         val descriptor = koin.get<IWorkbookDescriptorRepository>().getAll().blockingGet().single { it.targetCollection.id == project.id }
         val workbook = koin.get<IWorkbookRepository>().get(descriptor.sourceCollection, descriptor.targetCollection)!!
-        val accessor = workbook.projectFilesAccessor
+        val accessor = koin.get<ProjectFilesService>().of(workbook)
         if (!accessor.isInitialized()) {
             accessor.initializeResourceContainerInDir(overwrite = false)
             accessor.copySourceFiles(null)
-            accessor.writeSelectedTakesFile(workbook, isBook = true)
+            runBlocking { accessor.writeSelectedTakesFile(workbook, isBook = true) }
         }
         accessor.setProjectMode(descriptor.mode)
         val outDir = File(tempRoot, "backups-${System.nanoTime()}").apply { mkdirs() }
@@ -406,7 +414,7 @@ class IntegrationEnvironment private constructor(
             null
         ).blockingGet()
         assertEquals(ExportResult.SUCCESS, result, "backing up ${project.slug}")
-        koin.get<IWorkbookRepository>().closeWorkbook(workbook)
+        runBlocking { koin.get<IWorkbookRepository>().closeWorkbook(workbook) }
         return produced!!
     }
 
@@ -511,16 +519,45 @@ class IntegrationEnvironment private constructor(
     /** The file take [takeId] points at. */
     fun takeFile(takeId: Int): File = File(take(takeId).filepath)
 
-    /** [project] as the app opens it: a live workbook over its source and target books. */
-    fun workbook(project: Collection): org.bibletranslationtools.otter.common.data.workbook.Workbook {
+    /** [project] as the app opens it: the project's live workbook over its source and target books. */
+    fun workbook(project: Collection): Workbook {
         val descriptor = koin.get<IWorkbookDescriptorRepository>().getAll(computeSourceAudio = false).blockingGet()
             .single { it.targetCollection.id == project.id }
         return koin.get<IWorkbookRepository>().get(descriptor.sourceCollection, descriptor.targetCollection)
     }
 
     /** Closes [workbook] the way the app does when it switches projects. */
-    fun closeWorkbook(workbook: org.bibletranslationtools.otter.common.data.workbook.Workbook) =
-        koin.get<IWorkbookRepository>().closeWorkbook(workbook)
+    suspend fun closeWorkbook(workbook: Workbook) = koin.get<IWorkbookRepository>().closeWorkbook(workbook)
+
+    /** Chapter [sort] of [workbook]'s target book. */
+    suspend fun chapter(workbook: Workbook, sort: Int): Chapter = workbook.target.chapters().single { it.sort == sort }
+
+    /** The verse chunk starting at [verse] in chapter [sort] of [workbook]'s target book. */
+    suspend fun verseChunk(workbook: Workbook, sort: Int, verse: Int): Chunk =
+        chapter(workbook, sort).chunks().single { it.start == verse && it.label == "verse" }
+
+    /** The workbook's own [Take] for row [takeId], on the verse chunk starting at [verse] of chapter [sort]. */
+    suspend fun workbookTake(workbook: Workbook, sort: Int, verse: Int, takeId: Int): Take {
+        val name = take(takeId).filename
+        return assertNotNull(
+            verseChunk(workbook, sort, verse).audio.getAllTakes().firstOrNull { it.name == name },
+            "take $takeId is not in the workbook"
+        )
+    }
+
+    /** A recording not saved yet: [name]'s file in chapter [sort]'s takes folder of [project], holding audio. */
+    fun newTake(project: Collection, sort: Int, name: String, number: Int = 1): NewTake {
+        val file = projectDirectory(project).resolve(".apps/orature/takes/c${"%02d".format(sort)}/$name")
+        file.parentFile.mkdirs()
+        file.writeText("recording $name")
+        return NewTake(file, number)
+    }
+
+    /** Every text row of chapter [sort] of [project], inactive chunk layouts included. */
+    fun allDraftTextRows(project: Collection, sort: Int): List<ContentEntity> {
+        val textType = db.contentTypeDao.fetchId(ContentType.TEXT)
+        return db.contentDao.fetchAllDraftsByCollectionId(projectChapter(project, sort).id).filter { it.type_fk == textType }
+    }
 
     /** The startup purge of soft-deleted takes, as `InitializeTakeRepository` runs it. */
     fun purgeDeletedTakesAsStartupDoes() {
@@ -529,8 +566,19 @@ class IntegrationEnvironment private constructor(
     }
 
     /**
-     * Waits for [condition], which today's workbook only reaches after a background write, failing
-     * with [message] after [timeoutMillis].
+     * The whole startup take clean-up, `InitializeTakeRepository`: chapters left with unsettled chunk
+     * layouts are settled, then missing and soft-deleted takes are removed.
+     */
+    fun initializeTakesAsStartupDoes() {
+        Observable.create<ProgressStatus> { emitter ->
+            koin.get<InitializeTakeRepository>().exec(emitter).blockingAwait()
+            emitter.onComplete()
+        }.blockingSubscribe()
+    }
+
+    /**
+     * Waits for [condition], which is only reached after a background write, failing with [message]
+     * after [timeoutMillis].
      */
     fun eventually(message: String, timeoutMillis: Long = 5_000, condition: () -> Boolean) {
         val deadline = System.currentTimeMillis() + timeoutMillis
@@ -849,3 +897,9 @@ data class ChapterVerse(val chapter: String, val verses: Int)
 
 /** Verse rows in a chapter: how many exist, and how many the source text filled in. */
 data class VerseCounts(val total: Int, val withText: Int)
+
+/** The value a workbook change saved, failing the test when it was not saved. */
+fun <T> SaveResult<T>.saved(): T = when (this) {
+    is SaveResult.Saved -> value
+    else -> throw AssertionError("the change was not saved: $this")
+}
