@@ -18,6 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.persistence.repositories
 
+import java.io.File
 import org.bibletranslationtools.otter.common.persistence.database.DatabaseWriter
 import com.jakewharton.rxrelay2.BehaviorRelay
 import io.reactivex.Completable
@@ -41,7 +42,7 @@ import java.lang.IllegalStateException
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.CollectionMapper
 
 class ContentRepository(
-    database: DaoProvider,
+    private val database: DaoProvider,
     private val databaseWriter: DatabaseWriter
 ) : IContentRepository {
     private val logger = LoggerFactory.getLogger(ContentRepository::class.java)
@@ -149,6 +150,61 @@ class ContentRepository(
                 collectionMapper.mapToEntity(chapterCollection),
                 typeId
             )
+        }.subscribeOn(databaseWriter.scheduler)
+    }
+
+    override fun clearForCollection(chapterCollection: Collection, typeFilter: ContentType): Single<List<File>> {
+        val typeId = contentTypeDao.fetchId(typeFilter)
+        activeConnections.getOrDefault(chapterCollection, null)
+            ?.let { it.value?.forEach { chunk -> chunk.draftNumber = -1 } }
+
+        return databaseWriter.single {
+            val takes = takeDao.fetchByCollectionId(chapterCollection.id, includeDeleted = true)
+                .filter { take -> contentDao.fetchById(take.contentFk).type_fk == typeId }
+            takes.forEach { takeDao.delete(it) }
+            contentDao.deleteForCollection(collectionMapper.mapToEntity(chapterCollection), typeId)
+            takes.map { File(it.filepath) }
+        }.doOnError { e -> logger.error("Error in clearForCollection for collection: $chapterCollection", e) }
+    }
+
+    override fun insertForCollectionLinked(
+        contentList: List<Content>,
+        collection: Collection,
+        sourceContents: List<Content>
+    ): Single<List<Content>> {
+        return Single
+            .fromCallable {
+                // Rows and their source links in one transaction: a failure leaves neither.
+                database.transaction {
+                    insertRows(contentList, collection)
+                    linkRows(contentList, sourceContents)
+                }
+                val contentsAfterInsertion = getByCollection(collection).blockingGet()
+                activeConnections.getOrDefault(collection, null)?.accept(contentsAfterInsertion)
+                contentsAfterInsertion
+            }
+            .doOnError { e -> logger.error("Error in insertForCollectionLinked for collection: $collection", e) }
+            .subscribeOn(databaseWriter.scheduler)
+    }
+
+    private fun insertRows(contentList: List<Content>, collection: Collection) {
+        contentList.forEach { content ->
+            val id = contentDao.insert(
+                contentMapper
+                    .mapToEntity(content, collection.id)
+                    .apply { collectionFk = collection.id }
+            )
+            content.id = id
+        }
+    }
+
+    private fun linkRows(derivedContents: List<Content>, sourceContents: List<Content>) {
+        derivedContents.forEach { derived ->
+            sourceContents.forEach { source ->
+                if (derived.labelKey == source.labelKey && derived.type == source.type) {
+                    contentDao.linkDerivative(derived.id, source.id)
+                }
+            }
         }
     }
 
@@ -185,14 +241,8 @@ class ContentRepository(
     override fun insertForCollection(contentList: List<Content>, collection: Collection): Single<List<Content>> {
         return Single
             .fromCallable {
-                contentList.forEach { content ->
-                    val id = contentDao.insert(
-                        contentMapper
-                            .mapToEntity(content, collection.id)
-                            .apply { collectionFk = collection.id }
-                    )
-                    content.id = id
-                }
+                // One transaction; the read below runs after it commits, so it sees the new rows.
+                database.transaction { insertRows(contentList, collection) }
                 val contentsAfterInsertion = getByCollection(collection).blockingGet()
                 activeConnections.getOrDefault(collection, null)
                     ?.accept(contentsAfterInsertion)
@@ -230,15 +280,7 @@ class ContentRepository(
         sourceContents: List<Content>
     ): Completable {
         return Completable
-            .fromAction {
-                derivedContents.forEach { derived ->
-                    sourceContents.forEach { source ->
-                        if (derived.labelKey == source.labelKey && derived.type == source.type) {
-                            contentDao.linkDerivative(derived.id, source.id)
-                        }
-                    }
-                }
-            }
+            .fromAction { database.transaction { linkRows(derivedContents, sourceContents) } }
             .subscribeOn(databaseWriter.scheduler)
     }
 

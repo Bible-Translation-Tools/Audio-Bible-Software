@@ -61,6 +61,18 @@ class DatabaseWriter(
             Single.fromCallable { runOnQueue(block) }.subscribeOn(scheduler)
         }
 
+    /**
+     * [write] for blocking code. Called from code already running on the queue, it runs [block]
+     * there and then, inside the running transaction, instead of waiting for a turn it would never
+     * get.
+     */
+    fun <T> writeBlocking(block: () -> T): T =
+        if (isOnQueue()) {
+            database.transactionResult(block)
+        } else {
+            kotlinx.coroutines.runBlocking { write(block) }
+        }
+
     /** True while the calling thread is running a block on the queue. */
     fun isOnQueue(): Boolean = onQueue.get() == true
 

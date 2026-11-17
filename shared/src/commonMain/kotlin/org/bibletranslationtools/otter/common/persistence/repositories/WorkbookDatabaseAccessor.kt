@@ -22,6 +22,7 @@ import io.reactivex.Completable
 import io.reactivex.Maybe
 import io.reactivex.Observable
 import io.reactivex.Single
+import io.reactivex.schedulers.Schedulers
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IContentRepository
@@ -55,52 +56,33 @@ class WorkbookDatabaseAccessor(
     override fun clearContentForCollection(
         chapterCollection: Collection,
         typeFilter: ContentType
-    ): Single<List<ModelTake>> {
-        return takeRepo
-            .getByCollection(chapterCollection, true)
-            .map {
-                it.filter { take ->
-                    takeRepo.getContentType(take).blockingGet() == typeFilter
-                }
-            }
-            .map { takes ->
-                // Only this chapter's takes. This used to run deleteExpiredTakes() too, which
-                // purges every soft-deleted take in the database: pending, undoable deletes in
-                // every other project lost their rows and their audio.
-                takes.forEach {
-                    takeRepo.delete(it).blockingAwait()
-                }
-                contentRepo.deleteForCollection(chapterCollection, typeFilter).blockingAwait()
+    ): Completable {
+        // Only this chapter's takes, rows and content in one transaction. This used to run
+        // deleteExpiredTakes() too, which purges every soft-deleted take in the database: pending,
+        // undoable deletes in every other project lost their rows and their audio.
+        return contentRepo.clearForCollection(chapterCollection, typeFilter)
+            .doOnSuccess { files ->
                 // Files after rows: a file left behind by a failure here is harmless, while a row
                 // pointing at a deleted file is not. Deleting rows alone used to orphan the audio.
-                takes.forEach { take ->
-                    if (take.path.exists() && !take.path.delete()) {
-                        logger.warn("Could not delete the audio of a rechunked take: ${take.path}")
+                files.forEach { file ->
+                    if (file.exists() && !file.delete()) {
+                        logger.warn("Could not delete the audio of a rechunked take: $file")
                     }
                 }
-                takes
             }
+            .ignoreElement()
     }
 
     override fun addContentForCollection(collection: Collection, chunks: List<Content>): Completable {
-        return Observable.just(chunks)
-            .map { contents ->
-                contentRepo.insertForCollection(contents, collection)
-                    .blockingGet()
+        return Single
+            .fromCallable {
+                collectionRepo.getSource(collection).blockingGet()
+                    ?.let { source -> contentRepo.getByCollection(source).blockingGet() }
+                    ?: emptyList()
             }
-            .flatMapCompletable { contents ->
-                val sourceContents = collectionRepo.getSource(collection)
-                    .blockingGet()
-                    ?.let { collection ->
-                        contentRepo.getByCollection(collection).blockingGet()
-                    }
-
-                if (sourceContents == null || sourceContents.isEmpty()) {
-                    Completable.complete()
-                } else {
-                    contentRepo.linkDerivedToSource(contents, sourceContents)
-                }
-            }
+            .subscribeOn(Schedulers.io())
+            .flatMap { sourceContents -> contentRepo.insertForCollectionLinked(chunks, collection, sourceContents) }
+            .ignoreElement()
     }
 
     override fun getChildren(collection: Collection) = collectionRepo.getChildren(collection)

@@ -18,6 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.persistence.repositories
 
+import org.bibletranslationtools.otter.common.persistence.database.DatabaseWriter
 import io.reactivex.Completable
 import io.reactivex.Maybe
 import io.reactivex.Single
@@ -42,7 +43,8 @@ class WorkbookDescriptorRepository(
     private val collectionRepository: ICollectionRepository,
     private val contentRepository: IContentRepository,
     private val workbookRepository: IWorkbookRepository,
-    private val projectCompletionStatus: ProjectCompletionStatus
+    private val projectCompletionStatus: ProjectCompletionStatus,
+    private val databaseWriter: DatabaseWriter
 ) : IWorkbookDescriptorRepository {
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -131,7 +133,7 @@ class WorkbookDescriptorRepository(
                         workbookDescriptorDao.delete(it)
                     }
             }
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(databaseWriter.scheduler)
             .doOnError {
                 logger.error("Error deleting workbook descriptors.", it)
             }

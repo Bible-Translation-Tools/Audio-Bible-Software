@@ -226,7 +226,7 @@ class WorkbookRepository(
                         db.addContentForCollection(chapterCollection, it)
                     },
                     reset = {
-                        db.clearContentForCollection(chapterCollection, ContentType.TEXT).ignoreElement()
+                        db.clearContentForCollection(chapterCollection, ContentType.TEXT)
                     }
                 )
             }

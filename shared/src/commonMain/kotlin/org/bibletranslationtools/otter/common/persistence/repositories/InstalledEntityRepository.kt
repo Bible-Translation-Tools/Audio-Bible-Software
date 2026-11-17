@@ -18,18 +18,20 @@
  */
 package org.bibletranslationtools.otter.common.persistence.repositories
 
+import org.bibletranslationtools.otter.common.persistence.database.DatabaseWriter
 import org.bibletranslationtools.otter.common.api.persistence.config.Installable
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IInstalledEntityRepository
 import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 
 class InstalledEntityRepository(
-    private val database: DaoProvider
+    private val database: DaoProvider,
+    private val databaseWriter: DatabaseWriter
 ) : IInstalledEntityRepository {
 
     private val installedEntityDao = database.installedEntityDao
 
     override fun install(entity: Installable) {
-        installedEntityDao.upsert(entity)
+        databaseWriter.writeBlocking { installedEntityDao.upsert(entity) }
     }
 
     override fun getInstalledVersion(entity: Installable): Int? {

@@ -1,5 +1,6 @@
 package org.bibletranslationtools.otter.common.persistence.repositories
 
+import org.bibletranslationtools.otter.common.persistence.database.DatabaseWriter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IEditionFingerprintRepository
@@ -9,10 +10,13 @@ import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvid
 import org.bibletranslationtools.otter.common.persistence.entities.EditionChapterEntity
 import org.bibletranslationtools.otter.common.persistence.entities.EditionFingerprintEntity
 
-class EditionFingerprintRepository(private val database: DaoProvider) : IEditionFingerprintRepository {
+class EditionFingerprintRepository(
+    private val database: DaoProvider,
+    private val databaseWriter: DatabaseWriter
+) : IEditionFingerprintRepository {
 
     override suspend fun save(metadataId: Int, fingerprint: EditionFingerprint) =
-        withContext(Dispatchers.IO) { database.storeEditionFingerprint(metadataId, fingerprint) }
+        databaseWriter.write { database.storeEditionFingerprint(metadataId, fingerprint) }
 
     override suspend fun get(metadataId: Int): EditionFingerprint? =
         withContext(Dispatchers.IO) { database.loadEditionFingerprint(metadataId) }

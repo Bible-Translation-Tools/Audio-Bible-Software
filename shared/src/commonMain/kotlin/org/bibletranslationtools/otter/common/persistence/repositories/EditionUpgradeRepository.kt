@@ -1,5 +1,6 @@
 package org.bibletranslationtools.otter.common.persistence.repositories
 
+import org.bibletranslationtools.otter.common.persistence.database.DatabaseWriter
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import org.bibletranslationtools.otter.common.api.persistence.IProjectDirectories
@@ -33,6 +34,7 @@ private const val CHUNK_LABEL = "chunk"
 
 class EditionUpgradeRepository(
     private val database: DaoProvider,
+    private val databaseWriter: DatabaseWriter,
     private val collectionRepository: CollectionRepository,
     private val directoryProvider: IProjectDirectories
 ) : IEditionUpgradeRepository {
@@ -108,7 +110,8 @@ class EditionUpgradeRepository(
         if (moved) moveDirectory(oldDir, newDir)
 
         try {
-            database.transaction {
+            // On the write queue, as one transaction.
+            databaseWriter.writeBlocking {
                 collectionDao.rebase(book.id, rebase.toSourceBookId, newDerived.id)
                 rebase.chapters.forEach { chapter ->
                     val current = collectionDao.fetchById(chapter.chapterId)

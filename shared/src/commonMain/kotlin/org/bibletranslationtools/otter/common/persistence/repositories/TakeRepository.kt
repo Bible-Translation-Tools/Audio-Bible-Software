@@ -136,14 +136,16 @@ class TakeRepository(
     override fun insertForContent(take: Take, content: Content): Single<Int> {
         return Single
             .fromCallable {
-                val takeId = takeDao.insert(takeMapper.mapToEntity(take, content.id))
-                // Insert the markers
-                take.markers.forEach {
-                    val entity = markerMapper.mapToEntity(it, takeId)
-                    entity.id = 0
-                    markerDao.insert(entity)
+                // One transaction: a marker that fails to insert leaves no take row behind.
+                database.transactionResult {
+                    val takeId = takeDao.insert(takeMapper.mapToEntity(take, content.id))
+                    take.markers.forEach {
+                        val entity = markerMapper.mapToEntity(it, takeId)
+                        entity.id = 0
+                        markerDao.insert(entity)
+                    }
+                    takeId
                 }
-                takeId
             }
             .doOnError { e ->
                 logger.error("Error in insertForContent with take: $take and content $content", e)
@@ -154,21 +156,24 @@ class TakeRepository(
     override fun update(obj: Take): Completable {
         return Completable
             .fromAction {
-                val existing = takeDao.fetchById(obj.id)
-                val entity = takeMapper.mapToEntity(obj, existing.contentFk)
-                takeDao.update(entity)
+                // One transaction, so a failure can't leave the take without its markers.
+                database.transaction {
+                    val existing = takeDao.fetchById(obj.id)
+                    val entity = takeMapper.mapToEntity(obj, existing.contentFk)
+                    takeDao.update(entity)
 
-                // Delete and replace markers
-                markerDao
-                    .fetchByTakeId(obj.id)
-                    .forEach {
-                        markerDao.delete(it)
+                    // Delete and replace markers
+                    markerDao
+                        .fetchByTakeId(obj.id)
+                        .forEach {
+                            markerDao.delete(it)
+                        }
+
+                    obj.markers.forEach {
+                        val markerEntity = markerMapper.mapToEntity(it, obj.id)
+                        markerEntity.id = 0
+                        markerDao.insert(markerEntity)
                     }
-
-                obj.markers.forEach {
-                    val markerEntity = markerMapper.mapToEntity(it, obj.id)
-                    markerEntity.id = 0
-                    markerDao.insert(markerEntity)
                 }
             }
             .doOnError { e ->
@@ -217,19 +222,21 @@ class TakeRepository(
     override fun deleteExpiredTakes(expiry: Int): Completable {
         return Completable
             .fromAction {
-                val takes = takeDao.fetchSoftDeletedTakes()
                 val expired = LocalDate.now().minusDays(expiry.toLong())
                 logger.info("Deleting soft deleted takes on or before: $expired")
-                takes.forEach { take ->
-                    take.deletedTs?.let { timestamp ->
-                        val parsed = LocalDate.parse(timestamp)
-                        if (parsed.isBefore(expired) || parsed.isEqual(expired)) {
+                // Rows in one transaction, then files: a file left behind by a failure is harmless,
+                // a row pointing at a deleted file is not.
+                val purged = database.transactionResult {
+                    takeDao.fetchSoftDeletedTakes()
+                        .filter { take ->
+                            take.deletedTs?.let { LocalDate.parse(it) }?.let { !it.isAfter(expired) } == true
+                        }
+                        .onEach { take ->
                             logger.info("Deleting: ${take.filename}, soft delete date is: ${take.deletedTs}")
-                            File(take.filepath).delete()
                             takeDao.delete(take)
                         }
-                    }
                 }
+                purged.forEach { File(it.filepath).delete() }
             }
             .subscribeOn(databaseWriter.scheduler)
     }

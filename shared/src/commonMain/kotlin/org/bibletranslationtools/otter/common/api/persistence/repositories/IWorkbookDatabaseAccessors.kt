@@ -54,10 +54,11 @@ interface IWorkbookDatabaseAccessors {
     fun getDerivedProject(sourceCollection: Collection): Maybe<Collection>
     fun getDerivedProjects(): Single<List<Collection>>
     fun getSourceProject(targetProject: Collection): Maybe<Collection>
+    /** Deletes the chapter's [typeFilter] content and its takes in one transaction, then their audio. */
     fun clearContentForCollection(
         chapterCollection: Collection,
         typeFilter: ContentType
-    ): Single<List<ModelTake>>
+    ): Completable
 
     fun getChunkCount(chapterCollection: Collection): Single<Int>
 }
