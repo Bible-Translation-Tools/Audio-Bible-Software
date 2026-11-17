@@ -40,7 +40,6 @@ import org.bibletranslationtools.otter.common.domain.project.exporter.ProjectExp
 import org.bibletranslationtools.otter.common.domain.audio.WAV_TO_MP3_COMPRESSED_RATE
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstants
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito.ScriptureBurritoUtils
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.bibletranslationtools.otter.common.api.persistence.IFileIOFactory
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
@@ -60,8 +59,7 @@ class SourceProjectExporter(
     fileIO: IFileIOFactory,
     tempFiles: ITempFileProvider,
     val burritoUtils: ScriptureBurritoUtils,
-    private val audioExporter: AudioExporter,
-    private val projectFiles: ProjectFilesService
+    private val audioExporter: AudioExporter
 ) : RCProjectExporter(fileIO, tempFiles) {
 
     private val logger = LoggerFactory.getLogger(this.javaClass)
@@ -81,7 +79,7 @@ class SourceProjectExporter(
             .firstOrNull { it.identifier == resourceMetadata.identifier }
             ?: workbook.source.resourceMetadata
 
-        val projectAccessor = projectFiles.of(workbook)
+        val projectAccessor = workbook.projectFilesAccessor
         val contributors = projectAccessor.getContributorInfo()
         val zipFilename = makeExportFilename(workbook, projectSourceMetadata)
         val targetZip = outputDirectory.resolve(zipFilename)

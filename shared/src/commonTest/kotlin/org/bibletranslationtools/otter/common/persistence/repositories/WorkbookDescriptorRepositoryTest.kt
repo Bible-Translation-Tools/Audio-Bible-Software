@@ -15,7 +15,6 @@ import org.bibletranslationtools.otter.common.persistence.entities.WorkbookDescr
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -47,8 +46,7 @@ class WorkbookDescriptorRepositoryTest {
             contentRepository,
             workbookRepository,
             projectCompletionStatus,
-            immediateWriter(db),
-            mockk<ProjectFilesService>(relaxed = true)
+            immediateWriter(db)
         )
     }
 

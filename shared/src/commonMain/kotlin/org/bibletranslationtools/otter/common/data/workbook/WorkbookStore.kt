@@ -23,7 +23,7 @@ interface WorkbookStore {
     suspend fun loadChunks(chapter: ChapterId): ChapterLayout
 
     /** Saves [take] as [owner]'s, and selects it in the same transaction when [select] is set. */
-    suspend fun addTake(owner: ElementId, take: NewTake, select: Boolean): Take
+    suspend fun addTake(owner: ElementId, take: Take, select: Boolean): Take
 
     /** Sets [owner]'s selected take; null clears it. */
     suspend fun setSelected(owner: ElementId, take: TakeId?)

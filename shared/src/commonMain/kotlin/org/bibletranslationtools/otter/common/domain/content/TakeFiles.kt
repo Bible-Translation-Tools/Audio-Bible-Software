@@ -1,6 +1,9 @@
 package org.bibletranslationtools.otter.common.domain.content
 
+import org.bibletranslationtools.otter.common.data.primitives.MimeType
+import org.bibletranslationtools.otter.common.data.workbook.Take
 import java.io.File
+import java.time.LocalDate
 
 /**
  * Claims a take file that nothing else uses yet.
@@ -17,7 +20,11 @@ import java.io.File
  */
 object TakeFiles {
 
-    data class Reserved(val number: Int, val file: File)
+    data class Reserved(val number: Int, val file: File) {
+        /** The take for this file, not saved yet. */
+        fun toTake(): Take =
+            Take(name = file.name, file = file, number = number, format = MimeType.WAV, createdTimestamp = LocalDate.now())
+    }
 
     /**
      * @param dir the chapter's take folder; created if missing

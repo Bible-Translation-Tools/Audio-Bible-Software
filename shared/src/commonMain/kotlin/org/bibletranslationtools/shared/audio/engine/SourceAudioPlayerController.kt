@@ -21,7 +21,6 @@ import org.bibletranslationtools.otter.common.device.AudioPlayerEvent
 import org.bibletranslationtools.otter.common.device.IAudioPlayer
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.SourceAudio
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 
 /**
  * Encapsulates a per-screen player for source (reference) audio so the Recorder and
@@ -30,7 +29,7 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.P
  * The controller owns its own [IAudioPlayer] (one section at a time) and a
  * [StateFlow] of UI state. Callers feed it with a [Workbook] and a target
  * (chapter or chunk) and the controller resolves the right slice of source
- * audio via [ProjectFilesService.sourceAudio], then loads it via
+ * audio via [Workbook.sourceAudioAccessor], then loads it via
  * [IAudioPlayer.loadSection] so playback is bounded to that verse / chunk /
  * chapter exactly the way Orature does it.
  *
@@ -40,8 +39,6 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.P
 class SourceAudioPlayerController(
     private val factory: AudioPlayerConnectionFactory,
     private val scope: CoroutineScope,
-    /** Where the workbook's source audio is found. */
-    private val projectFiles: ProjectFilesService,
     /** Lines a held-back chapter's verses up with its newer reference edition; see [ReferenceAlignment]. */
     private val referenceAlignment: ReferenceAlignment? = null
 ) {
@@ -112,7 +109,7 @@ class SourceAudioPlayerController(
         // Stop any previous playback before swapping sections.
         if (player.isPlaying()) player.pause()
 
-        val accessor = projectFiles.sourceAudio(workbook)
+        val accessor = workbook.sourceAudioAccessor
         val source = try {
             if (chunk != null) {
                 // A chapter held back on an upgrade keeps its old verses while its book refers to

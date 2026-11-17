@@ -1,3 +1,21 @@
+/**
+ * Copyright (C) 2020-2024 Wycliffe Associates
+ *
+ * This file is part of Orature.
+ *
+ * Orature is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * Orature is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Orature.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.bibletranslationtools.otter.common.data.workbook
 
 import kotlinx.coroutines.flow.Flow
@@ -20,7 +38,7 @@ import java.time.LocalDate
  * workbook's [WorkbookWriter], and only when that succeeds does it change the state. It returns a
  * [SaveResult], so the caller learns whether the change was saved; on failure memory is untouched.
  */
-class AssociatedAudio internal constructor(
+class AssociatedAudio(
     val owner: ElementId,
     initial: AudioState,
     private val store: WorkbookStore,
@@ -47,25 +65,26 @@ class AssociatedAudio internal constructor(
 
     /**
      * Saves [take] and, when [select] is set, selects it in the same transaction. Returns the saved
-     * take, which already has its id.
+     * take, which has its id.
      */
-    suspend fun insertTake(take: NewTake, select: Boolean = true): SaveResult<Take> = writer.save(gate) {
+    suspend fun insertTake(take: Take, select: Boolean = true): SaveResult<Take> = writer.save(gate) {
         val saved = store.addTake(owner, take, select)
         _state.update { s -> s.copy(takes = s.takes + saved, selected = if (select) saved.id else s.selected) }
         saved
     }
 
     /** Selects [take]; null clears the selection. */
-    suspend fun selectTake(take: Take?): SaveResult<Unit> = writer.save(gate) {
+    suspend fun selectTake(take: Take?): SaveResult<Unit> = writer.save(savedGate(take)) {
         store.setSelected(owner, take?.id)
         _state.update { it.copy(selected = take?.id) }
     }
 
     /** Marks [take] deleted. If it was selected, the selection is cleared in the same step. */
-    suspend fun deleteTake(take: Take): SaveResult<Unit> = writer.save(gate) {
+    suspend fun deleteTake(take: Take): SaveResult<Unit> = writer.save(savedGate(take)) {
+        val id = take.id!!
         val today = LocalDate.now()
-        val wasSelected = _state.value.selected == take.id
-        store.markDeleted(take.id, today, clearSelectionOf = owner.takeIf { wasSelected })
+        val wasSelected = _state.value.selected == id
+        store.markDeleted(id, today, clearSelectionOf = owner.takeIf { wasSelected })
         _state.update { s ->
             s.copy(
                 takes = s.takes.map { if (it.id == take.id) it.copy(deletedOn = today) else it },
@@ -75,8 +94,8 @@ class AssociatedAudio internal constructor(
     }
 
     /** Undoes [deleteTake]. Does not select the take again; call [selectTake] for that. */
-    suspend fun restoreTake(take: Take): SaveResult<Unit> = writer.save(gate) {
-        store.restore(take.id)
+    suspend fun restoreTake(take: Take): SaveResult<Unit> = writer.save(savedGate(take)) {
+        store.restore(take.id!!)
         _state.update { s -> s.copy(takes = s.takes.map { if (it.id == take.id) it.copy(deletedOn = null) else it }) }
     }
 
@@ -84,13 +103,18 @@ class AssociatedAudio internal constructor(
      * Sets [take]'s checking status. Returns the updated take: the one this element holds, so a
      * caller's older copy (from before a delete, say) does not bring back stale fields.
      */
-    suspend fun setChecking(take: Take, checking: TakeCheckingState): SaveResult<Take> = writer.save(gate) {
-        store.setChecking(take.id, checking)
-        val updated = (take(take.id) ?: take).copy(checking = checking)
+    suspend fun setChecking(take: Take, checking: TakeCheckingState): SaveResult<Take> = writer.save(savedGate(take)) {
+        val id = take.id!!
+        store.setChecking(id, checking)
+        val updated = (take(id) ?: take).copy(checking = checking)
         _state.update { s -> s.copy(takes = s.takes.map { if (it.id == take.id) updated else it }) }
         updated
     }
 
     /** The take with [id] as this element holds it now, or null. */
-    fun take(id: TakeId): Take? = _state.value.takes.firstOrNull { it.id == id }
+    fun take(id: TakeId?): Take? = id?.let { _state.value.takes.firstOrNull { take -> take.id == it } }
+
+    /** [gate], and refuses a take that was never saved: it has no id to change. */
+    private fun savedGate(take: Take?): () -> RejectReason? =
+        { if (take != null && take.id == null) RejectReason.UNSAVED else gate() }
 }

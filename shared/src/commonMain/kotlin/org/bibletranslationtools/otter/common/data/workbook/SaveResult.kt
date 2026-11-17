@@ -53,5 +53,8 @@ enum class RejectReason {
     RETIRED,
 
     /** The workbook has been closed. */
-    CLOSED
+    CLOSED,
+
+    /** The take has not been saved, so it has no id to change. */
+    UNSAVED
 }

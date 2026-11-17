@@ -1,5 +1,6 @@
 package org.bibletranslationtools.otter.integration
 
+import org.bibletranslationtools.otter.common.domain.content.TakeFiles
 import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
 import org.bibletranslationtools.otter.common.domain.collections.UpgradeProjectEdition
 import org.bibletranslationtools.otter.common.initialization.ReconcileEditionLabels
@@ -57,11 +58,9 @@ import org.bibletranslationtools.otter.common.persistence.entities.ContentEntity
 import org.bibletranslationtools.otter.common.persistence.entities.CollectionEntity
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
-import org.bibletranslationtools.otter.common.data.workbook.NewTake
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.bibletranslationtools.otter.common.initialization.InitializeTakeRepository
 import org.bibletranslationtools.shared.di.koin.appDatabaseModule
 import org.bibletranslationtools.shared.di.koin.sharedCommonModules
@@ -395,7 +394,7 @@ class IntegrationEnvironment private constructor(
     fun backup(project: Collection): File {
         val descriptor = koin.get<IWorkbookDescriptorRepository>().getAll().blockingGet().single { it.targetCollection.id == project.id }
         val workbook = koin.get<IWorkbookRepository>().get(descriptor.sourceCollection, descriptor.targetCollection)!!
-        val accessor = koin.get<ProjectFilesService>().of(workbook)
+        val accessor = workbook.projectFilesAccessor
         if (!accessor.isInitialized()) {
             accessor.initializeResourceContainerInDir(overwrite = false)
             accessor.copySourceFiles(null)
@@ -546,11 +545,11 @@ class IntegrationEnvironment private constructor(
     }
 
     /** A recording not saved yet: [name]'s file in chapter [sort]'s takes folder of [project], holding audio. */
-    fun newTake(project: Collection, sort: Int, name: String, number: Int = 1): NewTake {
+    fun newTake(project: Collection, sort: Int, name: String, number: Int = 1): Take {
         val file = projectDirectory(project).resolve(".apps/orature/takes/c${"%02d".format(sort)}/$name")
         file.parentFile.mkdirs()
         file.writeText("recording $name")
-        return NewTake(file, number)
+        return TakeFiles.Reserved(number, file).toTake()
     }
 
     /** Every text row of chapter [sort] of [project], inactive chunk layouts included. */

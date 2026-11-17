@@ -1,4 +1,4 @@
-package org.bibletranslationtools.otter.common.data.workbook.fixture
+package org.bibletranslationtools.otter.common.data.workbook
 
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
 import org.bibletranslationtools.otter.common.data.primitives.ContainerType
@@ -6,20 +6,9 @@ import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.primitives.MimeType
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
-import org.bibletranslationtools.otter.common.data.workbook.AudioState
-import org.bibletranslationtools.otter.common.data.workbook.Book
-import org.bibletranslationtools.otter.common.data.workbook.ChapterAudioId
-import org.bibletranslationtools.otter.common.data.workbook.ChapterId
-import org.bibletranslationtools.otter.common.data.workbook.ChapterLayout
-import org.bibletranslationtools.otter.common.data.workbook.ChunkId
-import org.bibletranslationtools.otter.common.data.workbook.ChunkRecord
-import org.bibletranslationtools.otter.common.data.workbook.DraftId
-import org.bibletranslationtools.otter.common.data.workbook.Take
-import org.bibletranslationtools.otter.common.data.workbook.TakeCheckingState
-import org.bibletranslationtools.otter.common.data.workbook.TextItem
-import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.data.workbook.WorkbookNodes
-import org.bibletranslationtools.otter.common.data.workbook.WorkbookWriter
+import io.mockk.mockk
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.SourceAudioAccessor
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesAccessor
 import java.io.File
 import java.time.LocalDate
 
@@ -36,24 +25,26 @@ import java.time.LocalDate
  * }
  * ```
  *
- * The nodes are built by the same [WorkbookNodes] the app's loader uses, so a test's workbook saves,
- * loads and refuses changes exactly as the app's does.
+ * The project's files and source audio are relaxed mocks unless a test passes its own.
  */
 class WorkbookBuilder(
-    val store: FakeWorkbookStore = FakeWorkbookStore()
+    val store: FakeWorkbookStore = FakeWorkbookStore(),
+    private val projectFilesAccessor: ProjectFilesAccessor = mockk(relaxed = true),
+    private val sourceAudioAccessor: SourceAudioAccessor = mockk(relaxed = true)
 ) {
     fun build(block: WorkbookSpec.() -> Unit): Workbook {
         val spec = WorkbookSpec().apply(block)
         val writer = WorkbookWriter()
-        val nodes = WorkbookNodes(store, writer)
         return Workbook(
-            book(spec.source ?: BookSpec("gen", "en"), nodes),
-            book(spec.target ?: BookSpec("gen", "fr"), nodes),
-            writer
+            book(spec.source ?: BookSpec("gen", "en"), writer),
+            book(spec.target ?: BookSpec("gen", "fr"), writer),
+            writer,
+            sourceAudioAccessor,
+            projectFilesAccessor
         )
     }
 
-    private fun book(spec: BookSpec, nodes: WorkbookNodes): Book {
+    private fun book(spec: BookSpec, writer: WorkbookWriter): Book {
         val chapters = spec.chapters.map { chapter ->
             val chapterId = store.newContentId()
             val audioId = store.newContentId()
@@ -77,9 +68,10 @@ class WorkbookBuilder(
                     }
                 )
             )
-            nodes.chapter(
+            Chapter(
                 id = ChapterId(chapterId), sort = chapter.sort, title = "${chapter.sort}", label = "chapter",
-                audioOwner = ChapterAudioId(audioId), audio = chapterAudio
+                audio = AssociatedAudio(ChapterAudioId(audioId), chapterAudio, store, writer),
+                resources = emptyList(), subtreeResources = emptyList(), store = store, writer = writer
             )
         }
         val metadata = metadata(spec.languageSlug)

@@ -19,7 +19,6 @@
 package org.bibletranslationtools.otter.common.domain.content
 
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
-import org.bibletranslationtools.otter.common.data.workbook.NewTake
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
@@ -27,7 +26,6 @@ import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import java.io.File
 
 /**
@@ -48,7 +46,9 @@ import java.io.File
  * The file system work (naming, reserving the file, the copy) runs on [Dispatchers.IO]; the save
  * runs on the workbook's writer.
  */
-class SaveAudioAsNewTake(private val projectFiles: ProjectFilesService) {
+class SaveAudioAsNewTake(
+    private val takeCreator: TakeCreator
+) {
 
     /**
      * @param audioFile the audio to copy into the new take; must exist
@@ -80,11 +80,11 @@ class SaveAudioAsNewTake(private val projectFiles: ProjectFilesService) {
             val reserved = TakeFiles.reserve(
                 // Creates the chapter directory if it is missing. formatChapterNumber() reads only
                 // the chapter count, title and sort, so this agrees with every other take namer.
-                projectFiles.of(workbook).getChapterAudioDir(workbook, chapter),
+                workbook.projectFilesAccessor.getChapterAudioDir(workbook, chapter),
                 audio.getNewTakeNumber()
             ) { namer.generateName(it, AudioFileFormat.WAV) }
             audioFile.copyTo(reserved.file, overwrite = true)
-            NewTake(reserved.file, reserved.number)
+            takeCreator.createNewTake(reserved.number, reserved.file.name, reserved.file.parentFile, createEmpty = false)
         }
 
         // Saved and selected in one transaction, so nothing can select it before it has an id.

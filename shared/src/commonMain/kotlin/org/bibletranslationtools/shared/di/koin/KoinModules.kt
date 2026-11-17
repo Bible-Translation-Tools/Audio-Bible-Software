@@ -60,7 +60,6 @@ val appPreferencesModule = module {
 val appRepositoriesModule = module {
     // The one queue every database write goes through. A singleton: two would be two queues.
     single { DatabaseWriter(get()) }
-    single { org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService(get()) }
     single<org.bibletranslationtools.otter.common.data.workbook.WorkbookStore> {
         org.bibletranslationtools.otter.common.persistence.repositories.SqlWorkbookStore(get(), get())
     }
@@ -78,6 +77,7 @@ val appRepositoriesModule = module {
     // Explicitly defined to disambiguate WorkbookRepository's constructors.
     single<IWorkbookRepository> {
         WorkbookRepository(
+            get(), // directoryProvider
             get(), // collectionRepository
             get(), // contentRepository
             get(), // resourceRepository

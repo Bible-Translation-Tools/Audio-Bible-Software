@@ -83,12 +83,14 @@ class LayerBoundaryTest {
     }
 
     /**
-     * The entity ↔ use-case cycle. `domain/` imports `data/`, which is correct; these import back
-     * the other way, which makes the two packages mutually dependent.
+     * The entity ↔ use-case cycle. `domain/` imports `data/` in 68 files, which is correct; these
+     * four import back the other way, which makes the two packages mutually dependent.
      *
-     * All three are the [org.bibletranslationtools.otter.common.domain.content.Recordable]
-     * interfaces, which are arguably domain types an entity may implement. `Workbook` no longer
-     * builds file accessors: those come from `ProjectFilesService`.
+     * Three are the [org.bibletranslationtools.otter.common.domain.content.Recordable] interfaces,
+     * which are arguably domain types an entity may implement. `Workbook` is the real problem: it
+     * takes an `IDirectoryProvider` and constructs `SourceAudioAccessor`, `ArtworkAccessor` and
+     * `ProjectFilesAccessor`, so the innermost object in the codebase is a factory for filesystem
+     * access and every consumer that wants a file takes a whole `Workbook` to get one.
      */
     @Test
     fun `data does not depend on domain`() {
@@ -98,11 +100,13 @@ class LayerBoundaryTest {
 
         assertRatchet(
             rule = "data/ must not import domain/ — that is a cycle between the two innermost layers.",
-            why = "Entities are the layer nothing depends outward from.",
+            why = "Entities are the layer nothing depends outward from. Workbook holding " +
+                "domain accessors is what forces every file-touching use case to accept a Workbook.",
             expected = setOf(
                 "workbook/Chapter.kt",   // Recordable
                 "workbook/Chunk.kt",     // ResourceRecordable
-                "workbook/Resource.kt"   // ResourceRecordable
+                "workbook/Resource.kt",  // ResourceRecordable
+                "workbook/Workbook.kt"   // ArtworkAccessor, SourceAudioAccessor, ProjectFilesAccessor
             ),
             actual = violations
         )
@@ -147,10 +151,8 @@ class LayerBoundaryTest {
             expected = setOf(
                 "primitives/ResourceMetadata.kt",
                 "primitives/Take.kt",
-                "workbook/NewTake.kt",                 // the recorded file the store saves
                 "workbook/SaveResult.kt",              // classifies missing-file exceptions
-                "workbook/Take.kt",
-                "workbook/fixture/WorkbookBuilder.kt"  // test takes' files
+                "workbook/Take.kt"
             ),
             actual = violations
         )

@@ -13,7 +13,6 @@ import org.bibletranslationtools.otter.common.data.workbook.ChunkId
 import org.bibletranslationtools.otter.common.data.workbook.ChunkRecord
 import org.bibletranslationtools.otter.common.data.workbook.DraftId
 import org.bibletranslationtools.otter.common.data.workbook.ElementId
-import org.bibletranslationtools.otter.common.data.workbook.NewTake
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.TakeCheckingState
 import org.bibletranslationtools.otter.common.data.workbook.TakeId
@@ -86,7 +85,7 @@ class SqlWorkbookStore(
         )
     }
 
-    override suspend fun addTake(owner: ElementId, take: NewTake, select: Boolean): Take = writer.write {
+    override suspend fun addTake(owner: ElementId, take: Take, select: Boolean): Take = writer.write {
         val id = takeDao.insert(
             TakeEntity(
                 id = 0,
@@ -94,7 +93,7 @@ class SqlWorkbookStore(
                 filename = take.name,
                 filepath = take.file.toURI().path,
                 number = take.number,
-                createdTs = take.createdOn.toString(),
+                createdTs = take.createdTimestamp.toString(),
                 deletedTs = null,
                 played = 0,
                 checkingFk = database.checkingStatusDao.fetchId(take.checking.status),

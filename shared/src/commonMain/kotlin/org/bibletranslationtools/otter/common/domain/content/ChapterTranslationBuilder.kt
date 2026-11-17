@@ -1,3 +1,21 @@
+/**
+ * Copyright (C) 2020-2024 Wycliffe Associates
+ *
+ * This file is part of Orature.
+ *
+ * Orature is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * Orature is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Orature.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.bibletranslationtools.otter.common.domain.content
 
 import kotlinx.coroutines.Dispatchers
@@ -6,19 +24,17 @@ import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
-import org.bibletranslationtools.otter.common.data.workbook.NewTake
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.TakeCheckingState
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.bibletranslationtools.otter.common.utils.computeFileChecksum
 import org.slf4j.LoggerFactory
 import java.io.File
 
 class ChapterTranslationBuilder(
     private val concatenateAudio: ConcatenateAudio,
-    private val projectFiles: ProjectFilesService
+    private val takeCreator: TakeCreator
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -55,7 +71,7 @@ class ChapterTranslationBuilder(
         }
     }
 
-    private suspend fun newChapterTake(workbook: Workbook, chapter: Chapter, file: File): NewTake {
+    private suspend fun newChapterTake(workbook: Workbook, chapter: Chapter, file: File): Take {
         val namer = WorkbookFileNamerBuilder.createFileNamer(
             workbook = workbook,
             chapter = chapter,
@@ -64,17 +80,15 @@ class ChapterTranslationBuilder(
             rcSlug = workbook.sourceMetadataSlug
         )
         return withContext(Dispatchers.IO) {
-            val chapterAudioDir = projectFiles.of(workbook).audioDir.resolve(namer.formatChapterNumber())
+            val chapterAudioDir = workbook.projectFilesAccessor.audioDir.resolve(namer.formatChapterNumber())
             // A file nothing else uses; the copy writes into the file this call owns.
             val reserved = TakeFiles.reserve(chapterAudioDir, chapter.audio.getNewTakeNumber()) {
                 namer.generateName(it, AudioFileFormat.WAV)
             }
             file.copyTo(reserved.file, overwrite = true)
-            NewTake(
-                file = reserved.file,
-                number = reserved.number,
-                checking = TakeCheckingState(CheckingStatus.VERSE, computeFileChecksum(reserved.file))
-            )
+            takeCreator
+                .createNewTake(reserved.number, reserved.file.name, chapterAudioDir, createEmpty = false)
+                .copy(checking = TakeCheckingState(CheckingStatus.VERSE, computeFileChecksum(reserved.file)))
         }
     }
 

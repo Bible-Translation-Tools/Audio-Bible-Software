@@ -1,21 +1,8 @@
-package org.bibletranslationtools.otter.common.data.workbook.fixture
+package org.bibletranslationtools.otter.common.data.workbook
 
 import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.primitives.MimeType
-import org.bibletranslationtools.otter.common.data.workbook.AudioState
-import org.bibletranslationtools.otter.common.data.workbook.ChapterId
-import org.bibletranslationtools.otter.common.data.workbook.ChapterLayout
-import org.bibletranslationtools.otter.common.data.workbook.ChunkId
-import org.bibletranslationtools.otter.common.data.workbook.ChunkRecord
-import org.bibletranslationtools.otter.common.data.workbook.DraftId
-import org.bibletranslationtools.otter.common.data.workbook.ElementId
-import org.bibletranslationtools.otter.common.data.workbook.NewTake
-import org.bibletranslationtools.otter.common.data.workbook.Take
-import org.bibletranslationtools.otter.common.data.workbook.TakeCheckingState
-import org.bibletranslationtools.otter.common.data.workbook.TakeId
-import org.bibletranslationtools.otter.common.data.workbook.TextItem
-import org.bibletranslationtools.otter.common.data.workbook.WorkbookStore
 import java.time.LocalDate
 
 /**
@@ -80,8 +67,8 @@ class FakeWorkbookStore : WorkbookStore {
         return layout.copy(chunks = layout.chunks.map { it.copy(audio = audio[it.id.contentRaw] ?: it.audio) })
     }
 
-    override suspend fun addTake(owner: ElementId, take: NewTake, select: Boolean): Take = write("addTake") {
-        val saved = Take(TakeId(nextTake++), take.name, take.file, take.number, take.format, take.createdOn, null, take.checking)
+    override suspend fun addTake(owner: ElementId, take: Take, select: Boolean): Take = write("addTake") {
+        val saved = take.copy(id = TakeId(nextTake++), deletedOn = null)
         val now = saved(owner)
         audio[owner.contentRaw] = now.copy(takes = now.takes + saved, selected = if (select) saved.id else now.selected)
         saved

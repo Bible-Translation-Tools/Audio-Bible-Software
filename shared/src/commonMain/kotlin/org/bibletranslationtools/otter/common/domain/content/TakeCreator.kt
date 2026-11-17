@@ -19,8 +19,10 @@
 package org.bibletranslationtools.otter.common.domain.content
 
 import org.bibletranslationtools.otter.common.audio.wav.IWaveFileCreator
-import org.bibletranslationtools.otter.common.data.workbook.NewTake
+import org.bibletranslationtools.otter.common.data.primitives.MimeType
+import org.bibletranslationtools.otter.common.data.workbook.Take
 import java.io.File
+import java.time.LocalDate
 
 class TakeCreator(
     private val waveFileCreator: IWaveFileCreator
@@ -31,23 +33,19 @@ class TakeCreator(
         filename: String,
         audioDir: File,
         createEmpty: Boolean
-    ): NewTake {
+    ): Take {
         val takeFile = audioDir.resolve(File(filename))
-        val newTake = NewTake(file = takeFile, number = newTakeNumber)
+        val newTake = Take(
+            name = takeFile.name,
+            file = takeFile,
+            number = newTakeNumber,
+            format = MimeType.WAV,
+            createdTimestamp = LocalDate.now()
+        )
         if (createEmpty) {
             newTake.file.createNewFile()
             waveFileCreator.createEmpty(newTake.file)
         }
         return newTake
-    }
-
-    /**
-     * A new take in [audioDir] whose file nothing else uses yet: [firstNumber] if its file is free,
-     * otherwise the next free take number. The file is created empty, so the caller owns it. See
-     * [TakeFiles.reserve].
-     */
-    fun reserveNewTake(firstNumber: Int, audioDir: File, nameFor: (Int) -> String): NewTake {
-        val reserved = TakeFiles.reserve(audioDir, firstNumber, nameFor)
-        return NewTake(file = reserved.file, number = reserved.number)
     }
 }

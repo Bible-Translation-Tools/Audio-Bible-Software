@@ -7,8 +7,10 @@ import kotlinx.coroutines.test.runTest
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.data.primitives.Collection
+import org.bibletranslationtools.otter.common.data.workbook.Chunk
+import org.bibletranslationtools.otter.common.data.workbook.Chapter
+import org.bibletranslationtools.otter.common.data.workbook.Book
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.data.workbook.fixture.WorkbookBuilder
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -29,25 +31,25 @@ class UnitTargetLoaderTest {
     private val sourceId = 11
     private val targetId = 22
 
-    /** A chapter spec: its sort, and the sorts of its chunks in layout order. */
-    private fun chapter(sort: Int, vararg chunks: Int): Pair<Int, List<Int>> = sort to chunks.toList()
+    private fun chunk(sort: Int): Chunk = mockk { every { this@mockk.sort } returns sort }
+
+    /** Chapter [sort], whose chunks have [chunks]' sorts, in layout order. */
+    private fun chapter(sort: Int, vararg chunks: Int): Chapter = mockk {
+        every { this@mockk.sort } returns sort
+        coEvery { chunks() } returns chunks.map(::chunk)
+    }
 
     /**
      * A single project whose source and target books are [sourceId]/[targetId]. A book id that is
      * not one of those does not resolve, as when the book no longer exists.
      */
     private fun stubProject(
-        chapters: List<Pair<Int, List<Int>>>,
+        chapters: List<Chapter>,
         source: Int = sourceId,
         target: Int = targetId
     ): Workbook {
-        val workbook = WorkbookBuilder().build {
-            target {
-                chapters.forEach { (sort, chunks) ->
-                    chapter(sort) { chunks.forEach { chunk(it..it) } }
-                }
-            }
-        }
+        val targetBook: Book = mockk { coEvery { chapters() } returns chapters }
+        val workbook: Workbook = mockk(relaxed = true) { every { this@mockk.target } returns targetBook }
         val sourceCollection: Collection = mockk(relaxed = true) { every { id } returns source }
         val targetCollection: Collection = mockk(relaxed = true) { every { id } returns target }
         coEvery { collectionRepository.getProjectSuspend(any()) } returns null

@@ -18,11 +18,15 @@
  */
 package org.bibletranslationtools.otter.common.data.workbook
 
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.SourceAudioAccessor
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesAccessor
 
 class Workbook(
     val source: Book,
     val target: Book,
-    private val writer: WorkbookWriter
+    private val writer: WorkbookWriter,
+    val sourceAudioAccessor: SourceAudioAccessor,
+    val projectFilesAccessor: ProjectFilesAccessor
 ) {
     /**
      * Whether this workbook's changes are saved. Shows failures that no screen is waiting on, such
@@ -35,8 +39,6 @@ class Workbook(
 
     /** Refuses later changes and waits for the change in progress to be saved. */
     suspend fun close() = writer.close()
-
-
 
     val modifiedTs = target.modifiedTs
     val sourceMetadataSlug: String

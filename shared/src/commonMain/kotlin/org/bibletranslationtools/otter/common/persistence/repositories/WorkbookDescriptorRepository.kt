@@ -33,7 +33,6 @@ import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.domain.project.ProjectCompletionStatus
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.SourceAudioAccessor
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IContentRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
@@ -47,8 +46,7 @@ class WorkbookDescriptorRepository(
     private val contentRepository: IContentRepository,
     private val workbookRepository: IWorkbookRepository,
     private val projectCompletionStatus: ProjectCompletionStatus,
-    private val databaseWriter: DatabaseWriter,
-    private val projectFiles: ProjectFilesService
+    private val databaseWriter: DatabaseWriter
 ) : IWorkbookDescriptorRepository {
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -209,7 +207,7 @@ class WorkbookDescriptorRepository(
         // until opened. Recorded work is the real signal: a chapter with a selected take — restored on
         // import — means there is completion to show. Un-worked books have no selected takes and still
         // short-circuit to 0 here with no per-chapter file I/O.
-        val hasWork = projectFiles.of(workbook).isInitialized() ||
+        val hasWork = workbook.projectFilesAccessor.isInitialized() ||
             chapters.any { it.getSelectedTake() != null }
         if (!hasWork) return 0.0
 

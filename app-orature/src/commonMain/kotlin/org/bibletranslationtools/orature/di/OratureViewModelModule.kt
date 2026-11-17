@@ -48,8 +48,8 @@ val oratureViewModelModule = module {
     single { OratureWorkbookDataStore(get(), get()) }
     // Constructs a Narration for (workbook, chapter) — the port's stand-in for the JVM's
     // Dagger NarrationFactory (resolves deps: directoryProvider, splitAudioOnCues,
-    // audioFileUtils, audioBouncer, recorder + player connection factories, project files).
-    single { OratureNarrationFactory(get(), get(), get(), get(), get(), get(), get()) }
+    // audioFileUtils, audioBouncer, recorder + player connection factories).
+    single { OratureNarrationFactory(get(), get(), get(), get(), get(), get()) }
     // Factory: each drawer open gets a fresh VM; it re-scans devices and observes prefs.
     factory { OratureSettingsViewModel(get(), get(), get()) }
     // Factory: the wizard resolves the shared use-cases/repos via KoinComponent; the caller

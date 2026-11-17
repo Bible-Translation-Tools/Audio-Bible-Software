@@ -10,9 +10,24 @@ import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Take
-import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
-import org.bibletranslationtools.otter.common.data.workbook.fixture.WorkbookBuilder
+import org.bibletranslationtools.otter.common.data.primitives.Content
+import org.bibletranslationtools.otter.common.data.primitives.ContentType
+import org.bibletranslationtools.otter.common.data.primitives.MimeType
+import org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio
+import org.bibletranslationtools.otter.common.data.workbook.AudioState
+import org.bibletranslationtools.otter.common.data.workbook.ChapterAudioId
+import org.bibletranslationtools.otter.common.data.workbook.ChapterId
+import org.bibletranslationtools.otter.common.data.workbook.ChapterLayout
+import org.bibletranslationtools.otter.common.data.workbook.ChunkId
+import org.bibletranslationtools.otter.common.data.workbook.ChunkRecord
+import org.bibletranslationtools.otter.common.data.workbook.DraftId
+import org.bibletranslationtools.otter.common.data.workbook.ElementId
+import org.bibletranslationtools.otter.common.data.workbook.TakeCheckingState
+import org.bibletranslationtools.otter.common.data.workbook.TakeId
+import org.bibletranslationtools.otter.common.data.workbook.TextItem
+import org.bibletranslationtools.otter.common.data.workbook.WorkbookStore
+import org.bibletranslationtools.otter.common.data.workbook.WorkbookWriter
 import java.io.File
 import java.time.LocalDate
 
@@ -70,33 +85,70 @@ object MockData {
         )
 
     /**
-     * The preview project's workbook: three chapters of three verses. Built with [WorkbookBuilder],
-     * the builder the tests use, so its chapters, chunks and takes are made the way the app makes
-     * them. Chapter 1's first verse has three takes, the first selected.
+     * The preview project's chapters: three chapters of three verses. Chapter 1's first verse has
+     * three takes, the first selected. They load from [PreviewStore], which refuses every change:
+     * previews show data, they never save it.
      */
-    private val mockProject: Workbook by lazy {
-        WorkbookBuilder().build {
-            target {
-                (1..3).forEach { sort ->
-                    chapter(sort) {
-                        verse(1) {
-                            if (sort == 1) {
-                                take("take1.wav", selected = true)
-                                take("take2.wav")
-                                take("take3.wav")
-                            }
-                        }
-                        verse(2)
-                        verse(3)
+    private val mockChapters: List<Chapter> by lazy {
+        val store = PreviewStore()
+        val writer = WorkbookWriter()
+        (1..3).map { sort ->
+            val chapterId = sort * 10
+            store.layouts[ChapterId(chapterId)] = ChapterLayout(
+                draft = DraftId(1),
+                chunks = (1..3).map { verse ->
+                    val takes = if (sort == 1 && verse == 1) {
+                        (1..3).map { n -> mockTake(n, TakeId(n)) }
+                    } else {
+                        emptyList()
                     }
+                    ChunkRecord(
+                        id = ChunkId(chapterId + verse), sort = verse, label = "verse",
+                        start = verse, end = verse, bridged = false, contentType = ContentType.TEXT,
+                        textItem = TextItem("", MimeType.USFM), draft = DraftId(1),
+                        audio = AudioState(takes, takes.firstOrNull()?.id)
+                    )
                 }
-            }
+            )
+            Chapter(
+                id = ChapterId(chapterId), sort = sort, title = "$sort", label = "chapter",
+                audio = AssociatedAudio(ChapterAudioId(chapterId), AudioState.EMPTY, store, writer),
+                resources = emptyList(), subtreeResources = emptyList(), store = store, writer = writer
+            )
         }
+    }
+
+    private fun mockTake(number: Int, id: TakeId) = Take(
+        name = "take$number.wav",
+        file = File("take$number.wav"),
+        number = number,
+        format = MimeType.WAV,
+        createdTimestamp = LocalDate.now(),
+        id = id
+    )
+
+    /** The preview chapters' chunk layouts. Every change is refused. */
+    private class PreviewStore : WorkbookStore {
+        val layouts = mutableMapOf<ChapterId, ChapterLayout>()
+
+        override suspend fun loadAudio(owner: ElementId) = AudioState.EMPTY
+        override suspend fun loadChunks(chapter: ChapterId) = layouts.getValue(chapter)
+        override suspend fun addTake(owner: ElementId, take: Take, select: Boolean): Take = refuse()
+        override suspend fun setSelected(owner: ElementId, take: TakeId?) = refuse()
+        override suspend fun markDeleted(take: TakeId, on: LocalDate, clearSelectionOf: ElementId?) = refuse()
+        override suspend fun restore(take: TakeId) = refuse()
+        override suspend fun setChecking(take: TakeId, checking: TakeCheckingState) = refuse()
+        override suspend fun rechunk(chapter: ChapterId, rows: List<Content>): DraftId = refuse()
+        override suspend fun switchDraft(chapter: ChapterId, to: DraftId) = refuse()
+        override suspend fun deleteInactiveDrafts(chapter: ChapterId) = refuse()
+        override suspend fun chaptersWithDrafts(): List<ChapterId> = emptyList()
+
+        private fun refuse(): Nothing = throw UnsupportedOperationException("Previews do not save.")
     }
 
     /** Chapter [sort] (1 to 3) of the preview project. */
     fun createMockChapter(sort: Int): Chapter =
-        runBlocking { mockProject.target.chapters().first { it.sort == sort } }
+        mockChapters.first { it.sort == sort }
 
     /** A verse of chapter 1: verse 1, which has takes, when [hasAudio]; otherwise verse 2. */
     fun createMockChunk(hasAudio: Boolean = false): Chunk =

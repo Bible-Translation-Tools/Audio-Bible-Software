@@ -13,7 +13,6 @@ import org.bibletranslationtools.otter.common.domain.project.exporter.ExportResu
 import org.bibletranslationtools.otter.common.domain.project.exporter.IProjectExporter
 import org.bibletranslationtools.otter.common.domain.project.exporter.ProjectExporterCallback
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito.auth.AuthProvider
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.bibletranslationtools.scriptureburrito.Checksum
 import org.bibletranslationtools.scriptureburrito.CopyrightSchema
 import org.bibletranslationtools.scriptureburrito.Flavor
@@ -70,8 +69,7 @@ class BurritoWrapperExporter(
     // constructor arguments and silently leaves annotated fields uninitialized — see
     // SharedGraphWiringTest, which exists because six other classes hit exactly this.
     private val audioExporter: AudioExporter,
-    private val audioConverter: AudioConverter,
-    private val projectFiles: ProjectFilesService
+    private val audioConverter: AudioConverter
 ) : IProjectExporter {
 
     private val logger = LoggerFactory.getLogger(this.javaClass)
@@ -89,7 +87,7 @@ class BurritoWrapperExporter(
                 .firstOrNull { it.identifier == workbook.target.resourceMetadata.identifier }
                 ?: workbook.source.resourceMetadata
 
-            val projectAccessor = projectFiles.of(workbook)
+            val projectAccessor = workbook.projectFilesAccessor
             if (!projectAccessor.isInitialized()) {
                 return@rxSingle ExportResult.FAILURE
             }

@@ -27,7 +27,6 @@ import org.bibletranslationtools.shared.audio.engine.buildPeakCache
 import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
-import org.bibletranslationtools.otter.common.data.workbook.NewTake
 import org.bibletranslationtools.otter.common.data.workbook.IUndoable
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Take
@@ -43,7 +42,6 @@ import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayPosition
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.content.TakeFiles
 import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.bibletranslationtools.otter.common.domain.translation.TranslationTakeApproveAction
 import org.bibletranslationtools.otter.common.recorder.ActiveRecordingRenderer
 import org.bibletranslationtools.otter.common.recorder.WavFileWriter
@@ -101,7 +99,6 @@ class OraturePeerEditViewModel(
     private val audioConfig: AudioConfig by inject()
     private val pluginStore: org.bibletranslationtools.orature.plugins.OraturePluginStore by inject()
     private val navigationLock: org.bibletranslationtools.orature.ui.OratureNavigationLock by inject()
-    private val projectFiles: ProjectFilesService by inject()
     private val saveMessages: OratureSaveMessages by inject()
 
     private val _uiState = MutableStateFlow(OraturePeerEditUiState())
@@ -133,7 +130,7 @@ class OraturePeerEditViewModel(
     private var recorder: AudioRecorderConnection? = null
     private var writer: WavFileWriter? = null
     private var activeRenderer: ActiveRecordingRenderer? = null
-    private var pendingTake: NewTake? = null
+    private var pendingTake: Take? = null
     private val recordingActiveFlow = MutableStateFlow(false)
     private val emptyWave = FloatArray(RECORD_WIDTH * 2)
 
@@ -293,7 +290,7 @@ class OraturePeerEditViewModel(
         val wb = workbookDataStore.activeWorkbook.value ?: return null
         val chapterSort = workbookDataStore.activeChapter.value?.sort ?: return null
         val sa = runCatching {
-            projectFiles.sourceAudio(wb).getChunk(chapterSort, chunk.sort, chunk.start, wb.target)
+            wb.sourceAudioAccessor.getChunk(chapterSort, chunk.sort, chunk.start, wb.target)
         }.getOrNull() ?: return null
         val reader = OratureAudioFile(sa.file).reader(sa.start, sa.end).apply { open() }
         val sr = reader.spec.sampleRate.takeIf { it > 0 } ?: DEFAULT_SAMPLE_RATE
@@ -387,7 +384,7 @@ class OraturePeerEditViewModel(
      * Saves the re-recorded [take] into [chunk], selected. When it is not saved the failure is shown
      * and the file, which nothing refers to, is removed.
      */
-    private suspend fun keepRecording(chunk: Chunk, take: NewTake) {
+    private suspend fun keepRecording(chunk: Chunk, take: Take) {
         val result = saveMessages.report(chunk.audio.insertTake(take))
         if (result !is SaveResult.Saved) {
             withContext(Dispatchers.IO) { runCatching { take.file.delete() } }
@@ -398,16 +395,16 @@ class OraturePeerEditViewModel(
     private fun selectedPlugin(recorder: Boolean): org.bibletranslationtools.orature.plugins.OratureExternalPlugin? =
         pluginStore.selected(if (recorder) PluginCapability.RECORD else PluginCapability.EDIT)
 
-    private suspend fun newTake(chunk: Chunk): NewTake {
+    private suspend fun newTake(chunk: Chunk): Take {
         val wb = workbookDataStore.activeWorkbook.value ?: error("No active workbook")
         val chapter = workbookDataStore.activeChapter.value ?: error("No active chapter")
         val takeNumber = chunk.audio.getNewTakeNumber()
         val namer = WorkbookFileNamerBuilder.createFileNamer(wb, chapter, chunk, chunk, wb.sourceMetadataSlug)
-        val dir = projectFiles.of(wb).audioDir.resolve(namer.formatChapterNumber()).apply { mkdirs() }
+        val dir = wb.projectFilesAccessor.audioDir.resolve(namer.formatChapterNumber()).apply { mkdirs() }
         // A file nothing else uses: recording into an existing name truncated another take's audio,
         // and discarding afterwards deleted it.
         val reserved = TakeFiles.reserve(dir, takeNumber) { namer.generateName(it, AudioFileFormat.WAV) }
-        return NewTake(reserved.file, reserved.number)
+        return reserved.toTake()
     }
 
     /** Re-record into a new take with the configured external recorder, else native (JVM:
@@ -471,7 +468,7 @@ class OraturePeerEditViewModel(
         val wb = workbookDataStore.activeWorkbook.value
         val chapter = workbookDataStore.activeChapter.value
         val sourceAudio = wb?.let { w ->
-            chapter?.let { runCatching { projectFiles.sourceAudio(w).getChapter(it.sort, w.target)?.file }.getOrNull() }
+            chapter?.let { runCatching { w.sourceAudioAccessor.getChapter(it.sort, w.target)?.file }.getOrNull() }
         }
         return org.bibletranslationtools.otter.common.domain.plugins.PluginParameters(
             languageName = wb?.target?.language?.name ?: "",

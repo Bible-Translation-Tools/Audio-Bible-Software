@@ -18,7 +18,6 @@
  */
 package org.bibletranslationtools.otter.common.domain.content
 
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
@@ -46,7 +45,7 @@ import org.bibletranslationtools.otter.common.data.CHUNKIFICATION
  * @param chapterNumber The chapter number to create chunks for
  * @param workbook The workbook to add the created chunks to
  */
-class CreateChunks(private val projectFiles: ProjectFilesService) {
+class CreateChunks {
     private val logger = LoggerFactory.getLogger(CreateChunks::class.java)
 
 
@@ -63,7 +62,7 @@ class CreateChunks(private val projectFiles: ProjectFilesService) {
         chunks: List<AudioCue>
     ): List<Content> {
         val projectSlug = workbook.target.slug
-        val chapAudio = projectFiles.sourceAudio(workbook).getChapter(chapter, workbook.target)
+        val chapAudio = workbook.sourceAudioAccessor.getChapter(chapter, workbook.target)
         val sa = OratureAudioFile(chapAudio!!.file)
         val verseMarkers = sa.getMarker<VerseMarker>().map { it.toCue() }
         val chunkRanges = mapCuesToRanges(chunks)
@@ -74,7 +73,7 @@ class CreateChunks(private val projectFiles: ProjectFilesService) {
             val verses = findVerseRange(verseRanges, chunk)
 
             // use the chapter range and text if there are no verse markers (which would make the verse range empty)
-            val chapterText = projectFiles.of(workbook).getChapterText(projectSlug, chapter)
+            val chapterText = workbook.projectFilesAccessor.getChapterText(projectSlug, chapter)
             var start = 1
             var end = chapterText.size
             var text = ""
@@ -83,7 +82,7 @@ class CreateChunks(private val projectFiles: ProjectFilesService) {
             if (verses.isNotEmpty()) {
                 start = verses.first()
                 end = verses.last()
-                val v = projectFiles.of(workbook).getChunkText(projectSlug, chapter, start, end)
+                val v = workbook.projectFilesAccessor.getChunkText(projectSlug, chapter, start, end)
                 text = StringBuilder().apply { v.forEach { append("$it\n") } }.toString()
             } else {
                 text = StringBuilder().apply { chapterText.forEach { append(it) } }.toString()
@@ -115,7 +114,7 @@ class CreateChunks(private val projectFiles: ProjectFilesService) {
     ) {
         val chunks = mutableMapOf<Int, List<Content>>()
 
-        val file: File = projectFiles.of(workbook).getChunkFile().apply {
+        val file: File = workbook.projectFilesAccessor.getChunkFile().apply {
             // Create empty file if it doesn't exist
             parentFile.mkdirs()
             createNewFile()

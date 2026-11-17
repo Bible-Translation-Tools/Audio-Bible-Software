@@ -23,7 +23,6 @@ import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstants
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.domain.project.ProjectCompletionStatus
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportOptions
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportResult
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportType
@@ -70,7 +69,6 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
     private val sourceExporter: SourceProjectExporter by inject()
     private val directoryProvider: ITempFileProvider by inject()
     private val workbookRepository: IWorkbookRepository by inject()
-    private val projectFiles: ProjectFilesService by inject()
     private val completionStatus: ProjectCompletionStatus by inject()
     private val upgradeBookEdition: UpgradeBookEdition by inject()
 
@@ -348,7 +346,7 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
      * each probe is independently guarded so a probe failure can't mask the others.
      */
     private suspend fun diagnoseFailure(workbook: Workbook): String {
-        val accessor = projectFiles.of(workbook)
+        val accessor = workbook.projectFilesAccessor
 
         val initialized = runCatching { accessor.isInitialized() }.getOrDefault(false)
         if (!initialized) {
@@ -395,7 +393,7 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
      * threw FileNotFoundException at 99%).
      */
     private suspend fun ensureProjectInitialized(workbook: Workbook, mode: ProjectMode) {
-        val accessor = projectFiles.of(workbook)
+        val accessor = workbook.projectFilesAccessor
 
         // 1. The resource container in the project dir (isInitialized precondition).
         if (!accessor.isInitialized()) {

@@ -20,7 +20,6 @@ package org.bibletranslationtools.otter.common.domain.narration
 
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
-import org.bibletranslationtools.otter.common.data.workbook.NewTake
 import io.reactivex.Completable
 import kotlinx.coroutines.flow.Flow
 import io.reactivex.Single
@@ -49,7 +48,6 @@ import org.bibletranslationtools.otter.common.device.IAudioRecorder
 import org.bibletranslationtools.otter.common.domain.audio.AudioBouncer
 import org.bibletranslationtools.otter.common.domain.content.TakeFiles
 import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.recorder.WavFileWriter
 import java.io.File
@@ -66,8 +64,7 @@ class Narration(
     private val recorder: IAudioRecorder,
     private val player: IAudioPlayer,
     private val workbook: Workbook,
-    private val chapter: Chapter,
-    private val projectFiles: ProjectFilesService
+    private val chapter: Chapter
 ) {
 
     private val DEFAULT_FRAME_SIZE_BYTES = 2
@@ -76,7 +73,7 @@ class Narration(
     private val history = NarrationHistory()
     // A narration is built off the main thread (it reads the chapter's files), so waiting here for
     // the chapter's chunks is safe.
-    private var chapterRepresentation = runBlocking { ChapterRepresentation.load(workbook, chapter, projectFiles) }
+    private var chapterRepresentation = runBlocking { ChapterRepresentation.load(workbook, chapter) }
     private val chapterReaderConnection =
         chapterRepresentation.getAudioFileReader() as ChapterRepresentation.ChapterRepresentationConnection
 
@@ -625,7 +622,7 @@ class Narration(
     suspend fun createChapterTakeWithAudio(): SaveResult<Take> {
         val namer = WorkbookFileNamerBuilder.createFileNamer(workbook, chapter, null, chapter, workbook.sourceMetadataSlug)
         val newTake = withContext(Dispatchers.IO) {
-            val parentDir = projectFiles.of(workbook).getChapterAudioDir(workbook, chapter)
+            val parentDir = workbook.projectFilesAccessor.getChapterAudioDir(workbook, chapter)
             // A file nothing else uses: the next free take number if this one's name is taken.
             val reserved = TakeFiles.reserve(parentDir, chapter.audio.getNewTakeNumber()) {
                 namer.generateName(it, AudioFileFormat.WAV)
@@ -635,7 +632,7 @@ class Narration(
             audioBouncer.bounceAudio(tempFile, chapterRepresentation.getAudioFileReader(), activeVerses)
             tempFile.copyTo(reserved.file, overwrite = true)
             tempFile.deleteOnExit()
-            NewTake(reserved.file, reserved.number)
+            reserved.toTake()
         }
         val result = chapter.audio.insertTake(newTake, select = true)
         if (result is SaveResult.Saved) takeToModify = result.value
@@ -649,11 +646,11 @@ class Narration(
     suspend fun createChapterTake(): SaveResult<Take> {
         val namer = WorkbookFileNamerBuilder.createFileNamer(workbook, chapter, null, chapter, workbook.sourceMetadataSlug)
         val reserved = withContext(Dispatchers.IO) {
-            val parentDir = projectFiles.of(workbook).getChapterAudioDir(workbook, chapter)
+            val parentDir = workbook.projectFilesAccessor.getChapterAudioDir(workbook, chapter)
             // A file nothing else uses: the next free take number if this one's name is taken.
             TakeFiles.reserve(parentDir, chapter.audio.getNewTakeNumber()) { namer.generateName(it, AudioFileFormat.WAV) }
         }
-        val result = chapter.audio.insertTake(NewTake(reserved.file, reserved.number), select = true)
+        val result = chapter.audio.insertTake(reserved.toTake(), select = true)
         if (result is SaveResult.Saved) {
             takeToModify = result.value
             NarrationTakeModifier.modifyAudioData(result.value, chapterRepresentation.getAudioFileReader(), activeVerses)

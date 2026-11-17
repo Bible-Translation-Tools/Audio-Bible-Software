@@ -22,10 +22,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
 import org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio
-import org.bibletranslationtools.otter.common.data.workbook.NewTake
+import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.bibletranslationtools.shared.ui.failureMessage
 import org.bibletranslationtools.shared.audio.engine.SourceAudioPlayerController
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
@@ -49,8 +48,6 @@ class RecorderViewModel(
     private val audioRecorderFactory: AudioRecorderConnectionFactory,
     audioPlayerFactory: AudioPlayerConnectionFactory,
     referenceAlignment: ReferenceAlignment,
-    /** Where takes are saved, and where the source audio is found. */
-    private val projectFiles: ProjectFilesService,
     /** The format to capture at. See [AudioConfig.spec] — this is the one place it is decided. */
     private val audioConfig: AudioConfig = AudioConfig()
 ) : ViewModel() {
@@ -58,7 +55,6 @@ class RecorderViewModel(
     private val sourceAudioController = SourceAudioPlayerController(
         factory = audioPlayerFactory,
         scope = viewModelScope,
-        projectFiles = projectFiles,
         referenceAlignment = referenceAlignment
     )
 
@@ -513,7 +509,7 @@ class RecorderViewModel(
                 }
 
                 // The chapter's take directory (created if missing) and the take's name.
-                val dir = projectFiles.of(wb).getChapterAudioDir(wb, target.chapter)
+                val dir = wb.projectFilesAccessor.getChapterAudioDir(wb, target.chapter)
                 val namer = WorkbookFileNamerBuilder.createFileNamer(
                     workbook = wb,
                     chapter = target.chapter,
@@ -542,7 +538,7 @@ class RecorderViewModel(
 
                 // Saved and selected in one step. Only a saved take moves on to playback; a take
                 // that was not saved has no row, so its file goes rather than lingering as a take.
-                val result = audio.insertTake(NewTake(takeFile, reserved.number), select = true)
+                val result = audio.insertTake(reserved.toTake(), select = true)
                 if (result !is SaveResult.Saved) runCatching { takeFile.delete() }
                 val failure = if (result is SaveResult.Saved) null else {
                     result.failureMessage() ?: getString(Res.string.err_save_recording)

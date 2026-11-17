@@ -36,7 +36,6 @@ import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.device.AudioFileReaderProvider
 import org.bibletranslationtools.otter.common.device.AudioSpec
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import java.io.File
 import java.io.RandomAccessFile
 import java.util.concurrent.atomic.AtomicInteger
@@ -671,12 +670,11 @@ internal class ChapterRepresentation private constructor(
          */
         suspend fun load(
             workbook: Workbook,
-            chapter: Chapter,
-            projectFiles: ProjectFilesService
+            chapter: Chapter
         ): ChapterRepresentation {
             val chunks = chapter.chunks()
             return withContext(Dispatchers.IO) {
-                val chapterDir = projectFiles.of(workbook).getChapterAudioDir(workbook, chapter)
+                val chapterDir = workbook.projectFilesAccessor.getChapterAudioDir(workbook, chapter)
                 ChapterRepresentation(workbook, chapter, chunks, chapterDir)
             }
         }

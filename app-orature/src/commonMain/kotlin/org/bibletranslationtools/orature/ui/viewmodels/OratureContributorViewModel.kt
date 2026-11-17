@@ -10,7 +10,6 @@ import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.domain.project.OpenWorkbook
 import org.bibletranslationtools.otter.common.data.primitives.Contributor
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -31,7 +30,6 @@ class OratureContributorViewModel(
 ) : ViewModel(), KoinComponent {
 
     private val openWorkbook: OpenWorkbook by inject()
-    private val projectFiles: ProjectFilesService by inject()
 
     private val _uiState = MutableStateFlow(OratureContributorUiState())
     val uiState: StateFlow<OratureContributorUiState> = _uiState.asStateFlow()
@@ -51,7 +49,7 @@ class OratureContributorViewModel(
                 val wb = openWorkbook.open(workbookDescriptorId).workbook
                 workbook = wb
                 val names = withContext(Dispatchers.IO) {
-                    projectFiles.of(wb).getContributorInfo().map { it.name }
+                    wb.projectFilesAccessor.getContributorInfo().map { it.name }
                 }
                 _uiState.value = OratureContributorUiState(isLoading = false, contributors = names)
             } catch (e: CancellationException) {
@@ -92,7 +90,7 @@ class OratureContributorViewModel(
         val contributors = _uiState.value.contributors.filter { it.isNotBlank() }.map { Contributor(it) }
         launchLogged {
             withContext(Dispatchers.IO) {
-                runCatching { projectFiles.of(wb).setContributorInfo(contributors) }
+                runCatching { wb.projectFilesAccessor.setContributorInfo(contributors) }
                     .onFailure { logFailure("saving contributors", it) }
             }
         }

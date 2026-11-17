@@ -13,7 +13,6 @@ import org.bibletranslationtools.otter.common.domain.audio.AudioBouncer
 import org.bibletranslationtools.otter.common.domain.narration.AudioFileUtils
 import org.bibletranslationtools.otter.common.domain.narration.Narration
 import org.bibletranslationtools.otter.common.domain.narration.SplitAudioOnCues
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -30,8 +29,7 @@ class OratureNarrationFactory(
     private val audioFileUtils: AudioFileUtils,
     private val audioBouncer: AudioBouncer,
     private val recorderConnectionFactory: AudioRecorderConnectionFactory,
-    private val playerConnectionFactory: AudioPlayerConnectionFactory,
-    private val projectFiles: ProjectFilesService
+    private val playerConnectionFactory: AudioPlayerConnectionFactory
 ) {
     private val connectionIds = AtomicInteger(0)
 
@@ -55,8 +53,7 @@ class OratureNarrationFactory(
             recorder,
             player,
             workbook,
-            chapter,
-            projectFiles
+            chapter
         )
     }
 }

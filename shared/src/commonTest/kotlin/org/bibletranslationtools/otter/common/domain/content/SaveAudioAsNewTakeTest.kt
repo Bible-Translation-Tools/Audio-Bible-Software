@@ -10,10 +10,9 @@ import org.bibletranslationtools.otter.common.data.workbook.SaveFailure
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.data.workbook.fixture.FakeWorkbookStore
-import org.bibletranslationtools.otter.common.data.workbook.fixture.WorkbookBuilder
+import org.bibletranslationtools.otter.common.data.workbook.FakeWorkbookStore
+import org.bibletranslationtools.otter.common.data.workbook.WorkbookBuilder
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesAccessor
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -34,8 +33,7 @@ class SaveAudioAsNewTakeTest {
 
     private val store = FakeWorkbookStore()
     private val accessor = mockk<ProjectFilesAccessor>(relaxed = true)
-    private val projectFiles = mockk<ProjectFilesService>()
-    private val saveAudioAsNewTake = SaveAudioAsNewTake(projectFiles)
+    private val saveAudioAsNewTake = SaveAudioAsNewTake(TakeCreator(mockk(relaxed = true)))
 
     private lateinit var chapterAudioDir: File
 
@@ -48,13 +46,12 @@ class SaveAudioAsNewTakeTest {
             it.delete(); it.mkdirs(); it.deleteOnExit(); it
         }
 
-        val workbook = WorkbookBuilder(store).build {
+        coEvery { accessor.getChapterAudioDir(any(), any()) } returns chapterAudioDir
+        val workbook = WorkbookBuilder(store, projectFilesAccessor = accessor).build {
             target {
                 chapter(1) { (1 until takeNumber).forEach { take("chapter_t$it.wav") } }
             }
         }
-        coEvery { accessor.getChapterAudioDir(any(), any()) } returns chapterAudioDir
-        every { projectFiles.of(workbook) } returns accessor
 
         val chapter = workbook.target.chapters().single()
         store.calls.clear()
@@ -145,8 +142,7 @@ class SaveAudioAsNewTakeTest {
         val (workbook, chapter) = fixture(takeNumber = 1)
         val first = saveAudioAsNewTake.execute(workbook, chapter, null, chapter, sourceAudio(byteArrayOf(1))).saved()
         // Forget the first take, as an orphan on disk would be: the next number is 1 again.
-        val again = WorkbookBuilder(store).build { target { chapter(1) } }
-        every { projectFiles.of(again) } returns accessor
+        val again = WorkbookBuilder(store, projectFilesAccessor = accessor).build { target { chapter(1) } }
         val orphanChapter = again.target.chapters().single()
         assertEquals(1, orphanChapter.audio.getNewTakeNumber())
 

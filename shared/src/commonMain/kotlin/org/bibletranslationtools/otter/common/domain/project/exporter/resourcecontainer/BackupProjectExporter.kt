@@ -34,7 +34,6 @@ import org.bibletranslationtools.otter.common.domain.project.exporter.ExportOpti
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportResult
 import org.bibletranslationtools.otter.common.domain.project.exporter.ProjectExporterCallback
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstants
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.bibletranslationtools.otter.common.api.persistence.IFileIOFactory
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
@@ -48,8 +47,7 @@ class BackupProjectExporter(
     fileIO: IFileIOFactory,
     tempFiles: ITempFileProvider,
     private val workbookRepository: IWorkbookRepository,
-    private val backupEditions: BackupEditions,
-    private val projectFiles: ProjectFilesService
+    private val backupEditions: BackupEditions
 ) : RCProjectExporter(fileIO, tempFiles) {
 
     private val logger = LoggerFactory.getLogger(this.javaClass)
@@ -66,7 +64,7 @@ class BackupProjectExporter(
                 .firstOrNull { it.identifier == resourceMetadata.identifier }
                 ?: workbook.source.resourceMetadata
 
-            val projectAccessor = projectFiles.of(workbook)
+            val projectAccessor = workbook.projectFilesAccessor
             if (!projectAccessor.isInitialized()) {
                 return@rxSingle ExportResult.FAILURE
             }
@@ -140,7 +138,7 @@ class BackupProjectExporter(
             val (record, heldEditions) =
                 backupEditions.recordFor(workbook.target.collectionId, embeddedSource) ?: return
             heldEditions.forEach { edition ->
-                projectFiles.of(workbook).copyEditionWithRelatedMedia(
+                workbook.projectFilesAccessor.copyEditionWithRelatedMedia(
                     fileWriter, tempFiles.tempDirectory, edition, backupEditions.embeddedFileFor(edition)
                 )
             }
@@ -150,7 +148,7 @@ class BackupProjectExporter(
 
     override suspend fun estimateExportSize(workbook: Workbook, chapterFilter: List<Int>): Long {
         var size = 0L
-        val projectAccessor = projectFiles.of(workbook)
+        val projectAccessor = workbook.projectFilesAccessor
         val chapterRegex = Regex("""c(\d+)""")
         val takeDir = projectAccessor.projectDir.resolve(RcConstants.TAKE_DIR)
         val chapterDirs = takeDir

@@ -3,13 +3,12 @@ package org.bibletranslationtools.otter.common.domain.project
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.domain.narration.ChapterRepresentation
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 
-class ProjectCompletionStatus(private val projectFiles: ProjectFilesService) {
+class ProjectCompletionStatus {
 
     /** Reads the chapter's narration files; call off the main thread. */
     suspend fun getChapterNarrationProgress(workbook: Workbook, chapter: Chapter): Double {
-        val chapterRepresentation = ChapterRepresentation.load(workbook, chapter, projectFiles)
+        val chapterRepresentation = ChapterRepresentation.load(workbook, chapter)
         chapterRepresentation.loadFromSerializedVerses()
         val fileProgress = chapterRepresentation.getCompletionProgress()
         if (fileProgress >= 1.0) return fileProgress

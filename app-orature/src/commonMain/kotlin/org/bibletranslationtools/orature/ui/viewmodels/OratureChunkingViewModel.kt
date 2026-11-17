@@ -40,7 +40,6 @@ import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayPosition
 import org.bibletranslationtools.otter.common.domain.content.CreateChunks
 import org.bibletranslationtools.otter.common.domain.content.RechunkAction
 import org.bibletranslationtools.otter.common.domain.content.RechunkChapter
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.bibletranslationtools.otter.common.audio.AudioCue
 import org.bibletranslationtools.otter.common.domain.model.DEFAULT_CHUNK_MARKER_TOTAL
 import org.bibletranslationtools.otter.common.domain.model.MarkerItem
@@ -86,9 +85,8 @@ class OratureChunkingViewModel(
     private val playerFactory: AudioPlayerConnectionFactory by inject()
     private val directoryProvider: ITempFileProvider by inject()
     private val createChunks: CreateChunks by inject()
-    private val projectFiles: ProjectFilesService by inject()
     private val saveMessages: OratureSaveMessages by inject()
-    private val rechunkChapter by lazy { RechunkChapter(createChunks, projectFiles, directoryProvider) }
+    private val rechunkChapter by lazy { RechunkChapter(createChunks, directoryProvider) }
 
     private val _uiState = MutableStateFlow(OratureChunkingUiState())
     val uiState: StateFlow<OratureChunkingUiState> = _uiState.asStateFlow()
@@ -253,8 +251,8 @@ class OratureChunkingViewModel(
                         ?: error("No chapter $chapterSort")
                     // Source audio must live in the project so it can be re-chunked (JVM: dock()).
                     // The project RC (manifest.yaml) is scaffolded on open (OratureWorkbookDataStore).
-                    val accessor = projectFiles.of(wb)
-                    val sourceAudio = projectFiles.sourceAudio(wb)
+                    val accessor = wb.projectFilesAccessor
+                    val sourceAudio = wb.sourceAudioAccessor
                     val userMarked = sourceAudio.getUserMarkedChapter(chapterSort, wb.target)
                     val file = (userMarked ?: run {
                         sourceAudio.getChapter(chapterSort, wb.target)?.let {

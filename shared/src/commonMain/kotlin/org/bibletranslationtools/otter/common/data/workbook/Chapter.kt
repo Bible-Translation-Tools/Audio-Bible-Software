@@ -1,3 +1,21 @@
+/**
+ * Copyright (C) 2020-2024 Wycliffe Associates
+ *
+ * This file is part of Orature.
+ *
+ * Orature is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * Orature is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Orature.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.bibletranslationtools.otter.common.data.workbook
 
 import kotlinx.coroutines.Dispatchers
@@ -21,7 +39,7 @@ import org.bibletranslationtools.otter.common.domain.content.Recordable
  * without reading every chapter's rows. After that, [state] holds the chapter's active chunk layout
  * as one value: which draft is active and its chunks change together.
  */
-class Chapter internal constructor(
+class Chapter(
     val id: ChapterId,
     override val sort: Int,
     override val title: String,
@@ -31,7 +49,8 @@ class Chapter internal constructor(
     override val subtreeResources: List<ResourceMetadata>,
     private val store: WorkbookStore,
     private val writer: WorkbookWriter,
-    private val nodes: WorkbookNodes
+    /** The resources of the chunk with this id; a chunk built after a rechunk looks its own up. */
+    private val chunkResources: (ChunkId) -> List<ResourceGroup> = { emptyList() }
 ) : BookElement, BookElementContainer, Recordable {
 
     override val contentType: ContentType = ContentType.META
@@ -152,7 +171,20 @@ class Chapter internal constructor(
         ChapterState(
             activeDraft = layout.draft,
             chunks = layout.chunks.map { record ->
-                nodes.chunk(record, isRetired = { _state.value.activeDraft != record.draft })
+                Chunk(
+                    id = record.id,
+                    draft = record.draft,
+                    sort = record.sort,
+                    label = record.label,
+                    start = record.start,
+                    end = record.end,
+                    bridged = record.bridged,
+                    contentType = record.contentType,
+                    textItem = record.textItem,
+                    resources = chunkResources(record.id),
+                    isRetired = { _state.value.activeDraft != record.draft },
+                    audioFactory = { gate -> AssociatedAudio(record.id, record.audio, store, writer, gate) }
+                )
             },
             loaded = true
         )

@@ -32,7 +32,6 @@ import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -140,7 +139,6 @@ class OratureTranslationViewModel(
     private val upgradeBookEdition: UpgradeBookEdition by inject()
     private val projectEvents: OratureProjectEvents by inject()
     private val workbookDataStore: OratureWorkbookDataStore by inject()
-    private val projectFiles: ProjectFilesService by inject()
     private val saveMessages: OratureSaveMessages by inject()
     // :shared's app-lifetime scope: leaving the chapter must finish after this ViewModel is cleared.
     private val appScope: CoroutineScope by inject()
@@ -166,7 +164,7 @@ class OratureTranslationViewModel(
     private fun hasNoSourceAudio(sort: Int?): Boolean {
         if (sort == null) return true
         val wb = workbookDataStore.activeWorkbook.value ?: return true
-        return runCatching { projectFiles.sourceAudio(wb).getChapter(sort, wb.target) }.getOrNull() == null
+        return runCatching { wb.sourceAudioAccessor.getChapter(sort, wb.target) }.getOrNull() == null
     }
 
     init {
@@ -189,7 +187,7 @@ class OratureTranslationViewModel(
         launchLogged {
             val text = withContext(Dispatchers.IO) {
                 runCatching {
-                    val accessor = projectFiles.of(wb)
+                    val accessor = wb.projectFilesAccessor
                     val slug = wb.source.slug
                     val verses = if (chunk != null) {
                         accessor.getChunkText(slug, chapterSort, chunk.start, chunk.end)
@@ -232,7 +230,7 @@ class OratureTranslationViewModel(
                         ?: opened.chapters.firstOrNull())?.sort
                     val noSource = runCatching {
                         activeSort != null &&
-                            projectFiles.sourceAudio(workbook).getChapter(activeSort, workbook.target) == null
+                            workbook.sourceAudioAccessor.getChapter(activeSort, workbook.target) == null
                     }.getOrDefault(true)
                     LoadResult(
                         workbook.target.title.ifEmpty { workbook.target.slug.uppercase() },

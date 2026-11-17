@@ -101,7 +101,7 @@ val implicitCommonModule = module {
     // Kotlin defaults — factoryOf would fail looking for a CoroutineDispatcher binding.
     // Production wants the default (Dispatchers.IO); only tests pass their own.
     factory { OpenWorkbook(get(), get(), get()) }
-    factory { InitializeProjectFiles(get()) }
+    factory { InitializeProjectFiles() }
     factoryOf(::ImportLanguages)
 
     // Exporters

@@ -1,5 +1,6 @@
 package org.bibletranslationtools.otter.common.domain.project
 
+import org.bibletranslationtools.otter.common.domain.content.TakeFiles
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -8,15 +9,14 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import org.bibletranslationtools.otter.common.data.audio.VerseMarker
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
-import org.bibletranslationtools.otter.common.data.workbook.NewTake
+import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.data.workbook.fixture.WorkbookBuilder
+import org.bibletranslationtools.otter.common.data.workbook.WorkbookBuilder
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.audio.WriteTakeMarkers
 import org.bibletranslationtools.otter.common.domain.narration.VerseNode
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesAccessor
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.AfterTest
@@ -42,8 +42,7 @@ import kotlin.test.assertTrue
  */
 class ProjectCompletionStatusTest {
 
-    private val projectFiles: ProjectFilesService = mockk()
-    private val completionStatus = ProjectCompletionStatus(projectFiles)
+    private val completionStatus = ProjectCompletionStatus()
     private val tempDirs = mutableListOf<File>()
 
     @AfterTest
@@ -63,18 +62,17 @@ class ProjectCompletionStatusTest {
      * [chapterDir]. A [selectedTake] file is saved as the chapter's selected take.
      */
     private suspend fun stubChapter(chapterDir: File, verseCount: Int, selectedTake: File? = null): Pair<Workbook, Chapter> {
-        val workbook = WorkbookBuilder().build {
+        val accessor: ProjectFilesAccessor = mockk(relaxed = true) {
+            coEvery { getChapterAudioDir(any(), any()) } returns chapterDir
+        }
+        val workbook = WorkbookBuilder(projectFilesAccessor = accessor).build {
             target { chapter(1) { (1..verseCount).forEach { verse(it) } } }
         }
         val chapter = workbook.target.chapters().single()
         if (selectedTake != null) {
-            val saved = chapter.audio.insertTake(NewTake(selectedTake, 1), select = true)
+            val saved = chapter.audio.insertTake(TakeFiles.Reserved(1, selectedTake).toTake(), select = true)
             assertIs<SaveResult.Saved<*>>(saved, "the selected take should have been saved")
         }
-        val accessor: ProjectFilesAccessor = mockk(relaxed = true) {
-            coEvery { getChapterAudioDir(any(), any()) } returns chapterDir
-        }
-        every { projectFiles.of(workbook) } returns accessor
         return workbook to chapter
     }
 

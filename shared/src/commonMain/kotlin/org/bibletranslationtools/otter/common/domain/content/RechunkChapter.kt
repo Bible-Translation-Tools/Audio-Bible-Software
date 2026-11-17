@@ -13,7 +13,6 @@ import org.bibletranslationtools.otter.common.data.workbook.RechunkReceipt
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.bibletranslationtools.otter.common.domain.translation.ChunkAudioUseCase
 import org.slf4j.LoggerFactory
 import java.io.File
@@ -27,7 +26,6 @@ import java.io.File
  */
 class RechunkChapter(
     private val createChunks: CreateChunks,
-    private val projectFiles: ProjectFilesService,
     private val tempFiles: ITempFileProvider
 ) {
     private val logger = LoggerFactory.getLogger(RechunkChapter::class.java)
@@ -76,7 +74,7 @@ class RechunkChapter(
                         val verses = OratureAudioFile(sourceAudio).getMarker<VerseMarker>()
                         chunks.mapNotNull { chunk -> verses.firstOrNull { it.start == chunk.start }?.let { AudioCue(it.location, chunk.title) } }
                     }
-                    ChunkAudioUseCase(tempFiles, projectFiles.of(workbook)).createChunkedSourceAudio(sourceAudio, markers)
+                    ChunkAudioUseCase(tempFiles, workbook.projectFilesAccessor).createChunkedSourceAudio(sourceAudio, markers)
                 }.onFailure { logger.error("Could not rewrite the chunk markers for chapter ${chapter.sort}", it) }
             }
         }

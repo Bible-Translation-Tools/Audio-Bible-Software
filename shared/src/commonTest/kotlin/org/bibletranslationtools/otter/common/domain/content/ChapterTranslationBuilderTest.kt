@@ -5,12 +5,11 @@ import io.mockk.mockk
 import io.reactivex.Single
 import kotlinx.coroutines.test.runTest
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
-import org.bibletranslationtools.otter.common.data.workbook.NewTake
+import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.TakeCheckingState
-import org.bibletranslationtools.otter.common.data.workbook.fixture.FakeWorkbookStore
-import org.bibletranslationtools.otter.common.data.workbook.fixture.WorkbookBuilder
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
+import org.bibletranslationtools.otter.common.data.workbook.FakeWorkbookStore
+import org.bibletranslationtools.otter.common.data.workbook.WorkbookBuilder
 import org.bibletranslationtools.otter.common.utils.computeFileChecksum
 import java.io.File
 import kotlin.test.Test
@@ -37,11 +36,8 @@ class ChapterTranslationBuilderTest {
         val chapter = workbook.target.chapters().single()
         val existing = assertIs<SaveResult.Saved<*>>(
             chapter.audio.insertTake(
-                NewTake(
-                    file = tempFile(byteArrayOf(1, 2, 3)),
-                    number = 1,
-                    checking = TakeCheckingState(CheckingStatus.VERSE, computeFileChecksum(compiled))
-                ),
+                TakeFiles.Reserved(1, tempFile(byteArrayOf(1, 2, 3))).toTake()
+                    .copy(checking = TakeCheckingState(CheckingStatus.VERSE, computeFileChecksum(compiled))),
                 select = true
             )
         ).value
@@ -49,7 +45,7 @@ class ChapterTranslationBuilderTest {
 
         val concatenate = mockk<ConcatenateAudio>()
         every { concatenate.execute(any(), includeMarkers = false) } answers { Single.just(tempFile(byteArrayOf(1, 2, 3))) }
-        val builder = ChapterTranslationBuilder(concatenate, mockk<ProjectFilesService>(relaxed = true))
+        val builder = ChapterTranslationBuilder(concatenate, TakeCreator(mockk(relaxed = true)))
 
         val result = builder.getOrCompile(workbook, chapter)
 

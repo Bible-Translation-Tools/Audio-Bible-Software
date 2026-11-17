@@ -1,7 +1,7 @@
 package org.bibletranslationtools.otter.common.domain.narration
 
 import kotlinx.coroutines.test.runTest
-import org.bibletranslationtools.otter.common.data.workbook.fixture.WorkbookBuilder
+import org.bibletranslationtools.otter.common.data.workbook.WorkbookBuilder
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

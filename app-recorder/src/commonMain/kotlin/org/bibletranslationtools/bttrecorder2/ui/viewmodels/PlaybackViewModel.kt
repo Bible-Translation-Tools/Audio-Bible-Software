@@ -42,7 +42,6 @@ import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.bibletranslationtools.shared.ui.failureMessage
 import org.bibletranslationtools.otter.common.device.AudioFileReader
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnection
@@ -87,9 +86,7 @@ class PlaybackViewModel(
     private val writeTakeMarkers: WriteTakeMarkers,
     private val audioBouncer: AudioBouncer,
     private val audioRecorderFactory: AudioRecorderConnectionFactory,
-    referenceAlignment: ReferenceAlignment,
-    /** Where the source audio is found. */
-    projectFiles: ProjectFilesService
+    referenceAlignment: ReferenceAlignment
 ) : ViewModel() {
 
     data class TargetUiState(
@@ -184,7 +181,6 @@ class PlaybackViewModel(
     private val sourceAudioController = SourceAudioPlayerController(
         factory = audioPlayerFactory,
         scope = viewModelScope,
-        projectFiles = projectFiles,
         referenceAlignment = referenceAlignment
     )
 

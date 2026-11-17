@@ -29,7 +29,10 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.ICont
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ITakeRepository
+import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDatabaseAccessors
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.SourceAudioAccessor
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesAccessor
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ModelTake
 import org.bibletranslationtools.otter.common.data.primitives.Collection
@@ -37,6 +40,8 @@ import org.bibletranslationtools.otter.common.data.primitives.ContainerType
 import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.primitives.MimeType
+import org.bibletranslationtools.otter.common.data.workbook.Chapter
+import org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio
 import org.bibletranslationtools.otter.common.data.workbook.Book
 import org.bibletranslationtools.otter.common.data.workbook.ChapterAudioId
 import org.bibletranslationtools.otter.common.data.workbook.ChapterId
@@ -46,7 +51,6 @@ import org.bibletranslationtools.otter.common.data.workbook.ResourceGroup
 import org.bibletranslationtools.otter.common.data.workbook.TextItem
 import org.bibletranslationtools.otter.common.data.workbook.Translation
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.data.workbook.WorkbookNodes
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookStore
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookWriter
 import java.util.concurrent.ConcurrentHashMap
@@ -59,11 +63,13 @@ import java.util.concurrent.ConcurrentHashMap
  * under the workbook's own writer.
  */
 class WorkbookRepository(
+    private val directoryProvider: IDirectoryProvider,
     private val db: IWorkbookDatabaseAccessors,
     private val store: WorkbookStore
 ) : IWorkbookRepository {
 
     constructor(
+        directoryProvider: IDirectoryProvider,
         collectionRepository: ICollectionRepository,
         contentRepository: IContentRepository,
         resourceRepository: IResourceRepository,
@@ -71,6 +77,7 @@ class WorkbookRepository(
         takeRepository: ITakeRepository,
         store: WorkbookStore
     ) : this(
+        directoryProvider,
         WorkbookDatabaseAccessor(
             collectionRepository,
             contentRepository,
@@ -133,16 +140,23 @@ class WorkbookRepository(
         checkNotNull(source.resourceContainer) { "Book collection with id=${source.id} has null resource container" }
         checkNotNull(target.resourceContainer) { "Book collection with id=${target.id} has null resource container" }
         val writer = WorkbookWriter()
-        lateinit var nodes: WorkbookNodes
-        nodes = WorkbookNodes(store, writer) { chunk ->
-            resourceGroups(db.getResourceMetadata(contentStub(chunk.contentRaw)), nodes) { meta ->
-                db.getResources(contentStub(chunk.contentRaw), meta)
-            }
-        }
-        return Workbook(book(source, nodes), book(target, nodes), writer)
+        val sourceBook = book(source, writer)
+        val targetBook = book(target, writer)
+        return Workbook(
+            sourceBook,
+            targetBook,
+            writer,
+            SourceAudioAccessor(directoryProvider, sourceBook.resourceMetadata, sourceBook.slug),
+            ProjectFilesAccessor(
+                directoryProvider,
+                sourceBook.resourceMetadata,
+                targetBook.resourceMetadata,
+                targetBook.toCollection()
+            )
+        )
     }
 
-    private fun book(bookCollection: Collection, nodes: WorkbookNodes): Book {
+    private fun book(bookCollection: Collection, writer: WorkbookWriter): Book {
         val resourceMetadata = bookCollection.resourceContainer
             ?: throw IllegalStateException("Book collection with id=${bookCollection.id} has null resource container")
         return Book(
@@ -151,7 +165,7 @@ class WorkbookRepository(
             label = bookCollection.labelKey,
             sort = bookCollection.sort,
             slug = bookCollection.slug,
-            loadChapters = { chapters(bookCollection, nodes) },
+            loadChapters = { chapters(bookCollection, writer) },
             resourceMetadata = resourceMetadata,
             linkedResources = db.getLinkedResourceMetadata(resourceMetadata),
             subtreeResources = db.getSubtreeResourceMetadata(bookCollection),
@@ -159,21 +173,27 @@ class WorkbookRepository(
         )
     }
 
-    private suspend fun chapters(bookCollection: Collection, nodes: WorkbookNodes) = withContext(Dispatchers.IO) {
+    private suspend fun chapters(bookCollection: Collection, writer: WorkbookWriter) = withContext(Dispatchers.IO) {
         db.getChildren(bookCollection).blockingGet().map { chapterCollection ->
             val meta = db.getCollectionMetaContent(chapterCollection).blockingGet()
             val audioOwner = ChapterAudioId(meta.id)
-            nodes.chapter(
+            Chapter(
                 id = ChapterId(chapterCollection.id),
                 sort = chapterCollection.sort,
                 title = chapterCollection.titleKey,
                 label = chapterCollection.labelKey,
-                audioOwner = audioOwner,
-                audio = store.loadAudio(audioOwner),
-                resources = resourceGroups(db.getResourceMetadata(chapterCollection), nodes) { meta ->
+                audio = AssociatedAudio(audioOwner, store.loadAudio(audioOwner), store, writer),
+                resources = resourceGroups(db.getResourceMetadata(chapterCollection), writer) { meta ->
                     db.getResources(chapterCollection, meta)
                 },
-                subtreeResources = db.getSubtreeResourceMetadata(chapterCollection)
+                subtreeResources = db.getSubtreeResourceMetadata(chapterCollection),
+                store = store,
+                writer = writer,
+                chunkResources = { chunk ->
+                    resourceGroups(db.getResourceMetadata(contentStub(chunk.contentRaw)), writer) { meta ->
+                        db.getResources(contentStub(chunk.contentRaw), meta)
+                    }
+                }
             )
         }
     }
@@ -181,32 +201,32 @@ class WorkbookRepository(
     /** One group per resource container, each loading its resources the first time it is read. */
     private fun resourceGroups(
         metadata: List<org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata>,
-        nodes: WorkbookNodes,
+        writer: WorkbookWriter,
         contentsOf: (org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata) -> io.reactivex.Observable<Content>
     ): List<ResourceGroup> = metadata.map { meta ->
         ResourceGroup(meta) {
             val contents = withContext(Dispatchers.IO) { contentsOf(meta).toList().blockingGet() }
-            resources(contents, meta.identifier, nodes)
+            resources(contents, meta.identifier, writer)
         }
     }
 
     /** Each title, with the body that follows it if there is one. */
-    private suspend fun resources(contents: List<Content>, identifier: String, nodes: WorkbookNodes): List<Resource> =
+    private suspend fun resources(contents: List<Content>, identifier: String, writer: WorkbookWriter): List<Resource> =
         contents.mapIndexedNotNull { i, item ->
             if (item.type != ContentType.TITLE) return@mapIndexedNotNull null
             val body = contents.getOrNull(i + 1)?.takeIf { it.type == ContentType.BODY }
             Resource(
-                title = component(item, ContentType.TITLE, identifier, nodes),
-                body = body?.let { component(it, ContentType.BODY, identifier, nodes) }
+                title = component(item, ContentType.TITLE, identifier, writer),
+                body = body?.let { component(it, ContentType.BODY, identifier, writer) }
             )
         }
 
-    private suspend fun component(content: Content, type: ContentType, identifier: String, nodes: WorkbookNodes): Resource.Component {
+    private suspend fun component(content: Content, type: ContentType, identifier: String, writer: WorkbookWriter): Resource.Component {
         val owner = ResourceComponentId(content.id)
         return Resource.Component(
             sort = content.sort,
             textItem = textItem(content),
-            audio = nodes.audio(owner, store.loadAudio(owner)),
+            audio = AssociatedAudio(owner, store.loadAudio(owner), store, writer),
             contentType = type,
             label = resourceLabel(type, identifier)
         )

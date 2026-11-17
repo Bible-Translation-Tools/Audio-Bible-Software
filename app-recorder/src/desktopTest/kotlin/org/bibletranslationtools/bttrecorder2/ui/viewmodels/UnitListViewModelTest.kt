@@ -7,6 +7,7 @@ import io.mockk.mockk
 import io.mockk.spyk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -17,14 +18,21 @@ import org.bibletranslationtools.bttrecorder2.services.ProjectSession
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.data.primitives.Collection
-import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
+import org.bibletranslationtools.otter.common.data.primitives.MimeType
+import org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio
+import org.bibletranslationtools.otter.common.data.workbook.AudioState
+import org.bibletranslationtools.otter.common.data.workbook.Book
+import org.bibletranslationtools.otter.common.data.workbook.Chapter
+import org.bibletranslationtools.otter.common.data.workbook.ChapterState
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
-import org.bibletranslationtools.otter.common.data.workbook.SaveResult
+import org.bibletranslationtools.otter.common.data.workbook.ChunkId
+import org.bibletranslationtools.otter.common.data.workbook.DraftId
+import org.bibletranslationtools.otter.common.data.workbook.Take
+import org.bibletranslationtools.otter.common.data.workbook.TakeId
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.data.workbook.fixture.BookSpec
-import org.bibletranslationtools.otter.common.data.workbook.fixture.FakeWorkbookStore
-import org.bibletranslationtools.otter.common.data.workbook.fixture.WorkbookBuilder
+import org.bibletranslationtools.otter.common.data.workbook.WorkbookStore
+import org.bibletranslationtools.otter.common.data.workbook.WorkbookWriter
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
 import org.bibletranslationtools.shared.preferences.ActiveNavState
 import org.bibletranslationtools.shared.preferences.IAppPreferences
@@ -42,10 +50,11 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import java.io.File
+import java.time.LocalDate
 
 /**
  * Covers [UnitListViewModel.loadUnits] — how navigation state becomes the verse list — plus the
@@ -58,9 +67,10 @@ import kotlin.test.assertTrue
  * target now comes from [IAppPreferences.navState] and the repository call is suspending. The two
  * scenarios they named (populate on success, error when the project is missing) are kept below.
  *
- * The workbook is a real one over a [FakeWorkbookStore] rather than mocked. Every assertion about
- * take counts, selection and browse indices is a statement about saved state, and stubbing
- * `getAllTakes()`/`getSelectedTake()` would assert only that the stubs were returned.
+ * Chapters and chunks are mocks; each chunk's `AssociatedAudio` and its takes are real, saving to a
+ * mocked [WorkbookStore]. Every assertion about take counts, selection and browse indices is a
+ * statement about the audio's behaviour, and stubbing `getAllTakes()`/`getSelectedTake()` would
+ * assert only that the stubs were returned.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 /**
@@ -82,7 +92,10 @@ class UnitListViewModelTest : KoinTest {
     /** The real session over the stubbed repositories, spied so a test can count the openings. */
     private val projectSession = spyk(ProjectSession(workbookRepository, collectionRepository))
 
-    private val store = FakeWorkbookStore()
+    /** Where the chunks' audio saves. Relaxed: a save succeeds unless a test says otherwise. */
+    private val store: WorkbookStore = mockk(relaxed = true)
+    private val writer = WorkbookWriter()
+    private var nextId = 1
 
     private val testDispatcher = StandardTestDispatcher()
 
@@ -112,32 +125,65 @@ class UnitListViewModelTest : KoinTest {
 
     // ── fixtures ─────────────────────────────────────────────────────────────────────────
 
+    private fun take(number: Int, deleted: Boolean = false) = Take(
+        name = "take$number.wav",
+        // Never opened: the duration probe in loadUnits swallows the read failure by design.
+        file = File("take$number.wav"),
+        number = number,
+        format = MimeType.WAV,
+        createdTimestamp = LocalDate.of(2026, 1, number.coerceIn(1, 28)),
+        deletedOn = if (deleted) LocalDate.now() else null,
+        id = TakeId(nextId++)
+    )
+
+    /** A real [AssociatedAudio] holding [takes], [selected] selected, saving to [store]. */
+    private fun audio(takes: List<Take> = emptyList(), selected: Take? = null) =
+        AssociatedAudio(ChunkId(nextId++), AudioState(takes, selected?.id), store, writer)
+
+    private fun chunk(
+        sort: Int,
+        contentType: ContentType = ContentType.TEXT,
+        audio: AssociatedAudio = audio()
+    ): Chunk = mockk {
+        every { this@mockk.sort } returns sort
+        every { this@mockk.contentType } returns contentType
+        every { this@mockk.audio } returns audio
+    }
+
+    /** A chapter whose active layout holds [chunks]; [layout] changes it, as a rechunk would. */
+    private class ChapterStub(val chapter: Chapter, val layout: MutableStateFlow<ChapterState>)
+
+    private fun chapter(sort: Int, vararg chunks: Chunk): ChapterStub {
+        val layout = MutableStateFlow(ChapterState(DraftId(1), chunks.toList(), loaded = true))
+        val chapter: Chapter = mockk {
+            every { this@mockk.sort } returns sort
+            every { state } returns layout
+            coEvery { loadedState() } answers { layout.value }
+        }
+        return ChapterStub(chapter, layout)
+    }
+
     /**
-     * Wires navState → collections → workbook, the chain loadUnits walks through [ProjectSession].
-     * [book] builds the target book; [nav] defaults to a fully-populated position.
+     * Wires navState → collections → workbook → target book chapters, the chain loadUnits walks
+     * through [ProjectSession]. [nav] defaults to a fully-populated position.
      */
     private fun stubNavigation(
+        vararg chapters: ChapterStub,
         nav: ActiveNavState = ActiveNavState(sourceId, targetId, chapterSort, unitSort = -1),
         sourceCollection: Collection? = mockk(),
-        targetCollection: Collection? = mockk(),
-        book: BookSpec.() -> Unit
+        targetCollection: Collection? = mockk()
     ): Workbook {
         every { appPreferences.navState } returns flowOf(nav)
         coEvery { collectionRepository.getProjectSuspend(sourceId) } returns sourceCollection
         coEvery { collectionRepository.getProjectSuspend(targetId) } returns targetCollection
 
-        val workbook = WorkbookBuilder(store).build { target(block = book) }
+        val targetBook: Book = mockk { coEvery { chapters() } returns chapters.map { it.chapter } }
+        val workbook: Workbook = mockk(relaxed = true) { every { target } returns targetBook }
         if (sourceCollection != null && targetCollection != null) {
             every { workbookRepository.get(sourceCollection, targetCollection) } returns workbook
         }
         return workbook
     }
-
-    /** A verse row of the active chapter's next layout. */
-    private fun row(sort: Int, type: ContentType = ContentType.TEXT) = Content(
-        sort = sort, labelKey = if (type == ContentType.TEXT) "verse" else "chapter", start = sort, end = sort,
-        text = "", format = "usfm", type = type, draftNumber = 2
-    )
 
     private fun UnitListViewModel.unit(sort: Int): Chunk = uiState.value.units.single { it.unit.sort == sort }.unit
 
@@ -147,12 +193,7 @@ class UnitListViewModelTest : KoinTest {
 
     @Test
     fun `loadUnits populates units from the active chapter`() = runTest(testDispatcher) {
-        val workbook = stubNavigation {
-            chapter(chapterSort) {
-                verse(1)
-                verse(2)
-            }
-        }
+        val workbook = stubNavigation(chapter(chapterSort, chunk(1), chunk(2)))
         val viewModel = UnitListViewModel(testDispatcher)
 
         viewModel.loadUnits()
@@ -172,10 +213,7 @@ class UnitListViewModelTest : KoinTest {
      */
     @Test
     fun `loadUnits drops the chapter meta chunk`() = runTest(testDispatcher) {
-        val workbook = stubNavigation { chapter(chapterSort) }
-        // The builder makes only text chunks; a layout with a META row is saved as a rechunk.
-        val chapter = workbook.target.chapters().single()
-        assertIs<SaveResult.Saved<*>>(chapter.rechunk(listOf(row(1, ContentType.META), row(2))))
+        stubNavigation(chapter(chapterSort, chunk(1, ContentType.META), chunk(2)))
         val viewModel = UnitListViewModel(testDispatcher)
 
         viewModel.loadUnits()
@@ -186,14 +224,7 @@ class UnitListViewModelTest : KoinTest {
 
     @Test
     fun `loadUnits counts only takes that are not deleted`() = runTest(testDispatcher) {
-        stubNavigation {
-            chapter(chapterSort) {
-                verse(1) {
-                    take("take1.wav")
-                    take("take2.wav", deleted = true)
-                }
-            }
-        }
+        stubNavigation(chapter(chapterSort, chunk(1, audio = audio(listOf(take(1), take(2, deleted = true))))))
         val viewModel = UnitListViewModel(testDispatcher)
 
         viewModel.loadUnits()
@@ -204,14 +235,8 @@ class UnitListViewModelTest : KoinTest {
 
     @Test
     fun `loadUnits reports each unit's selected take`() = runTest(testDispatcher) {
-        stubNavigation {
-            chapter(chapterSort) {
-                verse(1) {
-                    take("take1.wav")
-                    take("take2.wav", selected = true)
-                }
-            }
-        }
+        val second = take(2)
+        stubNavigation(chapter(chapterSort, chunk(1, audio = audio(listOf(take(1), second), selected = second))))
         val viewModel = UnitListViewModel(testDispatcher)
 
         viewModel.loadUnits()
@@ -229,15 +254,8 @@ class UnitListViewModelTest : KoinTest {
      */
     @Test
     fun `loadUnits points the browse index at the selected take`() = runTest(testDispatcher) {
-        stubNavigation {
-            chapter(chapterSort) {
-                chunk(7..7) {
-                    take("take1.wav")
-                    take("take2.wav")
-                    take("take3.wav", selected = true)
-                }
-            }
-        }
+        val third = take(3)
+        stubNavigation(chapter(chapterSort, chunk(7, audio = audio(listOf(take(1), take(2), third), selected = third))))
         val viewModel = UnitListViewModel(testDispatcher)
 
         viewModel.loadUnits()
@@ -256,7 +274,8 @@ class UnitListViewModelTest : KoinTest {
      */
     @Test
     fun `loadUnits is a no-op while a load is already in flight`() = runTest(testDispatcher) {
-        val workbook = stubNavigation { chapter(chapterSort) { verse(1) } }
+        val stub = chapter(chapterSort, chunk(1))
+        stubNavigation(stub)
         val viewModel = UnitListViewModel(testDispatcher)
 
         viewModel.loadUnits()
@@ -264,8 +283,7 @@ class UnitListViewModelTest : KoinTest {
         viewModel.loadUnits()
         advanceUntilIdle()
         // The first load is still following the chapter: a new layout shows up in the list.
-        val chapter = workbook.target.chapters().single()
-        assertIs<SaveResult.Saved<*>>(chapter.rechunk(listOf(row(1), row(2))))
+        stub.layout.value = ChapterState(DraftId(2), listOf(chunk(1), chunk(2)), loaded = true)
         advanceUntilIdle()
 
         assertEquals(listOf(1, 2), viewModel.loadedUnits())
@@ -297,7 +315,7 @@ class UnitListViewModelTest : KoinTest {
     /** The scenario the old commented-out `loadUnits should set error when workbook is not found`. */
     @Test
     fun `loadUnits reports an error when the project is not found`() = runTest(testDispatcher) {
-        stubNavigation(targetCollection = null) {}
+        stubNavigation(targetCollection = null)
         val viewModel = UnitListViewModel(testDispatcher)
 
         viewModel.loadUnits()
@@ -316,7 +334,7 @@ class UnitListViewModelTest : KoinTest {
     @Test
     fun `loadUnits keeps the workbook when the chapter sort matches nothing`() =
         runTest(testDispatcher) {
-            val workbook = stubNavigation { chapter(99) }
+            val workbook = stubNavigation(chapter(99))
             val viewModel = UnitListViewModel(testDispatcher)
 
             viewModel.loadUnits()
@@ -333,14 +351,7 @@ class UnitListViewModelTest : KoinTest {
 
     @Test
     fun `cycleTake wraps around in both directions`() = runTest(testDispatcher) {
-        stubNavigation {
-            chapter(chapterSort) {
-                chunk(5..5) {
-                    take("take1.wav")
-                    take("take2.wav")
-                }
-            }
-        }
+        stubNavigation(chapter(chapterSort, chunk(5, audio = audio(listOf(take(1), take(2))))))
         val viewModel = UnitListViewModel(testDispatcher)
         viewModel.loadUnits()
         advanceUntilIdle()
@@ -358,7 +369,7 @@ class UnitListViewModelTest : KoinTest {
 
     @Test
     fun `cycleTake does nothing when the unit has no takes`() = runTest(testDispatcher) {
-        stubNavigation { chapter(chapterSort) { chunk(5..5) } }
+        stubNavigation(chapter(chapterSort, chunk(5)))
         val viewModel = UnitListViewModel(testDispatcher)
         viewModel.loadUnits()
         advanceUntilIdle()
@@ -375,25 +386,19 @@ class UnitListViewModelTest : KoinTest {
      */
     @Test
     fun `selectCurrentTake publishes the browsed take as selected`() = runTest(testDispatcher) {
-        stubNavigation {
-            chapter(chapterSort) {
-                chunk(5..5) {
-                    take("take1.wav")
-                    take("take2.wav")
-                }
-            }
-        }
+        val second = take(2)
+        stubNavigation(chapter(chapterSort, chunk(5, audio = audio(listOf(take(1), second)))))
         val viewModel = UnitListViewModel(testDispatcher)
         viewModel.loadUnits()
         advanceUntilIdle()
         val unit = viewModel.unit(5)
-        val second = unit.audio.getAllTakes().single { it.name == "take2.wav" }
 
         viewModel.cycleTake(unit, direction = 1)
         viewModel.selectCurrentTake(unit)
         advanceUntilIdle()
 
-        assertEquals(second.id, store.saved(unit.audio.owner).selected, "saved in the store")
+        val owner = unit.audio.owner
+        coVerify { store.setSelected(owner, second.id) }
         assertEquals(second, unit.audio.getSelectedTake())
         val model = viewModel.uiState.value.units.single()
         assertEquals(second, model.selectedTake, "and republished into ui state")
@@ -405,21 +410,15 @@ class UnitListViewModelTest : KoinTest {
     @Test
     fun `selectCurrentTake that fails to save keeps the old selection and shows the failure`() =
         runTest(testDispatcher) {
-            stubNavigation {
-                chapter(chapterSort) {
-                    chunk(5..5) {
-                        take("take1.wav", selected = true)
-                        take("take2.wav")
-                    }
-                }
-            }
+            val first = take(1)
+            stubNavigation(chapter(chapterSort, chunk(5, audio = audio(listOf(first, take(2)), selected = first))))
             val viewModel = UnitListViewModel(testDispatcher)
             viewModel.loadUnits()
             advanceUntilIdle()
             val unit = viewModel.unit(5)
 
             viewModel.cycleTake(unit, direction = 1)
-            store.failNextWrite()
+            coEvery { store.setSelected(any(), any()) } throws IllegalStateException("simulated save failure")
             viewModel.selectCurrentTake(unit)
             advanceUntilIdle()
 
@@ -431,25 +430,18 @@ class UnitListViewModelTest : KoinTest {
     @Test
     fun `deleteTake clamps the browse index and drops the take from the count`() =
         runTest(testDispatcher) {
-            stubNavigation {
-                chapter(chapterSort) {
-                    chunk(5..5) {
-                        take("take1.wav")
-                        take("take2.wav")
-                    }
-                }
-            }
+            val second = take(2)
+            stubNavigation(chapter(chapterSort, chunk(5, audio = audio(listOf(take(1), second)))))
             val viewModel = UnitListViewModel(testDispatcher)
             viewModel.loadUnits()
             advanceUntilIdle()
             val unit = viewModel.unit(5)
-            val second = unit.audio.getAllTakes().single { it.name == "take2.wav" }
             viewModel.cycleTake(unit, direction = 1)
 
             viewModel.deleteTake(unit, second)
             advanceUntilIdle()
 
-            assertTrue(store.saved(unit.audio.owner).takes.single { it.id == second.id }.isDeleted(), "saved deleted")
+            coVerify { store.markDeleted(second.id!!, any(), any()) }
             assertEquals(0, viewModel.uiState.value.currentTakeIndices[5], "clamped to the last live take")
             assertEquals(1, viewModel.uiState.value.units.single().takes)
         }

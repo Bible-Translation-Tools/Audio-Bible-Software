@@ -49,7 +49,6 @@ import org.bibletranslationtools.otter.common.domain.translation.MoveMarkerActio
 import org.bibletranslationtools.otter.common.domain.translation.TakeEditAction
 import org.bibletranslationtools.otter.common.data.workbook.UndoableActionHistory
 import org.bibletranslationtools.otter.common.data.workbook.IUndoable
-import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.bibletranslationtools.orature.plugins.OraturePluginStore
 import org.bibletranslationtools.orature.plugins.OratureExternalPlugin
 import org.bibletranslationtools.orature.plugins.canLaunchPlugins
@@ -117,7 +116,6 @@ class OratureChapterReviewViewModel(
     private val saveAudioAsNewTake: SaveAudioAsNewTake by inject()
     private val pluginStore: OraturePluginStore by inject()
     private val navigationLock: org.bibletranslationtools.orature.ui.OratureNavigationLock by inject()
-    private val projectFiles: ProjectFilesService by inject()
     private val saveMessages: OratureSaveMessages by inject()
 
     private val _uiState = MutableStateFlow(OratureChapterReviewUiState())
@@ -371,7 +369,7 @@ class OratureChapterReviewViewModel(
      * when absent from source, matching JVM's `optionalMarkers` construction exactly.
      */
     private fun sourceMarkers(wb: Workbook, chap: Chapter): List<AudioMarker> {
-        val sa = runCatching { projectFiles.sourceAudio(wb).getChapter(chap.sort, wb.target) }.getOrNull()
+        val sa = runCatching { wb.sourceAudioAccessor.getChapter(chap.sort, wb.target) }.getOrNull()
         val fromSource = if (sa != null) {
             runCatching { OratureAudioFile(sa.file).getVerseAndTitleMarkers() }.getOrDefault(emptyList())
         } else {
@@ -390,7 +388,7 @@ class OratureChapterReviewViewModel(
 
     private fun prepareSourcePlayer(wb: Workbook, chap: Chapter): Pair<IAudioPlayer, Int>? {
         val sa = runCatching {
-            val sourceAudio = projectFiles.sourceAudio(wb)
+            val sourceAudio = wb.sourceAudioAccessor
             sourceAudio.getUserMarkedChapter(chap.sort, wb.target)
                 ?: sourceAudio.getChapter(chap.sort, wb.target)
         }.getOrNull() ?: return null
@@ -410,7 +408,7 @@ class OratureChapterReviewViewModel(
     /** Translation context handed to the plugin (JVM: `PluginParameters`) — chapter-scoped, no
      *  chunk fields, since Final Review edits the whole compiled chapter take. */
     private fun pluginParams(wb: Workbook, chap: Chapter): PluginParameters {
-        val sourceAudio = runCatching { projectFiles.sourceAudio(wb).getChapter(chap.sort, wb.target)?.file }.getOrNull()
+        val sourceAudio = runCatching { wb.sourceAudioAccessor.getChapter(chap.sort, wb.target)?.file }.getOrNull()
         return PluginParameters(
             languageName = wb.target.language.name,
             bookSlug = wb.target.slug,
