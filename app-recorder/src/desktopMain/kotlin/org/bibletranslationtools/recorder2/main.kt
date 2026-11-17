@@ -5,7 +5,10 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import java.awt.Taskbar
 import java.awt.Toolkit
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import org.bibletranslationtools.bttrecorder2.di.koin.recorderViewModelModule
+import org.bibletranslationtools.bttrecorder2.services.ProjectSession
 import org.bibletranslationtools.bttrecorder2.ui.App
 import org.bibletranslationtools.di.koin.directoryProviderModule
 import org.bibletranslationtools.otter.common.device.AudioConfig
@@ -17,6 +20,8 @@ import org.bibletranslationtools.otter.common.device.AudioSystemConfig
 import org.bibletranslationtools.otter.common.device.JvmAudioLines
 import org.bibletranslationtools.shared.logging.DesktopFileLogging
 import org.koin.core.context.startKoin
+
+private const val CLOSE_TIMEOUT_MILLIS = 5_000L
 
 fun main() {
     // FIRST: before anything obtains a logger. slf4j-simple defaults to stderr, which a packaged
@@ -65,8 +70,14 @@ fun main() {
         selector.getOutputDevices(defaultSpec).firstOrNull()?.let { selector.selectOutputDevice(it) }
         selector.getInputDevices(defaultSpec).firstOrNull()?.let { selector.selectInputDevice(it) }
 
+        // Close the open project's workbook first: it waits for a change that is being saved and
+        // refuses any that come after. Bounded, so a stuck save cannot keep the window open.
+        val projectSession = koin.get<ProjectSession>()
         Window(
-            onCloseRequest = ::exitApplication,
+            onCloseRequest = {
+                runBlocking { withTimeoutOrNull(CLOSE_TIMEOUT_MILLIS) { projectSession.leave() } }
+                exitApplication()
+            },
             title = "BTT-Recorder2",
             icon = painterResource("icons/ic_launcher.png")
         ) {
