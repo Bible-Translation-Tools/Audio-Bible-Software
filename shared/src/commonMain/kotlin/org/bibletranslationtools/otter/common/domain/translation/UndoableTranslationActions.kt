@@ -1,136 +1,133 @@
-/**
- * Copyright (C) 2020-2024 Wycliffe Associates
- *
- * This file is part of Orature.
- *
- * Orature is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * Orature is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with Orature.  If not, see <https://www.gnu.org/licenses/>.
- */
 package org.bibletranslationtools.otter.common.domain.translation
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
+import org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
-import org.bibletranslationtools.otter.common.data.workbook.DateHolder
+import org.bibletranslationtools.otter.common.data.workbook.NewTake
+import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.TakeCheckingState
 import org.bibletranslationtools.otter.common.domain.IUndoable
+import org.bibletranslationtools.otter.common.domain.inOrder
 
-abstract class TranslationTakeAction(
-    protected val chunk: Chunk,
-    protected val take: Take
-) : IUndoable
-
+/**
+ * Records [newTake] into [chunk]. Undo deletes it and selects [previouslySelectedTake] again; redo
+ * restores and selects it. Every step is saved, the undo included.
+ */
 class TranslationTakeRecordAction(
-    chunk: Chunk,
-    take: Take,
+    private val chunk: Chunk,
+    private val newTake: NewTake,
     private val previouslySelectedTake: Take? = null
-) : TranslationTakeAction(chunk, take) {
+) : IUndoable {
 
-    override fun execute() {
-        chunk.audio.insertTake(take)
-    }
+    /** The take once [execute] has saved it. */
+    var take: Take? = null
+        private set
 
-    override fun undo() {
-        take.deletedTimestamp.accept(DateHolder.now())
-        previouslySelectedTake?.let {
-            chunk.audio.selectTake(it)
+    override suspend fun execute(): SaveResult<Unit> =
+        when (val result = chunk.audio.insertTake(newTake)) {
+            is SaveResult.Saved -> { take = result.value; SaveResult.Saved(Unit) }
+            is SaveResult.Failed -> result
+            is SaveResult.Rejected -> result
         }
+
+    override suspend fun undo(): SaveResult<Unit> {
+        val saved = take ?: return SaveResult.Saved(Unit)
+        return inOrder(
+            { chunk.audio.deleteTake(saved) },
+            { previouslySelectedTake?.let { chunk.audio.selectTake(it) } ?: SaveResult.Saved(Unit) }
+        )
     }
 
-    override fun redo() {
-        chunk.audio
-            .getAllTakes()
-            .find { it == take }
-            ?.deletedTimestamp
-            ?.accept(DateHolder.empty)
-
-        take.file.setLastModified(System.currentTimeMillis())
-        chunk.audio.selectTake(take)
+    override suspend fun redo(): SaveResult<Unit> {
+        val saved = take ?: return SaveResult.Saved(Unit)
+        withContext(Dispatchers.IO) { saved.file.setLastModified(System.currentTimeMillis()) }
+        return inOrder({ chunk.audio.restoreTake(saved) }, { chunk.audio.selectTake(saved) })
     }
 }
 
+/** Deletes [take] from [chunk]. Undo restores it, and selects it again if it was selected. */
 class TranslationTakeDeleteAction(
-    chunk: Chunk,
-    take: Take,
+    private val chunk: Chunk,
+    private val take: Take,
     private val isTakeSelected: Boolean,
-    private val postDeleteCallback: (Take, Boolean) -> Unit
-) : TranslationTakeAction(chunk, take) {
+    private val postDeleteCallback: suspend (Take, Boolean) -> Unit
+) : IUndoable {
 
-    override fun execute() {
-        take.deletedTimestamp.accept(DateHolder.now())
-        postDeleteCallback(take, isTakeSelected)
+    override suspend fun execute(): SaveResult<Unit> {
+        val result = chunk.audio.deleteTake(take)
+        if (result is SaveResult.Saved) postDeleteCallback(take, isTakeSelected)
+        return result
     }
 
-    override fun undo() {
-        take.file.setLastModified(System.currentTimeMillis())
-        chunk.audio.getAllTakes()
-            .find { it == take }?.deletedTimestamp?.accept(DateHolder.empty)
-
-        if (isTakeSelected) {
-            chunk.audio.selectTake(take)
-        }
+    override suspend fun undo(): SaveResult<Unit> {
+        withContext(Dispatchers.IO) { take.file.setLastModified(System.currentTimeMillis()) }
+        return inOrder(
+            { chunk.audio.restoreTake(take) },
+            { if (isTakeSelected) chunk.audio.selectTake(take) else SaveResult.Saved(Unit) }
+        )
     }
 
-    override fun redo() = execute()
+    override suspend fun redo() = execute()
 }
 
+/** Selects [take] in [chunk]. Undo selects [previouslySelectedTake] again, or clears the selection. */
 class TranslationTakeSelectAction(
-    chunk: Chunk,
-    take: Take,
+    private val chunk: Chunk,
+    private val take: Take,
     private val previouslySelectedTake: Take? = null
-) : TranslationTakeAction(chunk, take) {
-    override fun execute() {
-        take.file.setLastModified(System.currentTimeMillis())
-        chunk.audio.selectTake(take)
+) : IUndoable {
+    override suspend fun execute(): SaveResult<Unit> {
+        withContext(Dispatchers.IO) { take.file.setLastModified(System.currentTimeMillis()) }
+        return chunk.audio.selectTake(take)
     }
 
-    override fun undo() {
-        previouslySelectedTake?.let {
-            chunk.audio.selectTake(it)
-        }
-    }
+    override suspend fun undo(): SaveResult<Unit> = chunk.audio.selectTake(previouslySelectedTake)
 
-    override fun redo() = execute()
+    override suspend fun redo() = execute()
 }
 
+/** Gives [take] the checking status [checking], for its audio as it is now. Undo puts [oldCheckingStage] back. */
 class TranslationTakeApproveAction(
+    private val audio: AssociatedAudio,
     private val take: Take,
     private val checking: CheckingStatus,
     private val oldCheckingStage: TakeCheckingState
 ) : IUndoable {
 
-    private var undoCallback: () -> Unit = {}
-    private var redoCallback: () -> Unit = {}
+    private var undoCallback: suspend () -> Unit = {}
+    private var redoCallback: suspend () -> Unit = {}
 
-    override fun execute() {
-        take.checkingState.accept(TakeCheckingState(checking, take.checksum()))
+    override suspend fun execute(): SaveResult<Unit> {
+        val checksum = withContext(Dispatchers.IO) { take.checksum() }
+        return unit(audio.setChecking(take, TakeCheckingState(checking, checksum)))
     }
 
-    override fun undo() {
-        take.checkingState.accept(oldCheckingStage)
-        undoCallback()
+    override suspend fun undo(): SaveResult<Unit> {
+        val result = unit(audio.setChecking(take, oldCheckingStage))
+        if (result is SaveResult.Saved) undoCallback()
+        return result
     }
 
-    override fun redo() {
-        execute()
-        redoCallback()
+    override suspend fun redo(): SaveResult<Unit> {
+        val result = execute()
+        if (result is SaveResult.Saved) redoCallback()
+        return result
     }
 
-    fun setUndoCallback(op: () -> Unit) {
+    fun setUndoCallback(op: suspend () -> Unit) {
         undoCallback = op
     }
 
-    fun setRedoCallback(op: () -> Unit) {
+    fun setRedoCallback(op: suspend () -> Unit) {
         redoCallback = op
     }
+}
+
+internal fun unit(result: SaveResult<*>): SaveResult<Unit> = when (result) {
+    is SaveResult.Saved -> SaveResult.Saved(Unit)
+    is SaveResult.Failed -> result
+    is SaveResult.Rejected -> result
 }

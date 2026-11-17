@@ -18,6 +18,9 @@
  */
 package org.bibletranslationtools.otter.common.domain.narration
 
+import kotlinx.coroutines.withContext
+import org.bibletranslationtools.otter.common.data.workbook.SaveResult
+import org.bibletranslationtools.otter.common.data.workbook.NewTake
 import io.reactivex.Completable
 import kotlinx.coroutines.flow.Flow
 import io.reactivex.Single
@@ -38,7 +41,6 @@ import org.bibletranslationtools.otter.common.device.AudioFileReader
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
 import org.bibletranslationtools.otter.common.data.primitives.MimeType
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
-import org.bibletranslationtools.otter.common.data.workbook.DateHolder
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.device.IAudioPlayer
@@ -86,6 +88,18 @@ class Narration(
 
     private val disposables = CompositeDisposable()
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+
+    /**
+     * Where the chapter-take changes of narration's own (synchronous) undo history are saved: one at
+     * a time, in the order the actions ran. Not cancelled by [close], so a reset that was just made is
+     * still saved; a failure shows in the workbook's save status.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private val saveScope = CoroutineScope(Dispatchers.Default.limitedParallelism(1) + SupervisorJob())
+
+    private fun saveInOrder(change: suspend () -> Unit) {
+        saveScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { change() }
+    }
 
     val audioReader: AudioFileReader
         get() = chapterRepresentation.getAudioFileReader()
@@ -360,7 +374,7 @@ class Narration(
     }
 
     fun onResetAll() {
-        val action = ResetAllAction(chapter.audio)
+        val action = ResetAllAction(chapter.audio, ::saveInOrder)
         execute(action)
     }
 
@@ -600,100 +614,60 @@ class Narration(
 
 
     /**
-     * Creates a Single that emits a take where the emission of the take is delayed until the take audio is finished
-     * bouncing.
+     * Bounces the narrated chapter into a new take and saves it, selected. The take is returned once
+     * its audio is in place and it is saved.
      */
-    fun createChapterTakeWithAudio(): Single<Take> {
-        return chapter.audio.getNewTakeNumber()
-            .map { takeNumber ->
-                val namer = WorkbookFileNamerBuilder.createFileNamer(
-                    workbook,
-                    chapter,
-                    null,
-                    chapter,
-                    workbook.sourceMetadataSlug
-                )
-
-                val parentDir = workbook.projectFilesAccessor.getChapterAudioDir(workbook, chapter)
-                // A file nothing else uses: the next free take number if this one's name is taken.
-                val reserved = TakeFiles.reserve(parentDir, takeNumber) { namer.generateName(it, AudioFileFormat.WAV) }
-                val take = Take(reserved.file.name, reserved.file, reserved.number, MimeType.WAV, LocalDate.now())
-
-                chapter.audio.insertTake(take)
-
-                take
+    suspend fun createChapterTakeWithAudio(): SaveResult<Take> {
+        val namer = WorkbookFileNamerBuilder.createFileNamer(workbook, chapter, null, chapter, workbook.sourceMetadataSlug)
+        val newTake = withContext(Dispatchers.IO) {
+            val parentDir = workbook.projectFilesAccessor.getChapterAudioDir(workbook, chapter)
+            // A file nothing else uses: the next free take number if this one's name is taken.
+            val reserved = TakeFiles.reserve(parentDir, chapter.audio.getNewTakeNumber()) {
+                namer.generateName(it, AudioFileFormat.WAV)
             }
-            .map { take ->
-                takeToModify = take
-
-                // bounce to a temp file to avoid Windows file-locking issue when editing with external app
-                val tempFile = directoryProvider.createTempFile("bounced-${take.name}", ".wav")
-                audioBouncer.bounceAudio(
-                    tempFile,
-                    chapterRepresentation.getAudioFileReader(),
-                    activeVerses
-                )
-                tempFile.copyTo(take.file, overwrite = true)
-                tempFile.deleteOnExit()
-
-                take
-            }
+            // Bounce to a temp file first, to avoid a Windows file lock when editing with an external app.
+            val tempFile = directoryProvider.createTempFile("bounced-${reserved.file.name}", ".wav")
+            audioBouncer.bounceAudio(tempFile, chapterRepresentation.getAudioFileReader(), activeVerses)
+            tempFile.copyTo(reserved.file, overwrite = true)
+            tempFile.deleteOnExit()
+            NewTake(reserved.file, reserved.number)
+        }
+        val result = chapter.audio.insertTake(newTake, select = true)
+        if (result is SaveResult.Saved) takeToModify = result.value
+        return result
     }
 
     /**
-     * Creates a Single that emits a take where the emission of the take is not delayed while the take audio is
-     * bouncing.
+     * Saves a new, selected chapter take and starts writing the narrated audio into it in the
+     * background; the take is returned without waiting for that.
      */
-    fun createChapterTake(): Single<Take> {
-
-        return chapter
-            .audio
-            .getNewTakeNumber()
-            .map { takeNumber ->
-                val namer =
-                    WorkbookFileNamerBuilder.createFileNamer(
-                        workbook,
-                        chapter,
-                        null,
-                        chapter,
-                        workbook.sourceMetadataSlug
-                    )
-                val parentDir = workbook.projectFilesAccessor.getChapterAudioDir(workbook, chapter)
-                // A file nothing else uses: the next free take number if this one's name is taken.
-                TakeFiles.reserve(parentDir, takeNumber) { namer.generateName(it, AudioFileFormat.WAV) }
-            }
-            .map { reserved ->
-                val take = Take(reserved.file.name, reserved.file, reserved.number, MimeType.WAV, LocalDate.now())
-                chapter.audio.insertTake(take)
-                take
-            }
-            .map { take ->
-                take
-            }
-            .doAfterSuccess {
-                takeToModify = it
-
-                NarrationTakeModifier.modifyAudioData(
-                    takeToModify,
-                    chapterRepresentation.getAudioFileReader(),
-                    activeVerses
-                )
-            }
+    suspend fun createChapterTake(): SaveResult<Take> {
+        val namer = WorkbookFileNamerBuilder.createFileNamer(workbook, chapter, null, chapter, workbook.sourceMetadataSlug)
+        val reserved = withContext(Dispatchers.IO) {
+            val parentDir = workbook.projectFilesAccessor.getChapterAudioDir(workbook, chapter)
+            // A file nothing else uses: the next free take number if this one's name is taken.
+            TakeFiles.reserve(parentDir, chapter.audio.getNewTakeNumber()) { namer.generateName(it, AudioFileFormat.WAV) }
+        }
+        val result = chapter.audio.insertTake(NewTake(reserved.file, reserved.number), select = true)
+        if (result is SaveResult.Saved) {
+            takeToModify = result.value
+            NarrationTakeModifier.modifyAudioData(result.value, chapterRepresentation.getAudioFileReader(), activeVerses)
+        } else {
+            withContext(Dispatchers.IO) { reserved.file.delete() }
+        }
+        return result
     }
 
-    fun deleteChapterTake(deleteAudioFile: Boolean = false) {
-
-        if (deleteAudioFile) {
-            chapter.audio.getSelectedTake()?.file?.delete()
-        }
-
+    /** Deletes the chapter's selected take, and its audio file when [deleteAudioFile] is set. */
+    suspend fun deleteChapterTake(deleteAudioFile: Boolean = false): SaveResult<Unit> {
+        val selected = chapter.audio.getSelectedTake() ?: return SaveResult.Saved(Unit)
         logger.info("Deleting chapter take")
-        chapter
-            .audio
-            .getSelectedTake()
-            ?.deletedTimestamp
-            ?.accept(DateHolder.now())
-        takeToModify = null
+        val result = chapter.audio.deleteTake(selected)
+        if (result is SaveResult.Saved) {
+            if (deleteAudioFile) withContext(Dispatchers.IO) { selected.file.delete() }
+            takeToModify = null
+        }
+        return result
     }
 
     fun scrollAudio(delta: Int) {

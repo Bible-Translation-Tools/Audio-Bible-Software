@@ -21,7 +21,6 @@ package org.bibletranslationtools.otter.common.domain.narration
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.audio.AudioFile
 import org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio
-import org.bibletranslationtools.otter.common.data.workbook.DateHolder
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import kotlin.collections.ArrayList
 import kotlin.math.absoluteValue
@@ -267,7 +266,11 @@ internal class EditVerseAction(
 /**
  * This action is to clear the list of verse nodes
  */
-internal class ResetAllAction(private val chapterAudio: AssociatedAudio) : NarrationAction {
+internal class ResetAllAction(
+    private val chapterAudio: AssociatedAudio,
+    /** Saves a chapter-take change in the order the actions ran (see [Narration]). */
+    private val save: (suspend () -> Unit) -> Unit
+) : NarrationAction {
     private val logger = LoggerFactory.getLogger(ResetAllAction::class.java)
     private val nodes = ArrayList<VerseNode>()
     private var recoverableTake: Take? = null
@@ -278,11 +281,10 @@ internal class ResetAllAction(private val chapterAudio: AssociatedAudio) : Narra
         // erasing the state from nodes as well.
         nodes.addAll(totalVerses.map { it.copy() })
         totalVerses.forEach { it.clear() }
-        chapterAudio
-            .getSelectedTake()
-            ?.also { recoverableTake = it }
-            ?.deletedTimestamp
-            ?.accept(DateHolder.now())
+        chapterAudio.getSelectedTake()?.let { take ->
+            recoverableTake = take
+            save { chapterAudio.deleteTake(take) }
+        }
     }
 
     override fun undo(totalVerses: MutableList<VerseNode>) {
@@ -291,12 +293,11 @@ internal class ResetAllAction(private val chapterAudio: AssociatedAudio) : Narra
         totalVerses.clear()
         // same as with execute; copy the nodes otherwise undo/redo will start erasing the data saved in nodes.
         totalVerses.addAll(nodes.map { it.copy() })
-        recoverableTake?.let {
-            it.deletedTimestamp
-                .accept(DateHolder.empty)
-                .also {
-                    chapterAudio.selectTake(recoverableTake)
-                }
+        recoverableTake?.let { take ->
+            save {
+                chapterAudio.restoreTake(take)
+                chapterAudio.selectTake(take)
+            }
         }
     }
 
@@ -304,10 +305,7 @@ internal class ResetAllAction(private val chapterAudio: AssociatedAudio) : Narra
         logger.info("Redoing reset all action")
 
         totalVerses.forEach { it.clear() }
-        chapterAudio
-            .getSelectedTake()
-            ?.deletedTimestamp
-            ?.accept(DateHolder.now())
+        recoverableTake?.let { take -> save { chapterAudio.deleteTake(take) } }
     }
 }
 

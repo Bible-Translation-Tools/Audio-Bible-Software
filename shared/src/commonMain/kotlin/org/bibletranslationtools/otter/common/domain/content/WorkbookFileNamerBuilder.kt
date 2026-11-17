@@ -22,7 +22,8 @@ import org.bibletranslationtools.otter.common.data.workbook.*
 import org.bibletranslationtools.otter.common.domain.content.FileNamer.Companion.DEFAULT_RC_SLUG
 
 object WorkbookFileNamerBuilder {
-    fun createFileNamer(
+    /** Reads the chapter and chunk counts, loading them if needed. */
+    suspend fun createFileNamer(
         workbook: Workbook,
         chapter: Chapter,
         chunk: Chunk?,
@@ -31,10 +32,10 @@ object WorkbookFileNamerBuilder {
     ) = FileNamer(
         bookSlug = workbook.target.slug,
         languageSlug = workbook.target.language.slug,
-        chapterCount = workbook.target.chapters.count().blockingGet(),
+        chapterCount = workbook.target.chapters().size.toLong(),
         chapterTitle = chapter.title,
         chapterSort = chapter.sort,
-        chunkCount = chapter.chunkCount.blockingGet().toLong(),
+        chunkCount = chapter.chunkCount().toLong(),
         start = chunk?.start,
         end = chunk?.end,
         contentType = recordable.contentType,
