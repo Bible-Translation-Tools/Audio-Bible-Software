@@ -23,6 +23,7 @@ import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.RcConstants
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.domain.project.ProjectCompletionStatus
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportOptions
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportResult
 import org.bibletranslationtools.otter.common.domain.project.exporter.ExportType
@@ -35,7 +36,6 @@ import org.koin.core.component.inject
 import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
 import org.jetbrains.compose.resources.getString
 import org.bibletranslationtools.shared.resources.Res
-import org.bibletranslationtools.shared.resources.export_error_project_not_found
 import org.bibletranslationtools.shared.resources.export_error_load_chapters_failed
 import org.bibletranslationtools.shared.resources.export_error_no_file
 import org.bibletranslationtools.shared.resources.export_error_generic
@@ -70,6 +70,7 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
     private val sourceExporter: SourceProjectExporter by inject()
     private val directoryProvider: ITempFileProvider by inject()
     private val workbookRepository: IWorkbookRepository by inject()
+    private val projectFiles: ProjectFilesService by inject()
     private val completionStatus: ProjectCompletionStatus by inject()
     private val upgradeBookEdition: UpgradeBookEdition by inject()
 
@@ -127,15 +128,9 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
                 val workbook = workbookRepository.get(
                     descriptor.sourceCollection,
                     descriptor.targetCollection
-                ) ?: run {
-                    _options.value = ExportOptionsState.Error(
-                        descriptor,
-                        getString(Res.string.export_error_project_not_found)
-                    )
-                    return@launchLogged
-                }
+                )
 
-                val chapters = workbook.target.chapters.toList().blockingGet()
+                val chapters = workbook.target.chapters()
                 val chapterDescriptors = chapters.map { chapter ->
                     val progress = when {
                         chapter.hasSelectedAudio() -> 1.0
@@ -265,10 +260,7 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
                 val workbook = workbookRepository.get(
                     descriptor.sourceCollection,
                     descriptor.targetCollection
-                ) ?: run {
-                    _state.value = ExportState.Error(getString(Res.string.export_error_project_not_found))
-                    return@launchLogged
-                }
+                )
 
                 // Projects created through the in-app wizard never have their
                 // on-disk resource container initialized — that only happens
@@ -356,7 +348,7 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
      * each probe is independently guarded so a probe failure can't mask the others.
      */
     private suspend fun diagnoseFailure(workbook: Workbook): String {
-        val accessor = workbook.projectFilesAccessor
+        val accessor = projectFiles.of(workbook)
 
         val initialized = runCatching { accessor.isInitialized() }.getOrDefault(false)
         if (!initialized) {
@@ -373,12 +365,9 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
         // Count selected takes across chapters + chunks.
         val selectedTakeCount = runCatching {
             var count = 0
-            val chapters = workbook.target.chapters.toList().blockingGet()
-            chapters.forEach { chapter ->
+            workbook.target.chapters().forEach { chapter ->
                 if (chapter.audio.getSelectedTake() != null) count++
-                val chunks = runCatching {
-                    chapter.observableChunks.filter { it.isNotEmpty() }.blockingFirst(emptyList())
-                }.getOrDefault(emptyList())
+                val chunks = runCatching { chapter.chunks() }.getOrDefault(emptyList())
                 chunks.forEach { chunk ->
                     if (chunk.audio.getSelectedTake() != null) count++
                 }
@@ -405,8 +394,8 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
      * `project_mode.json` (the original failure: BackupProjectExporter.copyProjectModeFile
      * threw FileNotFoundException at 99%).
      */
-    private fun ensureProjectInitialized(workbook: Workbook, mode: ProjectMode) {
-        val accessor = workbook.projectFilesAccessor
+    private suspend fun ensureProjectInitialized(workbook: Workbook, mode: ProjectMode) {
+        val accessor = projectFiles.of(workbook)
 
         // 1. The resource container in the project dir (isInitialized precondition).
         if (!accessor.isInitialized()) {

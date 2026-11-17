@@ -3,14 +3,11 @@ package org.bibletranslationtools.bttrecorder2.ui.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.bibletranslationtools.shared.preferences.ActiveNavState
 import org.bibletranslationtools.shared.preferences.IAppPreferences
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import org.jetbrains.compose.resources.getString
@@ -30,7 +27,6 @@ class MainMenuViewModel : ViewModel(), KoinComponent {
 
     private val appPreferences: IAppPreferences by inject()
     private val collectionRepository: ICollectionRepository by inject()
-    private val workbookRepository: IWorkbookRepository by inject()
 
     // Eager so active-nav is current as soon as the menu composes (Record reads it).
     val navState: StateFlow<ActiveNavState> = appPreferences.navState
@@ -53,13 +49,15 @@ class MainMenuViewModel : ViewModel(), KoinComponent {
 
     private suspend fun loadDisplayInfo(state: ActiveNavState) {
         try {
-            val sourceC = collectionRepository.getProjectSuspend(state.workbookSourceId) ?: return
+            // Read from the project's book rather than its workbook: the main menu is outside the
+            // project, so it must not open one (leaving the project closes its workbook).
+            collectionRepository.getProjectSuspend(state.workbookSourceId) ?: return
             val targetC = collectionRepository.getProjectSuspend(state.workbookTargetId) ?: return
-            val workbook = withContext(Dispatchers.IO) { workbookRepository.get(sourceC, targetC) } ?: return
+            val language = targetC.resourceContainer?.language ?: return
             _uiState.value = MainMenuUiState(
                 hasActiveProject = true,
-                languageDisplay = workbook.target.language.name,
-                bookDisplay = workbook.target.title,
+                languageDisplay = language.name,
+                bookDisplay = targetC.titleKey,
                 chapterDisplay = if (state.chapterSort != -1) getString(Res.string.main_chapter_label, state.chapterSort.toString()) else "",
                 unitDisplay = if (state.unitSort != -1) getString(Res.string.main_verse_label, state.unitSort.toString()) else ""
             )

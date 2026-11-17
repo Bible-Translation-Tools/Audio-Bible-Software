@@ -17,7 +17,6 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.rx2.await
 import androidx.compose.runtime.IntState
 import androidx.compose.runtime.mutableIntStateOf
 import org.bibletranslationtools.shared.audio.engine.AudioTimeline
@@ -31,7 +30,6 @@ import org.bibletranslationtools.shared.audio.engine.WaveEditSession
 import org.bibletranslationtools.shared.audio.engine.WaveformPeakCache
 import org.bibletranslationtools.shared.audio.engine.buildPeakCache
 import org.bibletranslationtools.shared.audio.engine.formatPlaybackTime
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
 import org.bibletranslationtools.otter.common.data.audio.BookMarker
 import org.bibletranslationtools.otter.common.data.audio.ChapterMarker
@@ -41,8 +39,11 @@ import org.bibletranslationtools.otter.common.data.primitives.CHAPTER_TITLE_SORT
 import org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
+import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
+import org.bibletranslationtools.shared.ui.failureMessage
 import org.bibletranslationtools.otter.common.device.AudioFileReader
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnection
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
@@ -86,7 +87,9 @@ class PlaybackViewModel(
     private val writeTakeMarkers: WriteTakeMarkers,
     private val audioBouncer: AudioBouncer,
     private val audioRecorderFactory: AudioRecorderConnectionFactory,
-    referenceAlignment: ReferenceAlignment
+    referenceAlignment: ReferenceAlignment,
+    /** Where the source audio is found. */
+    projectFiles: ProjectFilesService
 ) : ViewModel() {
 
     data class TargetUiState(
@@ -181,6 +184,7 @@ class PlaybackViewModel(
     private val sourceAudioController = SourceAudioPlayerController(
         factory = audioPlayerFactory,
         scope = viewModelScope,
+        projectFiles = projectFiles,
         referenceAlignment = referenceAlignment
     )
 
@@ -647,10 +651,16 @@ class PlaybackViewModel(
                 val reader = buildReaderForTake(take)
                 val markers = mapEditedMarkers(baseMarkers)
                 audioBouncer.bounceAudio(tempEditedWav, reader, markers)
-                persistEditedFileAsNewTake(tempEditedWav)
+                val result = persistEditedFileAsNewTake(tempEditedWav)
                 tempEditedWav.delete()
-                // The spliced clips are now baked into the saved take's audio.
-                discardPendingInsertClips()
+                if (result is SaveResult.Saved) {
+                    // The spliced clips are now baked into the saved take's audio.
+                    discardPendingInsertClips()
+                } else {
+                    // Not saved: the edits stay in the session, so the user can try again.
+                    val message = result?.failureMessage() ?: getString(Res.string.err_save_edited_take)
+                    updateState { it.copy(error = message) }
+                }
             }.onFailure { e ->
                 updateState { it.copy(
                     error = e.message ?: getString(Res.string.err_save_edited_take)
@@ -1002,21 +1012,23 @@ class PlaybackViewModel(
         _navEvents.tryEmit(NavEvent.Exit)
     }
 
-    private suspend fun persistEditedFileAsNewTake(editedAudioFile: File) {
-        val wb = workbook ?: return
-        val target = currentTarget() ?: return
+    /** @return whether the take was saved, or null when there is no target to save it to. */
+    private suspend fun persistEditedFileAsNewTake(editedAudioFile: File): SaveResult<Take>? {
+        val wb = workbook ?: return null
+        val target = currentTarget() ?: return null
 
         // Naming, chapter directory, take creation, the copy and the insert all live in
         // SaveAudioAsNewTake — Orature's chapter-review screen performs the same sequence. The new
-        // take becomes the selected one via WorkbookRepository, once its insert has an id.
-        val newTake = saveAudioAsNewTake.execute(
+        // take is saved and selected in one step.
+        val result = saveAudioAsNewTake.execute(
             workbook = wb,
             chapter = target.chapter,
             chunk = target.chunk,
             recordable = target.recordable,
             audioFile = editedAudioFile
         )
-        _editedTakeSavedEvents.tryEmit(newTake.number)
+        if (result is SaveResult.Saved) _editedTakeSavedEvents.tryEmit(result.value.number)
+        return result
     }
 
     private fun currentTarget(): UnitTarget? = targets.getOrNull(currentTargetIndex)
@@ -1095,31 +1107,34 @@ class PlaybackViewModel(
         selectedJob?.cancel()
 
         val audio = associatedAudio ?: return
-        val takeMap = linkedMapOf<Int, Take>()
 
         takesJob = launchLogged {
-            audio.takesFlow.collect { take ->
-                takeMap[take.number] = take
-                val takes = takeMap.values
-                    .filter { !it.isDeleted() }
-                    .sortedBy { it.number }
+            audio.takesFlow.collect { all ->
+                val takes = all.filter { !it.isDeleted() }.sortedBy { it.number }
                 updateState { it.copy(takes = takes) }
 
-                val selected = _uiState.value.selectedTake
-                if (selected == null || selected.isDeleted()) {
-                    val requested = requestedTakeNumber?.let { req -> takes.find { it.number == req } }
-                    val fallback = requested ?: takes.maxByOrNull { it.number }
-                    if (fallback != null) {
-                        audio.selectTake(fallback)
-                        requestedTakeNumber = null
+                // This screen shows and edits the selected take, so opening a take selects it: the
+                // take asked for once, then the newest whenever nothing is selected (none yet, or
+                // the selected one was deleted). Read from the audio, the saved state, not the UI.
+                val requested = requestedTakeNumber?.let { req -> takes.find { it.number == req } }
+                requestedTakeNumber = null
+                val selected = audio.getSelectedTake()
+                val toSelect = when {
+                    requested != null && requested != selected -> requested
+                    selected == null -> takes.maxByOrNull { it.number }
+                    else -> null
+                }
+                if (toSelect != null) {
+                    audio.selectTake(toSelect).failureMessage()?.let { message ->
+                        updateState { it.copy(error = message) }
                     }
                 }
             }
         }
 
+        // The take shown follows the saved selection.
         selectedJob = launchLogged {
-            audio.selectedFlow.collect { selectedHolder ->
-                val selectedTake = selectedHolder.value
+            audio.selectedFlow.collect { selectedTake ->
                 updateState { it.copy(selectedTake = selectedTake) }
                 if (selectedTake != null && !selectedTake.isDeleted()) {
                     loadTakeForPlayback(selectedTake)

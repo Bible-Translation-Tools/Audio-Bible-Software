@@ -1,7 +1,5 @@
 package org.bibletranslationtools.bttrecorder2.services
 
-import kotlinx.coroutines.rx2.await
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
@@ -38,7 +36,7 @@ data class UnitTarget(
  * Callers are responsible for their own dispatching; both call it from `Dispatchers.IO`.
  */
 class UnitTargetLoader(
-    private val workbookRepository: IWorkbookRepository
+    private val projectSession: ProjectSession
 ) {
 
     /**
@@ -56,7 +54,9 @@ class UnitTargetLoader(
 
     /**
      * @param unitNumber the chunk sort to open, or null for the chapter-level target
-     * @return null when no workbook matches the ids, or the target book has no chapters — in
+     * Opens the project through [ProjectSession], so it becomes the open project.
+     *
+     * @return null when no project matches the ids, or the target book has no chapters — in
      *   either case there is nothing for the screen to show and it should leave its state alone.
      */
     suspend fun load(
@@ -65,17 +65,15 @@ class UnitTargetLoader(
         chapterNumber: Int,
         unitNumber: Int?
     ): LoadedTargets? {
-        val workbook = workbookRepository.getProjectsSuspend().find {
-            it.source.collectionId == sourceId && it.target.collectionId == targetId
-        } ?: return null
+        val workbook = projectSession.open(sourceId, targetId) ?: return null
 
-        val chapters = workbook.target.chapters.toList().await().sortedBy { it.sort }
+        val chapters = workbook.target.chapters().sortedBy { it.sort }
         if (chapters.isEmpty()) return null
 
         val targets = mutableListOf<UnitTarget>()
         chapters.forEach { chapter ->
             targets.add(UnitTarget(chapter = chapter, chunk = null))
-            chapter.chunksSuspend().sortedBy { it.sort }.forEach { chunk ->
+            chapter.chunks().sortedBy { it.sort }.forEach { chunk ->
                 targets.add(UnitTarget(chapter = chapter, chunk = chunk))
             }
         }

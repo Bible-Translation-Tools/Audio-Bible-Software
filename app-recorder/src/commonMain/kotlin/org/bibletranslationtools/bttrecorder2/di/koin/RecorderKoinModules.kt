@@ -1,5 +1,6 @@
 package org.bibletranslationtools.bttrecorder2.di.koin
 
+import org.bibletranslationtools.bttrecorder2.services.ProjectSession
 import org.bibletranslationtools.bttrecorder2.services.UnitTargetLoader
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ChapterListViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.EditionChangeViewModel
@@ -10,6 +11,7 @@ import org.bibletranslationtools.bttrecorder2.ui.viewmodels.ProjectManagementVie
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.RecorderViewModel
 import org.bibletranslationtools.bttrecorder2.ui.viewmodels.UnitListViewModel
 import org.koin.core.module.dsl.factoryOf
+import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.module
 
 /** App-context marker; the android app binds a concrete Context-backed impl. */
@@ -20,12 +22,15 @@ interface AppContext
  * shared); composed in startKoin alongside :shared's sharedCommonModules and the platform
  * (sharedDesktopModules / sharedAndroidModules) + directory provider.
  *
- * The app's own non-UI code lives in `bttrecorder2.services` — [UnitTargetLoader] here, plus
- * `InsertRecorder`, which PlaybackViewModel constructs directly rather than resolving. Those
+ * The app's own non-UI code lives in `bttrecorder2.services` — [ProjectSession] and
+ * [UnitTargetLoader] here, plus `InsertRecorder`, which PlaybackViewModel constructs directly rather than resolving. Those
  * are NOT `otter.common.domain` use cases (those come from :shared and are bound there); they
  * are this app's own layer between its screens and that domain.
  */
 val recorderViewModelModule = module {
+    // The open project's workbook, shared by every screen of the project; closes it when the
+    // user leaves the project.
+    singleOf(::ProjectSession)
     // Shared by the Recorder and Playback screens: navigation args -> the flat
     // chapter-then-chunks list both page through.
     factoryOf(::UnitTargetLoader)
@@ -36,7 +41,7 @@ val recorderViewModelModule = module {
     factoryOf(::RecorderViewModel)
     factoryOf(::PlaybackViewModel)
     // One per opening of the edition change dialog, for the book it was opened on.
-    factory { (projectBookId: Int) -> EditionChangeViewModel(projectBookId, get(), get()) }
+    factory { (projectBookId: Int) -> EditionChangeViewModel(projectBookId, get(), get(), get()) }
     // Process-lifetime singleton so the ProjectManagement + Recorder routes share the
     // same export state (isCurrentlyExporting gates UI); auto-cleans temp dirs on init.
     single { ExportProjectViewModel() }

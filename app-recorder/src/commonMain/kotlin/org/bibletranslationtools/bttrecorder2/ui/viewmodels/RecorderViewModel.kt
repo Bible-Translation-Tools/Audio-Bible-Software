@@ -19,22 +19,20 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
-import org.bibletranslationtools.otter.common.data.primitives.MimeType
 import org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio
-import org.bibletranslationtools.otter.common.data.workbook.Chapter
-import org.bibletranslationtools.otter.common.data.workbook.Chunk
-import org.bibletranslationtools.otter.common.data.workbook.Take
+import org.bibletranslationtools.otter.common.data.workbook.NewTake
+import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
+import org.bibletranslationtools.shared.ui.failureMessage
 import org.bibletranslationtools.shared.audio.engine.SourceAudioPlayerController
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
 import org.bibletranslationtools.otter.common.device.AudioRecorderConnection
 import org.bibletranslationtools.otter.common.device.AudioRecorderConnectionFactory
 import org.bibletranslationtools.otter.common.device.AudioSpec
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
-import org.bibletranslationtools.otter.common.domain.content.Recordable
 import org.bibletranslationtools.otter.common.domain.content.TakeFiles
 import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
 import org.bibletranslationtools.otter.common.recorder.ActiveRecordingRenderer
@@ -45,13 +43,14 @@ import org.bibletranslationtools.bttrecorder2.services.UnitTargetLoader
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
-import java.time.LocalDate
 
 class RecorderViewModel(
     private val unitTargetLoader: UnitTargetLoader,
     private val audioRecorderFactory: AudioRecorderConnectionFactory,
     audioPlayerFactory: AudioPlayerConnectionFactory,
     referenceAlignment: ReferenceAlignment,
+    /** Where takes are saved, and where the source audio is found. */
+    private val projectFiles: ProjectFilesService,
     /** The format to capture at. See [AudioConfig.spec] — this is the one place it is decided. */
     private val audioConfig: AudioConfig = AudioConfig()
 ) : ViewModel() {
@@ -59,6 +58,7 @@ class RecorderViewModel(
     private val sourceAudioController = SourceAudioPlayerController(
         factory = audioPlayerFactory,
         scope = viewModelScope,
+        projectFiles = projectFiles,
         referenceAlignment = referenceAlignment
     )
 
@@ -118,15 +118,12 @@ class RecorderViewModel(
      */
     @Volatile
     private var captureSpec: AudioSpec = audioConfig.spec
-    private var targetDirectory: File? = null
-    private var currentNamer: org.bibletranslationtools.otter.common.domain.content.FileNamer? = null
 
     private var wavFileWriter: WavFileWriter? = null
     private var currentTempAudioFile: File? = null
     private var recorderJob: Job? = null
     private var timerTickerJob: Job? = null
     private var volumeTickerJob: Job? = null
-    private var takeStreamJob: Job? = null
 
     private val timer = RecordingTimer()
     private var hasRecordedAudio = false
@@ -281,14 +278,6 @@ class RecorderViewModel(
         currentTargetIndex = index
 
         associatedAudio = target.recordable.audio
-        targetDirectory = wb.projectFilesAccessor.getChapterAudioDir(wb, target.chapter)
-        currentNamer = WorkbookFileNamerBuilder.createFileNamer(
-            workbook = wb,
-            chapter = target.chapter,
-            chunk = target.chunk,
-            recordable = target.recordable,
-            rcSlug = wb.sourceMetadataSlug
-        )
 
         val title = if (target.chunk == null) {
             "Chapter ${target.chapter.label}"
@@ -321,13 +310,6 @@ class RecorderViewModel(
         captureSpec = audioConfig.spec
         launchLogged(Dispatchers.IO) { captureSpec = specOfExistingTake() ?: audioConfig.spec }
 
-        takeStreamJob?.cancel()
-        takeStreamJob = launchLogged {
-            associatedAudio?.takesFlow?.collect {
-                // No-op: the flow keeps this target's take stream hot and up to date for future numbering.
-            }
-        }
-
         // Load source audio for the new target. Done off the IO dispatcher because
         // the accessor reads from disk (and possibly extracts from a Resource Container).
         launchLogged(Dispatchers.IO) {
@@ -346,9 +328,8 @@ class RecorderViewModel(
      */
     private fun specOfExistingTake(): AudioSpec? {
         val audio = associatedAudio ?: return null
-        // `takes` is an untyped RxRelay replay buffer, hence the filter.
-        val take = audio.selected.value?.value
-            ?: audio.takes.values.filterIsInstance<Take>().maxByOrNull { it.number }
+        val take = audio.getSelectedTake()
+            ?: audio.getAllTakes().maxByOrNull { it.number }
         val file = take?.file ?: return null
         return runCatching {
             val audioFile = OratureAudioFile(file)
@@ -516,9 +497,9 @@ class RecorderViewModel(
     fun saveRecording() {
         if (_recordingState.value != RecordingUiState.Review || !hasRecordedAudio) return
         val sessionFile = currentTempAudioFile ?: return
-        val dir = targetDirectory ?: return
-        val audio = associatedAudio ?: return
-        val namer = currentNamer ?: return
+        val wb = workbook ?: return
+        val target = currentTarget() ?: return
+        val audio = target.recordable.audio
 
         launchLogged(Dispatchers.IO) {
             try {
@@ -531,19 +512,22 @@ class RecorderViewModel(
                     throw IllegalStateException("Unable to finalize recording for save.")
                 }
 
+                // The chapter's take directory (created if missing) and the take's name.
+                val dir = projectFiles.of(wb).getChapterAudioDir(wb, target.chapter)
+                val namer = WorkbookFileNamerBuilder.createFileNamer(
+                    workbook = wb,
+                    chapter = target.chapter,
+                    chunk = target.chunk,
+                    recordable = target.recordable,
+                    rcSlug = wb.sourceMetadataSlug
+                )
+
                 // Claim a take file nothing else uses (the next free take number if this one's
                 // name is already on disk), so committing below replaces only our own placeholder.
-                val reserved = TakeFiles.reserve(dir, audio.getNewTakeNumberSuspend()) {
+                val reserved = TakeFiles.reserve(dir, audio.getNewTakeNumber()) {
                     namer.generateName(it, AudioFileFormat.WAV)
                 }
                 val takeFile = reserved.file
-                val newTake = Take(
-                    name = takeFile.name,
-                    file = takeFile,
-                    number = reserved.number,
-                    format = MimeType.WAV,
-                    createdTimestamp = LocalDate.now()
-                )
 
                 // Staged under a name that is not a take name, so a leftover is never exported or
                 // imported as a take.
@@ -557,9 +541,19 @@ class RecorderViewModel(
                 }
                 commitStagedTake(stagedTakeFile, takeFile)
 
+                // Saved and selected in one step. Only a saved take moves on to playback; a take
+                // that was not saved has no row, so its file goes rather than lingering as a take.
+                val result = audio.insertTake(NewTake(takeFile, reserved.number), select = true)
+                if (result !is SaveResult.Saved) runCatching { takeFile.delete() }
+                val failure = if (result is SaveResult.Saved) null else {
+                    result.failureMessage() ?: getString(Res.string.err_save_recording)
+                }
                 withContext(Dispatchers.Main) {
-                    audio.insertTake(newTake)
-                    _savedTakeEvents.tryEmit(newTake.number)
+                    if (result is SaveResult.Saved) {
+                        _savedTakeEvents.tryEmit(result.value.number)
+                    } else {
+                        _audioError.value = failure
+                    }
                     resetSessionForTarget()
                 }
             } catch (e: Exception) {
@@ -717,7 +711,6 @@ class RecorderViewModel(
         _waveformRenderer.value?.close()
         _waveformRenderer.value = null
         wavFileWriter?.close()
-        takeStreamJob?.cancel()
         stopTimerTicker()
         volumeTickerJob?.cancel()
         recorderJob?.cancel()

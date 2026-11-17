@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import org.bibletranslationtools.bttrecorder2.services.ProjectSession
 import org.bibletranslationtools.otter.common.domain.collections.BookEditionState
 import org.bibletranslationtools.otter.common.domain.collections.BookUpgradePlan
 import org.bibletranslationtools.otter.common.domain.collections.EditionChoice
@@ -26,7 +27,8 @@ import org.jetbrains.compose.resources.getString
 class EditionChangeViewModel(
     private val projectBookId: Int,
     private val upgradeBookEdition: UpgradeBookEdition,
-    private val appPreferences: IAppPreferences
+    private val appPreferences: IAppPreferences,
+    private val projectSession: ProjectSession
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<EditionChangeState>(EditionChangeState.Loading)
@@ -88,6 +90,10 @@ class EditionChangeViewModel(
         _state.value = EditionChangeState.Applying(previewing.choice)
         launchLogged {
             _state.value = try {
+                // The open workbook is this book's under its old source, and its chapters are about
+                // to change underneath it: close it first, so it saves what it has and writes no more.
+                // The screen reopens the project when the change is done, or has failed after this.
+                projectSession.closeBook(projectBookId)
                 upgradeBookEdition.apply(previewing.plan)
                 followActiveWorkbook(previewing.plan)
                 EditionChangeState.Done(previewing.choice, previewing.plan.heldBack.map { it.sort })
@@ -95,7 +101,7 @@ class EditionChangeViewModel(
                 throw e
             } catch (e: Exception) {
                 logFailure("changing the book's edition", e)
-                EditionChangeState.Error(e.message ?: getString(Res.string.err_unknown))
+                EditionChangeState.Error(e.message ?: getString(Res.string.err_unknown), projectClosed = true)
             }
         }
     }
@@ -120,5 +126,6 @@ sealed interface EditionChangeState {
     data class Applying(val choice: EditionChoice) : EditionChangeState
     /** @property heldBack numbers of the chapters that kept their verse structure. */
     data class Done(val choice: EditionChoice, val heldBack: List<Int>) : EditionChangeState
-    data class Error(val message: String) : EditionChangeState
+    /** @property projectClosed the open project was closed for the change, so the screen must reopen it. */
+    data class Error(val message: String, val projectClosed: Boolean = false) : EditionChangeState
 }

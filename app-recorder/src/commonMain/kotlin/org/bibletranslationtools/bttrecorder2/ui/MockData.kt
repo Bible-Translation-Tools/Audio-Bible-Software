@@ -1,23 +1,18 @@
 package org.bibletranslationtools.bttrecorder2.ui
 
-import io.reactivex.Completable
 import io.reactivex.Single
-import com.jakewharton.rxrelay2.BehaviorRelay
-import com.jakewharton.rxrelay2.ReplayRelay
+import kotlinx.coroutines.runBlocking
 import org.bibletranslationtools.otter.common.data.primitives.ContainerType
-import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.primitives.Language
-import org.bibletranslationtools.otter.common.data.primitives.MimeType
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.data.primitives.Collection
-import org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Take
-import org.bibletranslationtools.otter.common.data.workbook.TakeHolder
-import org.bibletranslationtools.otter.common.data.workbook.TextItem
+import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
+import org.bibletranslationtools.otter.common.data.workbook.fixture.WorkbookBuilder
 import java.io.File
 import java.time.LocalDate
 
@@ -74,53 +69,42 @@ object MockData {
             hasSourceAudio = true
         )
 
-    fun createMockTake(number: Int, name: String = "Take $number") = Take(
-        name = name,
-        file = File("mock/path/$name.wav"),
-        number = number,
-        format = MimeType.WAV!!,
-        createdTimestamp = LocalDate.now()
-    )
-
-    fun createMockAssociatedAudio(takesList: List<Take> = emptyList()): AssociatedAudio {
-        val replay = ReplayRelay.create<Take>()
-        takesList.forEach { replay.accept(it) }
-        val behavior = BehaviorRelay.createDefault(TakeHolder(takesList.firstOrNull()))
-        return AssociatedAudio(replay, behavior)
+    /**
+     * The preview project's workbook: three chapters of three verses. Built with [WorkbookBuilder],
+     * the builder the tests use, so its chapters, chunks and takes are made the way the app makes
+     * them. Chapter 1's first verse has three takes, the first selected.
+     */
+    private val mockProject: Workbook by lazy {
+        WorkbookBuilder().build {
+            target {
+                (1..3).forEach { sort ->
+                    chapter(sort) {
+                        verse(1) {
+                            if (sort == 1) {
+                                take("take1.wav", selected = true)
+                                take("take2.wav")
+                                take("take3.wav")
+                            }
+                        }
+                        verse(2)
+                        verse(3)
+                    }
+                }
+            }
+        }
     }
 
-    fun createMockChunk(sort: Int, label: String, hasAudio: Boolean = false) = Chunk(
-        sort = sort,
-        label = label,
-        audio = createMockAssociatedAudio(if (hasAudio) listOf(createMockTake(1)) else emptyList()),
-        resources = emptyList(),
-        textItem = TextItem("Mock Text", MimeType.USFM!!),
-        start = sort,
-        end = sort,
-        draftNumber = 1,
-        contentType = ContentType.TEXT
-    )
+    /** Chapter [sort] (1 to 3) of the preview project. */
+    fun createMockChapter(sort: Int): Chapter =
+        runBlocking { mockProject.target.chapters().first { it.sort == sort } }
 
-    fun createMockChapter(sort: Int, title: String, label: String, chunkCount: Int = 1) = Chapter(
-        sort = sort,
-        title = title,
-        label = label,
-        audio = createMockAssociatedAudio(),
-        resources = emptyList(),
-        subtreeResources = emptyList(),
-        lazychunks = lazy {
-            val relay = BehaviorRelay.createDefault((1..chunkCount).map {
-                createMockChunk(
-                    it,
-                    it.toString()
-                )
-            })
-            relay
-        },
-        chunkCount = Single.just(chunkCount),
-        addChunk = { Completable.complete() },
-        reset = { Completable.complete() }
-    )
+    /** A verse of chapter 1: verse 1, which has takes, when [hasAudio]; otherwise verse 2. */
+    fun createMockChunk(hasAudio: Boolean = false): Chunk =
+        runBlocking { createMockChapter(1).chunks()[if (hasAudio) 0 else 1] }
+
+    /** The takes of chapter 1's first verse, in number order. */
+    fun createMockTakes(): List<Take> =
+        createMockChunk(hasAudio = true).audio.getAllTakes().sortedBy { it.number }
 
     val mockWorkbooks = listOf(
         createMockWorkbook(1, "gen", "Genesis", englishLanguage),

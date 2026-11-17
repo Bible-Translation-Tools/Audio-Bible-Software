@@ -82,7 +82,8 @@ fun UnitListScreen(
         onDelete = { unit, take -> viewModel.deleteTake(unit, take) },
         onCycle = { unit, direction -> viewModel.cycleTake(unit, direction) },
         onSelectTake = { viewModel.selectCurrentTake(it) },
-        onOpenPlayback = onOpenPlayback
+        onOpenPlayback = onOpenPlayback,
+        onSaveErrorShown = viewModel::dismissSaveError
     )
 }
 
@@ -97,9 +98,19 @@ fun UnitListContent(
     onDelete: (Chunk, Take) -> Unit,
     onCycle: (Chunk, Int) -> Unit,
     onSelectTake: (Chunk) -> Unit,
-    onOpenPlayback: (unitSort: Int, takeNumber: Int) -> Unit
+    onOpenPlayback: (unitSort: Int, takeNumber: Int) -> Unit,
+    onSaveErrorShown: () -> Unit = {}
 ) {
     var expandedUnitSort by remember { mutableStateOf<Int?>(null) }
+
+    // A change that was not saved (selecting or deleting a take): shown once, over the list.
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(uiState.saveError) {
+        uiState.saveError?.let { message ->
+            snackbarHostState.showSnackbar(message)
+            onSaveErrorShown()
+        }
+    }
     // Pending delete: lambda to invoke on confirmation
     var pendingDelete by remember { mutableStateOf<(() -> Unit)?>(null) }
 
@@ -121,6 +132,7 @@ fun UnitListContent(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
@@ -170,9 +182,7 @@ fun UnitListContent(
                 ) {
                     items(uiState.units) { unitHolder ->
                         val unit = unitHolder.unit
-                        val takes = unit.audio.getAllTakes()
-                            .filter { !it.isDeleted() }
-                            .sortedBy { it.number }
+                        val takes = unitHolder.availableTakes
                         val currentIndex = uiState.currentTakeIndices[unit.sort] ?: 0
                         val currentTake = takes.getOrNull(currentIndex)
                         // The take is "loaded" as long as the player is holding it
@@ -429,13 +439,9 @@ fun UnitCard(
 @Preview
 @Composable
 fun UnitCardPreview() {
-    val takes = listOf(
-        MockData.createMockTake(1),
-        MockData.createMockTake(2),
-        MockData.createMockTake(3)
-    )
+    val takes = MockData.createMockTakes()
     UnitCard(
-        unit = MockData.createMockChunk(1, "1", hasAudio = true),
+        unit = MockData.createMockChunk(hasAudio = true),
         currentTake = takes.first(),
         currentIndex = 0,
         takes = takes,

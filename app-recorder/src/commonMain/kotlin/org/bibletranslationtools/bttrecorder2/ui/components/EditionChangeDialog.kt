@@ -83,8 +83,8 @@ import org.koin.mp.KoinPlatform.getKoin
 
 /**
  * Moves project book [projectBookId] to another installed edition of its source, up or down:
- * choose, preview each chapter's outcome, apply. [onChanged] runs once the change is applied, so
- * the caller can reload what it shows.
+ * choose, preview each chapter's outcome, apply. [onChanged] runs once the change is applied (or
+ * has failed after closing the open project), so the caller can reload what it shows.
  */
 @Composable
 fun EditionChangeDialog(
@@ -100,7 +100,9 @@ fun EditionChangeDialog(
     val state by viewModel.state.collectAsState()
     val busy = state is EditionChangeState.Loading || state is EditionChangeState.Planning || state is EditionChangeState.Applying
     val finish = {
-        if (state is EditionChangeState.Done) onChanged()
+        // A failed change has still closed the open project; reloading reopens it.
+        val closed = (state as? EditionChangeState.Error)?.projectClosed == true
+        if (state is EditionChangeState.Done || closed) onChanged()
         onDismiss()
     }
 

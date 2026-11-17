@@ -93,7 +93,8 @@ fun ChapterListScreen(
         onChapterExpand = viewModel::prepareChapterPlayback,
         onChapterPlayPause = viewModel::toggleChapterPlayback,
         onChapterDeleteRequest = { chapter -> pendingDeleteChapter = chapter },
-        onOpenChapterPlayback = onOpenChapterPlayback
+        onOpenChapterPlayback = onOpenChapterPlayback,
+        onSaveErrorShown = viewModel::dismissSaveError
     )
 
     if (showEditionChange) {
@@ -153,13 +154,24 @@ fun ChapterListContent(
     onChapterPlayPause: (Chapter) -> Unit = {},
     onChapterDeleteRequest: (Chapter) -> Unit = {},
     onOpenChapterPlayback: (chapterSort: Int, takeNumber: Int) -> Unit = { _, _ -> },
-    onReviewEdition: () -> Unit = {}
+    onReviewEdition: () -> Unit = {},
+    onSaveErrorShown: () -> Unit = {}
 ) {
     // The row a user taps to expand. Only one expanded at a time, mirroring
     // the original Recorder behaviour.
     var expandedChapterSort by remember { mutableStateOf<Int?>(null) }
 
+    // A change that was not saved (compiling, deleting a take): shown once, over the list.
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(uiState.saveError) {
+        uiState.saveError?.let { message ->
+            snackbarHostState.showSnackbar(message)
+            onSaveErrorShown()
+        }
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text(uiState.workbook?.target?.title ?: stringResource(Res.string.action_loading)) },
@@ -526,7 +538,7 @@ fun ChapterItemPreview() {
     Column {
         ChapterItem(
             uiModel = ChapterUiModel(
-                chapter = MockData.createMockChapter(1, "Chapter 1", "1"),
+                chapter = MockData.createMockChapter(1),
                 hasContent = true,
                 progress = 0.08f,
                 hasChapterTake = false,
@@ -548,7 +560,7 @@ fun ChapterItemPreview() {
         HorizontalDivider()
         ChapterItem(
             uiModel = ChapterUiModel(
-                chapter = MockData.createMockChapter(2, "Chapter 2", "2"),
+                chapter = MockData.createMockChapter(2),
                 hasContent = false,
                 progress = 0f,
                 hasChapterTake = false,
@@ -576,9 +588,9 @@ fun ChapterListContentPreview() {
     ChapterListContent(
         uiState = ChapterListUiState(
             chapters = listOf(
-                ChapterUiModel(MockData.createMockChapter(1, "Chapter 1", "1"), hasContent = true, progress = 0.08f),
-                ChapterUiModel(MockData.createMockChapter(2, "Chapter 2", "2"), hasContent = false, progress = 0f),
-                ChapterUiModel(MockData.createMockChapter(3, "Chapter 3", "3"), hasContent = false, progress = 0f)
+                ChapterUiModel(MockData.createMockChapter(1), hasContent = true, progress = 0.08f),
+                ChapterUiModel(MockData.createMockChapter(2), hasContent = false, progress = 0f),
+                ChapterUiModel(MockData.createMockChapter(3), hasContent = false, progress = 0f)
             ),
             workbook = null
         ),

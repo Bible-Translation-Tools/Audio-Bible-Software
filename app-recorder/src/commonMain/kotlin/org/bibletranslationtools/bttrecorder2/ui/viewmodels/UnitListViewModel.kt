@@ -2,28 +2,34 @@ package org.bibletranslationtools.bttrecorder2.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.bibletranslationtools.bttrecorder2.services.ProjectSession
 import org.bibletranslationtools.shared.preferences.IAppPreferences
-import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
+import org.bibletranslationtools.shared.ui.failureMessage
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
+import org.bibletranslationtools.otter.common.data.workbook.AudioState
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import kotlinx.coroutines.flow.firstOrNull
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnection
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
 import org.bibletranslationtools.otter.common.device.IAudioPlayer
+import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
-import org.bibletranslationtools.otter.common.data.workbook.DateHolder
 import org.bibletranslationtools.otter.common.device.AudioPlayerEvent
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.koin.core.component.KoinComponent
@@ -42,14 +48,17 @@ import org.bibletranslationtools.shared.resources.err_play_audio
 data class UnitUiModel(
     val unit: Chunk,
     val hasContent: Boolean = false,
-    val takes: Int = 0,
+    /** The unit's takes that are not deleted, in number order: the ones the card browses. */
+    val availableTakes: List<Take> = emptyList(),
     /**
      * The unit's currently selected take. Kept in UI state (rather than read straight off
-     * `unit.audio.getSelectedTake()` while composing) because that relay value is invisible to
-     * Compose — the checkmark never repainted after selecting a take.
+     * `unit.audio.getSelectedTake()` while composing) because a read while composing is invisible
+     * to Compose — the checkmark never repainted after selecting a take.
      */
     val selectedTake: Take? = null
-)
+) {
+    val takes: Int get() = availableTakes.size
+}
 
 data class UnitListUiState(
     val isLoading: Boolean = false,
@@ -57,6 +66,8 @@ data class UnitListUiState(
     val chapter: Chapter? = null,
     val workbook: Workbook? = null,
     val error: String? = null,
+    /** A change the user made that was not saved; shown once, then cleared with [UnitListViewModel.dismissSaveError]. */
+    val saveError: String? = null,
     val isPlaying: Boolean = false,
     val playbackProgress: Float = 0f,
     val currentPlayingTake: Take? = null,
@@ -72,8 +83,7 @@ class UnitListViewModel(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel(), KoinComponent {
 
-    private val workbookRepository: IWorkbookRepository by inject()
-    private val collectionRepository: ICollectionRepository by inject()
+    private val projectSession: ProjectSession by inject()
     private val appPreferences: IAppPreferences by inject()
 
     private val _uiState = MutableStateFlow(UnitListUiState())
@@ -170,11 +180,11 @@ class UnitListViewModel(
     }
 
     fun loadUnits() {
-        // Load once per ViewModel. The chunk flow below keeps collecting for the
-        // ViewModel's lifetime (the back-stack entry), so the verse rows stay current
-        // even while recording. Skipping the reload on re-entry avoids a spinner flash
-        // and a leaked duplicate collection, and keeps the list populated so the
-        // LazyColumn restores its scroll position (e.g. after recording a verse).
+        // Load once per ViewModel. The rows follow the chapter's saved state (its chunk layout and
+        // each verse's takes) for the ViewModel's lifetime, so they stay current even while
+        // recording. Skipping the reload on re-entry avoids a spinner flash and a leaked duplicate
+        // collection, and keeps the list populated so the LazyColumn restores its scroll position
+        // (e.g. after recording a verse).
         if (loadingJob?.isActive == true) return
         loadingJob = launchLogged(ioDispatcher) {
             _uiState.update { it.copy(isLoading = true) }
@@ -185,71 +195,62 @@ class UnitListViewModel(
                     return@launchLogged
                 }
 
-                val sourceC = collectionRepository.getProjectSuspend(nav.workbookSourceId)
-                val targetC = collectionRepository.getProjectSuspend(nav.workbookTargetId)
-
-                if (sourceC == null || targetC == null) {
+                val workbook = projectSession.open(nav.workbookSourceId, nav.workbookTargetId)
+                if (workbook == null) {
                     _uiState.update { it.copy(isLoading = false, error = getString(Res.string.err_project_not_found)) }
                     return@launchLogged
                 }
 
-                val workbook = workbookRepository.get(sourceC, targetC)
-                val chapter = workbook.target.chaptersFlow.firstOrNull { it.sort == nav.chapterSort }
-
+                val chapter = workbook.target.chapters().firstOrNull { it.sort == nav.chapterSort }
                 if (chapter == null) {
                     _uiState.update { it.copy(isLoading = false, error = getString(Res.string.err_chapter_not_found), workbook = workbook) }
                     return@launchLogged
                 }
 
                 _uiState.update { it.copy(workbook = workbook, chapter = chapter) }
+                chapter.loadedState()
 
-                chapter.observableFlowChunks.collect { allChunks ->
-                    // Drop the chapter-meta chunk so the unit list only shows individual
-                    // verses. The chapter's compiled take lives on `chapter.audio` (see
-                    // ChapterTranslationBuilder) and the chapter list owns its UI; this
-                    // screen is exclusively for per-verse takes.
-                    val chunks = allChunks.filter { it.contentType == ContentType.TEXT }
-
-                    val units = chunks.map { chunk ->
+                // Verses only: the chapter's compiled take lives on `chapter.audio` (see
+                // ChapterTranslationBuilder) and the chapter list owns its UI; this screen is
+                // exclusively for per-verse takes.
+                verseAudio(chapter).collect { verses ->
+                    val units = verses.map { (chunk, audio) ->
+                        val available = audio.takes.filter { !it.isDeleted() }.sortedBy { it.number }
+                        val selected = audio.selectedTake?.takeUnless { it.isDeleted() }
                         UnitUiModel(
                             unit = chunk,
-                            hasContent = chunk.hasSelectedAudio(),
-                            takes = chunk.audio.getAllTakes().count { !it.isDeleted() },
-                            selectedTake = chunk.audio.getSelectedTake()
+                            hasContent = selected != null,
+                            availableTakes = available,
+                            selectedTake = selected
                         )
                     }
 
-                    // Build initial browse indices pointing at each unit's selected take.
-                    // Preserve any indices the user has already set.
-                    val initialIndices = chunks.associate { chunk ->
-                        val takes = chunk.audio.getAllTakes()
-                            .filter { !it.isDeleted() }
-                            .sortedBy { it.number }
-                        val selected = chunk.audio.getSelectedTake()
-                        val idx = if (selected != null) takes.indexOf(selected).coerceAtLeast(0) else 0
-                        chunk.sort to idx
-                    }
+                    // Browse indices point at each unit's selected take at first; an index the user
+                    // has already set is kept, clamped to the takes there are now (one may have
+                    // just been deleted).
                     val existing = _uiState.value.currentTakeIndices
-                    val mergedIndices = initialIndices + existing.filter { (sort, _) ->
-                        chunks.any { it.sort == sort }
+                    val indices = units.associate { unit ->
+                        val initial = unit.selectedTake?.let { unit.availableTakes.indexOf(it) }?.coerceAtLeast(0) ?: 0
+                        val index = existing[unit.unit.sort] ?: initial
+                        unit.unit.sort to index.coerceIn(0, (unit.takes - 1).coerceAtLeast(0))
                     }
 
                     _uiState.update {
                         it.copy(
                             isLoading = false,
                             units = units,
-                            currentTakeIndices = mergedIndices
+                            currentTakeIndices = indices
                         )
                     }
 
                     // Compute durations for any takes not yet in the cache.
                     launch(ioDispatcher) {
-                        val existing = _uiState.value.takeDurations
+                        val cached = _uiState.value.takeDurations
                         val newDurations = mutableMapOf<String, String>()
-                        chunks.forEach { chunk ->
-                            chunk.audio.getAllTakes().filter { !it.isDeleted() }.forEach { take ->
+                        units.forEach { unit ->
+                            unit.availableTakes.forEach { take ->
                                 val key = take.file.absolutePath
-                                if (!existing.containsKey(key)) {
+                                if (!cached.containsKey(key)) {
                                     try {
                                         val af = OratureAudioFile(take.file)
                                         val ms = (af.totalFrames.toLong() * 1000L / af.sampleRate).toInt()
@@ -272,19 +273,43 @@ class UnitListViewModel(
         }
     }
 
+    /**
+     * Each verse of [chapter]'s active chunk layout with its saved takes, following a new layout
+     * and every verse's takes.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun verseAudio(chapter: Chapter): Flow<List<Pair<Chunk, AudioState>>> =
+        chapter.state.flatMapLatest { state ->
+            val verses = state.chunks.filter { it.contentType == ContentType.TEXT }
+            if (verses.isEmpty()) {
+                flowOf(emptyList<Pair<Chunk, AudioState>>())
+            } else {
+                combine(verses.map { verse -> verse.audio.state.map { verse to it } }) { it.toList() }
+            }
+        }
+
+    fun dismissSaveError() {
+        _uiState.update { it.copy(saveError = null) }
+    }
+
+    private suspend fun showIfFailed(result: SaveResult<*>) {
+        result.failureMessage()?.let { message -> _uiState.update { it.copy(saveError = message) } }
+    }
+
     override fun onCleared() {
         super.onCleared()
         audioPlayer?.release()
         stopProgressTicker()
     }
 
+    /** The unit's takes as the card shows them: not deleted, in number order. */
+    private fun availableTakes(unit: Chunk): List<Take> =
+        _uiState.value.units.firstOrNull { it.unit == unit }?.availableTakes.orEmpty()
+
     // Returns the take the user is currently browsing for a unit (may differ from selected take).
     private fun getCurrentViewedTake(unit: Chunk): Take? {
-        val takes = unit.audio.getAllTakes()
-            .filter { !it.isDeleted() }
-            .sortedBy { it.number }
         val index = _uiState.value.currentTakeIndices[unit.sort] ?: 0
-        return takes.getOrNull(index)
+        return availableTakes(unit).getOrNull(index)
     }
 
     fun togglePlay(unit: Chunk) {
@@ -344,9 +369,7 @@ class UnitListViewModel(
 
     // Cycles through takes without changing the officially selected take.
     fun cycleTake(unit: Chunk, direction: Int) {
-        val takes = unit.audio.getAllTakes()
-            .filter { !it.isDeleted() }
-            .sortedBy { it.number }
+        val takes = availableTakes(unit)
         if (takes.isEmpty()) return
 
         val currentIndex = _uiState.value.currentTakeIndices[unit.sort] ?: 0
@@ -359,63 +382,28 @@ class UnitListViewModel(
     // Explicitly marks the currently browsed take as the selected take.
     fun selectCurrentTake(unit: Chunk) {
         val take = getCurrentViewedTake(unit) ?: return
-        // Persist the selection (the workbook repo's selectedTake relay writes it to the DB)...
-        unit.audio.selectTake(take)
-        // ...then publish it, so the card's checkmark actually reflects the new selection. Without
-        // this the state never changes and Compose has no reason to recompose, which is why clicking
-        // the checkmark looked like it did nothing.
-        _uiState.update { state ->
-            state.copy(
-                units = state.units.map { uiModel ->
-                    if (uiModel.unit.sort == unit.sort) {
-                        uiModel.copy(
-                            selectedTake = unit.audio.getSelectedTake(),
-                            hasContent = unit.hasSelectedAudio()
-                        )
-                    } else uiModel
-                }
-            )
-        }
+        // Saved first; the card's checkmark follows the unit's saved state through loadUnits.
+        launchLogged { showIfFailed(unit.audio.selectTake(take)) }
     }
 
     fun deleteTake(unit: Chunk, take: Take) {
         // Stop playback if the deleted take is the one currently loaded.
-        val playingSame = _uiState.value.currentPlayingTake?.file?.absolutePath ==
-            take.file.absolutePath
+        val playingSame = _uiState.value.currentPlayingTake == take
         if (playingSame) {
             runCatching { audioPlayer?.pause() }
             stopProgressTicker()
-        }
-
-        take.deletedTimestamp.accept(DateHolder.now())
-        val remaining = unit.audio.getAllTakes()
-            .filter { !it.isDeleted() }
-            .sortedBy { it.number }
-        val clamped = (_uiState.value.currentTakeIndices[unit.sort] ?: 0)
-            .coerceIn(0, (remaining.size - 1).coerceAtLeast(0))
-        // Updating `units` guarantees the state object always changes (different takes count),
-        // so StateFlow emits and recomposition fires even when the clamped index is unchanged.
-        val updatedUnits = _uiState.value.units.map { uiModel ->
-            if (uiModel.unit.sort == unit.sort) {
-                // Deleting the selected take deselects it (WorkbookRepository.deselectUponDelete),
-                // so re-read the selection here too.
-                uiModel.copy(
-                    hasContent = unit.hasSelectedAudio(),
-                    takes = remaining.size,
-                    selectedTake = unit.audio.getSelectedTake()
+            _uiState.update { state ->
+                state.copy(
+                    isPlaying = false,
+                    currentPlayingTake = null,
+                    playbackProgress = 0f,
+                    elapsedText = "00:00:00",
+                    durationText = "00:00:00"
                 )
-            } else uiModel
+            }
         }
-        _uiState.update { state ->
-            state.copy(
-                units = updatedUnits,
-                currentTakeIndices = state.currentTakeIndices + (unit.sort to clamped),
-                isPlaying = if (playingSame) false else state.isPlaying,
-                currentPlayingTake = if (playingSame) null else state.currentPlayingTake,
-                playbackProgress = if (playingSame) 0f else state.playbackProgress,
-                elapsedText = if (playingSame) "00:00:00" else state.elapsedText,
-                durationText = if (playingSame) "00:00:00" else state.durationText
-            )
-        }
+        // Saved first. Deleting the selected take also deselects it, in the same step; the row and
+        // its browse index follow the unit's saved state through loadUnits.
+        launchLogged { showIfFailed(unit.audio.deleteTake(take)) }
     }
 }

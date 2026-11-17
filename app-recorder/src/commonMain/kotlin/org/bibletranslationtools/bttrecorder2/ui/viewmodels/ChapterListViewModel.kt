@@ -4,24 +4,29 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.withContext
+import org.bibletranslationtools.bttrecorder2.services.ProjectSession
 import org.bibletranslationtools.shared.preferences.IAppPreferences
-import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
+import org.bibletranslationtools.shared.ui.failureMessage
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
-import org.bibletranslationtools.otter.common.data.workbook.DateHolder
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnection
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
@@ -35,7 +40,6 @@ import org.jetbrains.compose.resources.getString
 import org.bibletranslationtools.shared.resources.Res
 import org.bibletranslationtools.shared.resources.err_no_active_project
 import org.bibletranslationtools.shared.resources.err_project_not_found
-import org.bibletranslationtools.shared.resources.err_workbook_not_found
 import org.bibletranslationtools.shared.resources.err_unknown
 import org.bibletranslationtools.shared.resources.err_compile_failed
 import org.bibletranslationtools.shared.resources.err_load_chapter_audio
@@ -62,6 +66,8 @@ data class ChapterListUiState(
     val chapters: List<ChapterUiModel> = emptyList(),
     val workbook: Workbook? = null,
     val error: String? = null,
+    /** A change the user made that was not saved; shown once, then cleared with [ChapterListViewModel.dismissSaveError]. */
+    val saveError: String? = null,
     /** The book's source edition, the editions it can move to, and its held-back chapters. */
     val editionState: BookEditionState? = null,
 
@@ -81,8 +87,7 @@ data class ChapterListUiState(
 
 class ChapterListViewModel : ViewModel(), KoinComponent {
 
-    private val workbookRepository: IWorkbookRepository by inject()
-    private val collectionRepository: ICollectionRepository by inject()
+    private val projectSession: ProjectSession by inject()
     private val appPreferences: IAppPreferences by inject()
     private val audioConnectionFactory: AudioPlayerConnectionFactory by inject()
     private val chapterTranslationBuilder: ChapterTranslationBuilder by inject()
@@ -123,15 +128,10 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
     private var tickerJob: Job? = null
 
     fun loadChapters() {
-        // Load once per ViewModel. The chunk-LIST flow below only re-emits when the
-        // set of chunks changes, not when a verse's take changes, so instead of a
-        // full reload on re-entry (which would reset scroll) we refresh each row's
-        // verse-level progress in place — this picks up takes recorded while the user
-        // was in the verse list without clearing the list.
-        if (loadingJob?.isActive == true) {
-            refreshProgress()
-            return
-        }
+        // Load once per ViewModel. The rows follow the chapters' saved state (each verse's audio,
+        // the chapter's own take) for the ViewModel's lifetime, so takes recorded while the user
+        // was in the verse list show on return without a reload that would reset the scroll.
+        if (loadingJob?.isActive == true) return
         loadingJob = launchLogged(Dispatchers.IO) {
             _uiState.update { it.copy(isLoading = true, chapters = emptyList()) }
             try {
@@ -141,62 +141,44 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
                     return@launchLogged
                 }
 
-                val sourceC = collectionRepository.getProjectSuspend(nav.workbookSourceId)
-                val targetC = collectionRepository.getProjectSuspend(nav.workbookTargetId)
-
-                if (sourceC == null || targetC == null) {
-                    _uiState.update { it.copy(isLoading = false, error = getString(Res.string.err_project_not_found)) }
-                    return@launchLogged
-                }
-
-                val workbook = workbookRepository.get(sourceC, targetC)
+                val workbook = projectSession.open(nav.workbookSourceId, nav.workbookTargetId)
                 if (workbook == null) {
-                    _uiState.update { it.copy(isLoading = false, error = getString(Res.string.err_workbook_not_found)) }
+                    _uiState.update { it.copy(isLoading = false, error = getString(Res.string.err_project_not_found)) }
                     return@launchLogged
                 }
 
                 _uiState.update { it.copy(workbook = workbook) }
                 launchLogged(Dispatchers.IO) {
-                    val editions = runCatching { upgradeBookEdition.editionState(targetC.id) }
+                    val editions = runCatching { upgradeBookEdition.editionState(nav.workbookTargetId) }
                         .onFailure { logFailure("loading the book's editions", it) }
                         .getOrNull()
                     _uiState.update { it.copy(editionState = editions) }
                 }
 
+                val chapters = workbook.target.chapters()
+                if (chapters.isEmpty()) _uiState.update { it.copy(isLoading = false) }
                 coroutineScope {
-                    workbook.target.chaptersFlow.collect { chapter ->
-                        // Observe two streams per chapter:
-                        //   1. The chunks flow — drives verse-level progress + canCompile.
-                        //   2. The chapter's own selected-take flow — drives hasChapterTake.
-                        // Both update the same `ChapterUiModel` row, so we merge by always
-                        // recomputing from the latest known values.
+                    chapters.forEach { chapter ->
+                        // Two values per chapter, both merged into the same `ChapterUiModel` row:
+                        //   1. Which verses have a selected take — verse-level progress + canCompile.
+                        //   2. The chapter's own selected take — hasChapterTake.
                         launch {
-                            chapter.observableFlowChunks.collect { allChunks ->
+                            chapter.loadedState()
+                            verseSelections(chapter).collect { selected ->
                                 // Progress + compile-readiness are about verses only.
-                                // The chapter-meta chunk would otherwise inflate the
-                                // denominator and break "every verse recorded" logic.
-                                val verses = allChunks.filter { it.contentType == ContentType.TEXT }
-                                val total = verses.size
-                                val started = verses.count { it.hasSelectedAudio() }
-                                val progress = if (total > 0) started.toFloat() / total else 0f
-                                val hasContent = started > 0
-                                val canCompile = total > 0 && started == total
+                                val total = selected.size
+                                val started = selected.count { it }
                                 updateChapterRow(chapter) { existing ->
                                     existing.copy(
-                                        hasContent = hasContent,
-                                        progress = progress,
-                                        canCompile = canCompile
+                                        hasContent = started > 0,
+                                        progress = if (total > 0) started.toFloat() / total else 0f,
+                                        canCompile = total > 0 && started == total
                                     )
                                 }
                             }
                         }
                         launch {
-                            chapter.audio.selectedFlow.collect { holder ->
-                                // A deleted take is sometimes still referenced by the
-                                // selectedFlow holder (the relay doesn't auto-clear on
-                                // delete), so treat a tombstoned take as "no chapter take"
-                                // for UI purposes.
-                                val take = holder.value
+                            chapter.audio.selectedFlow.collect { take ->
                                 val hasChapterTake = take != null && !take.isDeleted()
                                 updateChapterRow(chapter) { existing ->
                                     existing.copy(
@@ -218,6 +200,24 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
     }
 
     /**
+     * Whether each verse of [chapter]'s active chunk layout has a selected take, following the
+     * saved state: a new layout, and every verse's takes. The chapter-meta chunk is left out; it
+     * would inflate the denominator and break "every verse recorded".
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun verseSelections(chapter: Chapter): Flow<List<Boolean>> =
+        chapter.state.flatMapLatest { state ->
+            val verses = state.chunks.filter { it.contentType == ContentType.TEXT }
+            if (verses.isEmpty()) {
+                flowOf(emptyList<Boolean>())
+            } else {
+                combine(verses.map { verse -> verse.audio.state.map { it.selectedTake?.isDeleted() == false } }) {
+                    it.toList()
+                }
+            }
+        }.distinctUntilChanged()
+
+    /**
      * Loads the list again from scratch, for after the book moved to another edition: its
      * source, and the verses of the chapters that took on the new structure, are different.
      */
@@ -230,30 +230,8 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
         loadChapters()
     }
 
-    /**
-     * Recomputes each existing chapter row's verse-level state (hasContent,
-     * progress, canCompile) from the current chunk selections, updating rows in
-     * place (no list clear, so the LazyColumn scroll position is preserved). Called
-     * on screen re-entry to reflect verse takes recorded while away, which the
-     * chunk-list flow doesn't surface on its own.
-     */
-    private fun refreshProgress() {
-        val rows = _uiState.value.chapters
-        if (rows.isEmpty()) return
-        launchLogged(Dispatchers.IO) {
-            rows.forEach { row ->
-                val verses = row.chapter.chunksSuspend().filter { it.contentType == ContentType.TEXT }
-                val total = verses.size
-                val started = verses.count { it.hasSelectedAudio() }
-                updateChapterRow(row.chapter) { existing ->
-                    existing.copy(
-                        hasContent = started > 0,
-                        progress = if (total > 0) started.toFloat() / total else 0f,
-                        canCompile = total > 0 && started == total
-                    )
-                }
-            }
-        }
+    fun dismissSaveError() {
+        _uiState.update { it.copy(saveError = null) }
     }
 
     /**
@@ -298,16 +276,12 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
         _uiState.update { it.copy(compilingChapterSort = chapter.sort, error = null) }
         launchLogged {
             try {
-                withContext(Dispatchers.IO) {
-                    // getOrCompile inserts the compiled take, and inserting AUTO-selects
-                    // it — but only inside the insert's success callback, after the DB
-                    // has assigned the take's id and committed the row (see
-                    // WorkbookRepository.constructAssociatedAudio). Do NOT selectTake here:
-                    // an extra select races the async insert and points the chapter
-                    // content's selected_take_fk at an uncommitted take id, which fails the
-                    // SQLite foreign-key constraint. The auto-select drives selectedFlow.
-                    chapterTranslationBuilder.getOrCompile(workbook, chapter).await()
+                // getOrCompile saves the compiled take and selects it in one step; the row's
+                // hasChapterTake follows the chapter's selectedFlow once that is saved.
+                val result = withContext(Dispatchers.IO) {
+                    chapterTranslationBuilder.getOrCompile(workbook, chapter)
                 }
+                result.failureMessage()?.let { message -> _uiState.update { it.copy(saveError = message) } }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -412,12 +386,13 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
                 )
             }
         }
-        take.deletedTimestamp.accept(DateHolder.now())
-        // selectedFlow doesn't always fire on take deletion (the selected
-        // reference itself doesn't change). Update the row directly so the
-        // layers icon switches back from "view chapter take" to "ready to
-        // compile" without requiring an external refresh.
-        updateChapterRow(chapter) { it.copy(hasChapterTake = false, chapterTakeNumber = null) }
+        launchLogged {
+            // Saved first; deleting the selected take clears the selection in the same step, and
+            // the row's hasChapterTake follows the chapter's selectedFlow.
+            chapter.audio.deleteTake(take).failureMessage()?.let { message ->
+                _uiState.update { it.copy(saveError = message) }
+            }
+        }
     }
 
     /**
