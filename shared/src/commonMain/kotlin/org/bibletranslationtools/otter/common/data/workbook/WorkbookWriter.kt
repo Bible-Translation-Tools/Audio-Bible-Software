@@ -4,10 +4,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.slf4j.LoggerFactory
-import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * The one writer of a workbook: every node of one workbook saves through the same instance.
@@ -26,7 +26,7 @@ class WorkbookWriter {
 
     private val logger = LoggerFactory.getLogger(WorkbookWriter::class.java)
     private val lock = Mutex()
-    private val waiting = AtomicInteger(0)
+    private val waiting = MutableStateFlow(0)
     private val _status = MutableStateFlow<SaveStatus>(SaveStatus.Saved)
     private var closed = false
 
@@ -38,7 +38,7 @@ class WorkbookWriter {
      * refuses the change without running [block].
      */
     suspend fun <T> save(gate: () -> RejectReason? = { null }, block: suspend () -> T): SaveResult<T> {
-        _status.value = SaveStatus.Saving(waiting.incrementAndGet())
+        _status.value = SaveStatus.Saving(waiting.updateAndGet { it + 1 })
         try {
             return lock.withLock {
                 if (closed) return@withLock SaveResult.Rejected(RejectReason.CLOSED)
@@ -55,7 +55,7 @@ class WorkbookWriter {
                 }
             }
         } finally {
-            val left = waiting.decrementAndGet()
+            val left = waiting.updateAndGet { it - 1 }
             val now = _status.value
             if (now is SaveStatus.Saving) _status.value = if (left > 0) SaveStatus.Saving(left) else SaveStatus.Saved
         }
@@ -68,7 +68,7 @@ class WorkbookWriter {
 
     val isClosed: Boolean get() = closed
 
-    private fun settled(): SaveStatus = waiting.get().let { if (it > 1) SaveStatus.Saving(it - 1) else SaveStatus.Saved }
+    private fun settled(): SaveStatus = waiting.value.let { if (it > 1) SaveStatus.Saving(it - 1) else SaveStatus.Saved }
 }
 
 /** Whether a workbook's changes have reached storage. */

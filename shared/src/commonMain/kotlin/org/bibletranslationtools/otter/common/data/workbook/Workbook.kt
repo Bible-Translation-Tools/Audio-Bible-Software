@@ -18,7 +18,6 @@
  */
 package org.bibletranslationtools.otter.common.data.workbook
 
-import java.util.*
 
 class Workbook(
     val source: Book,
@@ -44,21 +43,19 @@ class Workbook(
         get() = source.resourceMetadata.identifier
 
     override fun hashCode(): Int {
-        return Objects.hash(
+        return listOf(
             source.collectionId,
             source.slug,
             source.language,
             target.collectionId,
             target.slug,
             target.language
-        )
+        ).hashCode()
     }
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
-        if (javaClass != other?.javaClass) return false
-
-        other as Workbook
+        if (other !is Workbook) return false
 
         if (source != other.source) return false
         if (target != other.target) return false

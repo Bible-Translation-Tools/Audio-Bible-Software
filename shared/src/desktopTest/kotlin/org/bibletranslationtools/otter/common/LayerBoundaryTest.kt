@@ -83,14 +83,12 @@ class LayerBoundaryTest {
     }
 
     /**
-     * The entity ↔ use-case cycle. `domain/` imports `data/` in 68 files, which is correct; these
-     * four import back the other way, which makes the two packages mutually dependent.
+     * The entity ↔ use-case cycle. `domain/` imports `data/`, which is correct; these import back
+     * the other way, which makes the two packages mutually dependent.
      *
-     * Three are the [org.bibletranslationtools.otter.common.domain.content.Recordable] interfaces,
-     * which are arguably domain types an entity may implement. `Workbook` is the real problem: it
-     * takes an `IDirectoryProvider` and constructs `SourceAudioAccessor` and
-     * `ProjectFilesAccessor`, so the innermost object in the codebase is a factory for filesystem
-     * access and every consumer that wants a file takes a whole `Workbook` to get one.
+     * All three are the [org.bibletranslationtools.otter.common.domain.content.Recordable]
+     * interfaces, which are arguably domain types an entity may implement. `Workbook` no longer
+     * builds file accessors: those come from `ProjectFilesService`.
      */
     @Test
     fun `data does not depend on domain`() {
@@ -100,8 +98,7 @@ class LayerBoundaryTest {
 
         assertRatchet(
             rule = "data/ must not import domain/ — that is a cycle between the two innermost layers.",
-            why = "Entities are the layer nothing depends outward from. Workbook holding " +
-                "domain accessors is what forces every file-touching use case to accept a Workbook.",
+            why = "Entities are the layer nothing depends outward from.",
             expected = setOf(
                 "workbook/Chapter.kt",   // Recordable
                 "workbook/Chunk.kt",     // ResourceRecordable
@@ -112,10 +109,8 @@ class LayerBoundaryTest {
     }
 
     /**
-     * The entity layer's public API is a mutable reactive graph: `AssociatedAudio.takes` is a
-     * `ReplayRelay<Take>` and its own KDoc says "the persistence layer should respond by storing
-     * them". Pushing onto a relay in a ViewModel is a database write, which is why `:shared` cannot
-     * demote rxkotlin/rxrelay from `api` — see the note on those lines in shared/build.gradle.kts.
+     * The workbook's nodes hold their state in `StateFlow`s and save through the injected
+     * `WorkbookStore`, so no entity exposes a relay any more. What is left is outside the node tree.
      */
     @Test
     fun `data does not depend on RxJava`() {
@@ -128,13 +123,7 @@ class LayerBoundaryTest {
             why = "While they do, both apps see RxJava through :shared's public API whether they " +
                 "want it or not, and a relay push is an invisible database write.",
             expected = setOf(
-                "workbook/AssociatedAudio.kt",
-                "workbook/Book.kt",
-                "workbook/Chapter.kt",
-                "workbook/Chunk.kt",
-                "workbook/ResourceGroup.kt",
-                "workbook/Take.kt",
-                "workbook/WorkbookDescriptor.kt"
+                "workbook/WorkbookDescriptor.kt"   // progress: Single<Double>, outside the node tree
             ),
             actual = violations
         )
@@ -158,9 +147,59 @@ class LayerBoundaryTest {
             expected = setOf(
                 "primitives/ResourceMetadata.kt",
                 "primitives/Take.kt",
-                "workbook/Take.kt"
+                "workbook/NewTake.kt",                 // the recorded file the store saves
+                "workbook/SaveResult.kt",              // classifies missing-file exceptions
+                "workbook/Take.kt",
+                "workbook/fixture/WorkbookBuilder.kt"  // test takes' files
             ),
             actual = violations
         )
     }
+
+    /**
+     * The workbook is meant to move to Kotlin Multiplatform targets beyond the JVM, and `commonMain`
+     * compiles only for JVM targets today, so the compiler will not catch a JVM-only import until a
+     * non-JVM target is added. This rule does: `data/workbook/` may not import `java.*`, RxJava or
+     * RxRelay.
+     *
+     * `java.time` dates are allowed for now; they move to kotlinx-datetime when a non-JVM target is
+     * added. The rest is pinned as a ratchet, like the rules above.
+     */
+    @Test
+    fun `the workbook does not depend on the JVM`() {
+        val workbookRoot = File(dataRoot, "workbook")
+        val violations = dataSources()
+            .filter { it.startsWith(workbookRoot) }
+            .filter { file -> importsOf(file).any(::isJvmOnly) }
+            .map { it.pathInData() }
+            .toSet()
+
+        assertRatchet(
+            rule = "data/workbook/ must not import java.* (other than java.time), RxJava or RxRelay.",
+            why = "The workbook is meant to compile for non-JVM targets; these imports would stop it.",
+            expected = setOf(
+                "workbook/NewTake.kt",                 // java.io.File
+                "workbook/SaveResult.kt",              // java.io / java.nio exceptions
+                "workbook/Take.kt",                    // java.io.File
+                "workbook/WorkbookDescriptor.kt",      // io.reactivex.Single
+                "workbook/fixture/WorkbookBuilder.kt"  // java.io.File
+            ),
+            actual = violations
+        )
+    }
+
+    @Test
+    fun `the JVM rule catches a planted import`() {
+        assertTrue(isJvmOnly("java.util.Objects"))
+        assertTrue(isJvmOnly("java.io.File"))
+        assertTrue(isJvmOnly("io.reactivex.Single"))
+        assertTrue(isJvmOnly("com.jakewharton.rxrelay2.BehaviorRelay"))
+        assertTrue(!isJvmOnly("java.time.LocalDate"))
+        assertTrue(!isJvmOnly("kotlinx.coroutines.flow.StateFlow"))
+    }
+
+    private fun isJvmOnly(import: String): Boolean =
+        (import.startsWith("java.") && !import.startsWith("java.time.")) ||
+            import.startsWith("io.reactivex") ||
+            import.startsWith("com.jakewharton.rxrelay")
 }

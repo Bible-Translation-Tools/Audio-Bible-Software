@@ -24,7 +24,6 @@ import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import java.time.LocalDateTime
-import java.util.*
 
 class Book(
     val collectionId: Int,
@@ -65,20 +64,18 @@ class Book(
     )
 
     override fun hashCode(): Int {
-        return Objects.hash(
+        return listOf(
             collectionId,
             sort,
             slug,
             title,
             label
-        )
+        ).hashCode()
     }
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
-        if (javaClass != other?.javaClass) return false
-
-        other as Book
+        if (other !is Book) return false
 
         if (slug != other.slug) return false
         if (collectionId != other.collectionId) return false
