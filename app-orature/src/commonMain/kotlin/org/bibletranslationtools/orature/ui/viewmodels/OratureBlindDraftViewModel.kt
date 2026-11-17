@@ -445,7 +445,7 @@ class OratureBlindDraftViewModel(
         pluginStore.selected(PluginCapability.RECORD)
 
     /** Build a new, un-persisted take for the active chunk (JVM: recorderViewModel.createTake). */
-    private fun newTake(chunk: Chunk): NewTake {
+    private suspend fun newTake(chunk: Chunk): NewTake {
         val wb = workbookDataStore.activeWorkbook.value ?: error("No active workbook")
         val chapter = workbookDataStore.activeChapter.value ?: error("No active chapter")
         val takeNumber = chunk.audio.getNewTakeNumber()

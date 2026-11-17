@@ -395,7 +395,7 @@ class OraturePeerEditViewModel(
     private fun selectedPlugin(recorder: Boolean): org.bibletranslationtools.orature.plugins.OratureExternalPlugin? =
         pluginStore.selected(if (recorder) PluginCapability.RECORD else PluginCapability.EDIT)
 
-    private fun newTake(chunk: Chunk): NewTake {
+    private suspend fun newTake(chunk: Chunk): NewTake {
         val wb = workbookDataStore.activeWorkbook.value ?: error("No active workbook")
         val chapter = workbookDataStore.activeChapter.value ?: error("No active chapter")
         val takeNumber = chunk.audio.getNewTakeNumber()

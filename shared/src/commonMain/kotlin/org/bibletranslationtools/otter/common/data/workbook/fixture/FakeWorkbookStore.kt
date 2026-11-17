@@ -97,6 +97,7 @@ class FakeWorkbookStore : WorkbookStore {
             val now = saved(owner)
             if (now.selected == take) audio[owner.contentRaw] = now.copy(selected = null)
         }
+        Unit
     }
 
     override suspend fun restore(take: TakeId) = write("restore") {

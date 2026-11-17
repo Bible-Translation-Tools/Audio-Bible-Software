@@ -116,6 +116,7 @@ class SqlWorkbookStore(
                 contentDao.updateSelectedTake(owner.contentRaw, null)
             }
         }
+        Unit
     }
 
     override suspend fun restore(take: TakeId) = writer.write {
