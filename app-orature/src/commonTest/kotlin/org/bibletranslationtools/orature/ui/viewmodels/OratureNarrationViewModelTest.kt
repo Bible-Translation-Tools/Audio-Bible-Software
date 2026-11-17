@@ -3,7 +3,6 @@ package org.bibletranslationtools.orature.ui.viewmodels
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
-import io.reactivex.Observable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -27,6 +26,7 @@ import org.bibletranslationtools.otter.common.domain.narration.LoadChapterSource
 import org.bibletranslationtools.otter.common.domain.project.InitializeProjectFiles
 import org.bibletranslationtools.otter.common.domain.project.OpenWorkbook
 import org.bibletranslationtools.otter.common.domain.project.ProjectCompletionStatus
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesService
 import org.bibletranslationtools.orature.di.oratureViewModelModule
 import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
@@ -54,6 +54,9 @@ class OratureNarrationViewModelTest : KoinTest {
     // real project directory on disk. Stubbed per-chapter by [chapter] instead.
     private val completionStatus: ProjectCompletionStatus = mockk(relaxed = true)
 
+    // Project files on disk are out of scope: InitializeProjectFiles' steps are stubbed through it.
+    private val projectFiles: ProjectFilesService = mockk(relaxed = true)
+
     @BeforeTest
     fun setup() {
         Dispatchers.setMain(testDispatcher)
@@ -75,7 +78,7 @@ class OratureNarrationViewModelTest : KoinTest {
                         OpenWorkbook(descriptorRepo, workbookRepo, completionStatus, testDispatcher)
                     }
                     single { LoadChapterSourceText(testDispatcher) }
-                    single { InitializeProjectFiles(testDispatcher) }
+                    single { InitializeProjectFiles(projectFiles, testDispatcher) }
                 }
             )
         }
@@ -95,7 +98,7 @@ class OratureNarrationViewModelTest : KoinTest {
         // Both, because OpenWorkbook picks the one that matches the project mode: narration
         // progress for NARRATION/DIALECT, the selected take for TRANSLATION.
         every { hasSelectedAudio() } returns completed
-        every { completionStatus.getChapterNarrationProgress(any(), this@mockk) } returns
+        coEvery { completionStatus.getChapterNarrationProgress(any(), this@mockk) } returns
             if (completed) 1.0 else 0.0
     }
 
@@ -111,7 +114,7 @@ class OratureNarrationViewModelTest : KoinTest {
         val targetBook: Book = mockk {
             every { title } returns "Matthew"
             every { slug } returns "mat"
-            every { this@mockk.chapters } returns Observable.fromIterable(chapters)
+            coEvery { this@mockk.chapters() } returns chapters
         }
         val workbook: Workbook = mockk(relaxed = true) {
             every { target } returns targetBook

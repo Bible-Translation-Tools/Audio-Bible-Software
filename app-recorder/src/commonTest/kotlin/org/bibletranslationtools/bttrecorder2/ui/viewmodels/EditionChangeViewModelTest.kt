@@ -2,6 +2,7 @@ package org.bibletranslationtools.bttrecorder2.ui.viewmodels
 
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
@@ -13,6 +14,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import org.bibletranslationtools.bttrecorder2.services.ProjectSession
 import org.bibletranslationtools.otter.common.data.primitives.ContainerType
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
@@ -64,6 +66,7 @@ class EditionChangeViewModelTest {
 
     private val upgrade = mockk<UpgradeBookEdition>(relaxed = true)
     private val preferences = mockk<IAppPreferences>(relaxed = true)
+    private val projectSession = mockk<ProjectSession>(relaxed = true)
 
     private fun startWith(nav: ActiveNavState) {
         coEvery { upgrade.editionState(projectBook) } returns BookEditionState(
@@ -73,7 +76,7 @@ class EditionChangeViewModelTest {
         every { preferences.navState } returns flowOf(nav)
     }
 
-    private fun viewModel() = EditionChangeViewModel(projectBook, upgrade, preferences)
+    private fun viewModel() = EditionChangeViewModel(projectBook, upgrade, preferences, projectSession)
 
     @BeforeTest
     fun setUp() = Dispatchers.setMain(dispatcher)
@@ -119,7 +122,11 @@ class EditionChangeViewModelTest {
         val done = assertIs<EditionChangeState.Done>(applied(viewModel))
 
         assertEquals(listOf(19), done.heldBack)
-        coVerify { upgrade.apply(plan) }
+        // The book's open workbook closes before its chapters change underneath it.
+        coVerifyOrder {
+            projectSession.closeBook(projectBook)
+            upgrade.apply(plan)
+        }
         coVerify { preferences.setActiveWorkbook(newSourceBook, projectBook) }
         coVerify { preferences.setActiveChapter(19) }
     }
