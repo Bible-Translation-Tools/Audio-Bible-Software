@@ -21,7 +21,9 @@ package org.bibletranslationtools.otter.common.persistence.repositories
 import io.reactivex.Completable
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.rx2.await
+import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.workbook.Translation
@@ -53,34 +55,12 @@ class LanguageRepository(
             .subscribeOn(Schedulers.io())
     }
 
-    override fun insertAll(languages: List<Language>): Single<List<Int>> {
-        return Single
-            .fromCallable {
-                languageDao.insertAll(languages.map(mapper::mapToEntity))
-            }
-            .doOnError { e ->
-                logger.error("Error in insertAll", e)
-            }
-            .subscribeOn(Schedulers.io())
-    }
-
     override fun upsertAll(languages: List<Language>): Completable {
         return Completable.fromCallable {
             languageDao.updateAll(languages.map(mapper::mapToEntity))
         }
             .doOnError { e ->
                 logger.error("Error in updateAll", e)
-            }
-            .subscribeOn(Schedulers.io())
-    }
-
-    override fun updateRegions(languages: List<Language>): Completable {
-        return Completable
-            .fromCallable {
-                languageDao.updateRegions(languages.map(mapper::mapToEntity))
-            }
-            .doOnError { e ->
-                logger.error("Error in updateRegions", e)
             }
             .subscribeOn(Schedulers.io())
     }
@@ -253,9 +233,15 @@ class LanguageRepository(
     override suspend fun deleteSuspend(obj: Language) = delete(obj).await()
 
     override suspend fun insertSuspend(language: Language): Int = insert(language).await()
-    override suspend fun insertAllSuspend(languages: List<Language>): List<Int> = insertAll(languages).await()
+    override suspend fun insertAllSuspend(languages: List<Language>): List<Int> =
+        withContext(Dispatchers.IO) {
+            languageDao.insertAll(languages.map(mapper::mapToEntity))
+        }
     override suspend fun upsertAllSuspend(languages: List<Language>) = upsertAll(languages).await()
-    override suspend fun updateRegionsSuspend(languages: List<Language>) = updateRegions(languages).await()
+    override suspend fun updateRegionsSuspend(languages: List<Language>) =
+        withContext(Dispatchers.IO) {
+            languageDao.updateRegions(languages.map(mapper::mapToEntity))
+        }
     override suspend fun getBySlugSuspend(slug: String): Language = getBySlug(slug).await()
     override suspend fun getGatewaySuspend(): List<Language> = getGateway().await()
     override suspend fun getAvailableGatewaySourcesSuspend(): List<Language> = getAvailableGatewaySources().await()

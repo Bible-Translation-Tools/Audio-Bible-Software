@@ -20,6 +20,7 @@ package org.bibletranslationtools.otter.common.domain.languages
 
 import io.reactivex.Completable
 import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.CancellationException
 import org.bibletranslationtools.otter.common.api.persistence.ILanguageDataSource
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.primitives.Language
@@ -37,16 +38,8 @@ class ImportLanguages(
 
     private val logger = LoggerFactory.getLogger(ImportLanguages::class.java)
 
-    fun import(inputStream: InputStream): Completable {
-        return Completable
-            .fromCallable {
-                val languages = mapLanguages(inputStream)
-                languageRepo.insertAll(languages).blockingGet()
-            }
-            .doOnError { e ->
-                logger.error("Error in ImportLanguages", e)
-            }
-            .subscribeOn(Schedulers.io())
+    suspend fun importSuspend(inputStream: InputStream) {
+        languageRepo.insertAllSuspend(mapLanguages(inputStream))
     }
 
     fun update(url: String): Completable {
@@ -60,16 +53,18 @@ class ImportLanguages(
             .subscribeOn(Schedulers.io())
     }
 
-    fun updateRegions(inputStream: InputStream): Completable {
-        return Completable
-            .fromCallable {
-                val languages = mapLanguages(inputStream)
-                languageRepo.updateRegions(languages).blockingGet()
-            }
-            .doOnError { e ->
-                logger.error("Error in updateRegions", e)
-            }
-            .subscribeOn(Schedulers.io())
+    suspend fun updateRegionsSuspend(inputStream: InputStream) {
+        val languages = mapLanguages(inputStream)
+        try {
+            languageRepo.updateRegionsSuspend(languages)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Kept from the Rx version: it read the repository's Completable with blockingGet(),
+            // which returns the error instead of throwing it, so a failed update never failed
+            // the caller.
+            logger.error("Error in updateRegions", e)
+        }
     }
 
     private fun mapLanguages(inputStream: InputStream): List<Language> {

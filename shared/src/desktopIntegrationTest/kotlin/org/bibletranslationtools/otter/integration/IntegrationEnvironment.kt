@@ -767,7 +767,7 @@ class IntegrationEnvironment private constructor(
          */
         private fun IntegrationEnvironment.importLanguages() {
             langNamesFile().inputStream().use { stream ->
-                koin.get<ImportLanguages>().import(stream).blockingAwait()
+                runBlocking { koin.get<ImportLanguages>().importSuspend(stream) }
             }
         }
 

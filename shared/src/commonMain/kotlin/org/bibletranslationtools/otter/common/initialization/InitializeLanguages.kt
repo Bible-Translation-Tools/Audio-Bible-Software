@@ -20,6 +20,9 @@ package org.bibletranslationtools.otter.common.initialization
 
 import io.reactivex.Completable
 import io.reactivex.ObservableEmitter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.rx2.rxCompletable
+import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.io.IBundledContentSource
 import org.bibletranslationtools.otter.common.api.persistence.ILanguageDataSource
 import org.bibletranslationtools.otter.common.api.persistence.config.Installable
@@ -43,25 +46,27 @@ class InitializeLanguages(
 
     private val log = LoggerFactory.getLogger(InitializeLanguages::class.java)
 
-    override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable {
-        return Completable
-            .fromCallable {
-                val installedVersion = installedEntityRepo.getInstalledVersion(this)
-                if (installedVersion != version) {
-                    log.info("Initializing $name version: $version...")
+    override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable =
+        rxCompletable { execSuspend(progressEmitter::onNext) }
 
-                    migrate(installedVersion)
+    override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) {
+        withContext(Dispatchers.IO) {
+            val installedVersion = installedEntityRepo.getInstalledVersion(this@InitializeLanguages)
+            if (installedVersion != version) {
+                log.info("Initializing $name version: $version...")
 
-                    installedEntityRepo.install(this)
-                    log.info("Languages imported!")
-                    log.info("$name version: $version installed!")
-                } else {
-                    log.info("$name up to date with version: $version")
-                }
+                migrate(installedVersion)
+
+                installedEntityRepo.install(this@InitializeLanguages)
+                log.info("Languages imported!")
+                log.info("$name version: $version installed!")
+            } else {
+                log.info("$name up to date with version: $version")
             }
+        }
     }
 
-    private fun migrate(fromVersion: Int?) {
+    private suspend fun migrate(fromVersion: Int?) {
         when (fromVersion) {
             1 -> migrate1to2()
             else -> {
@@ -71,33 +76,13 @@ class InitializeLanguages(
         }
     }
 
-    private fun migrateTo1() {
-        importLanguages()
-            .doOnError { e ->
-                log.error("Error importing languages.", e)
-            }
-            .blockingAwait()
-
+    private suspend fun migrateTo1() {
+        val stream = bundledContent.read(LANGNAMES_PATH).inputStream()
+        ImportLanguages(languageRepo, languageDataSource).importSuspend(stream)
     }
 
-    private fun migrate1to2() {
-        updateRegions()
-            .doOnError { e ->
-                log.error("Error updating regions.", e)
-            }
-            .blockingAwait()
-    }
-
-    private fun importLanguages(): Completable {
-        val stream = bundledContent.readBlocking(LANGNAMES_PATH).inputStream()
-        return ImportLanguages(languageRepo, languageDataSource)
-            .import(stream)
-
-    }
-
-    private fun updateRegions(): Completable {
-        val stream = bundledContent.readBlocking(LANGNAMES_PATH).inputStream()
-        return ImportLanguages(languageRepo, languageDataSource)
-            .updateRegions(stream)
+    private suspend fun migrate1to2() {
+        val stream = bundledContent.read(LANGNAMES_PATH).inputStream()
+        ImportLanguages(languageRepo, languageDataSource).updateRegionsSuspend(stream)
     }
 }
