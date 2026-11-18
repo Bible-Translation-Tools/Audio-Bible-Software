@@ -35,7 +35,7 @@ class RechunkChapter(
      * audio) the chapter's active one, keeping the old layout for undo.
      */
     suspend fun rechunk(workbook: Workbook, chapter: Chapter, cues: List<AudioCue>, sourceAudio: File): SaveResult<RechunkReceipt> {
-        val rows = withContext(Dispatchers.IO) { createChunks.buildUserDefinedChunks(workbook, chapter.sort, cues) }
+        val rows = withContext(Dispatchers.IO) { createChunks.createUserDefinedChunks(workbook, chapter, cues) }
         val result = chapter.rechunk(rows)
         if (result is SaveResult.Saved) rebuildDerivedFiles(workbook, chapter, sourceAudio, cues)
         return result

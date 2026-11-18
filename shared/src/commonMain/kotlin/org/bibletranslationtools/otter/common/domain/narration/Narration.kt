@@ -660,7 +660,6 @@ class Narration(
         return result
     }
 
-    /** Deletes the chapter's selected take, and its audio file when [deleteAudioFile] is set. */
     suspend fun deleteChapterTake(deleteAudioFile: Boolean = false): SaveResult<Unit> {
         val selected = chapter.audio.getSelectedTake() ?: return SaveResult.Saved(Unit)
         logger.info("Deleting chapter take")

@@ -48,17 +48,14 @@ import org.bibletranslationtools.shared.resources.err_play_audio
 data class UnitUiModel(
     val unit: Chunk,
     val hasContent: Boolean = false,
-    /** The unit's takes that are not deleted, in number order: the ones the card browses. */
-    val availableTakes: List<Take> = emptyList(),
+    val takes: Int = 0,
     /**
      * The unit's currently selected take. Kept in UI state (rather than read straight off
-     * `unit.audio.getSelectedTake()` while composing) because a read while composing is invisible
-     * to Compose — the checkmark never repainted after selecting a take.
+     * `unit.audio.getSelectedTake()` while composing) because that value is invisible to
+     * Compose — the checkmark never repainted after selecting a take.
      */
     val selectedTake: Take? = null
-) {
-    val takes: Int get() = availableTakes.size
-}
+)
 
 data class UnitListUiState(
     val isLoading: Boolean = false,
@@ -180,11 +177,11 @@ class UnitListViewModel(
     }
 
     fun loadUnits() {
-        // Load once per ViewModel. The rows follow the chapter's saved state (its chunk layout and
-        // each verse's takes) for the ViewModel's lifetime, so they stay current even while
-        // recording. Skipping the reload on re-entry avoids a spinner flash and a leaked duplicate
-        // collection, and keeps the list populated so the LazyColumn restores its scroll position
-        // (e.g. after recording a verse).
+        // Load once per ViewModel. The chunk flow below keeps collecting for the
+        // ViewModel's lifetime (the back-stack entry), so the verse rows stay current
+        // even while recording. Skipping the reload on re-entry avoids a spinner flash
+        // and a leaked duplicate collection, and keeps the list populated so the
+        // LazyColumn restores its scroll position (e.g. after recording a verse).
         if (loadingJob?.isActive == true) return
         loadingJob = launchLogged(ioDispatcher) {
             _uiState.update { it.copy(isLoading = true) }
@@ -215,12 +212,11 @@ class UnitListViewModel(
                 // exclusively for per-verse takes.
                 verseAudio(chapter).collect { verses ->
                     val units = verses.map { (chunk, audio) ->
-                        val available = audio.takes.filter { !it.isDeleted() }.sortedBy { it.number }
                         val selected = audio.selectedTake?.takeUnless { it.isDeleted() }
                         UnitUiModel(
                             unit = chunk,
                             hasContent = selected != null,
-                            availableTakes = available,
+                            takes = audio.takes.count { !it.isDeleted() },
                             selectedTake = selected
                         )
                     }
@@ -230,7 +226,10 @@ class UnitListViewModel(
                     // just been deleted).
                     val existing = _uiState.value.currentTakeIndices
                     val indices = units.associate { unit ->
-                        val initial = unit.selectedTake?.let { unit.availableTakes.indexOf(it) }?.coerceAtLeast(0) ?: 0
+                        val takes = unit.unit.audio.getAllTakes()
+                            .filter { !it.isDeleted() }
+                            .sortedBy { it.number }
+                        val initial = unit.selectedTake?.let { takes.indexOf(it) }?.coerceAtLeast(0) ?: 0
                         val index = existing[unit.unit.sort] ?: initial
                         unit.unit.sort to index.coerceIn(0, (unit.takes - 1).coerceAtLeast(0))
                     }
@@ -245,12 +244,12 @@ class UnitListViewModel(
 
                     // Compute durations for any takes not yet in the cache.
                     launch(ioDispatcher) {
-                        val cached = _uiState.value.takeDurations
+                        val existing = _uiState.value.takeDurations
                         val newDurations = mutableMapOf<String, String>()
-                        units.forEach { unit ->
-                            unit.availableTakes.forEach { take ->
+                        verses.forEach { (chunk, _) ->
+                            chunk.audio.getAllTakes().filter { !it.isDeleted() }.forEach { take ->
                                 val key = take.file.absolutePath
-                                if (!cached.containsKey(key)) {
+                                if (!existing.containsKey(key)) {
                                     try {
                                         val af = OratureAudioFile(take.file)
                                         val ms = (af.totalFrames.toLong() * 1000L / af.sampleRate).toInt()
@@ -302,14 +301,13 @@ class UnitListViewModel(
         stopProgressTicker()
     }
 
-    /** The unit's takes as the card shows them: not deleted, in number order. */
-    private fun availableTakes(unit: Chunk): List<Take> =
-        _uiState.value.units.firstOrNull { it.unit == unit }?.availableTakes.orEmpty()
-
     // Returns the take the user is currently browsing for a unit (may differ from selected take).
     private fun getCurrentViewedTake(unit: Chunk): Take? {
+        val takes = unit.audio.getAllTakes()
+            .filter { !it.isDeleted() }
+            .sortedBy { it.number }
         val index = _uiState.value.currentTakeIndices[unit.sort] ?: 0
-        return availableTakes(unit).getOrNull(index)
+        return takes.getOrNull(index)
     }
 
     fun togglePlay(unit: Chunk) {
@@ -369,7 +367,9 @@ class UnitListViewModel(
 
     // Cycles through takes without changing the officially selected take.
     fun cycleTake(unit: Chunk, direction: Int) {
-        val takes = availableTakes(unit)
+        val takes = unit.audio.getAllTakes()
+            .filter { !it.isDeleted() }
+            .sortedBy { it.number }
         if (takes.isEmpty()) return
 
         val currentIndex = _uiState.value.currentTakeIndices[unit.sort] ?: 0
@@ -388,7 +388,8 @@ class UnitListViewModel(
 
     fun deleteTake(unit: Chunk, take: Take) {
         // Stop playback if the deleted take is the one currently loaded.
-        val playingSame = _uiState.value.currentPlayingTake == take
+        val playingSame = _uiState.value.currentPlayingTake?.file?.absolutePath ==
+            take.file.absolutePath
         if (playingSame) {
             runCatching { audioPlayer?.pause() }
             stopProgressTicker()

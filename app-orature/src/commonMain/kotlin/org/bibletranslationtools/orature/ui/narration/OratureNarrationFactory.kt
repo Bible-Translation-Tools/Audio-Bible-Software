@@ -36,8 +36,7 @@ class OratureNarrationFactory(
     /**
      * Create a fresh [Narration] whose recorder/player connections live on [scope] (typically
      * the owning ViewModel's `viewModelScope`). Call [Narration.initialize] before use, and
-     * [Narration.close] when done. The constructor reads the chapter's chunks and files, so call
-     * this off the main thread.
+     * [Narration.close] when done.
      */
     fun create(workbook: Workbook, chapter: Chapter, scope: CoroutineScope): Narration {
         val id = connectionIds.incrementAndGet()

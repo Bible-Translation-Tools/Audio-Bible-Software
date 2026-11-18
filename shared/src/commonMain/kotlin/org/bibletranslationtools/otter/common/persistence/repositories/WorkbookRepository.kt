@@ -31,6 +31,7 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IReso
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ITakeRepository
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDatabaseAccessors
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.artwork.ArtworkAccessor
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.SourceAudioAccessor
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesAccessor
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
@@ -146,13 +147,27 @@ class WorkbookRepository(
             sourceBook,
             targetBook,
             writer,
-            SourceAudioAccessor(directoryProvider, sourceBook.resourceMetadata, sourceBook.slug),
-            ProjectFilesAccessor(
-                directoryProvider,
-                sourceBook.resourceMetadata,
-                targetBook.resourceMetadata,
-                targetBook.toCollection()
-            )
+            sourceAudioAccessor = {
+                SourceAudioAccessor(directoryProvider, sourceBook.resourceMetadata, sourceBook.slug)
+            },
+            projectFilesAccessor = {
+                ProjectFilesAccessor(
+                    directoryProvider,
+                    sourceBook.resourceMetadata,
+                    targetBook.resourceMetadata,
+                    targetBook.toCollection()
+                )
+            },
+            artworkAccessor = {
+                // Named, because the one provider satisfies two of the accessor's ports: artwork is
+                // looked up in the images RCs and cached under the app cache directory.
+                ArtworkAccessor(
+                    appDirectories = directoryProvider,
+                    rcDirectories = directoryProvider,
+                    metadata = sourceBook.resourceMetadata,
+                    projectSlug = sourceBook.slug
+                )
+            }
         )
     }
 

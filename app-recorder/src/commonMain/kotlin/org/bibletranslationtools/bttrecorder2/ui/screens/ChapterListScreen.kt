@@ -538,7 +538,7 @@ fun ChapterItemPreview() {
     Column {
         ChapterItem(
             uiModel = ChapterUiModel(
-                chapter = MockData.createMockChapter(1),
+                chapter = MockData.createMockChapter(1, "Chapter 1", "1"),
                 hasContent = true,
                 progress = 0.08f,
                 hasChapterTake = false,
@@ -560,7 +560,7 @@ fun ChapterItemPreview() {
         HorizontalDivider()
         ChapterItem(
             uiModel = ChapterUiModel(
-                chapter = MockData.createMockChapter(2),
+                chapter = MockData.createMockChapter(2, "Chapter 2", "2"),
                 hasContent = false,
                 progress = 0f,
                 hasChapterTake = false,
@@ -588,9 +588,9 @@ fun ChapterListContentPreview() {
     ChapterListContent(
         uiState = ChapterListUiState(
             chapters = listOf(
-                ChapterUiModel(MockData.createMockChapter(1), hasContent = true, progress = 0.08f),
-                ChapterUiModel(MockData.createMockChapter(2), hasContent = false, progress = 0f),
-                ChapterUiModel(MockData.createMockChapter(3), hasContent = false, progress = 0f)
+                ChapterUiModel(MockData.createMockChapter(1, "Chapter 1", "1"), hasContent = true, progress = 0.08f),
+                ChapterUiModel(MockData.createMockChapter(2, "Chapter 2", "2"), hasContent = false, progress = 0f),
+                ChapterUiModel(MockData.createMockChapter(3, "Chapter 3", "3"), hasContent = false, progress = 0f)
             ),
             workbook = null
         ),

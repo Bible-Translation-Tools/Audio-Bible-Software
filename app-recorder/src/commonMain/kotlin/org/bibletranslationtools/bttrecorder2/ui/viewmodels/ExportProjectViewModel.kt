@@ -35,6 +35,7 @@ import org.koin.core.component.inject
 import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
 import org.jetbrains.compose.resources.getString
 import org.bibletranslationtools.shared.resources.Res
+import org.bibletranslationtools.shared.resources.export_error_project_not_found
 import org.bibletranslationtools.shared.resources.export_error_load_chapters_failed
 import org.bibletranslationtools.shared.resources.export_error_no_file
 import org.bibletranslationtools.shared.resources.export_error_generic
@@ -126,7 +127,13 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
                 val workbook = workbookRepository.get(
                     descriptor.sourceCollection,
                     descriptor.targetCollection
-                )
+                ) ?: run {
+                    _options.value = ExportOptionsState.Error(
+                        descriptor,
+                        getString(Res.string.export_error_project_not_found)
+                    )
+                    return@launchLogged
+                }
 
                 val chapters = workbook.target.chapters()
                 val chapterDescriptors = chapters.map { chapter ->
@@ -258,7 +265,10 @@ class ExportProjectViewModel : ViewModel(), KoinComponent {
                 val workbook = workbookRepository.get(
                     descriptor.sourceCollection,
                     descriptor.targetCollection
-                )
+                ) ?: run {
+                    _state.value = ExportState.Error(getString(Res.string.export_error_project_not_found))
+                    return@launchLogged
+                }
 
                 // Projects created through the in-app wizard never have their
                 // on-disk resource container initialized — that only happens

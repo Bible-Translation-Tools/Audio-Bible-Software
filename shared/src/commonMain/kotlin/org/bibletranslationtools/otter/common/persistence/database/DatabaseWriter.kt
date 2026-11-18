@@ -1,8 +1,6 @@
 package org.bibletranslationtools.otter.common.persistence.database
 
-import io.reactivex.Completable
 import io.reactivex.Scheduler
-import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -28,8 +26,8 @@ import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvid
  * coroutines yet share it (`subscribeOn(databaseWriter.scheduler)`).
  *
  * One rule: never wait on the queue from inside a write. The queue is busy running the waiting
- * block, so the inner write could never start. [write], [completable] and [single] check for that
- * and fail fast with [ReentrantWriteException] instead of hanging.
+ * block, so the inner write could never start. [write] checks for that and fails fast with
+ * [ReentrantWriteException] instead of hanging.
  *
  * Bind it as a singleton: two instances would be two queues.
  */
@@ -57,20 +55,6 @@ class DatabaseWriter(
         return withContext(queue) { runOnQueue(block) }
     }
 
-    /** [write] as a [Completable] that runs on the queue when subscribed. */
-    fun completable(block: () -> Unit): Completable =
-        Completable.defer {
-            checkNotOnQueue()
-            Completable.fromAction { runOnQueue(block) }.subscribeOn(scheduler)
-        }
-
-    /** [write] as a [Single] that runs on the queue when subscribed. */
-    fun <T : Any> single(block: () -> T): Single<T> =
-        Single.defer {
-            checkNotOnQueue()
-            Single.fromCallable { runOnQueue(block) }.subscribeOn(scheduler)
-        }
-
     /**
      * [write] for blocking code. Called from code already holding the queue, it runs [block] there
      * and then instead of waiting for a turn it would never get: inside the running transaction when
@@ -85,7 +69,7 @@ class DatabaseWriter(
         }
 
     /** True while the calling thread is running a write block on the queue. */
-    fun isOnQueue(): Boolean = onQueue.get() == true
+    private fun isOnQueue(): Boolean = onQueue.get() == true
 
     private fun <T> runOnQueue(block: () -> T): T {
         val outer = onQueue.get()

@@ -4,9 +4,8 @@ import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.domain.narration.ChapterRepresentation
 
-class ProjectCompletionStatus {
+class ProjectCompletionStatus() {
 
-    /** Reads the chapter's narration files; call off the main thread. */
     suspend fun getChapterNarrationProgress(workbook: Workbook, chapter: Chapter): Double {
         val chapterRepresentation = ChapterRepresentation.load(workbook, chapter)
         chapterRepresentation.loadFromSerializedVerses()

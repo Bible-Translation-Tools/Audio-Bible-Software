@@ -1,6 +1,8 @@
 package org.bibletranslationtools.otter.common.persistence.database
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import io.reactivex.Completable
+import io.reactivex.Single
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -94,7 +96,7 @@ class DatabaseWriterTest {
             if (n % 2 == 0) {
                 launch(Dispatchers.Unconfined, start = CoroutineStart.UNDISPATCHED) { writer.write { order += n } }
             } else {
-                writer.completable { order += n }.subscribe()
+                Completable.fromAction { order += n }.subscribeOn(writer.scheduler).subscribe()
                 null
             }
         }
@@ -110,12 +112,6 @@ class DatabaseWriterTest {
             assertFailsWith<ReentrantWriteException> {
                 writer.write { runBlocking { writer.write { } } }
             }
-            assertFailsWith<ReentrantWriteException> {
-                writer.write { writer.completable { }.blockingAwait() }
-            }
-            assertFailsWith<ReentrantWriteException> {
-                writer.write { writer.single { 1 }.blockingGet() }
-            }
         }
         assertTrue(writer.write { true }, "the queue still works after a refused wait")
     }
@@ -127,7 +123,8 @@ class DatabaseWriterTest {
      */
     @Test
     fun `a blocking write downstream of an Rx write runs instead of hanging`() = runBlocking {
-        val done = writer.single { db.languageDao.insert(language("rx")) }
+        val done = Single.fromCallable { db.languageDao.insert(language("rx")) }
+            .subscribeOn(writer.scheduler)
             .map { writer.writeBlocking { db.languageDao.insert(language("after")) } }
             .timeout(10, TimeUnit.SECONDS)
             .blockingGet()
@@ -140,8 +137,9 @@ class DatabaseWriterTest {
 
     @Test
     fun `an Rx write can still chain another Rx write`() {
-        val second = writer.completable { db.languageDao.insert(language("one")) }
-            .andThen(writer.single { db.languageDao.insert(language("two")) })
+        val second = Completable.fromAction { db.languageDao.insert(language("one")) }
+            .subscribeOn(writer.scheduler)
+            .andThen(Single.fromCallable { db.languageDao.insert(language("two")) }.subscribeOn(writer.scheduler))
             .timeout(10, TimeUnit.SECONDS)
             .blockingGet()
 

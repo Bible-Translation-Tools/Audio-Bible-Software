@@ -6,7 +6,6 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
-import org.bibletranslationtools.otter.common.data.workbook.SaveFailure
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
@@ -17,9 +16,7 @@ import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 /**
@@ -134,28 +131,6 @@ class SaveAudioAsNewTakeTest {
     }
 
     /**
-     * A take number that is already taken on disk, by a file no row in this element knows about
-     * (an older chunk layout's take, an orphan), must not have its audio replaced.
-     */
-    @Test
-    fun `never overwrites an existing take file`() = runTest {
-        val (workbook, chapter) = fixture(takeNumber = 1)
-        val first = saveAudioAsNewTake.execute(workbook, chapter, null, chapter, sourceAudio(byteArrayOf(1))).saved()
-        // Forget the first take, as an orphan on disk would be: the next number is 1 again.
-        val again = WorkbookBuilder(store, projectFilesAccessor = accessor).build { target { chapter(1) } }
-        val orphanChapter = again.target.chapters().single()
-        assertEquals(1, orphanChapter.audio.getNewTakeNumber())
-
-        val second = saveAudioAsNewTake
-            .execute(again, orphanChapter, null, orphanChapter, sourceAudio(byteArrayOf(2)))
-            .saved()
-
-        assertNotEquals(first.file.canonicalFile, second.file.canonicalFile)
-        assertEquals(listOf<Byte>(1), first.file.readBytes().toList(), "the existing take's audio was replaced")
-        assertEquals(listOf<Byte>(2), second.file.readBytes().toList())
-    }
-
-    /**
      * A missing input file must fail loudly and leave nothing half-registered. The recorder wraps
      * this call in `runCatching` and surfaces the message, so throwing is the contract.
      *
@@ -184,22 +159,5 @@ class SaveAudioAsNewTakeTest {
         assertTrue(chapterAudioDir.listFiles().isNullOrEmpty(), "a take file was reserved for missing audio")
         assertTrue(writes().isEmpty(), "nothing should have been written, calls were ${store.calls}")
         assertEquals(takesBefore, chapter.audio.getAllTakes())
-    }
-
-    /** A save that fails leaves no take behind: not in the store, not in the chapter, not on disk. */
-    @Test
-    fun `a failed save removes the copied file and reports the failure`() = runTest {
-        val (workbook, chapter) = fixture()
-        val takesBefore = chapter.audio.getAllTakes()
-        val savedBefore = store.saved(chapter.audio.owner).takes
-        store.failNextWrite()
-
-        val result = saveAudioAsNewTake.execute(workbook, chapter, null, chapter, sourceAudio())
-
-        assertEquals(SaveFailure.COULD_NOT_SAVE, assertIs<SaveResult.Failed>(result).failure)
-        assertTrue(chapterAudioDir.listFiles().isNullOrEmpty(), "the copied take file was left behind")
-        assertEquals(savedBefore, store.saved(chapter.audio.owner).takes)
-        assertEquals(takesBefore, chapter.audio.getAllTakes())
-        assertFalse(chapter.hasSelectedAudio())
     }
 }

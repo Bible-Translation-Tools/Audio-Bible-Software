@@ -575,18 +575,6 @@ class IntegrationEnvironment private constructor(
         }.blockingSubscribe()
     }
 
-    /**
-     * Waits for [condition], which is only reached after a background write, failing with [message]
-     * after [timeoutMillis].
-     */
-    fun eventually(message: String, timeoutMillis: Long = 5_000, condition: () -> Boolean) {
-        val deadline = System.currentTimeMillis() + timeoutMillis
-        while (!condition()) {
-            if (System.currentTimeMillis() > deadline) throw AssertionError("timed out: $message")
-            Thread.sleep(20)
-        }
-    }
-
     fun content(contentId: Int) = db.contentDao.fetchById(contentId)
 
     /** Moves [project]'s folder to where a project created before per-book pinning would have it. */

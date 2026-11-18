@@ -22,6 +22,7 @@ import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.rx2.rxSingle
+import kotlinx.coroutines.runBlocking
 import org.apache.commons.io.FileUtils
 import org.bibletranslationtools.otter.common.api.io.zip.IFileWriter
 import org.slf4j.LoggerFactory
@@ -59,68 +60,68 @@ class BackupProjectExporter(
         options: ExportOptions?
     ): Single<ExportResult> {
         return rxSingle(Dispatchers.IO) {
-            val resourceMetadata = workbook.target.resourceMetadata
-            val projectSourceMetadata = workbook.source.linkedResources
-                .firstOrNull { it.identifier == resourceMetadata.identifier }
-                ?: workbook.source.resourceMetadata
-
-            val projectAccessor = workbook.projectFilesAccessor
-            if (!projectAccessor.isInitialized()) {
-                return@rxSingle ExportResult.FAILURE
-            }
-            val contributors = projectAccessor.getContributorInfo()
-            val zipFilename = makeExportFilename(workbook, projectSourceMetadata)
-            val zipFile = outputDirectory.resolve(zipFilename)
-
-            logger.info("Exporting backup project: ${zipFile.nameWithoutExtension}")
-
-            projectAccessor.initializeResourceContainerInFile(workbook, zipFile)
-            setContributorInfo(contributors, zipFile)
-            callback?.onNotifyProgress(20.0, messageKey = "exportingTakes")
-
-            fileIO.newFileWriter(zipFile).use { fileWriter: IFileWriter ->
-                projectAccessor.copyTakeFiles(
-                    fileWriter,
-                    workbook,
-                    workbookRepository,
-                    isBook = true
-                ) {
-                    takesFilter(it, takeFilenamePattern, options)
-                }
-
-                projectAccessor.copyInProgressNarrationFiles(fileWriter) {
-                    takesFilter(it, inProgressNarrationPattern, options)
-                }
-                callback?.onNotifyProgress(70.0, messageKey = "copyingSource")
-
-                val linkedResource = workbook.source.linkedResources
+                val resourceMetadata = workbook.target.resourceMetadata
+                val projectSourceMetadata = workbook.source.linkedResources
                     .firstOrNull { it.identifier == resourceMetadata.identifier }
+                    ?: workbook.source.resourceMetadata
 
-                val embeddedSource = projectAccessor.copySourceFilesWithRelatedMedia(
-                    fileWriter, tempFiles.tempDirectory, linkedResource
-                )
-                writeSourceEditions(fileWriter, workbook, embeddedSource)
-                callback?.onNotifyProgress(99.0)
+                val projectAccessor = workbook.projectFilesAccessor
+                if (!projectAccessor.isInitialized()) {
+                    return@rxSingle ExportResult.FAILURE
+                }
+                val contributors = projectAccessor.getContributorInfo()
+                val zipFilename = makeExportFilename(workbook, projectSourceMetadata)
+                val zipFile = outputDirectory.resolve(zipFilename)
 
-                projectAccessor.writeSelectedTakesFile(
-                    fileWriter,
-                    workbook,
-                    isBook = true
-                ) { takeName ->
-                    takesFilter(takeName, takeFilenamePattern, options)
+                logger.info("Exporting backup project: ${zipFile.nameWithoutExtension}")
+
+                projectAccessor.initializeResourceContainerInFile(workbook, zipFile)
+                setContributorInfo(contributors, zipFile)
+                callback?.onNotifyProgress(20.0, messageKey = "exportingTakes")
+
+                fileIO.newFileWriter(zipFile).use { fileWriter: IFileWriter ->
+                    projectAccessor.copyTakeFiles(
+                        fileWriter,
+                        workbook,
+                        workbookRepository,
+                        isBook = true
+                    ) {
+                        takesFilter(it, takeFilenamePattern, options)
+                    }
+
+                    projectAccessor.copyInProgressNarrationFiles(fileWriter) {
+                        takesFilter(it, inProgressNarrationPattern, options)
+                    }
+                    callback?.onNotifyProgress(70.0, messageKey = "copyingSource")
+
+                    val linkedResource = workbook.source.linkedResources
+                        .firstOrNull { it.identifier == resourceMetadata.identifier }
+
+                    val embeddedSource = projectAccessor.copySourceFilesWithRelatedMedia(
+                        fileWriter, tempFiles.tempDirectory, linkedResource
+                    )
+                    writeSourceEditions(fileWriter, workbook, embeddedSource)
+                    callback?.onNotifyProgress(99.0)
+
+                    projectAccessor.writeSelectedTakesFile(
+                        fileWriter,
+                        workbook,
+                        isBook = true
+                    ) { takeName ->
+                        takesFilter(takeName, takeFilenamePattern, options)
+                    }
+                    projectAccessor.writeChunksFile(fileWriter, options?.chapters)
+                    projectAccessor.copyProjectModeFile(fileWriter)
+                    projectAccessor.writeTakeCheckingStatus(fileWriter, workbook) { path ->
+                        takesFilter(path, takeFilenamePattern, options)
+                    }
                 }
-                projectAccessor.writeChunksFile(fileWriter, options?.chapters)
-                projectAccessor.copyProjectModeFile(fileWriter)
-                projectAccessor.writeTakeCheckingStatus(fileWriter, workbook) { path ->
-                    takesFilter(path, takeFilenamePattern, options)
-                }
+
+                val exportedFile = restoreFileExtension(zipFile, OratureFileFormat.ORATURE.extension)
+                callback?.onNotifyProgress(100.0)
+                callback?.onNotifySuccess(workbook.target.toCollection(), exportedFile)
+                return@rxSingle ExportResult.SUCCESS
             }
-
-            val exportedFile = restoreFileExtension(zipFile, OratureFileFormat.ORATURE.extension)
-            callback?.onNotifyProgress(100.0)
-            callback?.onNotifySuccess(workbook.target.toCollection(), exportedFile)
-            return@rxSingle ExportResult.SUCCESS
-        }
             .doOnError {
                 logger.error("Failed to export in-progress project", it)
             }
@@ -133,10 +134,11 @@ class BackupProjectExporter(
      * chapters' editions, so a restore can rebuild them (step 11). A backup is still worth having
      * without it, so a failure here is logged rather than failing the export.
      */
-    private suspend fun writeSourceEditions(fileWriter: IFileWriter, workbook: Workbook, embeddedSource: String) {
+    private fun writeSourceEditions(fileWriter: IFileWriter, workbook: Workbook, embeddedSource: String) {
         runCatching {
-            val (record, heldEditions) =
-                backupEditions.recordFor(workbook.target.collectionId, embeddedSource) ?: return
+            val (record, heldEditions) = runBlocking {
+                backupEditions.recordFor(workbook.target.collectionId, embeddedSource)
+            } ?: return
             heldEditions.forEach { edition ->
                 workbook.projectFilesAccessor.copyEditionWithRelatedMedia(
                     fileWriter, tempFiles.tempDirectory, edition, backupEditions.embeddedFileFor(edition)

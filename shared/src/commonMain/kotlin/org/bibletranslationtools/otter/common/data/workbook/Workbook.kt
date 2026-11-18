@@ -18,21 +18,22 @@
  */
 package org.bibletranslationtools.otter.common.data.workbook
 
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.artwork.ArtworkAccessor
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.SourceAudioAccessor
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesAccessor
+import java.util.*
 
 class Workbook(
     val source: Book,
     val target: Book,
     private val writer: WorkbookWriter,
-    val sourceAudioAccessor: SourceAudioAccessor,
-    val projectFilesAccessor: ProjectFilesAccessor
+    sourceAudioAccessor: () -> SourceAudioAccessor,
+    projectFilesAccessor: () -> ProjectFilesAccessor,
+    artworkAccessor: () -> ArtworkAccessor
 ) {
-    /**
-     * Whether this workbook's changes are saved. Shows failures that no screen is waiting on, such
-     * as settling a chapter's drafts when the user leaves it.
-     */
-    val saveStatus: kotlinx.coroutines.flow.StateFlow<SaveStatus> get() = writer.status
+    val sourceAudioAccessor: SourceAudioAccessor by lazy(sourceAudioAccessor)
+    val artworkAccessor: ArtworkAccessor by lazy(artworkAccessor)
+    val projectFilesAccessor: ProjectFilesAccessor by lazy(projectFilesAccessor)
 
     /** True once [close] has run; a closed workbook refuses every change. */
     val isClosed: Boolean get() = writer.isClosed
@@ -45,19 +46,21 @@ class Workbook(
         get() = source.resourceMetadata.identifier
 
     override fun hashCode(): Int {
-        return listOf(
+        return Objects.hash(
             source.collectionId,
             source.slug,
             source.language,
             target.collectionId,
             target.slug,
             target.language
-        ).hashCode()
+        )
     }
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
-        if (other !is Workbook) return false
+        if (javaClass != other?.javaClass) return false
+
+        other as Workbook
 
         if (source != other.source) return false
         if (target != other.target) return false

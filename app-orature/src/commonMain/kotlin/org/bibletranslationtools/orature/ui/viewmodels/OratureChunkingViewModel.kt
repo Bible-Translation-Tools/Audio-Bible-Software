@@ -40,7 +40,6 @@ import org.bibletranslationtools.shared.audio.engine.PlaybackDisplayPosition
 import org.bibletranslationtools.otter.common.domain.content.CreateChunks
 import org.bibletranslationtools.otter.common.domain.content.RechunkAction
 import org.bibletranslationtools.otter.common.domain.content.RechunkChapter
-import org.bibletranslationtools.otter.common.audio.AudioCue
 import org.bibletranslationtools.otter.common.domain.model.DEFAULT_CHUNK_MARKER_TOTAL
 import org.bibletranslationtools.otter.common.domain.model.MarkerItem
 import org.bibletranslationtools.otter.common.domain.model.MarkerPlacementModel
@@ -70,11 +69,9 @@ data class OratureChunkingUiState(
 /**
  * Drives the Chunking step: place/move/delete chunk-boundary markers on the chapter's source audio,
  * with undo/redo and save. Mirrors the JVM `ChunkingViewModel` — the marker engine is the shared
- * [MarkerPlacementModel] (CHUNK), playback + waveform reuse the Consume path, and saving the markers
- * is one [RechunkAction] in the chapter's undo history: the old layout and its
- * takes stay, inactive, so the header's undo brings them back until the user leaves the chapter.
- * [translationVm] is updated so the page header's undo/redo reflect this step (JVM: chunking VM
- * writes translationViewModel).
+ * [MarkerPlacementModel] (CHUNK), playback + waveform reuse the Consume path, and save writes the
+ * chunks via [RechunkAction]. [translationVm] is updated so the
+ * page header's undo/redo reflect this step (JVM: chunking VM writes translationViewModel).
  */
 class OratureChunkingViewModel(
     private val chapterSort: Int,
@@ -115,9 +112,6 @@ class OratureChunkingViewModel(
     private var markerInfos: List<OratureMarkerInfo> = emptyList()
 
     private var waveformTickerJob: Job? = null
-    // The placed chunk markers' frames as loaded from the chapter's active layout (the chunk markers
-    // in its source audio copy). Leaving the step forward saves a rechunk only when they differ.
-    private var savedCueFrames: List<Int> = emptyList()
     // The layout the markers were loaded from. A chapter undo or redo of a rechunk changes the
     // chapter's active layout, and the markers are reloaded to show it.
     private var loadedDraft: DraftId? = null
@@ -133,19 +127,23 @@ class OratureChunkingViewModel(
     fun currentMarkers(): List<OratureMarkerInfo> = markerInfos
 
     /**
-     * Points the page header's undo and redo at this step. Called each time the step is shown: a
-     * step's ViewModel outlives leaving the step, so binding only in init left the header driving
-     * whichever step's ViewModel was created last, possibly one not on screen.
+     * Called each time the step is shown: a step's ViewModel outlives leaving the step, so
+     * registering only in init left the header driving whichever step's ViewModel was created
+     * last, possibly one not on screen.
      */
     fun onShown() {
-        translationVm.bindStepUndoRedo(
-            undoRedo,
+        // The header undo/redo route here while this step is active (JVM: translationViewModel).
+        // After a chapter undo or redo, which may have switched the chapter's chunk layout, the
+        // markers are reloaded.
+        translationVm.setUndoRedoHandlers(
+            ::undo,
+            ::redo,
+            afterChapterUndo = { launchLogged { layoutLock.withLock { reloadMarkersFromLayout() } } }
+        )
+        translationVm.updateChunkUndoRedo(
             canUndo = markerModel?.canUndo() ?: false,
             canRedo = markerModel?.canRedo() ?: false
         )
-        // The save handler too: chunking ViewModels are kept per chapter, so the shell must save
-        // the chapter on screen, not the one visited last.
-        translationVm.setChunkSaveHandler(::saveSuspend)
         // An undo or redo of a rechunk made from another step changed the active layout while this
         // step was not showing: show that layout's markers.
         val state = chapter?.state?.value
@@ -154,39 +152,26 @@ class OratureChunkingViewModel(
         }
     }
 
-    // The unsaved chunk-marker edits are MarkerPlacementModel's own in-memory undo; the page header
-    // undoes them before the chapter's history (JVM: translationViewModel). After a chapter
-    // undo or redo, which may have switched the chapter's chunk layout, the markers are reloaded.
-    private val undoRedo = StepUndoRedo(
-        localUndo = ::undo,
-        localRedo = ::redo,
-        afterHistory = { launchLogged { layoutLock.withLock { reloadMarkersFromLayout() } } }
-    )
-
     init {
-        // The header undo/redo route here while this step is active (JVM: translationViewModel).
-        translationVm.bindStepUndoRedo(undoRedo)
-        // The translation VM awaits this before leaving the step forward, so the new layout is
-        // saved (and readable) BEFORE Blind Draft loads — matching Orature's synchronous undock save.
+        // The translation VM awaits this before leaving the step, so the chunk DB writes commit
+        // (and are readable) BEFORE Blind Draft loads — matching Orature's synchronous undock save.
         translationVm.setChunkSaveHandler(::saveSuspend)
         load()
     }
 
     /**
-     * Saves the placed markers as the chapter's new chunk layout, if they changed since the layout
-     * was loaded, and WAITS for it (JVM: saveChanges().blockingAwait() in undock). The save is one
-     * [RechunkAction] in the chapter's undo history, so nothing is deleted here: the old layout and its takes
-     * stay, inactive, for the header's undo, until the user leaves the chapter. Returns whether the
-     * layout is saved (or there was nothing to save); a failure is shown to the user, and the caller
-     * must not move on as if it saved.
+     * Persist the chunks and WAIT for completion (JVM: saveChanges().blockingAwait() in undock).
+     * The save is one [RechunkAction] in the chapter's undo history. Returns whether the layout is
+     * saved (or there was nothing to save); a failure is shown to the user, and the caller must not
+     * move on as if it saved.
      */
     private suspend fun saveSuspend(): Boolean = layoutLock.withLock {
         val wb = workbook ?: return@withLock true
         val chap = chapter ?: return@withLock true
         val src = sourceFile ?: return@withLock true
         val model = markerModel ?: return@withLock true
-        val cues = placedCues(model)
-        if (cues.map { it.location } == savedCueFrames) return@withLock true // nothing changed
+        if (!model.canUndo()) return@withLock true // nothing changed
+        val cues = model.markerItems.filter { it.placed }.map { it.toAudioCue() }
         val result = try {
             chap.execute(RechunkAction(rechunkChapter, wb, chap, cues, src))
         } catch (e: CancellationException) {
@@ -199,14 +184,11 @@ class OratureChunkingViewModel(
             logFailure("saving the chunk layout", IllegalStateException("Chunks not saved: $result"))
             return@withLock false
         }
-        // The saved layout is now the one to compare with, and its markers start a fresh in-memory
-        // history: undoing the rechunk itself is the chapter's.
+        // The saved layout's markers start a fresh in-memory history: undoing the rechunk itself is
+        // the chapter's.
         reloadMarkersFromLayout()
         true
     }
-
-    private fun placedCues(model: MarkerPlacementModel): List<AudioCue> =
-        model.markerItems.filter { it.placed }.map { it.toAudioCue() }.sortedBy { it.location }
 
     /**
      * Rebuilds the marker model from the chunk markers of the chapter's active layout, as written in
@@ -220,7 +202,6 @@ class OratureChunkingViewModel(
             val draft = chap.loadedState().activeDraft
             val model = withContext(Dispatchers.IO) { markerModelFor(OratureAudioFile(file)) }
             markerModel = model
-            savedCueFrames = placedCues(model).map { it.location }
             loadedDraft = draft
             refreshMarkers()
         } catch (e: CancellationException) {
@@ -252,17 +233,16 @@ class OratureChunkingViewModel(
                     // Source audio must live in the project so it can be re-chunked (JVM: dock()).
                     // The project RC (manifest.yaml) is scaffolded on open (OratureWorkbookDataStore).
                     val accessor = wb.projectFilesAccessor
-                    val sourceAudio = wb.sourceAudioAccessor
-                    val userMarked = sourceAudio.getUserMarkedChapter(chapterSort, wb.target)
+                    val userMarked = wb.sourceAudioAccessor.getUserMarkedChapter(chapterSort, wb.target)
                     val file = (userMarked ?: run {
-                        sourceAudio.getChapter(chapterSort, wb.target)?.let {
+                        wb.sourceAudioAccessor.getChapter(chapterSort, wb.target)?.let {
                             ChunkAudioUseCase(directoryProvider, accessor).copySourceAudioToProject(it.file)
                         }
-                        sourceAudio.getUserMarkedChapter(chapterSort, wb.target)
+                        wb.sourceAudioAccessor.getUserMarkedChapter(chapterSort, wb.target)
                     })?.file ?: error("No source audio for chapter $chapterSort")
 
                     // The layout the markers below belong to: a later undo or redo of a rechunk
-                    // switches it, and the markers are reloaded then (onShown, afterHistory).
+                    // switches it, and the markers are reloaded then (onShown, afterChapterUndo).
                     val draft = chap.loadedState().activeDraft
                     val audioFile = OratureAudioFile(file)
                     val model = markerModelFor(audioFile)
@@ -280,7 +260,6 @@ class OratureChunkingViewModel(
                 chapter = prepared.chapter
                 sourceFile = prepared.file
                 markerModel = prepared.model
-                savedCueFrames = placedCues(prepared.model).map { it.location }
                 loadedDraft = prepared.draft
                 sampleRate = prepared.sampleRate
                 totalFrames = prepared.playerReader.totalFrames
@@ -405,7 +384,7 @@ class OratureChunkingViewModel(
         val canUndo = model?.canUndo() ?: false
         val canRedo = model?.canRedo() ?: false
         _uiState.value = _uiState.value.copy(canUndo = canUndo, canRedo = canRedo, markers = markerInfos)
-        translationVm.updateLocalUndoRedo(undoRedo, canUndo, canRedo)
+        translationVm.updateChunkUndoRedo(canUndo, canRedo)
         updateAddDisabled()
     }
 
@@ -444,7 +423,7 @@ class OratureChunkingViewModel(
     public override fun onCleared() {
         // Marker edits not yet saved by leaving the step forward are dropped with the screen: a
         // rechunk is saved only on that step change, never from here.
-        translationVm.unbindStepUndoRedo(undoRedo)
+        translationVm.clearUndoRedoHandlers()
         translationVm.clearChunkSaveHandler()
         waveformTickerJob?.cancel()
         peakBuildJob?.cancel()

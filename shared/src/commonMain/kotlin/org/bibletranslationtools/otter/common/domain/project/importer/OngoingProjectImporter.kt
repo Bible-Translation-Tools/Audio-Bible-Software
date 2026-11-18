@@ -50,7 +50,6 @@ import org.bibletranslationtools.otter.common.domain.project.BackupHeldChapter
 import kotlinx.coroutines.runBlocking
 import org.bibletranslationtools.otter.common.domain.content.ConcatenateAudio
 import org.bibletranslationtools.otter.common.domain.content.FileNamer
-import org.bibletranslationtools.otter.common.domain.content.TakeFiles
 import org.bibletranslationtools.otter.common.domain.content.FileNamer.Companion.takeFilenamePattern
 import org.bibletranslationtools.otter.common.domain.mapper.mapToMetadata
 import org.bibletranslationtools.otter.common.domain.project.ProjectAppVersion
@@ -1010,20 +1009,20 @@ class OngoingProjectImporter(
             chapterTitle = "$chapterNumber",
             chapterSort = chapterNumber
         )
+        val fileName = fileNamer.generateName(1, AudioFileFormat.WAV)
         val filesToCompile = takeFiles.sortedBy { parseNumbers(it.name)!!.contentSignature.verse } // sort by verse order
         val compiled = concatAudioUseCase.execute(filesToCompile, includeMarkers = true).blockingGet()
-        // A file nothing else uses: if the chapter already has a take 1 on disk, the next free
-        // number, rather than replacing that recording.
-        val reserved = TakeFiles.reserve(takeFiles.first().parentFile, 1) { fileNamer.generateName(it, AudioFileFormat.WAV) }
-        val chapterFile = reserved.file.apply {
-            compiled.copyTo(this, overwrite = true)
-            compiled.delete()
-        }
+        val chapterFile = takeFiles.first().parentFile.resolve(fileName)
+            .apply {
+                createNewFile()
+                compiled.copyTo(this, overwrite = true)
+                compiled.delete()
+            }
 
         val chapterTake = Take(
-            chapterFile.name,
+            fileName,
             chapterFile,
-            number = reserved.number,
+            number = 1,
             LocalDate.now(),
             null,
             false,

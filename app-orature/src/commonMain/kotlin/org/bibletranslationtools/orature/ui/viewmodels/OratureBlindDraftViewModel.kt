@@ -116,13 +116,6 @@ class OratureBlindDraftViewModel(
     private var takePlayer: IAudioPlayer? = null
     private var positionTickerJob: Job? = null
 
-    // Take select/delete/record are undoable (JVM: BlindDraftViewModel.actionHistory), in the
-    // chapter's one history: the page header's undo and redo drive it from any step.
-    private val undoRedo = StepUndoRedo(
-        beforeHistory = { runCatching { takePlayer?.pause() } },
-        afterHistory = { activeChunk?.let { onChunk(it) } }
-    )
-
     // External-editor plugin support (JVM: edit-take-in-plugin). Desktop-only.
     private val pluginStore: org.bibletranslationtools.orature.plugins.OraturePluginStore by inject()
     private val navigationLock: org.bibletranslationtools.orature.ui.OratureNavigationLock by inject()
@@ -197,18 +190,26 @@ class OratureBlindDraftViewModel(
     private val recordingActiveFlow = MutableStateFlowOf(false)
     private val emptyWave = FloatArray(RECORD_WIDTH * 2)
 
-    /** Runs [op] in the active chapter's undo history. */
+    /**
+     * Runs [op] in the active chapter's undo history. Take select/delete/record are undoable (JVM:
+     * BlindDraftViewModel.actionHistory), in the chapter's one history: the page header's undo and
+     * redo drive it from any step.
+     */
     private suspend fun execute(op: IUndoable): SaveResult<Unit> =
         workbookDataStore.activeChapter.value?.execute(op) ?: op.execute()
 
     /**
-     * Points the page header's undo and redo at this step. Called each time the step is shown: a
-     * step's ViewModel outlives leaving the step, so binding only in init left the header driving
-     * whichever step's ViewModel was created last, possibly one not on screen. An undo made on
-     * another step may have changed this chunk's takes meanwhile, so a stale list is reloaded.
+     * Called each time the step is shown: a step's ViewModel outlives leaving the step, so
+     * registering only in init left the header driving whichever step's ViewModel was created
+     * last, possibly one not on screen. An undo made on another step may have changed this
+     * chunk's takes meanwhile, so a stale list is reloaded.
      */
     fun onShown() {
-        translationVm.bindStepUndoRedo(undoRedo)
+        // The page header undo/redo route here while this step is active.
+        translationVm.setUndoRedoHandlers(
+            beforeChapterUndo = { runCatching { takePlayer?.pause() } },
+            afterChapterUndo = { activeChunk?.let { onChunk(it) } }
+        )
         val chunk = activeChunk ?: return
         if (_uiState.value.isLoading || _uiState.value.recording) return
         val saved = chunk.audio.getAllTakes().filter { !it.isDeleted() }.map { it.number }.toSet()
@@ -217,8 +218,6 @@ class OratureBlindDraftViewModel(
     }
 
     init {
-        // The page header undo/redo route here while this step is active.
-        translationVm.bindStepUndoRedo(undoRedo)
         // Follow the shared active-chunk selection (set by the translation VM's steps-drawer nav).
         launchLogged {
             workbookDataStore.activeChunk.collect { chunk -> onChunk(chunk) }
@@ -629,12 +628,10 @@ class OratureBlindDraftViewModel(
     private suspend fun handlePostDeleteTake(deleted: Take, selectAnother: Boolean) {
         if (!selectAnother) return
         val chunk = activeChunk ?: return
-        val newest = withContext(Dispatchers.IO) {
-            chunk.audio.getAllTakes()
-                .filter { !it.isDeleted() && it != deleted }
-                .maxByOrNull { it.file.lastModified() }
-        } ?: return
-        saveMessages.report(chunk.audio.selectTake(newest))
+        chunk.audio.getAllTakes()
+            .filter { !it.isDeleted() && it != deleted }
+            .maxByOrNull { it.file.lastModified() }
+            ?.let { saveMessages.report(chunk.audio.selectTake(it)) }
     }
 
     private fun stopAll() {
@@ -654,7 +651,7 @@ class OratureBlindDraftViewModel(
     }
 
     public override fun onCleared() {
-        translationVm.unbindStepUndoRedo(undoRedo)
+        translationVm.clearUndoRedoHandlers()
         // Safety net: normal navigation is blocked while a plugin is open (see beginPluginOpen),
         // but don't leave the shell's navigation lock stuck on if this VM is ever cleared anyway.
         if (_uiState.value.isPluginOpen) {

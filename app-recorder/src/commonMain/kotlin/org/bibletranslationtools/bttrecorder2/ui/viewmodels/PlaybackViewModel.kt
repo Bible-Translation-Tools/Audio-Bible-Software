@@ -1109,20 +1109,15 @@ class PlaybackViewModel(
                 val takes = all.filter { !it.isDeleted() }.sortedBy { it.number }
                 updateState { it.copy(takes = takes) }
 
-                // This screen shows and edits the selected take, so opening a take selects it: the
-                // take asked for once, then the newest whenever nothing is selected (none yet, or
-                // the selected one was deleted). Read from the audio, the saved state, not the UI.
-                val requested = requestedTakeNumber?.let { req -> takes.find { it.number == req } }
-                requestedTakeNumber = null
-                val selected = audio.getSelectedTake()
-                val toSelect = when {
-                    requested != null && requested != selected -> requested
-                    selected == null -> takes.maxByOrNull { it.number }
-                    else -> null
-                }
-                if (toSelect != null) {
-                    audio.selectTake(toSelect).failureMessage()?.let { message ->
-                        updateState { it.copy(error = message) }
+                val selected = _uiState.value.selectedTake
+                if (selected == null || selected.isDeleted()) {
+                    val requested = requestedTakeNumber?.let { req -> takes.find { it.number == req } }
+                    val fallback = requested ?: takes.maxByOrNull { it.number }
+                    if (fallback != null) {
+                        audio.selectTake(fallback).failureMessage()?.let { message ->
+                            updateState { it.copy(error = message) }
+                        }
+                        requestedTakeNumber = null
                     }
                 }
             }

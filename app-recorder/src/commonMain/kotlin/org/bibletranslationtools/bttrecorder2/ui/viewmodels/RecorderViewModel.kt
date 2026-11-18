@@ -120,6 +120,7 @@ class RecorderViewModel(
     private var recorderJob: Job? = null
     private var timerTickerJob: Job? = null
     private var volumeTickerJob: Job? = null
+    private var takeStreamJob: Job? = null
 
     private val timer = RecordingTimer()
     private var hasRecordedAudio = false
@@ -305,6 +306,13 @@ class RecorderViewModel(
         // Before anything opens the mic or the writer: a re-record must match what it replaces.
         captureSpec = audioConfig.spec
         launchLogged(Dispatchers.IO) { captureSpec = specOfExistingTake() ?: audioConfig.spec }
+
+        takeStreamJob?.cancel()
+        takeStreamJob = launchLogged {
+            associatedAudio?.takesFlow?.collect {
+                // No-op: the flow keeps this target's take stream hot and up to date for future numbering.
+            }
+        }
 
         // Load source audio for the new target. Done off the IO dispatcher because
         // the accessor reads from disk (and possibly extracts from a Resource Container).
@@ -589,7 +597,6 @@ class RecorderViewModel(
         return frames
     }
 
-    /** Moves the staged audio over [takeFile], the empty placeholder this save reserved. */
     private fun commitStagedTake(stagedTakeFile: File, takeFile: File) {
         takeFile.parentFile?.mkdirs()
         runCatching {
@@ -706,6 +713,7 @@ class RecorderViewModel(
         _waveformRenderer.value?.close()
         _waveformRenderer.value = null
         wavFileWriter?.close()
+        takeStreamJob?.cancel()
         stopTimerTicker()
         volumeTickerJob?.cancel()
         recorderJob?.cancel()

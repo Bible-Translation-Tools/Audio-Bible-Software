@@ -45,10 +45,7 @@ data class Take(
 ) {
     fun isDeleted() = deletedOn != null
 
-    /** Reads the file; call off the main thread. */
     fun checksum() = computeFileChecksum(file)
 
     fun getSavedChecksum() = checking.checksum
-
-    override fun toString(): String = "Take($name, number=$number, deletedOn=$deletedOn, checking=${checking.status})"
 }

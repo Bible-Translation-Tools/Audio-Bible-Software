@@ -44,7 +44,6 @@ val oratureViewModelModule = module {
     single { OratureNavigationLock() }
     // Shared open-project state (JVM: WorkbookDataStore) — written by the narration VM,
     // read by the mode-page components. Single so it survives across the mode screens.
-    // Opening a workbook settles the active chapter first (see OratureWorkbookDataStore.open).
     single { OratureWorkbookDataStore(get(), get()) }
     // Constructs a Narration for (workbook, chapter) — the port's stand-in for the JVM's
     // Dagger NarrationFactory (resolves deps: directoryProvider, splitAudioOnCues,

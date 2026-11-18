@@ -87,9 +87,7 @@ class DeleteProject(
                     }
             }
             .andThen(workbookDescriptorRepo.delete(list))
-            // The deletes run one after another in this block; the database writes themselves are
-            // serialised by the write queue, which is what Schedulers.single() used to stand in for.
-            .subscribeOn(Schedulers.io())
+            .subscribeOn(Schedulers.single()) // sequential execution of delete to avoid db transaction error
     }
 
     fun deleteProjectsWithTimer(

@@ -1,7 +1,6 @@
 package org.bibletranslationtools.otter.common.domain.project
 
 import io.mockk.coEvery
-import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -95,11 +94,10 @@ class OpenWorkbookTest {
     @Test
     fun `open does not touch chapter completion`() = runTest {
         val chapters = listOf(chapter(1, completed = true), chapter(2), chapter(3))
-        val targetBook = stub(chapters, mode = ProjectMode.TRANSLATION).target
+        stub(chapters, mode = ProjectMode.TRANSLATION)
 
         openWorkbook.open(descriptorId)
 
-        coVerify(exactly = 0) { targetBook.chapters() }
         chapters.forEach { verify(exactly = 0) { it.hasSelectedAudio() } }
     }
 

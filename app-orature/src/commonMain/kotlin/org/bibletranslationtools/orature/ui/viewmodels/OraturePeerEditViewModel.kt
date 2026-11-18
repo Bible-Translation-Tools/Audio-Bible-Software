@@ -134,13 +134,6 @@ class OraturePeerEditViewModel(
     private val recordingActiveFlow = MutableStateFlow(false)
     private val emptyWave = FloatArray(RECORD_WIDTH * 2)
 
-    // Confirming a chunk is undoable in the chapter's one history: the page header's undo and redo
-    // drive it from any step.
-    private val undoRedo = StepUndoRedo(
-        beforeHistory = { runCatching { takePlayer?.pause() } },
-        afterHistory = { showSavedState() }
-    )
-
     // Waveform providers read by the screen each display frame.
     fun currentTimeline(): AudioTimeline? = timeline
     fun peakCacheFor(source: PcmSource): WaveformPeakCache? =
@@ -150,17 +143,23 @@ class OraturePeerEditViewModel(
     fun currentTotalFrames(): Int = totalFrames
     fun currentRecordingWaveform(): FloatArray = activeRenderer?.floatBuffer?.array ?: emptyWave
 
-    /** Runs [op] in the active chapter's undo history. */
+    /**
+     * Runs [op] in the active chapter's undo history. Confirming a chunk is undoable in the
+     * chapter's one history: the page header's undo and redo drive it from any step.
+     */
     private suspend fun execute(op: IUndoable): SaveResult<Unit> =
         workbookDataStore.activeChapter.value?.execute(op) ?: op.execute()
 
     /**
-     * Points the page header's undo and redo at this step. Called each time the step is shown: a
-     * step's ViewModel outlives leaving the step, so binding only in init left the header driving
-     * whichever step's ViewModel was created last, possibly one not on screen.
+     * Called each time the step is shown: a step's ViewModel outlives leaving the step, so
+     * registering only in init left the header driving whichever step's ViewModel was created
+     * last, possibly one not on screen.
      */
     fun onShown() {
-        translationVm.bindStepUndoRedo(undoRedo)
+        translationVm.setUndoRedoHandlers(
+            beforeChapterUndo = { runCatching { takePlayer?.pause() } },
+            afterChapterUndo = { showSavedState() }
+        )
         // An undo made on another step may have changed this chunk meanwhile.
         if (!_uiState.value.isLoading && !_uiState.value.recording) showSavedState()
     }
@@ -180,7 +179,6 @@ class OraturePeerEditViewModel(
     }
 
     init {
-        translationVm.bindStepUndoRedo(undoRedo)
         launchLogged {
             workbookDataStore.activeChunk.collect { chunk -> onChunk(chunk) }
         }
@@ -641,7 +639,7 @@ class OraturePeerEditViewModel(
     }
 
     public override fun onCleared() {
-        translationVm.unbindStepUndoRedo(undoRedo)
+        translationVm.clearUndoRedoHandlers()
         // Safety net: normal navigation is blocked while a plugin is open (see beginPluginOpen),
         // but don't leave the shell's navigation lock stuck on if this VM is ever cleared anyway.
         if (_uiState.value.isPluginOpen) {

@@ -47,7 +47,7 @@ import org.bibletranslationtools.otter.common.data.workbook.Workbook
 class OpenWorkbook(
     private val workbookDescriptorRepository: IWorkbookDescriptorRepository,
     private val workbookRepository: IWorkbookRepository,
-    private val projectCompletionStatus: ProjectCompletionStatus,
+    private val projectCompletionStatus: ProjectCompletionStatus = ProjectCompletionStatus(),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
 

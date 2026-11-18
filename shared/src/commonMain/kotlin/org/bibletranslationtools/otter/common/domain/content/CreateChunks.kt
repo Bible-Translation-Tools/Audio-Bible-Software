@@ -18,9 +18,6 @@
  */
 package org.bibletranslationtools.otter.common.domain.content
 
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.Dispatchers
-import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import java.io.File
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.audio.AudioCue
@@ -50,11 +47,27 @@ class CreateChunks {
 
 
     /**
-     * The chunk rows for a layout marked by [cues] in the chapter's source audio: each cue starts a
-     * chunk, and its verse range comes from the verse markers in that audio. Writes nothing.
+     * Creates chunks based on a list of audio cues, ultimately allowing for chunking based on placing markers
+     * in a source audio.
+     *
+     * The range of verses will be determined by comparing the cues to the verse markers in the source audio corresponding
+     * to the workbook.
+     *
+     * @param projectSlug The slug of the project to create chunks for
+     * @param cues The list of audio cues to use to create chunks
+     * @param draftNumber The draft number to create chunks form
      */
-    fun buildUserDefinedChunks(workbook: Workbook, chapter: Int, cues: List<AudioCue>): List<Content> =
-        buildChunkContent(workbook, chapter, cues)
+    fun createUserDefinedChunks(
+        workbook: Workbook,
+        chapter: Chapter,
+        chunks: List<AudioCue>
+    ): List<Content> {
+        val projectSlug = workbook.target.slug
+        val chapterNumber = chapter.sort
+
+        logger.info("Creating ${chunks.size} user defined chunks for project: $projectSlug chapter: $chapterNumber")
+        return buildChunkContent(workbook, chapterNumber, chunks)
+    }
 
     private fun buildChunkContent(
         workbook: Workbook,
@@ -105,8 +118,6 @@ class CreateChunks {
         return chunkContents
     }
 
-
-    /** Writes [chunksToAdd] as [chapterNumber]'s layout in the project's chunk file, keeping other chapters. */
     fun writeChunkFile(
         workbook: Workbook,
         chapterNumber: Int,

@@ -30,6 +30,7 @@ import org.bibletranslationtools.otter.common.data.workbook.WorkbookStore
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookWriter
 import java.io.File
 import java.time.LocalDate
+import java.util.concurrent.atomic.AtomicInteger
 
 object MockData {
     val englishLanguage = Language(
@@ -84,48 +85,70 @@ object MockData {
             hasSourceAudio = true
         )
 
-    /**
-     * The preview project's chapters: three chapters of three verses. Chapter 1's first verse has
-     * three takes, the first selected. They load from [PreviewStore], which refuses every change:
-     * previews show data, they never save it.
-     */
-    private val mockChapters: List<Chapter> by lazy {
-        val store = PreviewStore()
-        val writer = WorkbookWriter()
-        (1..3).map { sort ->
-            val chapterId = sort * 10
-            store.layouts[ChapterId(chapterId)] = ChapterLayout(
-                draft = DraftId(1),
-                chunks = (1..3).map { verse ->
-                    val takes = if (sort == 1 && verse == 1) {
-                        (1..3).map { n -> mockTake(n, TakeId(n)) }
-                    } else {
-                        emptyList()
-                    }
-                    ChunkRecord(
-                        id = ChunkId(chapterId + verse), sort = verse, label = "verse",
-                        start = verse, end = verse, bridged = false, contentType = ContentType.TEXT,
-                        textItem = TextItem("", MimeType.USFM), draft = DraftId(1),
-                        audio = AudioState(takes, takes.firstOrNull()?.id)
-                    )
-                }
-            )
-            Chapter(
-                id = ChapterId(chapterId), sort = sort, title = "$sort", label = "chapter",
-                audio = AssociatedAudio(ChapterAudioId(chapterId), AudioState.EMPTY, store, writer),
-                resources = emptyList(), subtreeResources = emptyList(), store = store, writer = writer
-            )
-        }
+    fun createMockTake(number: Int, name: String = "Take $number") = Take(
+        name = name,
+        file = File("mock/path/$name.wav"),
+        number = number,
+        format = MimeType.WAV!!,
+        createdTimestamp = LocalDate.now(),
+        id = TakeId(number)
+    )
+
+    fun createMockChunk(sort: Int, label: String, hasAudio: Boolean = false): Chunk {
+        // A chunk is built by its chapter, so this one comes from a chapter of its own.
+        val chapter = mockChapter(
+            sort = 1,
+            title = "1",
+            label = "1",
+            chunks = listOf(mockChunkRecord(sort, label, if (hasAudio) listOf(createMockTake(1)) else emptyList()))
+        )
+        return runBlocking { chapter.chunks().single() }
     }
 
-    private fun mockTake(number: Int, id: TakeId) = Take(
-        name = "take$number.wav",
-        file = File("take$number.wav"),
-        number = number,
-        format = MimeType.WAV,
-        createdTimestamp = LocalDate.now(),
-        id = id
+    fun createMockChapter(sort: Int, title: String, label: String, chunkCount: Int = 1) = mockChapter(
+        sort = sort,
+        title = title,
+        label = label,
+        chunks = (1..chunkCount).map {
+            mockChunkRecord(
+                it,
+                it.toString()
+            )
+        }
     )
+
+    private val previewStore = PreviewStore()
+    private val previewWriter = WorkbookWriter()
+    private val lastId = AtomicInteger()
+
+    private fun mockChunkRecord(sort: Int, label: String, takes: List<Take> = emptyList()) = ChunkRecord(
+        id = ChunkId(lastId.incrementAndGet()),
+        sort = sort,
+        label = label,
+        start = sort,
+        end = sort,
+        bridged = false,
+        contentType = ContentType.TEXT,
+        textItem = TextItem("Mock Text", MimeType.USFM!!),
+        draft = DraftId(1),
+        audio = AudioState(takes, takes.firstOrNull()?.id)
+    )
+
+    private fun mockChapter(sort: Int, title: String, label: String, chunks: List<ChunkRecord>): Chapter {
+        val id = lastId.incrementAndGet()
+        previewStore.layouts[ChapterId(id)] = ChapterLayout(draft = DraftId(1), chunks = chunks)
+        return Chapter(
+            id = ChapterId(id),
+            sort = sort,
+            title = title,
+            label = label,
+            audio = AssociatedAudio(ChapterAudioId(id), AudioState.EMPTY, previewStore, previewWriter),
+            resources = emptyList(),
+            subtreeResources = emptyList(),
+            store = previewStore,
+            writer = previewWriter
+        )
+    }
 
     /** The preview chapters' chunk layouts. Every change is refused. */
     private class PreviewStore : WorkbookStore {
@@ -145,18 +168,6 @@ object MockData {
 
         private fun refuse(): Nothing = throw UnsupportedOperationException("Previews do not save.")
     }
-
-    /** Chapter [sort] (1 to 3) of the preview project. */
-    fun createMockChapter(sort: Int): Chapter =
-        mockChapters.first { it.sort == sort }
-
-    /** A verse of chapter 1: verse 1, which has takes, when [hasAudio]; otherwise verse 2. */
-    fun createMockChunk(hasAudio: Boolean = false): Chunk =
-        runBlocking { createMockChapter(1).chunks()[if (hasAudio) 0 else 1] }
-
-    /** The takes of chapter 1's first verse, in number order. */
-    fun createMockTakes(): List<Take> =
-        createMockChunk(hasAudio = true).audio.getAllTakes().sortedBy { it.number }
 
     val mockWorkbooks = listOf(
         createMockWorkbook(1, "gen", "Genesis", englishLanguage),

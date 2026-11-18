@@ -80,11 +80,6 @@ class MoveMarkerAction(
     override suspend fun redo() = execute()
 }
 
-/**
- * Replaces [oldTake] with [newTake], an edited copy already saved to [audio]: the new take is marked
- * verse-checked and the old one deleted. Undo restores and selects the old take and deletes the new
- * one; redo reverses that. Every step is saved.
- */
 class TakeEditAction(
     private val audio: AssociatedAudio,
     private val newTake: Take,

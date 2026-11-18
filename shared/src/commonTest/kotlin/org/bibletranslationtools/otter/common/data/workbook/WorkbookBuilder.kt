@@ -8,6 +8,7 @@ import org.bibletranslationtools.otter.common.data.primitives.MimeType
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import io.mockk.mockk
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.SourceAudioAccessor
+import org.bibletranslationtools.otter.common.domain.resourcecontainer.artwork.ArtworkAccessor
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesAccessor
 import java.io.File
 import java.time.LocalDate
@@ -39,8 +40,9 @@ class WorkbookBuilder(
             book(spec.source ?: BookSpec("gen", "en"), writer),
             book(spec.target ?: BookSpec("gen", "fr"), writer),
             writer,
-            sourceAudioAccessor,
-            projectFilesAccessor
+            sourceAudioAccessor = { sourceAudioAccessor },
+            projectFilesAccessor = { projectFilesAccessor },
+            artworkAccessor = { mockk<ArtworkAccessor>(relaxed = true) }
         )
     }
 

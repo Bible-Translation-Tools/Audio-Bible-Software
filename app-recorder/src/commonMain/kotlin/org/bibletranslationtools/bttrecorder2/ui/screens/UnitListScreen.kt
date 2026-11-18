@@ -182,7 +182,9 @@ fun UnitListContent(
                 ) {
                     items(uiState.units) { unitHolder ->
                         val unit = unitHolder.unit
-                        val takes = unitHolder.availableTakes
+                        val takes = unit.audio.getAllTakes()
+                            .filter { !it.isDeleted() }
+                            .sortedBy { it.number }
                         val currentIndex = uiState.currentTakeIndices[unit.sort] ?: 0
                         val currentTake = takes.getOrNull(currentIndex)
                         // The take is "loaded" as long as the player is holding it
@@ -439,9 +441,13 @@ fun UnitCard(
 @Preview
 @Composable
 fun UnitCardPreview() {
-    val takes = MockData.createMockTakes()
+    val takes = listOf(
+        MockData.createMockTake(1),
+        MockData.createMockTake(2),
+        MockData.createMockTake(3)
+    )
     UnitCard(
-        unit = MockData.createMockChunk(hasAudio = true),
+        unit = MockData.createMockChunk(1, "1", hasAudio = true),
         currentTake = takes.first(),
         currentIndex = 0,
         takes = takes,

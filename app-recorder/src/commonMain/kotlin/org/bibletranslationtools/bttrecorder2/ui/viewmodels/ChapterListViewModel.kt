@@ -4,19 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -128,10 +122,15 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
     private var tickerJob: Job? = null
 
     fun loadChapters() {
-        // Load once per ViewModel. The rows follow the chapters' saved state (each verse's audio,
-        // the chapter's own take) for the ViewModel's lifetime, so takes recorded while the user
-        // was in the verse list show on return without a reload that would reset the scroll.
-        if (loadingJob?.isActive == true) return
+        // Load once per ViewModel. The chunk-LIST flow below only re-emits when the
+        // set of chunks changes, not when a verse's take changes, so instead of a
+        // full reload on re-entry (which would reset scroll) we refresh each row's
+        // verse-level progress in place — this picks up takes recorded while the user
+        // was in the verse list without clearing the list.
+        if (loadingJob?.isActive == true) {
+            refreshProgress()
+            return
+        }
         loadingJob = launchLogged(Dispatchers.IO) {
             _uiState.update { it.copy(isLoading = true, chapters = emptyList()) }
             try {
@@ -155,30 +154,39 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
                     _uiState.update { it.copy(editionState = editions) }
                 }
 
-                val chapters = workbook.target.chapters()
-                if (chapters.isEmpty()) _uiState.update { it.copy(isLoading = false) }
                 coroutineScope {
-                    chapters.forEach { chapter ->
-                        // Two values per chapter, both merged into the same `ChapterUiModel` row:
-                        //   1. Which verses have a selected take — verse-level progress + canCompile.
-                        //   2. The chapter's own selected take — hasChapterTake.
+                    workbook.target.chapters().forEach { chapter ->
+                        // Observe two streams per chapter:
+                        //   1. The chunks flow — drives verse-level progress + canCompile.
+                        //   2. The chapter's own selected-take flow — drives hasChapterTake.
+                        // Both update the same `ChapterUiModel` row, so we merge by always
+                        // recomputing from the latest known values.
                         launch {
                             chapter.loadedState()
-                            verseSelections(chapter).collect { selected ->
+                            chapter.state.map { it.chunks }.collect { allChunks ->
                                 // Progress + compile-readiness are about verses only.
-                                val total = selected.size
-                                val started = selected.count { it }
+                                // The chapter-meta chunk would otherwise inflate the
+                                // denominator and break "every verse recorded" logic.
+                                val verses = allChunks.filter { it.contentType == ContentType.TEXT }
+                                val total = verses.size
+                                val started = verses.count { it.hasSelectedAudio() }
+                                val progress = if (total > 0) started.toFloat() / total else 0f
+                                val hasContent = started > 0
+                                val canCompile = total > 0 && started == total
                                 updateChapterRow(chapter) { existing ->
                                     existing.copy(
-                                        hasContent = started > 0,
-                                        progress = if (total > 0) started.toFloat() / total else 0f,
-                                        canCompile = total > 0 && started == total
+                                        hasContent = hasContent,
+                                        progress = progress,
+                                        canCompile = canCompile
                                     )
                                 }
                             }
                         }
                         launch {
                             chapter.audio.selectedFlow.collect { take ->
+                                // A deleted take is sometimes still referenced by the
+                                // selectedFlow, so treat a tombstoned take as "no chapter take"
+                                // for UI purposes.
                                 val hasChapterTake = take != null && !take.isDeleted()
                                 updateChapterRow(chapter) { existing ->
                                     existing.copy(
@@ -200,24 +208,6 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
     }
 
     /**
-     * Whether each verse of [chapter]'s active chunk layout has a selected take, following the
-     * saved state: a new layout, and every verse's takes. The chapter-meta chunk is left out; it
-     * would inflate the denominator and break "every verse recorded".
-     */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private fun verseSelections(chapter: Chapter): Flow<List<Boolean>> =
-        chapter.state.flatMapLatest { state ->
-            val verses = state.chunks.filter { it.contentType == ContentType.TEXT }
-            if (verses.isEmpty()) {
-                flowOf(emptyList<Boolean>())
-            } else {
-                combine(verses.map { verse -> verse.audio.state.map { it.selectedTake?.isDeleted() == false } }) {
-                    it.toList()
-                }
-            }
-        }.distinctUntilChanged()
-
-    /**
      * Loads the list again from scratch, for after the book moved to another edition: its
      * source, and the verses of the chapters that took on the new structure, are different.
      */
@@ -228,6 +218,32 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
         loadingJob = null
         _uiState.update { ChapterListUiState() }
         loadChapters()
+    }
+
+    /**
+     * Recomputes each existing chapter row's verse-level state (hasContent,
+     * progress, canCompile) from the current chunk selections, updating rows in
+     * place (no list clear, so the LazyColumn scroll position is preserved). Called
+     * on screen re-entry to reflect verse takes recorded while away, which the
+     * chunk-list flow doesn't surface on its own.
+     */
+    private fun refreshProgress() {
+        val rows = _uiState.value.chapters
+        if (rows.isEmpty()) return
+        launchLogged(Dispatchers.IO) {
+            rows.forEach { row ->
+                val verses = row.chapter.chunks().filter { it.contentType == ContentType.TEXT }
+                val total = verses.size
+                val started = verses.count { it.hasSelectedAudio() }
+                updateChapterRow(row.chapter) { existing ->
+                    existing.copy(
+                        hasContent = started > 0,
+                        progress = if (total > 0) started.toFloat() / total else 0f,
+                        canCompile = total > 0 && started == total
+                    )
+                }
+            }
+        }
     }
 
     fun dismissSaveError() {

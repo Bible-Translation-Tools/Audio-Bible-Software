@@ -1,6 +1,5 @@
 package org.bibletranslationtools.otter.common.domain.project
 
-import org.bibletranslationtools.otter.common.domain.content.TakeFiles
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -8,21 +7,21 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import org.bibletranslationtools.otter.common.data.audio.VerseMarker
+import org.bibletranslationtools.otter.common.data.primitives.MimeType
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
+import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Take
-import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.data.workbook.WorkbookBuilder
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.domain.audio.WriteTakeMarkers
 import org.bibletranslationtools.otter.common.domain.narration.VerseNode
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.ProjectFilesAccessor
 import java.io.File
 import java.nio.file.Files
+import java.time.LocalDate
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
@@ -33,7 +32,7 @@ import kotlin.test.assertTrue
  * off the selected take when the working file alone says "nothing placed" — but must NOT report
  * complete if the take is itself missing markers for some verses.
  *
- * These drive the real [ProjectCompletionStatus] through a real
+ * These drive the real [ProjectCompletionStatus] through a real (mocked-collaborators)
  * [org.bibletranslationtools.otter.common.domain.narration.ChapterRepresentation], with real files
  * on disk for active_verses.json / chapter_narration.pcm / the take's WAV — that class does file
  * I/O itself and is not designed to be swapped out from underneath ProjectCompletionStatus, so a
@@ -57,21 +56,27 @@ class ProjectCompletionStatusTest {
     }
 
     /**
-     * A workbook whose target chapter 1 has [verseCount] verse chunks sorted 1..verseCount (matching
-     * [VerseMarker] labels "1".."N"), and whose project files resolve the chapter's directory to
-     * [chapterDir]. A [selectedTake] file is saved as the chapter's selected take.
+     * Stubs a Workbook/Chapter pair whose ChapterRepresentation (built internally by
+     * [ProjectCompletionStatus]) resolves its chapter directory to [chapterDir] and has
+     * [verseCount] verse chunks sorted 1..verseCount (matching [VerseMarker] labels "1".."N").
      */
-    private suspend fun stubChapter(chapterDir: File, verseCount: Int, selectedTake: File? = null): Pair<Workbook, Chapter> {
-        val accessor: ProjectFilesAccessor = mockk(relaxed = true) {
+    private fun stubChapter(chapterDir: File, verseCount: Int, selectedTake: Take? = null): Pair<Workbook, Chapter> {
+        val chunks = (1..verseCount).map { n ->
+            mockk<Chunk>(relaxed = true) {
+                every { sort } returns n
+                every { start } returns n
+                every { end } returns n
+            }
+        }
+        val chapter: Chapter = mockk(relaxed = true) {
+            coEvery { chunks() } returns chunks
+            every { getSelectedTake() } returns selectedTake
+        }
+        val projectFilesAccessor: ProjectFilesAccessor = mockk(relaxed = true) {
             coEvery { getChapterAudioDir(any(), any()) } returns chapterDir
         }
-        val workbook = WorkbookBuilder(projectFilesAccessor = accessor).build {
-            target { chapter(1) { (1..verseCount).forEach { verse(it) } } }
-        }
-        val chapter = workbook.target.chapters().single()
-        if (selectedTake != null) {
-            val saved = chapter.audio.insertTake(TakeFiles.Reserved(1, selectedTake).toTake(), select = true)
-            assertIs<SaveResult.Saved<*>>(saved, "the selected take should have been saved")
+        val workbook: Workbook = mockk(relaxed = true) {
+            every { this@mockk.projectFilesAccessor } returns projectFilesAccessor
         }
         return workbook to chapter
     }
@@ -91,8 +96,8 @@ class ProjectCompletionStatusTest {
         File(chapterDir, "active_verses.json").writeText(json)
     }
 
-    /** A compiled chapter take's file: a real short WAV with [markerVerseNumbers] embedded as verse cues. */
-    private fun takeWithMarkers(markerVerseNumbers: List<Int>): File {
+    /** A compiled chapter take: a real short WAV with [markerVerseNumbers] embedded as verse cues. */
+    private fun takeWithMarkers(markerVerseNumbers: List<Int>): Take {
         val file = File.createTempFile("chapter-take", ".wav").apply { deleteOnExit() }
         tempDirs.add(file) // deleteRecursively() on a plain file just deletes it
         OratureAudioFile(file, 1, 44_100, 16)
@@ -103,7 +108,13 @@ class ProjectCompletionStatusTest {
             markerVerseNumbers.map { n -> VerseMarker(n, n, 0) },
             WriteTakeMarkers.ALL_CUE_TYPES
         )
-        return file
+        return Take(
+            name = file.name,
+            file = file,
+            number = 1,
+            format = MimeType.WAV,
+            createdTimestamp = LocalDate.now()
+        )
     }
 
     @Test

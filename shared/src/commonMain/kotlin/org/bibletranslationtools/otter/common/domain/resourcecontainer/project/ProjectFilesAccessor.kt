@@ -337,10 +337,6 @@ class ProjectFilesAccessor(
         }
     }
 
-    /**
-     * Rewrites the project's selected takes file. A failure to read the selections is logged and
-     * leaves the file with what was written so far; it is not thrown to the caller.
-     */
     suspend fun writeSelectedTakesFile(workbook: Workbook, isBook: Boolean) {
         val selectedTakes = projectDir.resolve(RcConstants.SELECTED_TAKES_FILE)
         selectedTakes.outputStream().use { stream ->
@@ -355,10 +351,6 @@ class ProjectFilesAccessor(
         }
     }
 
-    /**
-     * Writes the selected takes file into an export. A failure to read the selections is logged
-     * and leaves the file with what was written so far; it is not thrown to the caller.
-     */
     suspend fun writeSelectedTakesFile(
         fileWriter: IFileWriter,
         workbook: Workbook,
@@ -627,13 +619,11 @@ class ProjectFilesAccessor(
         return chunkText
     }
 
-    /** Every take of the target's chapters and their chunks, deleted ones included. */
     private suspend fun fetchTakes(
         workbook: Workbook
     ): List<Take> {
         return workbook.target.chapters()
             .flatMap { chapter ->
-                // A chunk's takes load with the chunk, so reading the chunks is enough.
                 val chunks: List<BookElement> = if (chapter.chunkCount() > 0) {
                     chapter.chunks()
                 } else {

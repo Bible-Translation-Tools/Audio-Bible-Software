@@ -20,10 +20,6 @@ sealed interface SaveResult<out T> {
     data class Rejected(val reason: RejectReason) : SaveResult<Nothing>
 }
 
-val SaveResult<*>.isSaved: Boolean get() = this is SaveResult.Saved
-
-fun <T> SaveResult<T>.valueOrNull(): T? = (this as? SaveResult.Saved)?.value
-
 /** What a person can do about a failed save; each has a localized message in the apps. */
 enum class SaveFailure {
     /** The disk or the database is full. */

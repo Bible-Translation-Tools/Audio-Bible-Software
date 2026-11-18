@@ -305,7 +305,9 @@ internal class ResetAllAction(
         logger.info("Redoing reset all action")
 
         totalVerses.forEach { it.clear() }
-        recoverableTake?.let { take -> save { chapterAudio.deleteTake(take) } }
+        chapterAudio
+            .getSelectedTake()
+            ?.let { take -> save { chapterAudio.deleteTake(take) } }
     }
 }
 
