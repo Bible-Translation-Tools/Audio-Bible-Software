@@ -20,15 +20,16 @@ package org.bibletranslationtools.otter.common.initialization
 
 import io.reactivex.Completable
 import io.reactivex.ObservableEmitter
-import io.reactivex.Single
-import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.rx2.rxCompletable
+import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.io.IBundledContentSource
 import org.bibletranslationtools.otter.common.api.persistence.IAppDirectories
 import org.bibletranslationtools.otter.common.api.persistence.config.Initializable
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
-import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.ProgressStatus
 import org.bibletranslationtools.otter.common.domain.versification.StandardVersifications
+import org.slf4j.LoggerFactory
 import java.io.File
 
 private const val ULB_VERSIFICATION_FILE = "ulb.json"
@@ -43,31 +44,35 @@ class InitializeVersification(
 
     private val logger = LoggerFactory.getLogger(this::class.java)
 
-    override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable {
-        return Single.fromCallable {
-            progressEmitter.onNext(ProgressStatus(titleKey = "initializingVersification"))
+    override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable =
+        rxCompletable { execSuspend(progressEmitter::onNext) }
+
+    override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) {
+        withContext(Dispatchers.IO) {
+            onProgress(ProgressStatus(titleKey = "initializingVersification"))
             copyUlbVersification()
             copyStandardVersifications()
 
             directoryProvider.versificationDirectory.listFiles()?.forEach { file ->
                 if (file.extension == "json") {
                     logger.info("Inserting versification: ${file.name}")
-                    versificationRepository.insertVersification(file.nameWithoutExtension, file)
-                        .blockingAwait()
+                    versificationRepository.insertVersificationSuspend(
+                        slug = file.nameWithoutExtension,
+                        path = file
+                    )
                 }
             }
-        }.subscribeOn(Schedulers.io())
-            .ignoreElement()
+        }
     }
 
-    private fun copyUlbVersification() {
+    private suspend fun copyUlbVersification() {
         directoryProvider.versificationDirectory.mkdirs()
         logger.info("Copying ulb versification")
         // Read through the bundled-content port, NOT ClassLoader.getSystemResourceAsStream:
         // this file is packaged as a Compose Multiplatform resource, so a JVM classpath lookup
         // returns null for it (the old code's ?.use{} then silently did nothing, leaving
         // versification uninitialized).
-        val bytes = runCatching { bundledContent.readBlocking(ULB_VERSIFICATION_RESOURCE_PATH) }
+        val bytes = runCatching { bundledContent.read(ULB_VERSIFICATION_RESOURCE_PATH) }
             .getOrElse {
                 logger.error("Failed to read bundled versification resource $ULB_VERSIFICATION_RESOURCE_PATH", it)
                 return
@@ -80,10 +85,10 @@ class InitializeVersification(
     }
 
     /** The Copenhagen standard files source import detects against, named by their codes. */
-    private fun copyStandardVersifications() {
+    private suspend fun copyStandardVersifications() {
         StandardVersifications.all.forEach { code ->
             val path = StandardVersifications.resourcePath(code)
-            val bytes = runCatching { bundledContent.readBlocking(path) }
+            val bytes = runCatching { bundledContent.read(path) }
                 .getOrElse {
                     logger.error("Failed to read bundled versification resource $path", it)
                     return@forEach

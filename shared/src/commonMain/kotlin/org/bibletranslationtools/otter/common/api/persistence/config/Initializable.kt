@@ -20,7 +20,6 @@ package org.bibletranslationtools.otter.common.api.persistence.config
 
 import io.reactivex.Completable
 import io.reactivex.ObservableEmitter
-import io.reactivex.Observer
 import org.bibletranslationtools.otter.common.data.ProgressStatus
 
 /**
@@ -31,4 +30,6 @@ interface Initializable {
      * Executes the initializable task
      * */
     fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable
+
+    suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit)
 }
