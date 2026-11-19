@@ -14,7 +14,10 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import org.bibletranslationtools.bttrecorder2.services.ProjectSession
+import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
+import org.bibletranslationtools.otter.common.data.primitives.Collection
+import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.data.primitives.ContainerType
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
@@ -66,7 +69,10 @@ class EditionChangeViewModelTest {
 
     private val upgrade = mockk<UpgradeBookEdition>(relaxed = true)
     private val preferences = mockk<IAppPreferences>(relaxed = true)
-    private val projectSession = mockk<ProjectSession>(relaxed = true)
+    private val workbookRepository = mockk<IWorkbookRepository>(relaxed = true)
+    private val collectionRepository = mockk<ICollectionRepository>(relaxed = true)
+    private val bookCollection = mockk<Collection>(relaxed = true)
+    private val workbook = mockk<Workbook>(relaxed = true)
 
     private fun startWith(nav: ActiveNavState) {
         coEvery { upgrade.editionState(projectBook) } returns BookEditionState(
@@ -74,9 +80,11 @@ class EditionChangeViewModelTest {
         )
         coEvery { upgrade.plan(projectBook, v2407) } returns plan
         every { preferences.navState } returns flowOf(nav)
+        coEvery { collectionRepository.getProjectSuspend(projectBook) } returns bookCollection
+        coEvery { workbookRepository.getWorkbookSuspend(bookCollection) } returns workbook
     }
 
-    private fun viewModel() = EditionChangeViewModel(projectBook, upgrade, preferences, projectSession)
+    private fun viewModel() = EditionChangeViewModel(projectBook, upgrade, preferences, workbookRepository, collectionRepository)
 
     @BeforeTest
     fun setUp() = Dispatchers.setMain(dispatcher)
@@ -124,7 +132,7 @@ class EditionChangeViewModelTest {
         assertEquals(listOf(19), done.heldBack)
         // The book's open workbook closes before its chapters change underneath it.
         coVerifyOrder {
-            projectSession.closeBook(projectBook)
+            workbookRepository.closeWorkbook(workbook)
             upgrade.apply(plan)
         }
         coVerify { preferences.setActiveWorkbook(newSourceBook, projectBook) }

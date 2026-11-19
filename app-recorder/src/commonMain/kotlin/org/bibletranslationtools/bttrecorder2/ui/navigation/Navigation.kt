@@ -12,7 +12,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx2.await
 import org.bibletranslationtools.shared.preferences.IAppPreferences
-import org.bibletranslationtools.bttrecorder2.services.ProjectSession
 import org.bibletranslationtools.bttrecorder2.ui.screens.ChapterListScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.MainMenuScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.PlaybackScreen
@@ -47,7 +46,6 @@ fun Navigation(
     val scope = rememberCoroutineScope()
     val appPreferences = remember { getKoin().get<IAppPreferences>() }
     val exportViewModel = remember { getKoin().get<ExportProjectViewModel>() }
-    val projectSession = remember { getKoin().get<ProjectSession>() }
 
     NavHost(
         navController = navController,
@@ -68,8 +66,6 @@ fun Navigation(
         }
 
         composable<MainMenuRoute> {
-            // Back at the main menu, the user has left the project: close its workbook.
-            LaunchedEffect(Unit) { projectSession.leave() }
             val vm = viewModel { MainMenuViewModel() }
             // Collect active-nav in composition so Record navigates on the click path
             // (no deferred coroutine awaiting prefs).
@@ -97,8 +93,6 @@ fun Navigation(
         }
 
         composable<ProjectManagementRoute> {
-            // Back at the project list, the user has left the project: close its workbook.
-            LaunchedEffect(Unit) { projectSession.leave() }
             val vm = viewModel { ProjectManagementViewModel() }
             ProjectManagementScreen(
                 viewModel = vm,

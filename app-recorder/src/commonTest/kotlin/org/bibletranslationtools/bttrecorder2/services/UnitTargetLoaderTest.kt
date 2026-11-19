@@ -4,12 +4,10 @@ import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
-import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
-import org.bibletranslationtools.otter.common.data.primitives.Collection
-import org.bibletranslationtools.otter.common.data.workbook.Chunk
-import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Book
+import org.bibletranslationtools.otter.common.data.workbook.Chapter
+import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -25,37 +23,34 @@ import kotlin.test.assertTrue
 class UnitTargetLoaderTest {
 
     private val workbookRepository: IWorkbookRepository = mockk(relaxed = true)
-    private val collectionRepository: ICollectionRepository = mockk(relaxed = true)
-    private val loader = UnitTargetLoader(ProjectSession(workbookRepository, collectionRepository))
+    private val loader = UnitTargetLoader(workbookRepository)
 
     private val sourceId = 11
     private val targetId = 22
 
     private fun chunk(sort: Int): Chunk = mockk { every { this@mockk.sort } returns sort }
 
-    /** Chapter [sort], whose chunks have [chunks]' sorts, in layout order. */
-    private fun chapter(sort: Int, vararg chunks: Int): Chapter = mockk {
+    private fun chapter(sort: Int, chunks: List<Chunk> = emptyList()): Chapter = mockk {
         every { this@mockk.sort } returns sort
-        coEvery { chunks() } returns chunks.map(::chunk)
+        coEvery { chunks() } returns chunks
     }
 
-    /**
-     * A single project whose source and target books are [sourceId]/[targetId]. A book id that is
-     * not one of those does not resolve, as when the book no longer exists.
-     */
+    /** A single project whose collection ids match [sourceId]/[targetId]. */
     private fun stubProject(
         chapters: List<Chapter>,
         source: Int = sourceId,
         target: Int = targetId
     ): Workbook {
-        val targetBook: Book = mockk { coEvery { chapters() } returns chapters }
-        val workbook: Workbook = mockk(relaxed = true) { every { this@mockk.target } returns targetBook }
-        val sourceCollection: Collection = mockk(relaxed = true) { every { id } returns source }
-        val targetCollection: Collection = mockk(relaxed = true) { every { id } returns target }
-        coEvery { collectionRepository.getProjectSuspend(any()) } returns null
-        coEvery { collectionRepository.getProjectSuspend(source) } returns sourceCollection
-        coEvery { collectionRepository.getProjectSuspend(target) } returns targetCollection
-        every { workbookRepository.get(sourceCollection, targetCollection) } returns workbook
+        val sourceBook: Book = mockk { every { collectionId } returns source }
+        val targetBook: Book = mockk {
+            every { collectionId } returns target
+            coEvery { this@mockk.chapters() } returns chapters
+        }
+        val workbook: Workbook = mockk(relaxed = true) {
+            every { this@mockk.source } returns sourceBook
+            every { this@mockk.target } returns targetBook
+        }
+        coEvery { workbookRepository.getProjectsSuspend() } returns listOf(workbook)
         return workbook
     }
 
@@ -67,8 +62,8 @@ class UnitTargetLoaderTest {
     fun `expands each chapter into a chapter target followed by its chunks in order`() = runTest {
         stubProject(
             listOf(
-                chapter(1, 2, 1),
-                chapter(2, 1)
+                chapter(1, listOf(chunk(2), chunk(1))),
+                chapter(2, listOf(chunk(1)))
             )
         )
 
@@ -92,7 +87,7 @@ class UnitTargetLoaderTest {
 
     @Test
     fun `a null unit resolves to the chapter-level target`() = runTest {
-        stubProject(listOf(chapter(1, 1), chapter(2, 1)))
+        stubProject(listOf(chapter(1, listOf(chunk(1))), chapter(2, listOf(chunk(1)))))
 
         val loaded = loader.load(sourceId, targetId, chapterNumber = 2, unitNumber = null)!!
 
@@ -103,7 +98,7 @@ class UnitTargetLoaderTest {
 
     @Test
     fun `a unit number resolves to that chunk within that chapter`() = runTest {
-        stubProject(listOf(chapter(1, 1, 2), chapter(2, 1)))
+        stubProject(listOf(chapter(1, listOf(chunk(1), chunk(2))), chapter(2, listOf(chunk(1)))))
 
         val loaded = loader.load(sourceId, targetId, chapterNumber = 1, unitNumber = 2)!!
 
@@ -119,7 +114,7 @@ class UnitTargetLoaderTest {
      */
     @Test
     fun `reports -1 when the requested chapter and unit match nothing`() = runTest {
-        stubProject(listOf(chapter(1, 1)))
+        stubProject(listOf(chapter(1, listOf(chunk(1)))))
 
         val loaded = loader.load(sourceId, targetId, chapterNumber = 99, unitNumber = 4)!!
 
@@ -137,7 +132,7 @@ class UnitTargetLoaderTest {
     }
 
     @Test
-    fun `returns null when the target book does not exist`() = runTest {
+    fun `returns null when no project matches both collection ids`() = runTest {
         stubProject(listOf(chapter(1)), source = sourceId, target = 999)
 
         assertNull(loader.load(sourceId, targetId, chapterNumber = 1, unitNumber = null))

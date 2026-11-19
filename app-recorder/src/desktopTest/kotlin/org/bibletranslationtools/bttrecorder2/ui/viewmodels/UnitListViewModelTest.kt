@@ -4,7 +4,6 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.spyk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,7 +13,6 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import org.bibletranslationtools.bttrecorder2.services.ProjectSession
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.data.primitives.Collection
@@ -89,9 +87,6 @@ class UnitListViewModelTest : KoinTest {
     private val appPreferences: IAppPreferences = mockk()
     private val audioPlayerConnectionFactory: AudioPlayerConnectionFactory = mockk(relaxed = true)
 
-    /** The real session over the stubbed repositories, spied so a test can count the openings. */
-    private val projectSession = spyk(ProjectSession(workbookRepository, collectionRepository))
-
     /** Where the chunks' audio saves. Relaxed: a save succeeds unless a test says otherwise. */
     private val store: WorkbookStore = mockk(relaxed = true)
     private val writer = WorkbookWriter()
@@ -109,7 +104,8 @@ class UnitListViewModelTest : KoinTest {
         startKoin {
             modules(
                 module {
-                    single { projectSession }
+                    single { workbookRepository }
+                    single { collectionRepository }
                     single { appPreferences }
                     single { audioPlayerConnectionFactory }
                 }
@@ -164,8 +160,8 @@ class UnitListViewModelTest : KoinTest {
     }
 
     /**
-     * Wires navState → collections → workbook → target book chapters, the chain loadUnits walks
-     * through [ProjectSession]. [nav] defaults to a fully-populated position.
+     * Wires navState → collections → workbook → target book chapters, the chain loadUnits walks.
+     * [nav] defaults to a fully-populated position.
      */
     private fun stubNavigation(
         vararg chapters: ChapterStub,
@@ -287,7 +283,7 @@ class UnitListViewModelTest : KoinTest {
         advanceUntilIdle()
 
         assertEquals(listOf(1, 2), viewModel.loadedUnits())
-        coVerify(exactly = 1) { projectSession.open(any(), any()) }
+        io.mockk.verify(exactly = 1) { workbookRepository.get(any(), any()) }
     }
 
     // ── loadUnits: failure ───────────────────────────────────────────────────────────────

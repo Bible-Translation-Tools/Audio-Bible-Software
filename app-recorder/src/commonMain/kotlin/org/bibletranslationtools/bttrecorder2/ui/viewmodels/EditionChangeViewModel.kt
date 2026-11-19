@@ -6,7 +6,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
-import org.bibletranslationtools.bttrecorder2.services.ProjectSession
+import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.domain.collections.BookEditionState
 import org.bibletranslationtools.otter.common.domain.collections.BookUpgradePlan
 import org.bibletranslationtools.otter.common.domain.collections.EditionChoice
@@ -28,7 +29,8 @@ class EditionChangeViewModel(
     private val projectBookId: Int,
     private val upgradeBookEdition: UpgradeBookEdition,
     private val appPreferences: IAppPreferences,
-    private val projectSession: ProjectSession
+    private val workbookRepository: IWorkbookRepository,
+    private val collectionRepository: ICollectionRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<EditionChangeState>(EditionChangeState.Loading)
@@ -93,7 +95,9 @@ class EditionChangeViewModel(
                 // The open workbook is this book's under its old source, and its chapters are about
                 // to change underneath it: close it first, so it saves what it has and writes no more.
                 // The screen reopens the project when the change is done, or has failed after this.
-                projectSession.closeBook(projectBookId)
+                collectionRepository.getProjectSuspend(projectBookId)
+                    ?.let { workbookRepository.getWorkbookSuspend(it) }
+                    ?.let { workbookRepository.closeWorkbook(it) }
                 upgradeBookEdition.apply(previewing.plan)
                 followActiveWorkbook(previewing.plan)
                 EditionChangeState.Done(previewing.choice, previewing.plan.heldBack.map { it.sort })

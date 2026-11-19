@@ -1,7 +1,7 @@
 package org.bibletranslationtools.bttrecorder2.ui.viewmodels
 
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.DescribeSourceEditions
-import org.bibletranslationtools.bttrecorder2.services.ProjectSession
 import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -46,7 +46,7 @@ data class ProjectGroup(
 
 class ProjectManagementViewModel : ViewModel(), KoinComponent {
 
-    private val projectSession: ProjectSession by inject()
+    private val workbookRepository: IWorkbookRepository by inject()
     private val workbookDescriptorRepository: IWorkbookDescriptorRepository by inject()
     private val importProjectUseCase: ImportProjectUseCase by inject()
     private val directoryProvider: ITempFileProvider by inject()
@@ -197,9 +197,11 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
         launchLogged {
             try {
                 withContext(Dispatchers.IO) {
-                    // Closed first: the open workbook saves what it has and refuses later changes,
+                    // Closed first: an open workbook saves what it has and refuses later changes,
                     // so nothing writes into the project's files while they are deleted.
-                    projectSession.closeForDeletion(workbook)
+                    runCatching { workbookRepository.get(workbook.sourceCollection, workbook.targetCollection) }
+                        .getOrNull()
+                        ?.let { workbookRepository.closeWorkbook(it) }
                     workbookDescriptorRepository.deleteSuspend(listOf(workbook))
                 }
                 loadWorkbooks()

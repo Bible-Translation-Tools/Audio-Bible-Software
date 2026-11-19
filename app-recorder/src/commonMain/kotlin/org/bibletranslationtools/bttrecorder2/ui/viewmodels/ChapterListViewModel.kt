@@ -1,5 +1,8 @@
 package org.bibletranslationtools.bttrecorder2.ui.viewmodels
 
+import org.bibletranslationtools.shared.resources.err_workbook_not_found
+import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -16,7 +19,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.bibletranslationtools.bttrecorder2.services.ProjectSession
 import org.bibletranslationtools.shared.preferences.IAppPreferences
 import org.bibletranslationtools.shared.ui.failureMessage
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
@@ -81,7 +83,8 @@ data class ChapterListUiState(
 
 class ChapterListViewModel : ViewModel(), KoinComponent {
 
-    private val projectSession: ProjectSession by inject()
+    private val workbookRepository: IWorkbookRepository by inject()
+    private val collectionRepository: ICollectionRepository by inject()
     private val appPreferences: IAppPreferences by inject()
     private val audioConnectionFactory: AudioPlayerConnectionFactory by inject()
     private val chapterTranslationBuilder: ChapterTranslationBuilder by inject()
@@ -140,15 +143,23 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
                     return@launchLogged
                 }
 
-                val workbook = projectSession.open(nav.workbookSourceId, nav.workbookTargetId)
-                if (workbook == null) {
+                val sourceC = collectionRepository.getProjectSuspend(nav.workbookSourceId)
+                val targetC = collectionRepository.getProjectSuspend(nav.workbookTargetId)
+
+                if (sourceC == null || targetC == null) {
                     _uiState.update { it.copy(isLoading = false, error = getString(Res.string.err_project_not_found)) }
+                    return@launchLogged
+                }
+
+                val workbook = workbookRepository.get(sourceC, targetC)
+                if (workbook == null) {
+                    _uiState.update { it.copy(isLoading = false, error = getString(Res.string.err_workbook_not_found)) }
                     return@launchLogged
                 }
 
                 _uiState.update { it.copy(workbook = workbook) }
                 launchLogged(Dispatchers.IO) {
-                    val editions = runCatching { upgradeBookEdition.editionState(nav.workbookTargetId) }
+                    val editions = runCatching { upgradeBookEdition.editionState(targetC.id) }
                         .onFailure { logFailure("loading the book's editions", it) }
                         .getOrNull()
                     _uiState.update { it.copy(editionState = editions) }

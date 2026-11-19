@@ -1,5 +1,6 @@
 package org.bibletranslationtools.bttrecorder2.services
 
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
@@ -36,7 +37,7 @@ data class UnitTarget(
  * Callers are responsible for their own dispatching; both call it from `Dispatchers.IO`.
  */
 class UnitTargetLoader(
-    private val projectSession: ProjectSession
+    private val workbookRepository: IWorkbookRepository
 ) {
 
     /**
@@ -54,9 +55,7 @@ class UnitTargetLoader(
 
     /**
      * @param unitNumber the chunk sort to open, or null for the chapter-level target
-     * Opens the project through [ProjectSession], so it becomes the open project.
-     *
-     * @return null when no project matches the ids, or the target book has no chapters — in
+     * @return null when no workbook matches the ids, or the target book has no chapters — in
      *   either case there is nothing for the screen to show and it should leave its state alone.
      */
     suspend fun load(
@@ -65,7 +64,9 @@ class UnitTargetLoader(
         chapterNumber: Int,
         unitNumber: Int?
     ): LoadedTargets? {
-        val workbook = projectSession.open(sourceId, targetId) ?: return null
+        val workbook = workbookRepository.getProjectsSuspend().find {
+            it.source.collectionId == sourceId && it.target.collectionId == targetId
+        } ?: return null
 
         val chapters = workbook.target.chapters().sortedBy { it.sort }
         if (chapters.isEmpty()) return null

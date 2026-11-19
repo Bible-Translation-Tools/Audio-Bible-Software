@@ -1,5 +1,7 @@
 package org.bibletranslationtools.bttrecorder2.ui.viewmodels
 
+import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -13,7 +15,6 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import org.bibletranslationtools.bttrecorder2.services.ProjectSession
 import org.bibletranslationtools.shared.preferences.IAppPreferences
 import org.bibletranslationtools.shared.ui.failureMessage
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
@@ -80,7 +81,8 @@ class UnitListViewModel(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel(), KoinComponent {
 
-    private val projectSession: ProjectSession by inject()
+    private val workbookRepository: IWorkbookRepository by inject()
+    private val collectionRepository: ICollectionRepository by inject()
     private val appPreferences: IAppPreferences by inject()
 
     private val _uiState = MutableStateFlow(UnitListUiState())
@@ -192,13 +194,17 @@ class UnitListViewModel(
                     return@launchLogged
                 }
 
-                val workbook = projectSession.open(nav.workbookSourceId, nav.workbookTargetId)
-                if (workbook == null) {
+                val sourceC = collectionRepository.getProjectSuspend(nav.workbookSourceId)
+                val targetC = collectionRepository.getProjectSuspend(nav.workbookTargetId)
+
+                if (sourceC == null || targetC == null) {
                     _uiState.update { it.copy(isLoading = false, error = getString(Res.string.err_project_not_found)) }
                     return@launchLogged
                 }
 
+                val workbook = workbookRepository.get(sourceC, targetC)
                 val chapter = workbook.target.chapters().firstOrNull { it.sort == nav.chapterSort }
+
                 if (chapter == null) {
                     _uiState.update { it.copy(isLoading = false, error = getString(Res.string.err_chapter_not_found), workbook = workbook) }
                     return@launchLogged
