@@ -151,17 +151,22 @@ class OraturePeerEditViewModel(
         workbookDataStore.activeChapter.value?.execute(op) ?: op.execute()
 
     /**
-     * Called each time the step is shown: a step's ViewModel outlives leaving the step, so
-     * registering only in init left the header driving whichever step's ViewModel was created
-     * last, possibly one not on screen.
+     * Dock: the step's screen entered composition (the screen calls this from a DisposableEffect,
+     * with [onUndock] on leaving). The step's ViewModel outlives the step, so it takes over the page
+     * header's undo and redo here rather than in init.
      */
-    fun onShown() {
+    fun onDock() {
         translationVm.setUndoRedoHandlers(
             beforeChapterUndo = { runCatching { takePlayer?.pause() } },
             afterChapterUndo = { showSavedState() }
         )
         // An undo made on another step may have changed this chunk meanwhile.
         if (!_uiState.value.isLoading && !_uiState.value.recording) showSavedState()
+    }
+
+    /** Undock: the step's screen left composition, so it no longer drives the page header. */
+    fun onUndock() {
+        translationVm.clearUndoRedoHandlers()
     }
 
     /**

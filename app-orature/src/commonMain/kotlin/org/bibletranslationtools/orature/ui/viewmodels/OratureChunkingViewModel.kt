@@ -127,11 +127,16 @@ class OratureChunkingViewModel(
     fun currentMarkers(): List<OratureMarkerInfo> = markerInfos
 
     /**
-     * Called each time the step is shown: a step's ViewModel outlives leaving the step, so
-     * registering only in init left the header driving whichever step's ViewModel was created
-     * last, possibly one not on screen.
+     * Dock: the step's screen entered composition (the screen calls this from a DisposableEffect,
+     * with [onUndock] on leaving). The step's ViewModel outlives the step, so it takes over the page
+     * header's undo and redo here rather than in init. Its chunk-save handler is registered here too, so leaving the step
+     * forward saves this chapter's markers.
      */
-    fun onShown() {
+    fun onDock() {
+        docked = true
+        // The translation VM awaits this before leaving the step, so the chunk DB writes commit
+        // (and are readable) BEFORE Blind Draft loads — matching Orature's synchronous undock save.
+        translationVm.setChunkSaveHandler(::saveSuspend)
         // The header undo/redo route here while this step is active (JVM: translationViewModel).
         // After a chapter undo or redo, which may have switched the chapter's chunk layout, the
         // markers are reloaded.
@@ -152,10 +157,17 @@ class OratureChunkingViewModel(
         }
     }
 
+    /** Undock: the step's screen left composition, so it no longer drives the page header. */
+    fun onUndock() {
+        docked = false
+        translationVm.clearUndoRedoHandlers()
+        translationVm.clearChunkSaveHandler()
+    }
+
+    /** Whether the step's screen is in composition; only then does it drive the page header. */
+    private var docked = false
+
     init {
-        // The translation VM awaits this before leaving the step, so the chunk DB writes commit
-        // (and are readable) BEFORE Blind Draft loads — matching Orature's synchronous undock save.
-        translationVm.setChunkSaveHandler(::saveSuspend)
         load()
     }
 
@@ -242,7 +254,7 @@ class OratureChunkingViewModel(
                     })?.file ?: error("No source audio for chapter $chapterSort")
 
                     // The layout the markers below belong to: a later undo or redo of a rechunk
-                    // switches it, and the markers are reloaded then (onShown, afterChapterUndo).
+                    // switches it, and the markers are reloaded then (onDock, afterChapterUndo).
                     val draft = chap.loadedState().activeDraft
                     val audioFile = OratureAudioFile(file)
                     val model = markerModelFor(audioFile)
@@ -384,7 +396,7 @@ class OratureChunkingViewModel(
         val canUndo = model?.canUndo() ?: false
         val canRedo = model?.canRedo() ?: false
         _uiState.value = _uiState.value.copy(canUndo = canUndo, canRedo = canRedo, markers = markerInfos)
-        translationVm.updateChunkUndoRedo(canUndo, canRedo)
+        if (docked) translationVm.updateChunkUndoRedo(canUndo, canRedo)
         updateAddDisabled()
     }
 

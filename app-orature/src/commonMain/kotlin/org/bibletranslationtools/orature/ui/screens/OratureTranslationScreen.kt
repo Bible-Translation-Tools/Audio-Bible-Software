@@ -58,6 +58,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -133,8 +134,8 @@ fun OratureTranslationScreen(
     onGoToNarration: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    // Back on this page (e.g. from narration, which left the chapter): re-enter the chapter shown.
-    LaunchedEffect(viewModel) { viewModel.onScreenShown() }
+    // Back on this page (e.g. from narration, which settled the chapter): show its chapter again.
+    LaunchedEffect(viewModel) { viewModel.onDock() }
 
     // Source-audio import (Phase 9 partial) — reachable from the SourceAudioMissing "Choose File".
     val importVm = viewModel { OratureImportViewModel() }
@@ -340,7 +341,10 @@ private fun TranslationStepContent(
                 // Leaving the step forward saves the markers as a rechunk through the translation
                 // VM's awaited chunk-save handler (selectStep), BEFORE the next step loads; nothing
                 // else saves them.
-                LaunchedEffect(chunkingVm) { chunkingVm.onShown() }
+                DisposableEffect(chunkingVm) {
+                    chunkingVm.onDock()
+                    onDispose { chunkingVm.onUndock() }
+                }
                 OratureChunkingScreen(chunkingVm)
             }
         }
@@ -348,7 +352,10 @@ private fun TranslationStepContent(
             val blindDraftVm = androidx.lifecycle.viewmodel.compose.viewModel(key = "blinddraft") {
                 org.bibletranslationtools.orature.ui.viewmodels.OratureBlindDraftViewModel(viewModel)
             }
-            LaunchedEffect(blindDraftVm) { blindDraftVm.onShown() }
+            DisposableEffect(blindDraftVm) {
+                blindDraftVm.onDock()
+                onDispose { blindDraftVm.onUndock() }
+            }
             OratureBlindDraftScreen(blindDraftVm)
         }
         // Peer Edit, Keyword Check, and Verse Check are the same review screen (JVM: all
@@ -358,14 +365,20 @@ private fun TranslationStepContent(
             val peerEditVm = androidx.lifecycle.viewmodel.compose.viewModel(key = "review-${uiState.selectedStep}") {
                 org.bibletranslationtools.orature.ui.viewmodels.OraturePeerEditViewModel(viewModel)
             }
-            LaunchedEffect(peerEditVm) { peerEditVm.onShown() }
+            DisposableEffect(peerEditVm) {
+                peerEditVm.onDock()
+                onDispose { peerEditVm.onUndock() }
+            }
             OraturePeerEditScreen(peerEditVm)
         }
         ChunkingStep.FINAL_REVIEW -> {
             val reviewVm = androidx.lifecycle.viewmodel.compose.viewModel(key = "finalreview") {
                 org.bibletranslationtools.orature.ui.viewmodels.OratureChapterReviewViewModel(viewModel)
             }
-            LaunchedEffect(reviewVm) { reviewVm.onShown() }
+            DisposableEffect(reviewVm) {
+                reviewVm.onDock()
+                onDispose { reviewVm.onUndock() }
+            }
             OratureChapterReviewScreen(reviewVm)
         }
         else -> Text(

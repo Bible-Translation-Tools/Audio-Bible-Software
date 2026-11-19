@@ -199,12 +199,12 @@ class OratureBlindDraftViewModel(
         workbookDataStore.activeChapter.value?.execute(op) ?: op.execute()
 
     /**
-     * Called each time the step is shown: a step's ViewModel outlives leaving the step, so
-     * registering only in init left the header driving whichever step's ViewModel was created
-     * last, possibly one not on screen. An undo made on another step may have changed this
-     * chunk's takes meanwhile, so a stale list is reloaded.
+     * Dock: the step's screen entered composition (the screen calls this from a DisposableEffect,
+     * with [onUndock] on leaving). The step's ViewModel outlives the step, so it takes over the page
+     * header's undo and redo here rather than in init. An undo made on another step may have changed this chunk's takes
+     * meanwhile, so a stale list is reloaded.
      */
-    fun onShown() {
+    fun onDock() {
         // The page header undo/redo route here while this step is active.
         translationVm.setUndoRedoHandlers(
             beforeChapterUndo = { runCatching { takePlayer?.pause() } },
@@ -215,6 +215,11 @@ class OratureBlindDraftViewModel(
         val saved = chunk.audio.getAllTakes().filter { !it.isDeleted() }.map { it.number }.toSet()
         val shownSelected = _uiState.value.selectedTake?.number
         if (saved != takesById.keys || shownSelected != chunk.audio.getSelectedTake()?.number) onChunk(chunk)
+    }
+
+    /** Undock: the step's screen left composition, so it no longer drives the page header. */
+    fun onUndock() {
+        translationVm.clearUndoRedoHandlers()
     }
 
     init {

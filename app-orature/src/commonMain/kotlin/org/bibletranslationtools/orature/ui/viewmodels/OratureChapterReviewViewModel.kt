@@ -167,11 +167,12 @@ class OratureChapterReviewViewModel(
     fun currentMarkers(): List<OratureMarkerInfo> = markerInfos
 
     /**
-     * Called each time the step is shown: a step's ViewModel outlives leaving the step, so
-     * registering only in init left the header driving whichever step's ViewModel was created
-     * last, possibly one not on screen.
+     * Dock: the step's screen entered composition (the screen calls this from a DisposableEffect,
+     * with [onUndock] on leaving). The step's ViewModel outlives the step, so it takes over the page
+     * header's undo and redo here rather than in init.
      */
-    fun onShown() {
+    fun onDock() {
+        docked = true
         translationVm.setUndoRedoHandlers(
             ::undo,
             ::redo,
@@ -182,6 +183,15 @@ class OratureChapterReviewViewModel(
         // An undo made on another step may have changed the chapter's selected take meanwhile.
         showSelectedTake()
     }
+
+    /** Undock: the step's screen left composition, so it no longer drives the page header. */
+    fun onUndock() {
+        docked = false
+        translationVm.clearUndoRedoHandlers()
+    }
+
+    /** Whether the step's screen is in composition; only then does it drive the page header. */
+    private var docked = false
 
     /** Rebuilds the view when the chapter's selected take is no longer the one shown (an undo or redo). */
     private fun showSelectedTake() {
@@ -214,7 +224,7 @@ class OratureChapterReviewViewModel(
         stopAll()
         actionHistory.clear()
         shownTakeFile = null
-        translationVm.updateChunkUndoRedo(canUndo = false, canRedo = false)
+        if (docked) translationVm.updateChunkUndoRedo(canUndo = false, canRedo = false)
         chapter = chap
         if (chap == null) {
             _uiState.value = OratureChapterReviewUiState(hasChapter = false, isLoading = false)

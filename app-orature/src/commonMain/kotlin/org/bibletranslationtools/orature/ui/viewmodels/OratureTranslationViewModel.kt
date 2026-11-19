@@ -420,10 +420,10 @@ class OratureTranslationViewModel(
     }
 
     /**
-     * The translation page is on screen again, e.g. back from narration, which settled the chapter
-     * when it opened the book: point the shared active chapter back at the one this page shows.
+     * Dock: the page entered composition, e.g. back from narration, which settled the chapter when
+     * it opened the book. Points the shared active chapter back at the one this page shows.
      */
-    fun onScreenShown() {
+    fun onDock() {
         val sort = _uiState.value.activeChapterSort ?: return
         val chapter = chapters.firstOrNull { it.sort == sort } ?: return
         launchLogged {
@@ -514,9 +514,6 @@ class OratureTranslationViewModel(
     }
 
     private fun showStep(step: ChunkingStep) {
-        // The step being left no longer drives the header; the next step registers its handlers
-        // when shown.
-        if (step != _uiState.value.selectedStep) clearUndoRedoHandlers()
         _uiState.value = _uiState.value.copy(selectedStep = step, activeChunkSort = null)
         if (step.ordinal >= ChunkingStep.BLIND_DRAFT.ordinal) loadChunks()
     }
