@@ -35,6 +35,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -84,6 +85,11 @@ import java.io.File
 @Composable
 fun OratureBlindDraftScreen(viewModel: OratureBlindDraftViewModel) {
     val uiState by viewModel.uiState.collectAsState()
+    // Docked while this screen is in composition (JVM: onDock/onUndock).
+    DisposableEffect(viewModel) {
+        viewModel.onDock()
+        onDispose { viewModel.onUndock() }
+    }
 
     // JVM: `.translation-view { -fx-background-color: -wa-foreground; }` — the translation page's
     // root is white, not the app's light-gray page background.

@@ -58,7 +58,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -341,20 +340,12 @@ private fun TranslationStepContent(
                 // Leaving the step forward saves the markers as a rechunk through the translation
                 // VM's awaited chunk-save handler (selectStep), BEFORE the next step loads; nothing
                 // else saves them.
-                DisposableEffect(chunkingVm) {
-                    chunkingVm.onDock()
-                    onDispose { chunkingVm.onUndock() }
-                }
                 OratureChunkingScreen(chunkingVm)
             }
         }
         ChunkingStep.BLIND_DRAFT -> {
             val blindDraftVm = androidx.lifecycle.viewmodel.compose.viewModel(key = "blinddraft") {
                 org.bibletranslationtools.orature.ui.viewmodels.OratureBlindDraftViewModel(viewModel)
-            }
-            DisposableEffect(blindDraftVm) {
-                blindDraftVm.onDock()
-                onDispose { blindDraftVm.onUndock() }
             }
             OratureBlindDraftScreen(blindDraftVm)
         }
@@ -365,19 +356,11 @@ private fun TranslationStepContent(
             val peerEditVm = androidx.lifecycle.viewmodel.compose.viewModel(key = "review-${uiState.selectedStep}") {
                 org.bibletranslationtools.orature.ui.viewmodels.OraturePeerEditViewModel(viewModel)
             }
-            DisposableEffect(peerEditVm) {
-                peerEditVm.onDock()
-                onDispose { peerEditVm.onUndock() }
-            }
             OraturePeerEditScreen(peerEditVm)
         }
         ChunkingStep.FINAL_REVIEW -> {
             val reviewVm = androidx.lifecycle.viewmodel.compose.viewModel(key = "finalreview") {
                 org.bibletranslationtools.orature.ui.viewmodels.OratureChapterReviewViewModel(viewModel)
-            }
-            DisposableEffect(reviewVm) {
-                reviewVm.onDock()
-                onDispose { reviewVm.onUndock() }
             }
             OratureChapterReviewScreen(reviewVm)
         }

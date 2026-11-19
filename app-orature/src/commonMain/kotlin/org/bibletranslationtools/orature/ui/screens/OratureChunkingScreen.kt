@@ -35,6 +35,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -93,6 +94,11 @@ private val MARKER_GRAB = 24.dp
 @Composable
 fun OratureChunkingScreen(viewModel: OratureChunkingViewModel) {
     val uiState by viewModel.uiState.collectAsState()
+    // Docked while this screen is in composition (JVM: onDock/onUndock).
+    DisposableEffect(viewModel) {
+        viewModel.onDock()
+        onDispose { viewModel.onUndock() }
+    }
 
     // JVM: `.translation-view { -fx-background-color: -wa-foreground; }` (white, not the app's
     // light-gray page background).

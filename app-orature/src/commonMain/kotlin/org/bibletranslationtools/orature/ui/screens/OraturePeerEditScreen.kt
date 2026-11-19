@@ -23,6 +23,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -57,6 +58,11 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun OraturePeerEditScreen(viewModel: OraturePeerEditViewModel) {
     val uiState by viewModel.uiState.collectAsState()
+    // Docked while this screen is in composition (JVM: onDock/onUndock).
+    DisposableEffect(viewModel) {
+        viewModel.onDock()
+        onDispose { viewModel.onUndock() }
+    }
 
     // JVM: `.translation-view { -fx-background-color: -wa-foreground; }` (white, not the app's
     // light-gray page background).
