@@ -114,7 +114,6 @@ class InitializeProjects(
 
         projectFilesAccessor.initializeResourceContainerInDir()
         projectFilesAccessor.copySourceFiles(linkedResource)
-        // Runs inside the installer's blocking Completable, off the main thread.
         runBlocking { projectFilesAccessor.writeSelectedTakesFile(workbook, projectIsBook) }
     }
 

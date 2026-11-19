@@ -254,8 +254,11 @@ class WorkbookRepository(
     )
 
     private fun textItem(content: Content): TextItem {
-        val format = content.format?.let { runCatching { MimeType.of(it) }.getOrNull() }
-        return if (format != null && content.text != null) TextItem(content.text!!, format) else TextItem("", MimeType.USFM)
+        return content.format?.let { format ->
+            content.text?.let { text ->
+                TextItem(text, MimeType.of(format))
+            }
+        } ?: TextItem("", MimeType.USFM)
     }
 
     private fun resourceLabel(contentType: ContentType, identifier: String): String = when (identifier) {

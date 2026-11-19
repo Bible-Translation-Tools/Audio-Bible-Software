@@ -27,7 +27,7 @@ class OratureProjectDeletion : KoinComponent {
     fun beginPending() { _pending.value += 1 }
     fun endPending() { _pending.value = (_pending.value - 1).coerceAtLeast(0) }
 
-    /** Reset a single book to its initial state (JVM: deleteBook → DeleteProject.delete); its workbook closes first. */
+    /** Reset a single book to its initial state (JVM: deleteBook → DeleteProject.delete). */
     suspend fun deleteBook(descriptor: WorkbookDescriptor) {
         workbookDataStore.closeProject(descriptor)
         deleteProject.delete(descriptor).await()

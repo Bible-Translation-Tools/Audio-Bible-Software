@@ -1,8 +1,5 @@
 package org.bibletranslationtools.bttrecorder2.ui.viewmodels
 
-import org.bibletranslationtools.shared.resources.err_workbook_not_found
-import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -20,6 +17,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.shared.preferences.IAppPreferences
+import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.shared.ui.failureMessage
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
@@ -36,6 +35,7 @@ import org.jetbrains.compose.resources.getString
 import org.bibletranslationtools.shared.resources.Res
 import org.bibletranslationtools.shared.resources.err_no_active_project
 import org.bibletranslationtools.shared.resources.err_project_not_found
+import org.bibletranslationtools.shared.resources.err_workbook_not_found
 import org.bibletranslationtools.shared.resources.err_unknown
 import org.bibletranslationtools.shared.resources.err_compile_failed
 import org.bibletranslationtools.shared.resources.err_load_chapter_audio
@@ -195,9 +195,7 @@ class ChapterListViewModel : ViewModel(), KoinComponent {
                         }
                         launch {
                             chapter.audio.selectedFlow.collect { take ->
-                                // A deleted take is sometimes still referenced by the
-                                // selectedFlow, so treat a tombstoned take as "no chapter take"
-                                // for UI purposes.
+                                // Treat a tombstoned take as "no chapter take" for UI purposes.
                                 val hasChapterTake = take != null && !take.isDeleted()
                                 updateChapterRow(chapter) { existing ->
                                     existing.copy(

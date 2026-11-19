@@ -51,7 +51,7 @@ class TakeRepositoryTest {
         every { checkingStatusDao.fetchById(any()) } returns mockk(relaxed = true)
         every { markerMapper.mapToEntity(any(), any()) } returns mockk(relaxed = true)
         
-        repository = TakeRepository(db, immediateWriter(db), markerMapper, collectionMapper)
+        repository = TakeRepository(db, testWriter(db), markerMapper, collectionMapper)
     }
 
     @Test

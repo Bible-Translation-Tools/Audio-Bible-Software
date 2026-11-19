@@ -27,7 +27,7 @@ import org.bibletranslationtools.shared.audio.engine.buildPeakCache
 import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
-import org.bibletranslationtools.otter.common.data.workbook.IUndoable
+import org.bibletranslationtools.otter.common.domain.IUndoable
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
@@ -156,31 +156,12 @@ class OraturePeerEditViewModel(
      * header's undo and redo here rather than in init.
      */
     fun onDock() {
-        translationVm.setUndoRedoHandlers(
-            beforeChapterUndo = { runCatching { takePlayer?.pause() } },
-            afterChapterUndo = { showSavedState() }
-        )
-        // An undo made on another step may have changed this chunk meanwhile.
-        if (!_uiState.value.isLoading && !_uiState.value.recording) showSavedState()
+        translationVm.setUndoRedoHandlers()
     }
 
     /** Undock: the step's screen left composition, so it no longer drives the page header. */
     fun onUndock() {
         translationVm.clearUndoRedoHandlers()
-    }
-
-    /**
-     * Shows the active chunk as saved, after an undo or redo in the chapter's history: reloads it
-     * when its selected take changed, otherwise just its confirmed mark.
-     */
-    private fun showSavedState() {
-        val chunk = activeChunk ?: return
-        if (chunk.audio.getSelectedTake()?.id != selectedTake?.id) {
-            onChunk(chunk)
-            return
-        }
-        val confirmed = chunk.checkingStatus().ordinal >= checkingStatusForStep().ordinal
-        if (_uiState.value.confirmed != confirmed) _uiState.value = _uiState.value.copy(confirmed = confirmed)
     }
 
     init {
@@ -230,7 +211,6 @@ class OraturePeerEditViewModel(
                     val sourcePrep = prepareSourcePlayer(chunk)
                     Prepared(take, playerReader.totalFrames, sr, source, tl, cache, sourcePrep?.first, sourcePrep?.second ?: 0)
                 } ?: run {
-                    selectedTake = null
                     _uiState.value = OraturePeerEditUiState(hasChunk = true, noTake = true)
                     return@launchLogged
                 }
@@ -373,8 +353,10 @@ class OraturePeerEditViewModel(
     fun confirmChunk() {
         val chunk = activeChunk ?: return
         val take = chunk.audio.getSelectedTake() ?: return
-        // Its undo or redo may come from another chunk or step; showSavedState follows the saved status.
-        val op = TranslationTakeApproveAction(chunk.audio, take, checkingStatusForStep(), take.checking)
+        val op = TranslationTakeApproveAction(chunk.audio, take, checkingStatusForStep(), take.checking).apply {
+            setUndoCallback { _uiState.value = _uiState.value.copy(confirmed = false) }
+            setRedoCallback { _uiState.value = _uiState.value.copy(confirmed = true) }
+        }
         launchLogged {
             // Save-first: the chunk shows as confirmed only once its checking status is saved.
             val result = saveMessages.report(execute(op))
@@ -404,8 +386,6 @@ class OraturePeerEditViewModel(
         val takeNumber = chunk.audio.getNewTakeNumber()
         val namer = WorkbookFileNamerBuilder.createFileNamer(wb, chapter, chunk, chunk, wb.sourceMetadataSlug)
         val dir = wb.projectFilesAccessor.audioDir.resolve(namer.formatChapterNumber()).apply { mkdirs() }
-        // A file nothing else uses: recording into an existing name truncated another take's audio,
-        // and discarding afterwards deleted it.
         val reserved = TakeFiles.reserve(dir, takeNumber) { namer.generateName(it, AudioFileFormat.WAV) }
         return reserved.toTake()
     }

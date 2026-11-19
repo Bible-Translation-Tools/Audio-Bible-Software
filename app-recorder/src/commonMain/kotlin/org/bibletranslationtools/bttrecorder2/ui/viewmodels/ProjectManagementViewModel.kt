@@ -1,6 +1,5 @@
 package org.bibletranslationtools.bttrecorder2.ui.viewmodels
 
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.DescribeSourceEditions
 import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.CancellationException
@@ -12,6 +11,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.domain.project.ImportProjectUseCase
@@ -199,9 +199,7 @@ class ProjectManagementViewModel : ViewModel(), KoinComponent {
                 withContext(Dispatchers.IO) {
                     // Closed first: an open workbook saves what it has and refuses later changes,
                     // so nothing writes into the project's files while they are deleted.
-                    runCatching { workbookRepository.get(workbook.sourceCollection, workbook.targetCollection) }
-                        .getOrNull()
-                        ?.let { workbookRepository.closeWorkbook(it) }
+                    workbookRepository.closeWorkbook(workbookRepository.get(workbook.sourceCollection, workbook.targetCollection))
                     workbookDescriptorRepository.deleteSuspend(listOf(workbook))
                 }
                 loadWorkbooks()

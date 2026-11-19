@@ -28,10 +28,6 @@ import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 
 interface IWorkbookRepository {
-    /**
-     * The project's workbook. There is one live copy per project: every caller gets the same
-     * workbook until it is closed.
-     */
     fun get(source: Collection, target: Collection): Workbook
     fun getSoftDeletedTakes(book: Book): Single<List<Take>>
     fun getProjects(): Single<List<Workbook>>

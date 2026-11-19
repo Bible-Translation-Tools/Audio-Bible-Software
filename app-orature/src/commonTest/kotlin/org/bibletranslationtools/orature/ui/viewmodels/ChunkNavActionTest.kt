@@ -37,7 +37,8 @@ class ChunkNavActionTest {
 
     @Test
     fun `going backward from chunking never commits chunk edits`() {
-        // Regression: leaving Chunking BACKWARD used to run the save too.
+        // Regression: leaving Chunking BACKWARD used to run the destructive save too, wiping takes
+        // with no warning at all.
         assertEquals(
             ChunkNavAction.NAVIGATE,
             chunkNavAction(

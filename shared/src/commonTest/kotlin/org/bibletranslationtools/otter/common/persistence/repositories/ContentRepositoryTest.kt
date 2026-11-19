@@ -44,7 +44,7 @@ class ContentRepositoryTest {
         every { contentTypeDao.fetchForId(any()) } returns org.bibletranslationtools.otter.common.data.primitives.ContentType.TEXT
         every { checkingStatusDao.fetchId(any()) } returns 1
         
-        repository = ContentRepository(db, immediateWriter(db))
+        repository = ContentRepository(db, testWriter(db))
     }
 
     @Test

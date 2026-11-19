@@ -25,7 +25,6 @@ import java.io.File
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionFingerprint
 import io.reactivex.Completable
 import io.reactivex.Single
-import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.rx2.await
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.collections.OtterTree

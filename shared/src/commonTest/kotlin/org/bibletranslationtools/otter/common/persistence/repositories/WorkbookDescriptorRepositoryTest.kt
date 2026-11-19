@@ -46,7 +46,7 @@ class WorkbookDescriptorRepositoryTest {
             contentRepository,
             workbookRepository,
             projectCompletionStatus,
-            immediateWriter(db)
+            testWriter(db)
         )
     }
 

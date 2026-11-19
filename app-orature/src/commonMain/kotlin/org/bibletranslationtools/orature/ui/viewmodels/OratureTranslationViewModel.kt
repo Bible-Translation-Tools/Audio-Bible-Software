@@ -415,7 +415,7 @@ class OratureTranslationViewModel(
         }
         val s = _uiState.value
         if (noChunks && s.activeChapterSort == chapterSort && s.selectedStep.ordinal > ChunkingStep.CHUNKING.ordinal) {
-            showStep(ChunkingStep.CHUNKING)
+            commitStepNavigation(ChunkingStep.CHUNKING)
         }
     }
 
@@ -488,34 +488,32 @@ class OratureTranslationViewModel(
         val s = _uiState.value
         if (s.pluginOpen) return
         if (step.ordinal > s.reachableStep.ordinal) return
-
-        // Moving FORWARD out of Chunking saves its marker edits first, as one undoable rechunk in
-        // the chapter's undo history (nothing is deleted until the user leaves the chapter). Wait for it,
-        // so the next step reads the new layout (JVM saves synchronously in undock before
-        // navigating); the handler itself no-ops when the markers did not change.
-        val save = chunkSaveHandler
-        if (chunkNavAction(s.selectedStep, step) == ChunkNavAction.SAVE_THEN_NAVIGATE && save != null) {
-            launchLogged {
-                val saved = try {
-                    save()
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    logFailure("saving chunks before leaving the step", e)
-                    false
-                }
-                // Save-first: stay on Chunking with the edits when it did not save; the failure has
-                // been shown.
-                if (saved) showStep(step)
-            }
-            return
-        }
-        showStep(step)
+        commitStepNavigation(step)
     }
 
-    private fun showStep(step: ChunkingStep) {
-        _uiState.value = _uiState.value.copy(selectedStep = step, activeChunkSort = null)
-        if (step.ordinal >= ChunkingStep.BLIND_DRAFT.ordinal) loadChunks()
+    /** Proceed with a step change, saving Chunking's edits first when moving FORWARD past it. */
+    private fun commitStepNavigation(step: ChunkingStep) {
+        val s = _uiState.value
+        // Save ONLY when navigating forward past Chunking (JVM `undock()`'s
+        // `selectedStep.ordinal > CHUNKING.ordinal`). Going backward (e.g. to Consume) must not
+        // rechunk. The handler itself no-ops when there are no edits.
+        val save = chunkSaveHandler
+        if (chunkNavAction(s.selectedStep, step) == ChunkNavAction.SAVE_THEN_NAVIGATE && save != null) {
+            // Persist and WAIT before switching, so the next step reads committed chunk content
+            // (JVM saves synchronously in undock before navigating).
+            launchLogged {
+                // Save-first: stay on Chunking with the edits when it did not save.
+                val saved = runCatching { save() }
+                    .onFailure { logFailure("saving chunks before leaving the step", it) }
+                    .getOrDefault(false)
+                if (!saved) return@launchLogged
+                _uiState.value = _uiState.value.copy(selectedStep = step, activeChunkSort = null)
+                if (step.ordinal >= ChunkingStep.BLIND_DRAFT.ordinal) loadChunks()
+            }
+        } else {
+            _uiState.value = s.copy(selectedStep = step, activeChunkSort = null)
+            if (step.ordinal >= ChunkingStep.BLIND_DRAFT.ordinal) loadChunks()
+        }
     }
 
     /**

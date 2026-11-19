@@ -47,8 +47,8 @@ import org.bibletranslationtools.otter.common.domain.translation.AddMarkerAction
 import org.bibletranslationtools.otter.common.domain.translation.DeleteMarkerAction
 import org.bibletranslationtools.otter.common.domain.translation.MoveMarkerAction
 import org.bibletranslationtools.otter.common.domain.translation.TakeEditAction
-import org.bibletranslationtools.otter.common.data.workbook.UndoableActionHistory
-import org.bibletranslationtools.otter.common.data.workbook.IUndoable
+import org.bibletranslationtools.otter.common.domain.model.UndoableActionHistory
+import org.bibletranslationtools.otter.common.domain.IUndoable
 import org.bibletranslationtools.orature.plugins.OraturePluginStore
 import org.bibletranslationtools.orature.plugins.OratureExternalPlugin
 import org.bibletranslationtools.orature.plugins.canLaunchPlugins
@@ -150,13 +150,7 @@ class OratureChapterReviewViewModel(
     )
     private var clockEventsJob: Job? = null
 
-    // Two histories behind the page header's undo and redo. Marker edits change only the in-memory
-    // marker model (written to the take later, see writeMarkersBlocking), so they keep this step's
-    // own history, undone first. Editing the take in a plugin is saved, so it goes to the chapter's
-    // undo history, which every step shares.
     private val actionHistory = UndoableActionHistory<IUndoable>()
-    /** The take file the waveform and markers were built from. */
-    private var shownTakeFile: java.io.File? = null
 
     fun currentTimeline(): AudioTimeline? = timeline
     fun peakCacheFor(source: PcmSource): WaveformPeakCache? =
@@ -173,15 +167,8 @@ class OratureChapterReviewViewModel(
      */
     fun onDock() {
         docked = true
-        translationVm.setUndoRedoHandlers(
-            ::undo,
-            ::redo,
-            beforeChapterUndo = { runCatching { takePlayer?.pause() } },
-            afterChapterUndo = { showSelectedTake() }
-        )
+        translationVm.setUndoRedoHandlers(::undo, ::redo)
         translationVm.updateChunkUndoRedo(canUndo = actionHistory.canUndo(), canRedo = actionHistory.canRedo())
-        // An undo made on another step may have changed the chapter's selected take meanwhile.
-        showSelectedTake()
     }
 
     /** Undock: the step's screen left composition, so it no longer drives the page header. */
@@ -192,14 +179,6 @@ class OratureChapterReviewViewModel(
 
     /** Whether the step's screen is in composition; only then does it drive the page header. */
     private var docked = false
-
-    /** Rebuilds the view when the chapter's selected take is no longer the one shown (an undo or redo). */
-    private fun showSelectedTake() {
-        val chap = chapter ?: return
-        if (_uiState.value.isLoading || _uiState.value.isPluginOpen || shownTakeFile == null) return
-        val selected = chap.audio.getSelectedTake() ?: return
-        if (selected.file != shownTakeFile) reloadFromSelectedTake(chap)
-    }
 
     init {
         translationVm.setOpenInHandler(::processWithPlugin)
@@ -223,7 +202,6 @@ class OratureChapterReviewViewModel(
         writeMarkersBlocking()
         stopAll()
         actionHistory.clear()
-        shownTakeFile = null
         if (docked) translationVm.updateChunkUndoRedo(canUndo = false, canRedo = false)
         chapter = chap
         if (chap == null) {
@@ -302,7 +280,6 @@ class OratureChapterReviewViewModel(
      *  reload), it's left untouched instead of being replaced. */
     private fun applyPrepared(prepared: Prepared, chap: Chapter) {
         markerModel = prepared.model
-        shownTakeFile = prepared.takeFile
         sampleRate = prepared.sampleRate
         totalFrames = prepared.totalFrames
         positionFrames = 0
@@ -482,8 +459,10 @@ class OratureChapterReviewViewModel(
             }
 
             if (success && newTake != null) {
-                // Its undo and redo may come from another step: showSelectedTake follows the saved take.
-                val action = TakeEditAction(chap.audio, newTake, existingTake)
+                val action = TakeEditAction(chap.audio, newTake, existingTake).apply {
+                    setUndoCallback { reloadFromSelectedTake(chap) }
+                    setRedoCallback { reloadFromSelectedTake(chap) }
+                }
                 saveMessages.report(chap.execute(action))
             } else if (newTake != null) {
                 saveMessages.report(chap.audio.selectTake(chap.audio.take(existingTake.id) ?: existingTake))

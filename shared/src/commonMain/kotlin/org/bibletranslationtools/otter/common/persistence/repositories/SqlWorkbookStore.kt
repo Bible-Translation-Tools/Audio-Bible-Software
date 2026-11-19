@@ -60,7 +60,6 @@ class SqlWorkbookStore(
         val title = database.contentTypeDao.fetchId(ContentType.TITLE)
         val rows = contentDao.fetchByCollectionId(chapter.raw)
             .filter { (it.type_fk == text || it.type_fk == title) && !it.bridged }
-            .sortedWith(compareBy({ it.sort }, { it.start }))
         val takesByRow = takeDao.fetchByCollectionId(chapter.raw, includeDeleted = true).groupBy { it.contentFk }
         val draft = DraftId(contentDao.activeDraft(chapter.raw) ?: rows.filter { it.type_fk == text }.maxOfOrNull { it.draftNumber } ?: 1)
         ChapterLayout(
@@ -85,7 +84,7 @@ class SqlWorkbookStore(
         )
     }
 
-    override suspend fun addTake(owner: ElementId, take: Take, select: Boolean): Take = writer.write {
+    override suspend fun addTake(owner: ElementId, take: Take): Take = writer.write {
         val id = takeDao.insert(
             TakeEntity(
                 id = 0,
@@ -100,7 +99,7 @@ class SqlWorkbookStore(
                 checksum = take.checking.checksum
             )
         )
-        if (select) contentDao.updateSelectedTake(owner.contentRaw, id)
+        contentDao.updateSelectedTake(owner.contentRaw, id)
         toTake(takeDao.fetchById(id))
     }
 
@@ -130,13 +129,7 @@ class SqlWorkbookStore(
         val text = database.contentTypeDao.fetchId(ContentType.TEXT)
         val textRows = contentDao.fetchAllDraftsByCollectionId(chapter.raw).filter { it.type_fk == text }
         val active = contentDao.activeDraft(chapter.raw)
-        if (active == null) {
-            // The first rechunk of a chapter: its rows so far are one layout. Give them one number,
-            // so switching back to it brings back all of them.
-            val previous = textRows.maxOfOrNull { it.draftNumber } ?: 1
-            textRows.filter { it.draftNumber != previous }.forEach { contentDao.update(it.copy(draftNumber = previous)) }
-            contentDao.setActiveDraft(chapter.raw, previous)
-        }
+        // Past the active draft too: it has no rows when the user removed every chunk marker.
         val next = (textRows.maxOfOrNull { it.draftNumber } ?: 0).coerceAtLeast(active ?: 0) + 1
         insertLinked(chapter, rows, draft = next)
         contentDao.setActiveDraft(chapter.raw, next)
@@ -200,7 +193,10 @@ class SqlWorkbookStore(
     )
 
     private fun textItem(row: ContentEntity): TextItem {
-        val format = row.format?.let { runCatching { MimeType.of(it) }.getOrNull() }
-        return if (format != null && row.text != null) TextItem(row.text!!, format) else TextItem("", MimeType.USFM)
+        return row.format?.let { format ->
+            row.text?.let { text ->
+                TextItem(text, MimeType.of(format))
+            }
+        } ?: TextItem("", MimeType.USFM)
     }
 }

@@ -43,7 +43,6 @@ class Book(
     val language: Language
         get() = resourceMetadata.language
 
-
     private val loading = Mutex()
     private var loaded: List<Chapter>? = null
 

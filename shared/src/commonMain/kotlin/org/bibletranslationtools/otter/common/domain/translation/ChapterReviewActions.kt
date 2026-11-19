@@ -6,12 +6,10 @@ import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
 import org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.TakeCheckingState
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
-import org.bibletranslationtools.otter.common.data.workbook.IUndoable
-import org.bibletranslationtools.otter.common.data.workbook.NOTHING_TO_SAVE
-import org.bibletranslationtools.otter.common.data.workbook.inOrder
+import org.bibletranslationtools.otter.common.domain.IUndoable
+import org.bibletranslationtools.otter.common.domain.NOTHING_TO_SAVE
+import org.bibletranslationtools.otter.common.domain.inOrder
 import org.bibletranslationtools.otter.common.domain.model.MarkerPlacementModel
 
 /** [ofType] optionally targets a SPECIFIC marker type (e.g. Book or Chapter) instead of just the
@@ -88,13 +86,12 @@ class TakeEditAction(
 
     lateinit var newMarkerModel: MarkerPlacementModel
 
-    private var undoCallback: suspend () -> Unit = {}
-    private var redoCallback: suspend () -> Unit = {}
+    private var undoCallback: () -> Unit = {}
+    private var redoCallback: () -> Unit = {}
 
     override suspend fun execute(): SaveResult<Unit> {
-        val checksum = withContext(Dispatchers.IO) { newTake.checksum() }
         return inOrder(
-            { audio.setChecking(newTake, TakeCheckingState(CheckingStatus.VERSE, checksum)) },
+            { audio.setChecking(newTake, TakeCheckingState(CheckingStatus.VERSE, newTake.checksum())) },
             { audio.deleteTake(oldTake) }
         )
     }
@@ -119,6 +116,6 @@ class TakeEditAction(
         return result
     }
 
-    fun setUndoCallback(op: suspend () -> Unit) { undoCallback = op }
-    fun setRedoCallback(op: suspend () -> Unit) { redoCallback = op }
+    fun setUndoCallback(op: () -> Unit) { undoCallback = op }
+    fun setRedoCallback(op: () -> Unit) { redoCallback = op }
 }

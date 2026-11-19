@@ -21,7 +21,7 @@ import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
 import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
-import org.bibletranslationtools.otter.common.data.workbook.IUndoable
+import org.bibletranslationtools.otter.common.domain.IUndoable
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.device.AudioConfig
@@ -455,8 +455,6 @@ class OratureBlindDraftViewModel(
         val takeNumber = chunk.audio.getNewTakeNumber()
         val namer = WorkbookFileNamerBuilder.createFileNamer(wb, chapter, chunk, chunk, wb.sourceMetadataSlug)
         val dir = wb.projectFilesAccessor.audioDir.resolve(namer.formatChapterNumber()).apply { mkdirs() }
-        // A file nothing else uses: recording into an existing name truncated another take's audio,
-        // and discarding afterwards deleted it.
         val reserved = TakeFiles.reserve(dir, takeNumber) { namer.generateName(it, AudioFileFormat.WAV) }
         return reserved.toTake()
     }
@@ -621,8 +619,7 @@ class OratureBlindDraftViewModel(
         val take = takesById[id]?.let { chunk.audio.take(it.id) } ?: return
         runCatching { takePlayer?.pause() }
         launchLogged {
-            val wasSelected = chunk.audio.getSelectedTake()?.id == take.id
-            val op = TranslationTakeDeleteAction(chunk, take, wasSelected, ::handlePostDeleteTake)
+            val op = TranslationTakeDeleteAction(chunk, take, ::handlePostDeleteTake)
             saveMessages.report(execute(op))
             onChunk(chunk)
             translationVm.onChunkTakesChanged()

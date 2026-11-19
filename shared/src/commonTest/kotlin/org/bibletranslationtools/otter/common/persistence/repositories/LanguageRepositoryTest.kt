@@ -36,7 +36,7 @@ class LanguageRepositoryTest {
         every { db.languageDao } returns languageDao
         every { db.translationDao } returns translationDao
 
-        repository = LanguageRepository(db, immediateWriter(db), mapper, translationMapper, glSourceCatalog)
+        repository = LanguageRepository(db, testWriter(db), mapper, translationMapper, glSourceCatalog)
     }
 
     @Test

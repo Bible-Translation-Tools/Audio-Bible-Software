@@ -3,18 +3,19 @@ package org.bibletranslationtools.bttrecorder2.ui
 import io.reactivex.Single
 import kotlinx.coroutines.runBlocking
 import org.bibletranslationtools.otter.common.data.primitives.ContainerType
+import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.primitives.Language
+import org.bibletranslationtools.otter.common.data.primitives.MimeType
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.data.primitives.Collection
+import org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Take
+import org.bibletranslationtools.otter.common.data.workbook.TextItem
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.data.primitives.Content
-import org.bibletranslationtools.otter.common.data.primitives.ContentType
-import org.bibletranslationtools.otter.common.data.primitives.MimeType
-import org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio
 import org.bibletranslationtools.otter.common.data.workbook.AudioState
 import org.bibletranslationtools.otter.common.data.workbook.ChapterAudioId
 import org.bibletranslationtools.otter.common.data.workbook.ChapterId
@@ -25,7 +26,6 @@ import org.bibletranslationtools.otter.common.data.workbook.DraftId
 import org.bibletranslationtools.otter.common.data.workbook.ElementId
 import org.bibletranslationtools.otter.common.data.workbook.TakeCheckingState
 import org.bibletranslationtools.otter.common.data.workbook.TakeId
-import org.bibletranslationtools.otter.common.data.workbook.TextItem
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookStore
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookWriter
 import java.io.File
@@ -156,7 +156,7 @@ object MockData {
 
         override suspend fun loadAudio(owner: ElementId) = AudioState.EMPTY
         override suspend fun loadChunks(chapter: ChapterId) = layouts.getValue(chapter)
-        override suspend fun addTake(owner: ElementId, take: Take, select: Boolean): Take = refuse()
+        override suspend fun addTake(owner: ElementId, take: Take): Take = refuse()
         override suspend fun setSelected(owner: ElementId, take: TakeId?) = refuse()
         override suspend fun markDeleted(take: TakeId, on: LocalDate, clearSelectionOf: ElementId?) = refuse()
         override suspend fun restore(take: TakeId) = refuse()

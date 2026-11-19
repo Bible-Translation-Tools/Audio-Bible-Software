@@ -502,8 +502,8 @@ class RecorderViewModel(
         if (_recordingState.value != RecordingUiState.Review || !hasRecordedAudio) return
         val sessionFile = currentTempAudioFile ?: return
         val wb = workbook ?: return
+        val audio = associatedAudio ?: return
         val target = currentTarget() ?: return
-        val audio = target.recordable.audio
 
         launchLogged(Dispatchers.IO) {
             try {
@@ -516,7 +516,6 @@ class RecorderViewModel(
                     throw IllegalStateException("Unable to finalize recording for save.")
                 }
 
-                // The chapter's take directory (created if missing) and the take's name.
                 val dir = wb.projectFilesAccessor.getChapterAudioDir(wb, target.chapter)
                 val namer = WorkbookFileNamerBuilder.createFileNamer(
                     workbook = wb,
@@ -546,18 +545,19 @@ class RecorderViewModel(
 
                 // Saved and selected in one step. Only a saved take moves on to playback; a take
                 // that was not saved has no row, so its file goes rather than lingering as a take.
-                val result = audio.insertTake(reserved.toTake(), select = true)
-                if (result !is SaveResult.Saved) runCatching { takeFile.delete() }
-                val failure = if (result is SaveResult.Saved) null else {
-                    result.failureMessage() ?: getString(Res.string.err_save_recording)
-                }
-                withContext(Dispatchers.Main) {
-                    if (result is SaveResult.Saved) {
+                val result = audio.insertTake(reserved.toTake())
+                if (result is SaveResult.Saved) {
+                    withContext(Dispatchers.Main) {
                         _savedTakeEvents.tryEmit(result.value.number)
-                    } else {
-                        _audioError.value = failure
+                        resetSessionForTarget()
                     }
-                    resetSessionForTarget()
+                } else {
+                    runCatching { takeFile.delete() }
+                    val failure = result.failureMessage() ?: getString(Res.string.err_save_recording)
+                    withContext(Dispatchers.Main) {
+                        _audioError.value = failure
+                        resetSessionForTarget()
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()

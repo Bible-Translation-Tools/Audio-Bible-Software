@@ -26,7 +26,7 @@ class VersificationRepositoryTest {
 
         every { db.versificationDao } returns versificationDao
         
-        repository = VersificationRepository(db, immediateWriter(db), directoryProvider)
+        repository = VersificationRepository(db, testWriter(db), directoryProvider)
     }
 
     @Test

@@ -110,7 +110,6 @@ class EditionUpgradeRepository(
         if (moved) moveDirectory(oldDir, newDir)
 
         try {
-            // On the write queue, as one transaction.
             databaseWriter.writeBlocking {
                 collectionDao.rebase(book.id, rebase.toSourceBookId, newDerived.id)
                 rebase.chapters.forEach { chapter ->

@@ -43,6 +43,4 @@ class WorkbookWriter {
     suspend fun close() {
         lock.withLock { closed = true }
     }
-
-    val isClosed: Boolean get() = closed
 }

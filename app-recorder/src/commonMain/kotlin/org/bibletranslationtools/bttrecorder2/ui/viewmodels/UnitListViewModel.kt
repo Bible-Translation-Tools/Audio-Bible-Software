@@ -1,7 +1,5 @@
 package org.bibletranslationtools.bttrecorder2.ui.viewmodels
 
-import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
-import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -12,13 +10,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.bibletranslationtools.shared.preferences.IAppPreferences
+import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
+import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.shared.ui.failureMessage
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
-import org.bibletranslationtools.otter.common.data.workbook.AudioState
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
@@ -213,38 +211,46 @@ class UnitListViewModel(
                 _uiState.update { it.copy(workbook = workbook, chapter = chapter) }
                 chapter.loadedState()
 
-                // Verses only: the chapter's compiled take lives on `chapter.audio` (see
-                // ChapterTranslationBuilder) and the chapter list owns its UI; this screen is
-                // exclusively for per-verse takes.
-                verseAudio(chapter).collect { verses ->
-                    val units = verses.map { (chunk, audio) ->
-                        val selected = audio.selectedTake?.takeUnless { it.isDeleted() }
+                observedChunks(chapter).collect { allChunks ->
+                    // Drop the chapter-meta chunk so the unit list only shows individual
+                    // verses. The chapter's compiled take lives on `chapter.audio` (see
+                    // ChapterTranslationBuilder) and the chapter list owns its UI; this
+                    // screen is exclusively for per-verse takes.
+                    val chunks = allChunks.filter { it.contentType == ContentType.TEXT }
+
+                    val units = chunks.map { chunk ->
                         UnitUiModel(
                             unit = chunk,
-                            hasContent = selected != null,
-                            takes = audio.takes.count { !it.isDeleted() },
-                            selectedTake = selected
+                            hasContent = chunk.hasSelectedAudio(),
+                            takes = chunk.audio.getAllTakes().count { !it.isDeleted() },
+                            selectedTake = chunk.audio.getSelectedTake()
                         )
                     }
 
-                    // Browse indices point at each unit's selected take at first; an index the user
-                    // has already set is kept, clamped to the takes there are now (one may have
-                    // just been deleted).
-                    val existing = _uiState.value.currentTakeIndices
-                    val indices = units.associate { unit ->
-                        val takes = unit.unit.audio.getAllTakes()
+                    // Build initial browse indices pointing at each unit's selected take.
+                    // Preserve any indices the user has already set.
+                    val initialIndices = chunks.associate { chunk ->
+                        val takes = chunk.audio.getAllTakes()
                             .filter { !it.isDeleted() }
                             .sortedBy { it.number }
-                        val initial = unit.selectedTake?.let { takes.indexOf(it) }?.coerceAtLeast(0) ?: 0
-                        val index = existing[unit.unit.sort] ?: initial
-                        unit.unit.sort to index.coerceIn(0, (unit.takes - 1).coerceAtLeast(0))
+                        val selected = chunk.audio.getSelectedTake()
+                        val idx = if (selected != null) takes.indexOf(selected).coerceAtLeast(0) else 0
+                        chunk.sort to idx
+                    }
+                    val existing = _uiState.value.currentTakeIndices
+                    val mergedIndices = initialIndices + existing.filter { (sort, _) ->
+                        chunks.any { it.sort == sort }
+                    }.mapValues { (sort, idx) ->
+                        // Clamped to the takes there are now: one may have just been deleted.
+                        val takes = units.first { it.unit.sort == sort }.takes
+                        idx.coerceIn(0, (takes - 1).coerceAtLeast(0))
                     }
 
                     _uiState.update {
                         it.copy(
                             isLoading = false,
                             units = units,
-                            currentTakeIndices = indices
+                            currentTakeIndices = mergedIndices
                         )
                     }
 
@@ -252,7 +258,7 @@ class UnitListViewModel(
                     launch(ioDispatcher) {
                         val existing = _uiState.value.takeDurations
                         val newDurations = mutableMapOf<String, String>()
-                        verses.forEach { (chunk, _) ->
+                        chunks.forEach { chunk ->
                             chunk.audio.getAllTakes().filter { !it.isDeleted() }.forEach { take ->
                                 val key = take.file.absolutePath
                                 if (!existing.containsKey(key)) {
@@ -278,18 +284,14 @@ class UnitListViewModel(
         }
     }
 
-    /**
-     * Each verse of [chapter]'s active chunk layout with its saved takes, following a new layout
-     * and every verse's takes.
-     */
+    /** [chapter]'s chunks in its active layout, emitted again when the layout or any chunk's takes change. */
     @OptIn(ExperimentalCoroutinesApi::class)
-    private fun verseAudio(chapter: Chapter): Flow<List<Pair<Chunk, AudioState>>> =
+    private fun observedChunks(chapter: Chapter): Flow<List<Chunk>> =
         chapter.state.flatMapLatest { state ->
-            val verses = state.chunks.filter { it.contentType == ContentType.TEXT }
-            if (verses.isEmpty()) {
-                flowOf(emptyList<Pair<Chunk, AudioState>>())
+            if (state.chunks.isEmpty()) {
+                flowOf(emptyList())
             } else {
-                combine(verses.map { verse -> verse.audio.state.map { verse to it } }) { it.toList() }
+                combine(state.chunks.map { it.audio.state }) { state.chunks }
             }
         }
 
@@ -399,18 +401,19 @@ class UnitListViewModel(
         if (playingSame) {
             runCatching { audioPlayer?.pause() }
             stopProgressTicker()
-            _uiState.update { state ->
-                state.copy(
-                    isPlaying = false,
-                    currentPlayingTake = null,
-                    playbackProgress = 0f,
-                    elapsedText = "00:00:00",
-                    durationText = "00:00:00"
-                )
-            }
         }
+
         // Saved first. Deleting the selected take also deselects it, in the same step; the row and
         // its browse index follow the unit's saved state through loadUnits.
         launchLogged { showIfFailed(unit.audio.deleteTake(take)) }
+        _uiState.update { state ->
+            state.copy(
+                isPlaying = if (playingSame) false else state.isPlaying,
+                currentPlayingTake = if (playingSame) null else state.currentPlayingTake,
+                playbackProgress = if (playingSame) 0f else state.playbackProgress,
+                elapsedText = if (playingSame) "00:00:00" else state.elapsedText,
+                durationText = if (playingSame) "00:00:00" else state.durationText
+            )
+        }
     }
 }

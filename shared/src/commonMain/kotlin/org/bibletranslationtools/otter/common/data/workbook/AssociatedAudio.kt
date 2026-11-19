@@ -63,13 +63,10 @@ class AssociatedAudio(
     /** The next take number: one past the highest, deleted takes included. */
     fun getNewTakeNumber(): Int = (_state.value.takes.maxOfOrNull { it.number } ?: 0) + 1
 
-    /**
-     * Saves [take] and, when [select] is set, selects it in the same transaction. Returns the saved
-     * take, which has its id.
-     */
-    suspend fun insertTake(take: Take, select: Boolean = true): SaveResult<Take> = writer.save(gate) {
-        val saved = store.addTake(owner, take, select)
-        _state.update { s -> s.copy(takes = s.takes + saved, selected = if (select) saved.id else s.selected) }
+    /** Saves [take] and selects it in the same transaction. Returns the saved take, which has its id. */
+    suspend fun insertTake(take: Take): SaveResult<Take> = writer.save(gate) {
+        val saved = store.addTake(owner, take)
+        _state.update { s -> s.copy(takes = s.takes + saved, selected = saved.id) }
         saved
     }
 

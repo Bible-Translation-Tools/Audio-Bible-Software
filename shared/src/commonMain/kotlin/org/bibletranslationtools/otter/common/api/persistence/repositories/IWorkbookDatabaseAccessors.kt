@@ -27,7 +27,6 @@ import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 
 typealias ModelTake = org.bibletranslationtools.otter.common.data.primitives.Take
 
-/** The reads the workbook loader needs. The workbook's writes go through its WorkbookStore. */
 interface IWorkbookDatabaseAccessors {
     fun getChildren(collection: Collection): Single<List<Collection>>
     fun getCollectionMetaContent(collection: Collection): Single<Content>

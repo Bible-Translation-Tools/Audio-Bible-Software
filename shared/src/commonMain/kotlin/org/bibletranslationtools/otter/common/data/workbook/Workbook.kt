@@ -35,9 +35,6 @@ class Workbook(
     val artworkAccessor: ArtworkAccessor by lazy(artworkAccessor)
     val projectFilesAccessor: ProjectFilesAccessor by lazy(projectFilesAccessor)
 
-    /** True once [close] has run; a closed workbook refuses every change. */
-    val isClosed: Boolean get() = writer.isClosed
-
     /** Refuses later changes and waits for the change in progress to be saved. */
     suspend fun close() = writer.close()
 

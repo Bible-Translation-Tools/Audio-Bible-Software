@@ -1,5 +1,8 @@
-package org.bibletranslationtools.otter.common.data.workbook
+package org.bibletranslationtools.otter.common.domain.model
 
+import org.bibletranslationtools.otter.common.data.workbook.SaveResult
+import org.bibletranslationtools.otter.common.domain.IUndoable
+import org.bibletranslationtools.otter.common.domain.NOTHING_TO_SAVE
 import java.util.ArrayDeque
 import java.util.Deque
 

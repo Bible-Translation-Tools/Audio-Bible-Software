@@ -4,6 +4,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
@@ -12,7 +13,6 @@ import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.domain.project.InitializeProjectFiles
-import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 
 /**
@@ -57,8 +57,8 @@ class OratureWorkbookDataStore(
      * Set the active workbook + mode (JVM: `activeWorkbookProperty` / `currentModeProperty`) and
      * make sure the project's on-disk files exist.
      *
-     * Closes the previously-open workbook when switching projects, so its changes in progress finish
-     * and no later ones start.
+     * Closes the previously-open workbook when switching projects,
+     * matching the JVM app's cached `workbookRepo` lifecycle.
      *
      * Every open first settles the active chapter ([Chapter.settle]), before the previous workbook
      * closes: opening a project, switching to another, and opening narration on the book all end
@@ -100,20 +100,18 @@ class OratureWorkbookDataStore(
     }
 
     /**
-     * Closes [project]'s workbook before its files are deleted or reset, so nothing writes to the
-     * project while it goes: the open one, and the repository's live copy if another screen opened
-     * one. A project whose books cannot be built has no workbook to close, and must still be deletable.
+     * Closes [project]'s workbook (the repository's live copy) before its files are deleted or reset,
+     * so nothing writes to the project while it goes. A project whose books cannot be built has no
+     * workbook to close, and must still be deletable.
      */
     suspend fun closeProject(project: WorkbookDescriptor) = withContext(NonCancellable) {
-        val open = _activeWorkbook.value
-        if (open != null &&
-            open.source.collectionId == project.sourceCollection.id &&
-            open.target.collectionId == project.targetCollection.id
-        ) {
-            close()
-        }
         val live = runCatching { workbookRepository.get(project.sourceCollection, project.targetCollection) }
             .getOrNull() ?: return@withContext
+        if (live === _activeWorkbook.value) {
+            _activeWorkbook.value = null
+            _activeChapter.value = null
+            _activeChunk.value = null
+        }
         workbookRepository.closeWorkbook(live)
     }
 

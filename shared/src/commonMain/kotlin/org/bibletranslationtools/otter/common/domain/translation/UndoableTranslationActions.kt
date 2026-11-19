@@ -18,17 +18,15 @@
  */
 package org.bibletranslationtools.otter.common.domain.translation
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
 import org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.TakeCheckingState
-import org.bibletranslationtools.otter.common.data.workbook.IUndoable
-import org.bibletranslationtools.otter.common.data.workbook.NOTHING_TO_SAVE
-import org.bibletranslationtools.otter.common.data.workbook.inOrder
+import org.bibletranslationtools.otter.common.domain.IUndoable
+import org.bibletranslationtools.otter.common.domain.NOTHING_TO_SAVE
+import org.bibletranslationtools.otter.common.domain.inOrder
 
 abstract class TranslationTakeAction(
     protected val chunk: Chunk,
@@ -60,7 +58,7 @@ class TranslationTakeRecordAction(
 
     override suspend fun redo(): SaveResult<Unit> {
         val saved = savedTake ?: return SaveResult.Saved(Unit)
-        withContext(Dispatchers.IO) { saved.file.setLastModified(System.currentTimeMillis()) }
+        saved.file.setLastModified(System.currentTimeMillis())
         return inOrder({ chunk.audio.restoreTake(saved) }, { chunk.audio.selectTake(saved) })
     }
 }
@@ -68,21 +66,23 @@ class TranslationTakeRecordAction(
 class TranslationTakeDeleteAction(
     chunk: Chunk,
     take: Take,
-    private val isTakeSelected: Boolean,
     private val postDeleteCallback: suspend (Take, Boolean) -> Unit
 ) : TranslationTakeAction(chunk, take) {
 
+    private var wasSelected = false
+
     override suspend fun execute(): SaveResult<Unit> {
+        wasSelected = chunk.audio.getSelectedTake()?.id == take.id
         val result = chunk.audio.deleteTake(take)
-        if (result is SaveResult.Saved) postDeleteCallback(take, isTakeSelected)
+        if (result is SaveResult.Saved) postDeleteCallback(take, wasSelected)
         return result
     }
 
     override suspend fun undo(): SaveResult<Unit> {
-        withContext(Dispatchers.IO) { take.file.setLastModified(System.currentTimeMillis()) }
+        take.file.setLastModified(System.currentTimeMillis())
         return inOrder(
             { chunk.audio.restoreTake(take) },
-            { if (isTakeSelected) chunk.audio.selectTake(take) else SaveResult.Saved(Unit) }
+            { if (wasSelected) chunk.audio.selectTake(take) else SaveResult.Saved(Unit) }
         )
     }
 
@@ -95,7 +95,7 @@ class TranslationTakeSelectAction(
     private val previouslySelectedTake: Take? = null
 ) : TranslationTakeAction(chunk, take) {
     override suspend fun execute(): SaveResult<Unit> {
-        withContext(Dispatchers.IO) { take.file.setLastModified(System.currentTimeMillis()) }
+        take.file.setLastModified(System.currentTimeMillis())
         return chunk.audio.selectTake(take)
     }
 
@@ -112,12 +112,11 @@ class TranslationTakeApproveAction(
     private val oldCheckingStage: TakeCheckingState
 ) : IUndoable {
 
-    private var undoCallback: suspend () -> Unit = {}
-    private var redoCallback: suspend () -> Unit = {}
+    private var undoCallback: () -> Unit = {}
+    private var redoCallback: () -> Unit = {}
 
     override suspend fun execute(): SaveResult<Unit> {
-        val checksum = withContext(Dispatchers.IO) { take.checksum() }
-        return inOrder({ audio.setChecking(take, TakeCheckingState(checking, checksum)) })
+        return inOrder({ audio.setChecking(take, TakeCheckingState(checking, take.checksum())) })
     }
 
     override suspend fun undo(): SaveResult<Unit> {
@@ -132,11 +131,11 @@ class TranslationTakeApproveAction(
         return result
     }
 
-    fun setUndoCallback(op: suspend () -> Unit) {
+    fun setUndoCallback(op: () -> Unit) {
         undoCallback = op
     }
 
-    fun setRedoCallback(op: suspend () -> Unit) {
+    fun setRedoCallback(op: () -> Unit) {
         redoCallback = op
     }
 }

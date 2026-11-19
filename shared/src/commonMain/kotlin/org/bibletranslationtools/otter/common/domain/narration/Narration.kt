@@ -22,7 +22,6 @@ import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import io.reactivex.Completable
 import kotlinx.coroutines.flow.Flow
-import io.reactivex.Single
 import io.reactivex.disposables.CompositeDisposable
 import io.reactivex.disposables.Disposable
 import io.reactivex.schedulers.Schedulers
@@ -39,7 +38,6 @@ import org.bibletranslationtools.otter.common.audio.AudioFile
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
 import org.bibletranslationtools.otter.common.device.AudioFileReader
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
-import org.bibletranslationtools.otter.common.data.primitives.MimeType
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
@@ -52,7 +50,6 @@ import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.recorder.WavFileWriter
 import java.io.File
 import java.lang.Integer.max
-import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -623,18 +620,17 @@ class Narration(
         val namer = WorkbookFileNamerBuilder.createFileNamer(workbook, chapter, null, chapter, workbook.sourceMetadataSlug)
         val newTake = withContext(Dispatchers.IO) {
             val parentDir = workbook.projectFilesAccessor.getChapterAudioDir(workbook, chapter)
-            // A file nothing else uses: the next free take number if this one's name is taken.
             val reserved = TakeFiles.reserve(parentDir, chapter.audio.getNewTakeNumber()) {
                 namer.generateName(it, AudioFileFormat.WAV)
             }
-            // Bounce to a temp file first, to avoid a Windows file lock when editing with an external app.
+            // bounce to a temp file to avoid Windows file-locking issue when editing with external app
             val tempFile = directoryProvider.createTempFile("bounced-${reserved.file.name}", ".wav")
             audioBouncer.bounceAudio(tempFile, chapterRepresentation.getAudioFileReader(), activeVerses)
             tempFile.copyTo(reserved.file, overwrite = true)
             tempFile.deleteOnExit()
             reserved.toTake()
         }
-        val result = chapter.audio.insertTake(newTake, select = true)
+        val result = chapter.audio.insertTake(newTake)
         if (result is SaveResult.Saved) takeToModify = result.value
         return result
     }
@@ -647,10 +643,9 @@ class Narration(
         val namer = WorkbookFileNamerBuilder.createFileNamer(workbook, chapter, null, chapter, workbook.sourceMetadataSlug)
         val reserved = withContext(Dispatchers.IO) {
             val parentDir = workbook.projectFilesAccessor.getChapterAudioDir(workbook, chapter)
-            // A file nothing else uses: the next free take number if this one's name is taken.
             TakeFiles.reserve(parentDir, chapter.audio.getNewTakeNumber()) { namer.generateName(it, AudioFileFormat.WAV) }
         }
-        val result = chapter.audio.insertTake(reserved.toTake(), select = true)
+        val result = chapter.audio.insertTake(reserved.toTake())
         if (result is SaveResult.Saved) {
             takeToModify = result.value
             NarrationTakeModifier.modifyAudioData(result.value, chapterRepresentation.getAudioFileReader(), activeVerses)

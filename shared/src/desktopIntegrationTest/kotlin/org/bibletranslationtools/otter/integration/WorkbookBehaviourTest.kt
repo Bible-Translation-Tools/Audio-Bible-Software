@@ -140,7 +140,6 @@ class WorkbookBehaviourTest {
         assertTrue(env.takeFile(takeId).exists())
         assertEquals(0, env.chunkCount(project, 1), "the database's active layout is the verses again")
 
-        assertTrue(newChunk.retired)
         val refused = newChunk.audio.insertTake(env.newTake(project, 1, "retired_t1.wav"))
         assertEquals(SaveResult.Rejected(RejectReason.RETIRED), refused, "a chunk of the undone layout still saved")
 

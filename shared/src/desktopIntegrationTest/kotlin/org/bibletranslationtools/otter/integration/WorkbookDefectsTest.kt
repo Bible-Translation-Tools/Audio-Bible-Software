@@ -135,7 +135,6 @@ class WorkbookDefectsTest {
         env.closeWorkbook(workbook)
         val result = chunk.audio.selectTake(take)
 
-        assertTrue(workbook.isClosed)
         assertEquals(SaveResult.Rejected(RejectReason.CLOSED), result)
         assertNull(chunk.audio.getSelectedTake(), "a refused change still showed in memory")
         assertEquals(null, env.selectedTakeOn(project, 1, 1), "a change to a closed workbook was saved")

@@ -649,12 +649,12 @@ class PlaybackViewModel(
                 audioBouncer.bounceAudio(tempEditedWav, reader, markers)
                 val result = persistEditedFileAsNewTake(tempEditedWav)
                 tempEditedWav.delete()
-                if (result is SaveResult.Saved) {
+                if (result == null || result is SaveResult.Saved) {
                     // The spliced clips are now baked into the saved take's audio.
                     discardPendingInsertClips()
                 } else {
                     // Not saved: the edits stay in the session, so the user can try again.
-                    val message = result?.failureMessage() ?: getString(Res.string.err_save_edited_take)
+                    val message = result.failureMessage() ?: getString(Res.string.err_save_edited_take)
                     updateState { it.copy(error = message) }
                 }
             }.onFailure { e ->
@@ -1008,7 +1008,6 @@ class PlaybackViewModel(
         _navEvents.tryEmit(NavEvent.Exit)
     }
 
-    /** @return whether the take was saved, or null when there is no target to save it to. */
     private suspend fun persistEditedFileAsNewTake(editedAudioFile: File): SaveResult<Take>? {
         val wb = workbook ?: return null
         val target = currentTarget() ?: return null
@@ -1123,7 +1122,6 @@ class PlaybackViewModel(
             }
         }
 
-        // The take shown follows the saved selection.
         selectedJob = launchLogged {
             audio.selectedFlow.collect { selectedTake ->
                 updateState { it.copy(selectedTake = selectedTake) }

@@ -337,9 +337,9 @@ private fun TranslationStepContent(
                 val chunkingVm = androidx.lifecycle.viewmodel.compose.viewModel(key = "chunking-$sort") {
                     org.bibletranslationtools.orature.ui.viewmodels.OratureChunkingViewModel(sort, viewModel)
                 }
-                // Leaving the step forward saves the markers as a rechunk through the translation
-                // VM's awaited chunk-save handler (selectStep), BEFORE the next step loads; nothing
-                // else saves them.
+                // Step-leave persistence is handled by the translation VM's awaited chunk-save
+                // handler (selectStep), which commits BEFORE loading the next step. A second
+                // fire-and-forget save here would race it and corrupt the write, so it's gone.
                 OratureChunkingScreen(chunkingVm)
             }
         }

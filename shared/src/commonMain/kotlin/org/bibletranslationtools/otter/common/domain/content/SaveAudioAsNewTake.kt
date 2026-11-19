@@ -74,12 +74,11 @@ class SaveAudioAsNewTake(
                 recordable = recordable,
                 rcSlug = workbook.sourceMetadataSlug
             )
-            // Claims a file nothing else uses: if this take number's name is already on disk (an
-            // older chunk layout's take, an orphan), it moves on to the next free number rather
-            // than replacing that audio. The copy then writes into the file this call owns.
             val reserved = TakeFiles.reserve(
-                // Creates the chapter directory if it is missing. formatChapterNumber() reads only
-                // the chapter count, title and sort, so this agrees with every other take namer.
+                // Creates the chapter directory if it is missing. Equivalent to resolving
+                // audioDir against the namer's formatted chapter number by hand, which is what
+                // the Orature copy did — formatChapterNumber() reads only the chapter count,
+                // title and sort, so both namers agree on it.
                 workbook.projectFilesAccessor.getChapterAudioDir(workbook, chapter),
                 audio.getNewTakeNumber()
             ) { namer.generateName(it, AudioFileFormat.WAV) }
@@ -88,7 +87,7 @@ class SaveAudioAsNewTake(
         }
 
         // Saved and selected in one transaction, so nothing can select it before it has an id.
-        val result = audio.insertTake(newTake, select = true)
+        val result = audio.insertTake(newTake)
         if (result !is SaveResult.Saved) withContext(Dispatchers.IO) { newTake.file.delete() }
         return result
     }

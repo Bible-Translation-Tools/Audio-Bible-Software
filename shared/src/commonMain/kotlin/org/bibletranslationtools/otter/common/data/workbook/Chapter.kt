@@ -30,6 +30,8 @@ import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.primitives.MimeType
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
+import org.bibletranslationtools.otter.common.domain.IUndoable
+import org.bibletranslationtools.otter.common.domain.model.UndoableActionHistory
 import org.bibletranslationtools.otter.common.domain.content.Recordable
 
 /**
@@ -173,7 +175,6 @@ class Chapter(
             chunks = layout.chunks.map { record ->
                 Chunk(
                     id = record.id,
-                    draft = record.draft,
                     sort = record.sort,
                     label = record.label,
                     start = record.start,

@@ -10,32 +10,19 @@ import kotlin.coroutines.EmptyCoroutineContext
 import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 
 /**
- * The one queue every database write in the app goes through.
+ * The one queue every database write in the app goes through. SQLDelight transactions are bound to
+ * the thread that began them, so [write] runs its block as one transaction on a dispatcher that runs
+ * one task at a time: writes never overlap and run in the order they were submitted. [scheduler] is
+ * the same queue for Rx code.
  *
- * SQLDelight transactions are bound to the thread that began them, on both the JDBC (desktop) and
- * Android drivers, and the runtime throws if a transaction ends on another thread. Before this
- * class, writers ran wherever they happened to be — Rx `Schedulers.io()`, the caller's thread,
- * `Schedulers.single()` in project deletion — each on its own connection, and could collide.
- *
- * [write] runs its block as ONE transaction on a dispatcher that runs one task at a time, so:
- *  - a transaction starts and ends on the same thread (the block is plain blocking code);
- *  - no two writes overlap, app-wide;
- *  - writes run in the order they were submitted.
- *
- * [scheduler] is the same queue as an Rx [Scheduler], so repositories that have not moved to
- * coroutines yet share it (`subscribeOn(databaseWriter.scheduler)`).
- *
- * One rule: never wait on the queue from inside a write. The queue is busy running the waiting
- * block, so the inner write could never start. [write] checks for that and fails fast with
- * [ReentrantWriteException] instead of hanging.
+ * Never wait on the queue from inside a write: the queue is busy running the waiting block.
  *
  * Bind it as a singleton: two instances would be two queues.
  */
 class DatabaseWriter(
     private val database: DaoProvider,
-    dispatcher: CoroutineDispatcher = defaultDispatcher()
+    private val queue: CoroutineDispatcher = defaultDispatcher()
 ) {
-    private val queue: CoroutineDispatcher = dispatcher
 
     /**
      * The queue as an Rx scheduler, for code that has not moved to coroutines yet. Its tasks are
@@ -44,16 +31,11 @@ class DatabaseWriter(
      * [writeBlocking]).
      */
     val scheduler: Scheduler = Schedulers.from { task ->
-        val marked = Runnable { inQueueTask { task.run() } }
-        // A dispatcher that runs in place (tests' Unconfined) must not be dispatched to.
-        if (queue.isDispatchNeeded(EmptyCoroutineContext)) queue.dispatch(EmptyCoroutineContext, marked) else marked.run()
+        queue.dispatch(EmptyCoroutineContext, Runnable { inQueueTask { task.run() } })
     }
 
     /** Runs [block] as one transaction on the queue and returns its result. */
-    suspend fun <T> write(block: () -> T): T {
-        checkNotOnQueue()
-        return withContext(queue) { runOnQueue(block) }
-    }
+    suspend fun <T> write(block: () -> T): T = withContext(queue) { runOnQueue(block) }
 
     /**
      * [write] for blocking code. Called from code already holding the queue, it runs [block] there
@@ -91,10 +73,6 @@ class DatabaseWriter(
         }
     }
 
-    private fun checkNotOnQueue() {
-        if (isOnQueue()) throw ReentrantWriteException()
-    }
-
     private companion object {
         /** Thread-local because a queued block is plain blocking code that runs on one thread. */
         val onQueue = ThreadLocal<Boolean>()
@@ -106,12 +84,3 @@ class DatabaseWriter(
         fun defaultDispatcher(): CoroutineDispatcher = Dispatchers.IO.limitedParallelism(1)
     }
 }
-
-/**
- * Code running inside a [DatabaseWriter] block waited on the queue. Call the DAOs directly
- * instead: the block is already one transaction.
- */
-class ReentrantWriteException : IllegalStateException(
-    "Waited on the database write queue from inside a write; the queue would never get to it. " +
-        "Call the DAOs directly inside the running block instead."
-)

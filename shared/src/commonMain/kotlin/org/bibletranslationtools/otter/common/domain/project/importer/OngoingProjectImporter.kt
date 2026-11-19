@@ -193,7 +193,6 @@ class OngoingProjectImporter(
                         languageSlug == existingProject.target.language.slug &&
                         projectSlug == existingProject.target.slug
                 }?.let {
-                    // Called from the importer's blocking Rx chain, off the main thread.
                     runBlocking { workbookRepository.closeWorkbook(it) }
                     it.projectFilesAccessor.isInitialized().also { initialized ->
                         if (initialized) existingProjectSource = it.source.toCollection()

@@ -27,7 +27,6 @@ import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
 import org.bibletranslationtools.otter.common.data.audio.ChunkMarker
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.DraftId
-import org.bibletranslationtools.otter.common.data.workbook.SaveFailure
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.device.AudioFileReader
@@ -184,18 +183,8 @@ class OratureChunkingViewModel(
         val model = markerModel ?: return@withLock true
         if (!model.canUndo()) return@withLock true // nothing changed
         val cues = model.markerItems.filter { it.placed }.map { it.toAudioCue() }
-        val result = try {
-            chap.execute(RechunkAction(rechunkChapter, wb, chap, cues, src))
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            SaveResult.Failed(SaveFailure.of(e), e)
-        }
-        saveMessages.report(result)
-        if (result !is SaveResult.Saved) {
-            logFailure("saving the chunk layout", IllegalStateException("Chunks not saved: $result"))
-            return@withLock false
-        }
+        val result = saveMessages.report(chap.execute(RechunkAction(rechunkChapter, wb, chap, cues, src)))
+        if (result !is SaveResult.Saved) return@withLock false
         // The saved layout's markers start a fresh in-memory history: undoing the rechunk itself is
         // the chapter's.
         reloadMarkersFromLayout()
@@ -433,8 +422,6 @@ class OratureChunkingViewModel(
     }
 
     public override fun onCleared() {
-        // Marker edits not yet saved by leaving the step forward are dropped with the screen: a
-        // rechunk is saved only on that step change, never from here.
         translationVm.clearUndoRedoHandlers()
         translationVm.clearChunkSaveHandler()
         waveformTickerJob?.cancel()

@@ -62,7 +62,7 @@ class ChapterTranslationBuilder(
                     chapter.audio.setChecking(existing, TakeCheckingState(CheckingStatus.VERSE, existingChecksum))
                 } else {
                     val newTake = newChapterTake(workbook, chapter, compiled)
-                    chapter.audio.insertTake(newTake, select = true)
+                    chapter.audio.insertTake(newTake)
                         .also { if (it !is SaveResult.Saved) withContext(Dispatchers.IO) { newTake.file.delete() } }
                 }
                 if (result is SaveResult.Saved) logger.info("Chapter ${chapter.sort} compiled successfully.")

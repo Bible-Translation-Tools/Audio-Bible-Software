@@ -12,7 +12,7 @@ import java.time.LocalDate
  * Every write is one transaction. A write that fails throws, and the node turns that into a
  * [SaveResult.Failed].
  *
- * Implemented in `persistence/` over SQLite and the project's files, and by a fake for tests.
+ * Implemented in `persistence/` over SQLite and the project's files.
  */
 interface WorkbookStore {
 
@@ -22,8 +22,8 @@ interface WorkbookStore {
     /** The rows of [chapter]'s current chunk layout, each with its takes. */
     suspend fun loadChunks(chapter: ChapterId): ChapterLayout
 
-    /** Saves [take] as [owner]'s, and selects it in the same transaction when [select] is set. */
-    suspend fun addTake(owner: ElementId, take: Take, select: Boolean): Take
+    /** Saves [take] as [owner]'s and selects it, in one transaction. */
+    suspend fun addTake(owner: ElementId, take: Take): Take
 
     /** Sets [owner]'s selected take; null clears it. */
     suspend fun setSelected(owner: ElementId, take: TakeId?)

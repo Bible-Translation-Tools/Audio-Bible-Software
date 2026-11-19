@@ -9,7 +9,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
 import org.bibletranslationtools.otter.common.persistence.database.sqldelight.SqlDelightAppDatabase
 import org.bibletranslationtools.otter.common.persistence.entities.LanguageEntity
 import java.io.File
@@ -104,16 +103,6 @@ class DatabaseWriterTest {
         writer.write { }
 
         assertEquals((1..20).toList(), order.toList())
-    }
-
-    @Test
-    fun `waiting on the queue from inside a write fails instead of hanging`() = runBlocking {
-        withTimeout(TimeUnit.SECONDS.toMillis(10)) {
-            assertFailsWith<ReentrantWriteException> {
-                writer.write { runBlocking { writer.write { } } }
-            }
-        }
-        assertTrue(writer.write { true }, "the queue still works after a refused wait")
     }
 
     /**
