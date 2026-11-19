@@ -1,55 +1,57 @@
+/**
+ * Copyright (C) 2020-2024 Wycliffe Associates
+ *
+ * This file is part of Orature.
+ *
+ * Orature is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * Orature is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Orature.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.bibletranslationtools.otter.common.domain.model
 
-import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.domain.IUndoable
-import org.bibletranslationtools.otter.common.domain.NOTHING_TO_SAVE
+import java.util.*
 import java.util.ArrayDeque
-import java.util.Deque
 
-/**
- * An undo and redo history. An action moves between the stacks only when its step was saved, so
- * an undo that failed to save stays undoable instead of vanishing from the history.
- */
 class UndoableActionHistory<T : IUndoable> {
     private val undoStack: Deque<IUndoable> = ArrayDeque()
     private val redoStack: Deque<IUndoable> = ArrayDeque()
 
-    suspend fun execute(action: T): SaveResult<Unit> {
-        val result = action.execute()
-        if (result is SaveResult.Saved) {
-            undoStack.push(action)
-            redoStack.clear()
-        }
-        return result
+    fun execute(action: T) {
+        undoStack.push(action)
+        redoStack.clear()
+        action.execute()
     }
 
-    suspend fun undo(): SaveResult<Unit> {
-        val op = undoStack.peek() ?: return NOTHING_TO_SAVE
-        val result = op.undo()
-        if (result is SaveResult.Saved) {
-            undoStack.pop()
-            redoStack.push(op)
-        }
-        return result
+    fun undo() {
+        if (undoStack.isEmpty()) return
+
+        val op = undoStack.pop()
+        redoStack.push(op)
+        op.undo()
     }
 
-    suspend fun redo(): SaveResult<Unit> {
-        val action = redoStack.peek() ?: return NOTHING_TO_SAVE
-        val result = action.redo()
-        if (result is SaveResult.Saved) {
-            redoStack.pop()
-            undoStack.push(action)
-        }
-        return result
+    fun redo() {
+        if (redoStack.isEmpty()) return
+
+        val action = redoStack.pop()
+        undoStack.push(action)
+        action.redo()
     }
 
     fun clear() {
         undoStack.clear()
         redoStack.clear()
     }
-
-    /** The action the next [undo] would undo, if any. */
-    fun peekUndo(): IUndoable? = undoStack.peek()
 
     fun canUndo() = undoStack.isNotEmpty()
     fun canRedo() = redoStack.isNotEmpty()

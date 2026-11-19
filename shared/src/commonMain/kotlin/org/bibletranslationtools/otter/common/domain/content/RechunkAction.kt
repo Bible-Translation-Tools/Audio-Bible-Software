@@ -5,7 +5,7 @@ import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.RechunkReceipt
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.domain.IUndoable
+import org.bibletranslationtools.otter.common.data.workbook.UndoableChange
 import java.io.File
 
 /**
@@ -19,7 +19,7 @@ class RechunkAction(
     private val chapter: Chapter,
     private val cues: List<AudioCue>,
     private val sourceAudio: File
-) : IUndoable {
+) : UndoableChange {
 
     /** The two layouts, once [execute] has saved the rechunk. */
     var receipt: RechunkReceipt? = null

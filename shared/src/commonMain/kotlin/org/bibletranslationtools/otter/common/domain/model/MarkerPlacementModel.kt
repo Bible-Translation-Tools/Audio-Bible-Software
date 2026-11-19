@@ -30,6 +30,7 @@ import org.bibletranslationtools.otter.common.data.audio.ChapterMarker
 import org.bibletranslationtools.otter.common.data.audio.ChunkMarker
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
 import org.bibletranslationtools.otter.common.data.audio.VerseMarker
+import org.bibletranslationtools.otter.common.domain.IUndoable
 
 
 private const val SEEK_EPSILON = 15_000
@@ -62,8 +63,8 @@ class MarkerPlacementModel(
         MarkerPlacementType.VERSE -> VerseMarker::class.java
     }
 
-    private val undoStack: Deque<MarkerUndoable> = ArrayDeque()
-    private val redoStack: Deque<MarkerUndoable> = ArrayDeque()
+    private val undoStack: Deque<IUndoable> = ArrayDeque()
+    private val redoStack: Deque<IUndoable> = ArrayDeque()
 
     private val markers = mutableListOf<AudioMarker>()
     val markerItems = mutableListOf<MarkerItem>()
@@ -341,14 +342,7 @@ class MarkerPlacementModel(
         }.ignoreElement()
     }
 
-    /** An in-memory marker edit: nothing to save, so undo and redo are plain calls. */
-    private interface MarkerUndoable {
-        fun execute()
-        fun undo()
-        fun redo()
-    }
-
-    private abstract inner class MarkerOperation(val markerId: Int) : MarkerUndoable
+    private abstract inner class MarkerOperation(val markerId: Int) : IUndoable
 
     private inner class Add(val marker: MarkerItem) : MarkerOperation(marker.id) {
         override fun execute() {

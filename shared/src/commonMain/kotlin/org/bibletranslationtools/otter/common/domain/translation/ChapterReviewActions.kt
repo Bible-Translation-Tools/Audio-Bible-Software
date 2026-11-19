@@ -4,12 +4,12 @@ import kotlin.reflect.KClass
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
 import org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio
+import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.TakeCheckingState
-import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.domain.IUndoable
-import org.bibletranslationtools.otter.common.domain.NOTHING_TO_SAVE
-import org.bibletranslationtools.otter.common.domain.inOrder
+import org.bibletranslationtools.otter.common.data.workbook.UndoableChange
+import org.bibletranslationtools.otter.common.data.workbook.inOrder
 import org.bibletranslationtools.otter.common.domain.model.MarkerPlacementModel
 
 /** [ofType] optionally targets a SPECIFIC marker type (e.g. Book or Chapter) instead of just the
@@ -21,19 +21,17 @@ class AddMarkerAction(
 ) : IUndoable {
     private var markerId: Int? = null
 
-    override suspend fun execute(): SaveResult<Unit> {
+    override fun execute() {
         markerId = markerModel.addMarker(location, ofType)
-        return NOTHING_TO_SAVE
     }
 
-    override suspend fun undo(): SaveResult<Unit> {
+    override fun undo() {
         markerId?.let {
             markerModel.deleteMarker(it)
         }
-        return NOTHING_TO_SAVE
     }
 
-    override suspend fun redo() = execute()
+    override fun redo() = execute()
 }
 
 class DeleteMarkerAction(
@@ -43,20 +41,18 @@ class DeleteMarkerAction(
     private var markerId: Int = id
     private var location: Int? = null
 
-    override suspend fun execute(): SaveResult<Unit> {
+    override fun execute() {
         location = markerModel.markerItems.find { it.id == markerId }?.marker?.location
         markerModel.deleteMarker(markerId)
-        return NOTHING_TO_SAVE
     }
 
-    override suspend fun undo(): SaveResult<Unit> {
+    override fun undo() {
         location?.let { loc ->
             markerId = markerModel.addMarker(loc)
         }
-        return NOTHING_TO_SAVE
     }
 
-    override suspend fun redo() = execute()
+    override fun redo() = execute()
 }
 
 class MoveMarkerAction(
@@ -65,24 +61,22 @@ class MoveMarkerAction(
     private val from: Int,
     private val to: Int
 ) : IUndoable {
-    override suspend fun execute(): SaveResult<Unit> {
+    override fun execute() {
         markerModel.moveMarker(id, from, to)
-        return NOTHING_TO_SAVE
     }
 
-    override suspend fun undo(): SaveResult<Unit> {
+    override fun undo() {
         markerModel.moveMarker(id, to, from)
-        return NOTHING_TO_SAVE
     }
 
-    override suspend fun redo() = execute()
+    override fun redo() = execute()
 }
 
 class TakeEditAction(
     private val audio: AssociatedAudio,
     private val newTake: Take,
     private val oldTake: Take,
-) : IUndoable {
+) : UndoableChange {
 
     lateinit var newMarkerModel: MarkerPlacementModel
 

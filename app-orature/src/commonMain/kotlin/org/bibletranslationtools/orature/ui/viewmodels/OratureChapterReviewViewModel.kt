@@ -548,7 +548,9 @@ class OratureChapterReviewViewModel(
     /** Add a verse marker at the playhead (JVM: placeMarker → AddMarkerAction). */
     fun placeMarker() {
         val model = markerModel ?: return
-        runAction(AddMarkerAction(model, positionFrames))
+        actionHistory.execute(AddMarkerAction(model, positionFrames))
+        onUndoableAction()
+        refreshMarkers()
     }
 
     /** Add a Book marker at the playhead (JVM: `AddMarkerSplitButton`'s "Add Book Marker" menu
@@ -556,55 +558,47 @@ class OratureChapterReviewViewModel(
     fun addBookMarker() {
         val model = markerModel ?: return
         if (!model.hasUnplacedMarkerOfType(BookMarker::class)) return
-        runAction(AddMarkerAction(model, positionFrames, BookMarker::class))
+        actionHistory.execute(AddMarkerAction(model, positionFrames, BookMarker::class))
+        onUndoableAction()
+        refreshMarkers()
     }
 
     /** Add a Chapter marker at the playhead ("Add Chapter Marker" menu item). */
     fun addChapterMarker() {
         val model = markerModel ?: return
         if (!model.hasUnplacedMarkerOfType(ChapterMarker::class)) return
-        runAction(AddMarkerAction(model, positionFrames, ChapterMarker::class))
+        actionHistory.execute(AddMarkerAction(model, positionFrames, ChapterMarker::class))
+        onUndoableAction()
+        refreshMarkers()
     }
 
     fun moveMarker(id: Int, newFrame: Int) {
         val model = markerModel ?: return
         val original = model.markerItems.firstOrNull { it.id == id }?.frame ?: return
-        runAction(MoveMarkerAction(model, id, original, newFrame.coerceIn(0, totalFrames)))
+        actionHistory.execute(MoveMarkerAction(model, id, original, newFrame.coerceIn(0, totalFrames)))
+        onUndoableAction()
+        refreshMarkers()
     }
 
     fun deleteMarker(id: Int) {
         val model = markerModel ?: return
-        runAction(DeleteMarkerAction(model, id))
+        actionHistory.execute(DeleteMarkerAction(model, id))
+        onUndoableAction()
+        refreshMarkers()
     }
 
     fun undo() {
         if (!actionHistory.canUndo()) return
-        launchLogged {
-            saveMessages.report(actionHistory.undo())
-            translationVm.updateChunkUndoRedo(canUndo = actionHistory.canUndo(), canRedo = true)
-            refreshMarkers()
-        }
+        actionHistory.undo()
+        translationVm.updateChunkUndoRedo(canUndo = actionHistory.canUndo(), canRedo = true)
+        refreshMarkers()
     }
 
     fun redo() {
         if (!actionHistory.canRedo()) return
-        launchLogged {
-            saveMessages.report(actionHistory.redo())
-            translationVm.updateChunkUndoRedo(canUndo = true, canRedo = actionHistory.canRedo())
-            refreshMarkers()
-        }
-    }
-
-    /**
-     * Runs [action] through the undo history. Marker actions change only the marker model, so they
-     * finish before the main-thread launch first suspends; the marker overlay follows at once.
-     */
-    private fun runAction(action: IUndoable) {
-        launchLogged {
-            saveMessages.report(actionHistory.execute(action))
-            onUndoableAction()
-            refreshMarkers()
-        }
+        actionHistory.redo()
+        translationVm.updateChunkUndoRedo(canUndo = true, canRedo = actionHistory.canRedo())
+        refreshMarkers()
     }
 
     private fun onUndoableAction() {

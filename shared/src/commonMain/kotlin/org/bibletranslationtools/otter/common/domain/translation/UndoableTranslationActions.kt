@@ -24,14 +24,13 @@ import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.TakeCheckingState
-import org.bibletranslationtools.otter.common.domain.IUndoable
-import org.bibletranslationtools.otter.common.domain.NOTHING_TO_SAVE
-import org.bibletranslationtools.otter.common.domain.inOrder
+import org.bibletranslationtools.otter.common.data.workbook.UndoableChange
+import org.bibletranslationtools.otter.common.data.workbook.inOrder
 
 abstract class TranslationTakeAction(
     protected val chunk: Chunk,
     protected val take: Take
-) : IUndoable
+) : UndoableChange
 
 class TranslationTakeRecordAction(
     chunk: Chunk,
@@ -100,7 +99,7 @@ class TranslationTakeSelectAction(
     }
 
     override suspend fun undo(): SaveResult<Unit> =
-        previouslySelectedTake?.let { chunk.audio.selectTake(it) } ?: NOTHING_TO_SAVE
+        previouslySelectedTake?.let { chunk.audio.selectTake(it) } ?: SaveResult.Saved(Unit)
 
     override suspend fun redo() = execute()
 }
@@ -110,7 +109,7 @@ class TranslationTakeApproveAction(
     private val take: Take,
     private val checking: CheckingStatus,
     private val oldCheckingStage: TakeCheckingState
-) : IUndoable {
+) : UndoableChange {
 
     private var undoCallback: () -> Unit = {}
     private var redoCallback: () -> Unit = {}

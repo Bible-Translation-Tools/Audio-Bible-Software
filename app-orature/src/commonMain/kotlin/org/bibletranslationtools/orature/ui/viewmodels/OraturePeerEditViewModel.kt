@@ -27,7 +27,7 @@ import org.bibletranslationtools.shared.audio.engine.buildPeakCache
 import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
-import org.bibletranslationtools.otter.common.domain.IUndoable
+import org.bibletranslationtools.otter.common.data.workbook.UndoableChange
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
@@ -147,7 +147,7 @@ class OraturePeerEditViewModel(
      * Runs [op] in the active chapter's undo history. Confirming a chunk is undoable in the
      * chapter's one history: the page header's undo and redo drive it from any step.
      */
-    private suspend fun execute(op: IUndoable): SaveResult<Unit> =
+    private suspend fun execute(op: UndoableChange): SaveResult<Unit> =
         workbookDataStore.activeChapter.value?.execute(op) ?: op.execute()
 
     /**

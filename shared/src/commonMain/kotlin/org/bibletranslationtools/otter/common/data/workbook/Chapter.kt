@@ -30,8 +30,6 @@ import org.bibletranslationtools.otter.common.data.primitives.Content
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.data.primitives.MimeType
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
-import org.bibletranslationtools.otter.common.domain.IUndoable
-import org.bibletranslationtools.otter.common.domain.model.UndoableActionHistory
 import org.bibletranslationtools.otter.common.domain.content.Recordable
 
 /**
@@ -133,14 +131,14 @@ class Chapter(
     // steps, so a rechunk stays undoable while the user moves between them. Its own lock: an action
     // saves through the workbook's writer, whose lock is not reentrant.
     private val historyLock = Mutex()
-    private val history = UndoableActionHistory<IUndoable>()
+    private val history = UndoableChangeHistory()
     private val _canUndo = MutableStateFlow(false)
     private val _canRedo = MutableStateFlow(false)
     val canUndo: StateFlow<Boolean> = _canUndo.asStateFlow()
     val canRedo: StateFlow<Boolean> = _canRedo.asStateFlow()
 
     /** Runs [action] and, once it is saved, adds it to the chapter's undo history. */
-    suspend fun execute(action: IUndoable): SaveResult<Unit> =
+    suspend fun execute(action: UndoableChange): SaveResult<Unit> =
         historyLock.withLock { history.execute(action).also { publishHistory() } }
 
     suspend fun undo(): SaveResult<Unit> = historyLock.withLock { history.undo().also { publishHistory() } }
@@ -148,7 +146,7 @@ class Chapter(
     suspend fun redo(): SaveResult<Unit> = historyLock.withLock { history.redo().also { publishHistory() } }
 
     /** The action the next [undo] would undo, if any. */
-    fun peekUndo(): IUndoable? = history.peekUndo()
+    fun peekUndo(): UndoableChange? = history.peekUndo()
 
     /**
      * Ends the chapter's undo history and deletes every layout but the active one, with their takes:

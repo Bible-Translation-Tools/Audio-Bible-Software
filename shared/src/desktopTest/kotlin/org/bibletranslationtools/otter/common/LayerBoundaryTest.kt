@@ -86,11 +86,11 @@ class LayerBoundaryTest {
      * The entity ↔ use-case cycle. `domain/` imports `data/` in 68 files, which is correct; these
      * four import back the other way, which makes the two packages mutually dependent.
      *
-     * Three are the [org.bibletranslationtools.otter.common.domain.content.Recordable] interfaces
-     * (and `Chapter`'s undo history), which are arguably domain types an entity may implement.
-     * `Workbook` is the real problem: it hands out `SourceAudioAccessor`, `ArtworkAccessor` and
-     * `ProjectFilesAccessor`, so the innermost object in the codebase is a source of filesystem
-     * access and every consumer that wants a file takes a whole `Workbook` to get one.
+     * Three are the [org.bibletranslationtools.otter.common.domain.content.Recordable] interfaces,
+     * which are arguably domain types an entity may implement. `Workbook` is the real problem: it
+     * hands out `SourceAudioAccessor`, `ArtworkAccessor` and `ProjectFilesAccessor`, so the
+     * innermost object in the codebase is a source of filesystem access and every consumer that
+     * wants a file takes a whole `Workbook` to get one.
      */
     @Test
     fun `data does not depend on domain`() {
@@ -103,7 +103,7 @@ class LayerBoundaryTest {
             why = "Entities are the layer nothing depends outward from. Workbook holding " +
                 "domain accessors is what forces every file-touching use case to accept a Workbook.",
             expected = setOf(
-                "workbook/Chapter.kt",   // Recordable, IUndoable, UndoableActionHistory
+                "workbook/Chapter.kt",   // Recordable
                 "workbook/Chunk.kt",     // ResourceRecordable
                 "workbook/Resource.kt",  // ResourceRecordable
                 "workbook/Workbook.kt"   // ArtworkAccessor, SourceAudioAccessor, ProjectFilesAccessor

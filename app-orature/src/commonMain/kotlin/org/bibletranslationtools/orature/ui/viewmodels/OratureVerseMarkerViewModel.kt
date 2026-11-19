@@ -243,40 +243,33 @@ class OratureVerseMarkerViewModel : ViewModel(), KoinComponent {
     /** Add the next unplaced verse marker at the playhead (JVM: placeMarker → AddMarkerAction). */
     fun placeMarker() {
         val model = markerModel ?: return
-        updateMarkers { actionHistory.execute(AddMarkerAction(model, positionFrames)) }
+        actionHistory.execute(AddMarkerAction(model, positionFrames))
+        refreshMarkers()
     }
 
     fun moveMarker(id: Int, newFrame: Int) {
         val model = markerModel ?: return
         val original = model.markerItems.firstOrNull { it.id == id }?.frame ?: return
-        updateMarkers { actionHistory.execute(MoveMarkerAction(model, id, original, newFrame.coerceIn(0, totalFrames))) }
+        actionHistory.execute(MoveMarkerAction(model, id, original, newFrame.coerceIn(0, totalFrames)))
+        refreshMarkers()
     }
 
     fun deleteMarker(id: Int) {
         val model = markerModel ?: return
-        updateMarkers { actionHistory.execute(DeleteMarkerAction(model, id)) }
+        actionHistory.execute(DeleteMarkerAction(model, id))
+        refreshMarkers()
     }
 
     fun undo() {
         if (!actionHistory.canUndo()) return
-        updateMarkers { actionHistory.undo() }
+        actionHistory.undo()
+        refreshMarkers()
     }
 
     fun redo() {
         if (!actionHistory.canRedo()) return
-        updateMarkers { actionHistory.redo() }
-    }
-
-    /**
-     * Runs a step of the marker history, then redraws the markers. The marker actions change only
-     * the in-memory marker model (nothing is saved until [saveAndClose]), so they finish before the
-     * main-thread launch first suspends.
-     */
-    private fun updateMarkers(step: suspend () -> Unit) {
-        launchLogged {
-            step()
-            refreshMarkers()
-        }
+        actionHistory.redo()
+        refreshMarkers()
     }
 
     /** Write the placed cues back into the take, run the host reload, then clear the handoff. */
