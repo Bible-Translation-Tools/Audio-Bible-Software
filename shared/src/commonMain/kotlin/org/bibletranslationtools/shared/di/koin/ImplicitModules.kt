@@ -22,6 +22,7 @@ import org.bibletranslationtools.otter.common.domain.collections.UpdateTranslati
 import org.bibletranslationtools.otter.common.domain.content.ChapterTranslationBuilder
 import org.bibletranslationtools.otter.common.domain.content.ConcatenateAudio
 import org.bibletranslationtools.otter.common.domain.content.CreateChunks
+import org.bibletranslationtools.otter.common.domain.content.ResetChunks
 import org.bibletranslationtools.otter.common.domain.content.SaveAudioAsNewTake
 import org.bibletranslationtools.otter.common.domain.content.TakeCreator
 import org.bibletranslationtools.otter.common.domain.narration.AudioFileUtils
@@ -125,6 +126,7 @@ val implicitCommonModule = module {
     factoryOf(::TakeCreator)
     factoryOf(::SaveAudioAsNewTake)
     factoryOf(::ConcatenateAudio)
+    factoryOf(::ResetChunks)
     factoryOf(::CreateChunks)
 
     // Resource Container

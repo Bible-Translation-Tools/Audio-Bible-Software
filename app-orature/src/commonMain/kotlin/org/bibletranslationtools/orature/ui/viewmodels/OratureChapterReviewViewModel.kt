@@ -30,6 +30,7 @@ import org.bibletranslationtools.otter.common.data.audio.VerseMarker
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Take
+import org.bibletranslationtools.otter.common.data.workbook.UndoableChangeHistory
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnection
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
@@ -151,6 +152,9 @@ class OratureChapterReviewViewModel(
     private var clockEventsJob: Job? = null
 
     private val actionHistory = UndoableActionHistory<IUndoable>()
+    // The plugin edit (TakeEditAction) saves its take changes, so it is kept in a history of its own.
+    // The header undoes and redoes the marker edits above first, then these.
+    private val takeEditHistory = UndoableChangeHistory()
 
     fun currentTimeline(): AudioTimeline? = timeline
     fun peakCacheFor(source: PcmSource): WaveformPeakCache? =
@@ -168,7 +172,7 @@ class OratureChapterReviewViewModel(
     fun onDock() {
         docked = true
         translationVm.setUndoRedoHandlers(::undo, ::redo)
-        translationVm.updateChunkUndoRedo(canUndo = actionHistory.canUndo(), canRedo = actionHistory.canRedo())
+        translationVm.updateChunkUndoRedo(canUndo = canUndo(), canRedo = canRedo())
     }
 
     /** Undock: the step's screen left composition, so it no longer drives the page header. */
@@ -202,6 +206,7 @@ class OratureChapterReviewViewModel(
         writeMarkersBlocking()
         stopAll()
         actionHistory.clear()
+        takeEditHistory.clear()
         if (docked) translationVm.updateChunkUndoRedo(canUndo = false, canRedo = false)
         chapter = chap
         if (chap == null) {
@@ -463,7 +468,8 @@ class OratureChapterReviewViewModel(
                     setUndoCallback { reloadFromSelectedTake(chap) }
                     setRedoCallback { reloadFromSelectedTake(chap) }
                 }
-                saveMessages.report(chap.execute(action))
+                saveMessages.report(takeEditHistory.execute(action))
+                if (docked) translationVm.updateChunkUndoRedo(canUndo = canUndo(), canRedo = canRedo())
             } else if (newTake != null) {
                 saveMessages.report(chap.audio.selectTake(chap.audio.take(existingTake.id) ?: existingTake))
             }
@@ -588,22 +594,41 @@ class OratureChapterReviewViewModel(
     }
 
     fun undo() {
-        if (!actionHistory.canUndo()) return
+        if (!actionHistory.canUndo()) return undoTakeEdit()
         actionHistory.undo()
-        translationVm.updateChunkUndoRedo(canUndo = actionHistory.canUndo(), canRedo = true)
+        translationVm.updateChunkUndoRedo(canUndo = canUndo(), canRedo = true)
         refreshMarkers()
     }
 
     fun redo() {
-        if (!actionHistory.canRedo()) return
+        if (!actionHistory.canRedo()) return redoTakeEdit()
         actionHistory.redo()
-        translationVm.updateChunkUndoRedo(canUndo = true, canRedo = actionHistory.canRedo())
+        translationVm.updateChunkUndoRedo(canUndo = true, canRedo = canRedo())
         refreshMarkers()
     }
 
     private fun onUndoableAction() {
-        translationVm.updateChunkUndoRedo(canUndo = true, canRedo = false)
+        translationVm.updateChunkUndoRedo(canUndo = true, canRedo = canRedo())
     }
+
+    private fun undoTakeEdit() {
+        if (!takeEditHistory.canUndo()) return
+        launchLogged {
+            saveMessages.report(takeEditHistory.undo())
+            if (docked) translationVm.updateChunkUndoRedo(canUndo = canUndo(), canRedo = canRedo())
+        }
+    }
+
+    private fun redoTakeEdit() {
+        if (!takeEditHistory.canRedo()) return
+        launchLogged {
+            saveMessages.report(takeEditHistory.redo())
+            if (docked) translationVm.updateChunkUndoRedo(canUndo = canUndo(), canRedo = canRedo())
+        }
+    }
+
+    private fun canUndo() = actionHistory.canUndo() || takeEditHistory.canUndo()
+    private fun canRedo() = actionHistory.canRedo() || takeEditHistory.canRedo()
 
     /** Advance to the next chapter (JVM: GoToNextChapterEvent). Saves markers first. */
     fun goToNextChapter() {

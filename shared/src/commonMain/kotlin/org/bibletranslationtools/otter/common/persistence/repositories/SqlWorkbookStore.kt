@@ -11,7 +11,6 @@ import org.bibletranslationtools.otter.common.data.workbook.ChapterId
 import org.bibletranslationtools.otter.common.data.workbook.ChapterLayout
 import org.bibletranslationtools.otter.common.data.workbook.ChunkId
 import org.bibletranslationtools.otter.common.data.workbook.ChunkRecord
-import org.bibletranslationtools.otter.common.data.workbook.DraftId
 import org.bibletranslationtools.otter.common.data.workbook.ElementId
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.TakeCheckingState
@@ -61,9 +60,7 @@ class SqlWorkbookStore(
         val rows = contentDao.fetchByCollectionId(chapter.raw)
             .filter { (it.type_fk == text || it.type_fk == title) && !it.bridged }
         val takesByRow = takeDao.fetchByCollectionId(chapter.raw, includeDeleted = true).groupBy { it.contentFk }
-        val draft = DraftId(contentDao.activeDraft(chapter.raw) ?: rows.filter { it.type_fk == text }.maxOfOrNull { it.draftNumber } ?: 1)
         ChapterLayout(
-            draft = draft,
             chunks = rows.map { row ->
                 ChunkRecord(
                     id = ChunkId(row.id),
@@ -74,7 +71,6 @@ class SqlWorkbookStore(
                     bridged = row.bridged,
                     contentType = if (row.type_fk == title) ContentType.TITLE else ContentType.TEXT,
                     textItem = textItem(row),
-                    draft = DraftId(row.draftNumber),
                     audio = AudioState(
                         takes = takesByRow[row.id].orEmpty().map(::toTake).sortedBy { it.number },
                         selected = row.selectedTakeFk?.let(::TakeId)
@@ -125,56 +121,36 @@ class SqlWorkbookStore(
         takeDao.updateChecking(take.raw, database.checkingStatusDao.fetchId(checking.status), checking.checksum)
     }
 
-    override suspend fun rechunk(chapter: ChapterId, rows: List<Content>): DraftId = writer.write {
-        val text = database.contentTypeDao.fetchId(ContentType.TEXT)
-        val textRows = contentDao.fetchAllDraftsByCollectionId(chapter.raw).filter { it.type_fk == text }
-        val active = contentDao.activeDraft(chapter.raw)
-        // Past the active draft too: it has no rows when the user removed every chunk marker.
-        val next = (textRows.maxOfOrNull { it.draftNumber } ?: 0).coerceAtLeast(active ?: 0) + 1
-        insertLinked(chapter, rows, draft = next)
-        contentDao.setActiveDraft(chapter.raw, next)
-        DraftId(next)
-    }
-
-    override suspend fun switchDraft(chapter: ChapterId, to: DraftId) = writer.write {
-        contentDao.setActiveDraft(chapter.raw, to.raw)
-    }
-
-    override suspend fun deleteInactiveDrafts(chapter: ChapterId) {
+    override suspend fun clearChunks(chapter: ChapterId, type: ContentType) {
         val files = writer.write {
-            val active = contentDao.activeDraft(chapter.raw) ?: return@write emptyList()
-            val text = database.contentTypeDao.fetchId(ContentType.TEXT)
-            val inactive = contentDao.fetchAllDraftsByCollectionId(chapter.raw)
-                .filter { it.type_fk == text && it.draftNumber != active }
-            // Takes are deleted explicitly: databases migrated from before version 13 have no
-            // take-to-content cascade.
-            val takes = inactive.flatMap { takeDao.fetchByContentId(it.id, includeDeleted = true) }
+            val typeId = database.contentTypeDao.fetchId(type)
+            val takes = takeDao.fetchByCollectionId(chapter.raw, includeDeleted = true)
+                .filter { take -> contentDao.fetchById(take.contentFk).type_fk == typeId }
             takes.forEach { takeDao.delete(it) }
-            inactive.forEach { contentDao.delete(it) }
+            contentDao.deleteForCollection(database.collectionDao.fetchById(chapter.raw), typeId)
             takes.map { File(it.filepath) }
         }
+        // Files after rows: a file left behind by a failure here is harmless, a row pointing at a
+        // deleted file is not.
         withContext(Dispatchers.IO) {
             files.forEach { file ->
-                if (file.exists() && !file.delete()) logger.warn("Could not delete the audio of a settled draft's take: $file")
+                if (file.exists() && !file.delete()) logger.warn("Could not delete the audio of a cleared take: $file")
             }
         }
     }
 
-    override suspend fun chaptersWithDrafts(): List<ChapterId> =
-        withContext(Dispatchers.IO) { contentDao.chaptersWithDrafts().map(::ChapterId) }
-
-    /** Inserts [rows] into [chapter] under [draft], each linked to its source row. */
-    private fun insertLinked(chapter: ChapterId, rows: List<Content>, draft: Int) {
-        val sources = database.collectionDao.fetchById(chapter.raw).sourceFk
-            ?.let { contentDao.fetchByCollectionId(it) }
-            .orEmpty()
-        rows.forEach { content ->
-            content.draftNumber = draft
-            val id = contentDao.insert(contentMapper.mapToEntity(content, chapter.raw).apply { collectionFk = chapter.raw })
-            content.id = id
-            val type = database.contentTypeDao.fetchId(content.type)
-            sources.filter { it.labelKey == content.labelKey && it.type_fk == type }
-                .forEach { contentDao.linkDerivative(id, it.id) }
+    override suspend fun addChunks(chapter: ChapterId, rows: List<Content>) {
+        writer.write {
+            val sources = database.collectionDao.fetchById(chapter.raw).sourceFk
+                ?.let { contentDao.fetchByCollectionId(it) }
+                .orEmpty()
+            rows.forEach { content ->
+                val id = contentDao.insert(contentMapper.mapToEntity(content, chapter.raw).apply { collectionFk = chapter.raw })
+                content.id = id
+                val type = database.contentTypeDao.fetchId(content.type)
+                sources.filter { it.labelKey == content.labelKey && it.type_fk == type }
+                    .forEach { contentDao.linkDerivative(id, it.id) }
+            }
         }
     }
 

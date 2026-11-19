@@ -16,10 +16,6 @@ value class TakeId(internal val raw: Int)
 @JvmInline
 value class ChapterId(internal val raw: Int)
 
-/** One chunk layout of a chapter. */
-@JvmInline
-value class DraftId(internal val raw: Int)
-
 /** Something that has takes: a chapter, a chunk, or a resource's title or body. */
 sealed interface ElementId {
     /** The content row the element's takes belong to. */

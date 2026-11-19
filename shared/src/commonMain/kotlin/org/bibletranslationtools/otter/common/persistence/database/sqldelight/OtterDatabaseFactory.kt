@@ -24,7 +24,6 @@ import org.bibletranslationtools.otter.common.persistence.database.DATABASE_INST
 import org.bibletranslationtools.otter.common.persistence.database.SCHEMA_VERSION
 import org.bibletranslationtools.otter.db.Checking_status
 import org.bibletranslationtools.otter.db.Collection_entity
-import org.bibletranslationtools.otter.db.Chapter_draft
 import org.bibletranslationtools.otter.db.Content_derivative
 import org.bibletranslationtools.otter.db.Content_entity
 import org.bibletranslationtools.otter.db.Content_type
@@ -53,7 +52,6 @@ internal fun buildOtterDatabase(driver: SqlDriver): OtterDatabase {
         driver = driver,
         checking_statusAdapter = Checking_status.Adapter(i),
         collection_entityAdapter = Collection_entity.Adapter(i, i, i, i, i, i),
-        chapter_draftAdapter = Chapter_draft.Adapter(i, i),
         content_derivativeAdapter = Content_derivative.Adapter(i, i, i),
         content_entityAdapter = Content_entity.Adapter(i, i, i, i, i, i, i, i),
         content_typeAdapter = Content_type.Adapter(i),

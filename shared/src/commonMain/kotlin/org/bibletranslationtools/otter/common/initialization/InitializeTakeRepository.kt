@@ -21,26 +21,21 @@ package org.bibletranslationtools.otter.common.initialization
 import io.reactivex.Completable
 import io.reactivex.ObservableEmitter
 import io.reactivex.schedulers.Schedulers
-import kotlinx.coroutines.rx2.rxCompletable
-import org.bibletranslationtools.otter.common.data.workbook.WorkbookStore
 import org.bibletranslationtools.otter.common.api.persistence.config.Initializable
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ITakeRepository
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.ProgressStatus
 
 class InitializeTakeRepository(
-    private val takeRepository: ITakeRepository,
-    private val workbookStore: WorkbookStore
+    private val takeRepository: ITakeRepository
 ) : Initializable {
 
     private val log = LoggerFactory.getLogger(InitializeTakeRepository::class.java)
 
     override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable {
         log.info("Initializing take repository...")
-        // A rechunk that was never settled (the app closed or was killed while the user was still in
-        // the chapter) sticks now: undo history does not survive a restart.
-        return rxCompletable { workbookStore.chaptersWithDrafts().forEach { workbookStore.deleteInactiveDrafts(it) } }
-            .andThen(takeRepository.removeNonExistentTakes())
+        return takeRepository
+            .removeNonExistentTakes()
             .andThen(takeRepository.deleteExpiredTakes())
             .doOnError { e ->
                 log.error("Error initializing take repository", e)

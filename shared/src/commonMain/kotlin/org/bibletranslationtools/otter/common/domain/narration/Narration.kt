@@ -38,18 +38,19 @@ import org.bibletranslationtools.otter.common.audio.AudioFile
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
 import org.bibletranslationtools.otter.common.device.AudioFileReader
 import org.bibletranslationtools.otter.common.data.audio.AudioMarker
+import org.bibletranslationtools.otter.common.data.primitives.MimeType
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.device.IAudioPlayer
 import org.bibletranslationtools.otter.common.device.IAudioRecorder
 import org.bibletranslationtools.otter.common.domain.audio.AudioBouncer
-import org.bibletranslationtools.otter.common.domain.content.TakeFiles
 import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.recorder.WavFileWriter
 import java.io.File
 import java.lang.Integer.max
+import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -619,16 +620,19 @@ class Narration(
     suspend fun createChapterTakeWithAudio(): SaveResult<Take> {
         val namer = WorkbookFileNamerBuilder.createFileNamer(workbook, chapter, null, chapter, workbook.sourceMetadataSlug)
         val newTake = withContext(Dispatchers.IO) {
+            val takeNumber = chapter.audio.getNewTakeNumber()
+            val takeName = namer.generateName(takeNumber, AudioFileFormat.WAV)
+
             val parentDir = workbook.projectFilesAccessor.getChapterAudioDir(workbook, chapter)
-            val reserved = TakeFiles.reserve(parentDir, chapter.audio.getNewTakeNumber()) {
-                namer.generateName(it, AudioFileFormat.WAV)
-            }
+            val takeFile = File(parentDir, takeName)
+            val take = Take(takeFile.name, takeFile, takeNumber, MimeType.WAV, LocalDate.now())
+
             // bounce to a temp file to avoid Windows file-locking issue when editing with external app
-            val tempFile = directoryProvider.createTempFile("bounced-${reserved.file.name}", ".wav")
+            val tempFile = directoryProvider.createTempFile("bounced-${take.name}", ".wav")
             audioBouncer.bounceAudio(tempFile, chapterRepresentation.getAudioFileReader(), activeVerses)
-            tempFile.copyTo(reserved.file, overwrite = true)
+            tempFile.copyTo(take.file, overwrite = true)
             tempFile.deleteOnExit()
-            reserved.toTake()
+            take
         }
         val result = chapter.audio.insertTake(newTake)
         if (result is SaveResult.Saved) takeToModify = result.value
@@ -641,16 +645,17 @@ class Narration(
      */
     suspend fun createChapterTake(): SaveResult<Take> {
         val namer = WorkbookFileNamerBuilder.createFileNamer(workbook, chapter, null, chapter, workbook.sourceMetadataSlug)
-        val reserved = withContext(Dispatchers.IO) {
+        val take = withContext(Dispatchers.IO) {
+            val takeNumber = chapter.audio.getNewTakeNumber()
+            val takeName = namer.generateName(takeNumber, AudioFileFormat.WAV)
             val parentDir = workbook.projectFilesAccessor.getChapterAudioDir(workbook, chapter)
-            TakeFiles.reserve(parentDir, chapter.audio.getNewTakeNumber()) { namer.generateName(it, AudioFileFormat.WAV) }
+            val takeFile = File(parentDir, takeName)
+            Take(takeFile.name, takeFile, takeNumber, MimeType.WAV, LocalDate.now())
         }
-        val result = chapter.audio.insertTake(reserved.toTake())
+        val result = chapter.audio.insertTake(take)
         if (result is SaveResult.Saved) {
             takeToModify = result.value
             NarrationTakeModifier.modifyAudioData(result.value, chapterRepresentation.getAudioFileReader(), activeVerses)
-        } else {
-            withContext(Dispatchers.IO) { reserved.file.delete() }
         }
         return result
     }

@@ -43,8 +43,8 @@ import java.io.File
  * builds its [Take] directly and stages and validates the WAV before committing.
  *
  * ### Threading
- * The file system work (naming, reserving the file, the copy) runs on [Dispatchers.IO]; the save
- * runs on the workbook's writer.
+ * The file system work — take number, naming (which reads chapter/chunk counts), take creation
+ * and the copy — runs on [Dispatchers.IO]; the save runs on the workbook's writer.
  */
 class SaveAudioAsNewTake(
     private val takeCreator: TakeCreator
@@ -67,6 +67,7 @@ class SaveAudioAsNewTake(
             if (!audioFile.exists()) {
                 throw IllegalStateException("Audio file to save does not exist: ${audioFile.path}")
             }
+            val takeNumber = audio.getNewTakeNumber()
             val namer = WorkbookFileNamerBuilder.createFileNamer(
                 workbook = workbook,
                 chapter = chapter,
@@ -74,16 +75,18 @@ class SaveAudioAsNewTake(
                 recordable = recordable,
                 rcSlug = workbook.sourceMetadataSlug
             )
-            val reserved = TakeFiles.reserve(
+            val newTake = takeCreator.createNewTake(
+                newTakeNumber = takeNumber,
+                filename = namer.generateName(takeNumber, AudioFileFormat.WAV),
                 // Creates the chapter directory if it is missing. Equivalent to resolving
                 // audioDir against the namer's formatted chapter number by hand, which is what
                 // the Orature copy did — formatChapterNumber() reads only the chapter count,
                 // title and sort, so both namers agree on it.
-                workbook.projectFilesAccessor.getChapterAudioDir(workbook, chapter),
-                audio.getNewTakeNumber()
-            ) { namer.generateName(it, AudioFileFormat.WAV) }
-            audioFile.copyTo(reserved.file, overwrite = true)
-            takeCreator.createNewTake(reserved.number, reserved.file.name, reserved.file.parentFile, createEmpty = false)
+                audioDir = workbook.projectFilesAccessor.getChapterAudioDir(workbook, chapter),
+                createEmpty = false
+            )
+            audioFile.copyTo(newTake.file, overwrite = true)
+            newTake
         }
 
         // Saved and selected in one transaction, so nothing can select it before it has an id.

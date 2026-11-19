@@ -42,8 +42,7 @@ class AssociatedAudio(
     val owner: ElementId,
     initial: AudioState,
     private val store: WorkbookStore,
-    private val writer: WorkbookWriter,
-    private val gate: () -> RejectReason? = { null }
+    private val writer: WorkbookWriter
 ) {
     private val _state = MutableStateFlow(initial)
 
@@ -64,7 +63,7 @@ class AssociatedAudio(
     fun getNewTakeNumber(): Int = (_state.value.takes.maxOfOrNull { it.number } ?: 0) + 1
 
     /** Saves [take] and selects it in the same transaction. Returns the saved take, which has its id. */
-    suspend fun insertTake(take: Take): SaveResult<Take> = writer.save(gate) {
+    suspend fun insertTake(take: Take): SaveResult<Take> = writer.save {
         val saved = store.addTake(owner, take)
         _state.update { s -> s.copy(takes = s.takes + saved, selected = saved.id) }
         saved
@@ -111,7 +110,7 @@ class AssociatedAudio(
     /** The take with [id] as this element holds it now, or null. */
     fun take(id: TakeId?): Take? = id?.let { _state.value.takes.firstOrNull { take -> take.id == it } }
 
-    /** [gate], and refuses a take that was never saved: it has no id to change. */
+    /** Refuses a take that was never saved: it has no id to change. */
     private fun savedGate(take: Take?): () -> RejectReason? =
-        { if (take != null && take.id == null) RejectReason.UNSAVED else gate() }
+        { if (take != null && take.id == null) RejectReason.UNSAVED else null }
 }

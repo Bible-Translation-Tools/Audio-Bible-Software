@@ -1,6 +1,5 @@
 package org.bibletranslationtools.otter.integration
 
-import org.bibletranslationtools.otter.common.domain.content.TakeFiles
 import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
 import org.bibletranslationtools.otter.common.domain.collections.UpgradeProjectEdition
 import org.bibletranslationtools.otter.common.initialization.ReconcileEditionLabels
@@ -61,7 +60,8 @@ import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
-import org.bibletranslationtools.otter.common.initialization.InitializeTakeRepository
+import org.bibletranslationtools.otter.common.data.primitives.MimeType
+import java.time.LocalDate
 import org.bibletranslationtools.shared.di.koin.appDatabaseModule
 import org.bibletranslationtools.shared.di.koin.sharedCommonModules
 import org.koin.core.Koin
@@ -549,30 +549,13 @@ class IntegrationEnvironment private constructor(
         val file = projectDirectory(project).resolve(".apps/orature/takes/c${"%02d".format(sort)}/$name")
         file.parentFile.mkdirs()
         file.writeText("recording $name")
-        return TakeFiles.Reserved(number, file).toTake()
-    }
-
-    /** Every text row of chapter [sort] of [project], inactive chunk layouts included. */
-    fun allDraftTextRows(project: Collection, sort: Int): List<ContentEntity> {
-        val textType = db.contentTypeDao.fetchId(ContentType.TEXT)
-        return db.contentDao.fetchAllDraftsByCollectionId(projectChapter(project, sort).id).filter { it.type_fk == textType }
+        return Take(name = file.name, file = file, number = number, format = MimeType.WAV, createdTimestamp = LocalDate.now())
     }
 
     /** The startup purge of soft-deleted takes, as `InitializeTakeRepository` runs it. */
     fun purgeDeletedTakesAsStartupDoes() {
         koin.get<org.bibletranslationtools.otter.common.api.persistence.repositories.ITakeRepository>()
             .deleteExpiredTakes().blockingAwait()
-    }
-
-    /**
-     * The whole startup take clean-up, `InitializeTakeRepository`: chapters left with unsettled chunk
-     * layouts are settled, then missing and soft-deleted takes are removed.
-     */
-    fun initializeTakesAsStartupDoes() {
-        Observable.create<ProgressStatus> { emitter ->
-            koin.get<InitializeTakeRepository>().exec(emitter).blockingAwait()
-            emitter.onComplete()
-        }.blockingSubscribe()
     }
 
     fun content(contentId: Int) = db.contentDao.fetchById(contentId)

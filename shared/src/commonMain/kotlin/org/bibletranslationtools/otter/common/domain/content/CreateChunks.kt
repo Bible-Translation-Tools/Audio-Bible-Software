@@ -18,6 +18,9 @@
  */
 package org.bibletranslationtools.otter.common.domain.content
 
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import java.io.File
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.audio.AudioCue
@@ -57,16 +60,19 @@ class CreateChunks {
      * @param cues The list of audio cues to use to create chunks
      * @param draftNumber The draft number to create chunks form
      */
-    fun createUserDefinedChunks(
+    suspend fun createUserDefinedChunks(
         workbook: Workbook,
         chapter: Chapter,
         chunks: List<AudioCue>
-    ): List<Content> {
+    ): SaveResult<Unit> {
         val projectSlug = workbook.target.slug
         val chapterNumber = chapter.sort
 
         logger.info("Creating ${chunks.size} user defined chunks for project: $projectSlug chapter: $chapterNumber")
-        return buildChunkContent(workbook, chapterNumber, chunks)
+        val chunksToAdd = withContext(Dispatchers.IO) {
+            buildChunkContent(workbook, chapterNumber, chunks).also { writeChunkFile(workbook, chapterNumber, it) }
+        }
+        return chapter.addChunks(chunksToAdd)
     }
 
     private fun buildChunkContent(
@@ -118,7 +124,8 @@ class CreateChunks {
         return chunkContents
     }
 
-    fun writeChunkFile(
+
+    private fun writeChunkFile(
         workbook: Workbook,
         chapterNumber: Int,
         chunksToAdd: List<Content>

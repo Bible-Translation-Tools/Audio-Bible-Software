@@ -18,39 +18,16 @@ CREATE INDEX idx_content_entity_collection_start ON content_entity (collection_f
 
 -- Queries for ContentDao. ---------------------------------------------------------------------
 
--- The chapter-content reads below return only the active chunk layout's text rows (see
--- ChapterDraft.sq); rows of an inactive layout are kept for undo but no reader should see them.
 fetchByCollectionId:
-SELECT * FROM content_entity WHERE collection_fk = :collectionId
-  AND (
-    type_fk NOT IN (SELECT id FROM content_type WHERE lower(name) = 'text')
-    OR NOT EXISTS (SELECT 1 FROM chapter_draft d WHERE d.chapter_fk = content_entity.collection_fk)
-    OR draft_number = (SELECT d.active_draft FROM chapter_draft d WHERE d.chapter_fk = content_entity.collection_fk)
-  )
-ORDER BY sort;
+SELECT * FROM content_entity WHERE collection_fk = ? ORDER BY sort;
 
 fetchByCollectionIdAndStart:
 SELECT * FROM content_entity
 WHERE collection_fk = :collectionId AND start = :start AND type_fk IN :typeIds
-  AND (
-    type_fk NOT IN (SELECT id FROM content_type WHERE lower(name) = 'text')
-    OR NOT EXISTS (SELECT 1 FROM chapter_draft d WHERE d.chapter_fk = content_entity.collection_fk)
-    OR draft_number = (SELECT d.active_draft FROM chapter_draft d WHERE d.chapter_fk = content_entity.collection_fk)
-  )
 ORDER BY sort;
 
 fetchByCollectionIdAndType:
-SELECT * FROM content_entity WHERE collection_fk = :collectionId AND type_fk = :typeId
-  AND (
-    type_fk NOT IN (SELECT id FROM content_type WHERE lower(name) = 'text')
-    OR NOT EXISTS (SELECT 1 FROM chapter_draft d WHERE d.chapter_fk = content_entity.collection_fk)
-    OR draft_number = (SELECT d.active_draft FROM chapter_draft d WHERE d.chapter_fk = content_entity.collection_fk)
-  )
-ORDER BY sort;
-
--- Every layout's rows: only the workbook store reads these, to keep or delete inactive layouts.
-fetchAllDraftsByCollectionId:
-SELECT * FROM content_entity WHERE collection_fk = :collectionId ORDER BY sort;
+SELECT * FROM content_entity WHERE collection_fk = :collectionId AND type_fk = :typeId ORDER BY sort;
 
 fetchById:
 SELECT * FROM content_entity WHERE id = ?;

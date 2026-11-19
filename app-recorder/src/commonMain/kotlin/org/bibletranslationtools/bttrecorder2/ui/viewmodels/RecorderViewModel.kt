@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
+import org.bibletranslationtools.otter.common.data.primitives.MimeType
 import org.bibletranslationtools.otter.common.data.workbook.AssociatedAudio
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
@@ -32,7 +33,6 @@ import org.bibletranslationtools.otter.common.device.AudioRecorderConnection
 import org.bibletranslationtools.otter.common.device.AudioRecorderConnectionFactory
 import org.bibletranslationtools.otter.common.device.AudioSpec
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
-import org.bibletranslationtools.otter.common.domain.content.TakeFiles
 import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
 import org.bibletranslationtools.otter.common.recorder.ActiveRecordingRenderer
 import org.bibletranslationtools.otter.common.recorder.RecordingTimer
@@ -42,6 +42,7 @@ import org.bibletranslationtools.bttrecorder2.services.UnitTargetLoader
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.time.LocalDate
 
 class RecorderViewModel(
     private val unitTargetLoader: UnitTargetLoader,
@@ -525,27 +526,30 @@ class RecorderViewModel(
                     rcSlug = wb.sourceMetadataSlug
                 )
 
-                // Claim a take file nothing else uses (the next free take number if this one's
-                // name is already on disk), so committing below replaces only our own placeholder.
-                val reserved = TakeFiles.reserve(dir, audio.getNewTakeNumber()) {
-                    namer.generateName(it, AudioFileFormat.WAV)
-                }
-                val takeFile = reserved.file
+                val newTakeNumber = audio.getNewTakeNumber()
+                val filename = namer.generateName(newTakeNumber, AudioFileFormat.WAV)
+                val takeFile = File(dir, filename)
+                val newTake = Take(
+                    name = takeFile.name,
+                    file = takeFile,
+                    number = newTakeNumber,
+                    format = MimeType.WAV,
+                    createdTimestamp = LocalDate.now()
+                )
 
-                val stagedTakeFile = File(dir, "${takeFile.name}.staging.wav")
+                val stagedTakeFile = File(dir, "${filename}.staging.wav")
                 runCatching { stagedTakeFile.delete() }
                 sessionFile.copyTo(stagedTakeFile, overwrite = true)
                 val stagedFrames = runCatching { OratureAudioFile(stagedTakeFile).totalFrames }.getOrDefault(0)
                 if (stagedFrames <= 0) {
                     runCatching { stagedTakeFile.delete() }
-                    runCatching { takeFile.delete() }
                     throw IllegalStateException("Saved recording is invalid.")
                 }
                 commitStagedTake(stagedTakeFile, takeFile)
 
                 // Saved and selected in one step. Only a saved take moves on to playback; a take
                 // that was not saved has no row, so its file goes rather than lingering as a take.
-                val result = audio.insertTake(reserved.toTake())
+                val result = audio.insertTake(newTake)
                 if (result is SaveResult.Saved) {
                     withContext(Dispatchers.Main) {
                         _savedTakeEvents.tryEmit(result.value.number)

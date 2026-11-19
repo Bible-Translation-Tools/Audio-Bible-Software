@@ -22,7 +22,6 @@ import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
-import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.domain.narration.LoadChapterSourceText
 import org.bibletranslationtools.otter.common.domain.project.InitializeProjectFiles
 import org.bibletranslationtools.otter.common.domain.project.OpenWorkbook
@@ -95,8 +94,6 @@ class OratureNarrationViewModelTest : KoinTest {
         // Both, because OpenWorkbook picks the one that matches the project mode: narration
         // progress for NARRATION/DIALECT, the selected take for TRANSLATION.
         every { hasSelectedAudio() } returns completed
-        // Opening the workbook again settles the active chapter.
-        coEvery { settle() } returns SaveResult.Saved(Unit)
         coEvery { completionStatus.getChapterNarrationProgress(any(), this@mockk) } returns
             if (completed) 1.0 else 0.0
     }

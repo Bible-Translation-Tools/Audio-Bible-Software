@@ -1,7 +1,6 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
 import org.bibletranslationtools.orature.resources.errUnknown
-import org.bibletranslationtools.otter.common.domain.content.RechunkAction
 import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdition
 import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.CancellationException
@@ -10,19 +9,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.combine
-import org.bibletranslationtools.shared.logging.launchLogged as launchLoggedIn
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.orature.resources.Res
 import org.bibletranslationtools.orature.resources.errOpenProject
-import kotlinx.coroutines.CoroutineScope
 import org.bibletranslationtools.orature.services.OratureProjectEvents
-import org.bibletranslationtools.orature.services.OratureSaveMessages
 import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
 import org.bibletranslationtools.orature.ui.translation.ChunkingStep
 import org.jetbrains.compose.resources.getString
@@ -48,24 +41,30 @@ data class OratureChunkViewData(
 internal enum class ChunkNavAction {
     /** Switch steps without touching chunks (never destructive). */
     NAVIGATE,
-    /** Commit chunk edits (one undoable rechunk in the chapter's undo history) and then switch. */
-    SAVE_THEN_NAVIGATE
+    /** Commit chunk edits (destructive: deletes the chapter's takes) and then switch. */
+    SAVE_THEN_NAVIGATE,
+    /** Ask first — committing would delete existing recordings. */
+    CONFIRM_DATA_LOSS
 }
 
 /**
  * The chunk-navigation rules, mirroring the JVM (`ChunkingViewModel.requestToNavigate` +
- * `undock`): only moving FORWARD out of Chunking may commit chunk edits (going back to Consume
- * must not). Committing is one undoable rechunk in the chapter's undo history: the old layout and
- * its takes stay, inactive, until the user leaves the chapter, so it needs no warning. The warning
- * is on undoing it ([OratureTranslationUiState.undoRechunkRecordings]).
+ * `undock`). Committing chunk edits runs `resetChapter`, which DELETES the chapter's takes, so:
+ *  - only moving FORWARD out of Chunking may commit (going back to Consume must not);
+ *  - and if that commit would destroy existing recordings ([existingChunkCount] > 0) while there
+ *    are unsaved edits, the user must confirm first — cancelling leaves the edits unsaved so they
+ *    can be undone with the takes intact.
  */
 internal fun chunkNavAction(
     current: ChunkingStep,
-    target: ChunkingStep
+    target: ChunkingStep,
+    hasUnsavedChunkEdits: Boolean,
+    existingChunkCount: Int
 ): ChunkNavAction {
     val leavingChunkingForward =
         current == ChunkingStep.CHUNKING && target.ordinal > ChunkingStep.CHUNKING.ordinal
     if (!leavingChunkingForward) return ChunkNavAction.NAVIGATE
+    if (hasUnsavedChunkEdits && existingChunkCount > 0) return ChunkNavAction.CONFIRM_DATA_LOSS
     return ChunkNavAction.SAVE_THEN_NAVIGATE
 }
 
@@ -95,12 +94,13 @@ data class OratureTranslationUiState(
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
     /**
-     * Set when the header's undo would undo a rechunk that recordings were made into since: how many.
-     * Undoing makes the layout they were recorded in inactive, and it is deleted when the user
-     * leaves the chapter (unless they redo first), so the user confirms
-     * ([OratureTranslationViewModel.confirmUndoRechunk]) or cancels first.
+     * Set when the user tried to navigate FORWARD out of Chunking with unsaved chunk edits while the
+     * chapter already has chunks (and therefore recordings) that the save would destroy. Holds the
+     * step they asked for until they confirm or cancel (JVM: `ChunkingViewModel.requestToNavigate`'s
+     * `rechunk_data_loss_warning` ConfirmDialog). Cancelling leaves the chunk edits unsaved, so the
+     * user can undo them and keep their existing takes.
      */
-    val undoRechunkRecordings: Int? = null,
+    val pendingChunkNavStep: ChunkingStep? = null,
     /** Source scripture text for the right-hand drawer. */
     val sourceText: String = "",
     /** The source resource's title (JVM: `SourceTextDrawer.sourceInfoProperty`), e.g.
@@ -135,9 +135,6 @@ class OratureTranslationViewModel(
     private val upgradeBookEdition: UpgradeBookEdition by inject()
     private val projectEvents: OratureProjectEvents by inject()
     private val workbookDataStore: OratureWorkbookDataStore by inject()
-    private val saveMessages: OratureSaveMessages by inject()
-    // :shared's app-lifetime scope: leaving the chapter must finish after this ViewModel is cleared.
-    private val appScope: CoroutineScope by inject()
 
     private val _uiState = MutableStateFlow(OratureTranslationUiState())
     val uiState: StateFlow<OratureTranslationUiState> = _uiState.asStateFlow()
@@ -165,9 +162,6 @@ class OratureTranslationViewModel(
 
     init {
         load()
-        // The header's undo and redo follow the active chapter's history (and the step's own
-        // unsaved edits, see publishUndoRedo).
-        launchLogged { undoRedoOf(workbookDataStore.activeChapter).collect { publishUndoRedo() } }
         // Keep the right-hand source-text drawer in sync with the active chunk (JVM: sourceTextBinding
         // → getChunkSourceText). Shown on Peer-Edit-and-later steps and when source audio is missing.
         launchLogged {
@@ -256,7 +250,6 @@ class OratureTranslationViewModel(
                     sourceTitle = loaded.sourceTitle,
                     sourceLicense = loaded.sourceLicense
                 )
-                publishUndoRedo() // the fresh state above dropped the header's undo/redo flags
                 loadEditionNotice { opened.workbook.target.collectionId }
                 updateReachableStep()
                 if (active != null) resumeStepForChapter(active, active.sort)
@@ -295,144 +288,28 @@ class OratureTranslationViewModel(
         }
     }
 
-    // The active step's undo/redo registers handlers here so the page header's undo/redo drive it
-    // (JVM: the chunking VM writes translationViewModel's can-undo/redo). The step's handlers undo
-    // its unsaved in-memory edits (Chunking's chunk markers, Final Review's verse markers); once
-    // there are none, the header drives the active chapter's undo history, one for every step.
-    // [beforeChapterUndoHandler] and [afterChapterUndoHandler] run around a chapter undo or redo.
+    // The active step's undo/redo (currently Chunking) registers handlers here so the page header's
+    // undo/redo drive it (JVM: the chunking VM writes translationViewModel's can-undo/redo).
     private var undoHandler: (() -> Unit)? = null
     private var redoHandler: (() -> Unit)? = null
-    private var beforeChapterUndoHandler: () -> Unit = {}
-    private var afterChapterUndoHandler: () -> Unit = {}
-    private var stepCanUndo = false
-    private var stepCanRedo = false
 
-    fun setUndoRedoHandlers(
-        undo: () -> Unit = {},
-        redo: () -> Unit = {},
-        beforeChapterUndo: () -> Unit = {},
-        afterChapterUndo: () -> Unit = {}
-    ) {
+    fun setUndoRedoHandlers(undo: () -> Unit, redo: () -> Unit) {
         undoHandler = undo
         redoHandler = redo
-        beforeChapterUndoHandler = beforeChapterUndo
-        afterChapterUndoHandler = afterChapterUndo
     }
 
     fun clearUndoRedoHandlers() {
         undoHandler = null
         redoHandler = null
-        beforeChapterUndoHandler = {}
-        afterChapterUndoHandler = {}
-        stepCanUndo = false
-        stepCanRedo = false
-        publishUndoRedo()
+        _uiState.value = _uiState.value.copy(canUndo = false, canRedo = false)
     }
 
     fun updateChunkUndoRedo(canUndo: Boolean, canRedo: Boolean) {
-        stepCanUndo = canUndo
-        stepCanRedo = canRedo
-        publishUndoRedo()
+        _uiState.value = _uiState.value.copy(canUndo = canUndo, canRedo = canRedo)
     }
 
-    private fun publishUndoRedo() {
-        val chapter = workbookDataStore.activeChapter.value
-        val canUndo = stepCanUndo || chapter?.canUndo?.value == true
-        val canRedo = stepCanRedo || chapter?.canRedo?.value == true
-        val s = _uiState.value
-        if (s.canUndo != canUndo || s.canRedo != canRedo) {
-            _uiState.value = s.copy(canUndo = canUndo, canRedo = canRedo)
-        }
-    }
-
-    /**
-     * The step's unsaved edits first, newest last in, then the chapter's history. (Redo takes the
-     * step's edits first too; an undone chapter action is redone once those are.)
-     */
-    fun onUndo() {
-        val undo = undoHandler
-        if (undo != null && stepCanUndo) { undo(); return }
-        val chapter = workbookDataStore.activeChapter.value ?: return
-        if (!chapter.canUndo.value) return
-        // Undoing a rechunk makes the layout recorded into since inactive, and it is deleted with
-        // those recordings when the user leaves the chapter (unless they redo first): ask first.
-        val atRisk = (chapter.peekUndo() as? RechunkAction)?.recordingsAtRisk() ?: 0
-        if (atRisk > 0) {
-            _uiState.value = _uiState.value.copy(undoRechunkRecordings = atRisk)
-            return
-        }
-        undoChapter()
-    }
-
-    /** The user accepted the rechunk warning: undo it. */
-    fun confirmUndoRechunk() {
-        if (_uiState.value.undoRechunkRecordings == null) return
-        _uiState.value = _uiState.value.copy(undoRechunkRecordings = null)
-        undoChapter()
-    }
-
-    /** The user kept the rechunk: nothing is undone. */
-    fun cancelUndoRechunk() {
-        _uiState.value = _uiState.value.copy(undoRechunkRecordings = null)
-    }
-
-    private fun undoChapter() {
-        val chapter = workbookDataStore.activeChapter.value ?: return
-        val after = afterChapterUndoHandler
-        launchLogged {
-            beforeChapterUndoHandler()
-            saveMessages.report(chapter.undo())
-            afterChapterUndoRedo(after)
-        }
-    }
-
-    fun onRedo() {
-        val redo = redoHandler
-        if (redo != null && stepCanRedo) { redo(); return }
-        val chapter = workbookDataStore.activeChapter.value ?: return
-        if (!chapter.canRedo.value) return
-        val after = afterChapterUndoHandler
-        launchLogged {
-            beforeChapterUndoHandler()
-            saveMessages.report(chapter.redo())
-            afterChapterUndoRedo(after)
-        }
-    }
-
-    /**
-     * The step on screen and the steps drawer show what the chapter undo or redo saved. Undoing a
-     * chapter's first chunking leaves it with no chunks: a later step then has nothing to show, so
-     * the page goes back to Chunking.
-     */
-    private suspend fun afterChapterUndoRedo(after: () -> Unit) {
-        // Only while the step that started the undo or redo is still the registered one.
-        if (afterChapterUndoHandler === after) after()
-        onChunkTakesChanged()
-        val chapterSort = _uiState.value.activeChapterSort ?: return
-        val chapter = chapters.firstOrNull { it.sort == chapterSort } ?: return
-        val noChunks = withContext(Dispatchers.IO) {
-            runCatching { chapter.chunks().none { it.contentType == ContentType.TEXT } }.getOrDefault(false)
-        }
-        val s = _uiState.value
-        if (noChunks && s.activeChapterSort == chapterSort && s.selectedStep.ordinal > ChunkingStep.CHUNKING.ordinal) {
-            commitStepNavigation(ChunkingStep.CHUNKING)
-        }
-    }
-
-    /**
-     * Dock: the page entered composition, e.g. back from narration, which settled the chapter when
-     * it opened the book. Points the shared active chapter back at the one this page shows.
-     */
-    fun onDock() {
-        val sort = _uiState.value.activeChapterSort ?: return
-        val chapter = chapters.firstOrNull { it.sort == sort } ?: return
-        launchLogged {
-            if (workbookDataStore.activeChapter.value != chapter) {
-                workbookDataStore.setActiveChapter(chapter, workbookDescriptorId)
-                if (_uiState.value.selectedStep.ordinal >= ChunkingStep.BLIND_DRAFT.ordinal) loadChunks()
-            }
-        }
-    }
+    fun onUndo() { undoHandler?.invoke() }
+    fun onRedo() { redoHandler?.invoke() }
 
     // Final Review registers its "open in external editor" action here so the header's Open-In
     // button (JVM: OpenInPluginEvent) drives it, mirroring the undo/redo handler pattern above.
@@ -463,10 +340,10 @@ class OratureTranslationViewModel(
         }
     }
 
-    // The active Chunking VM registers an awaited save here so leaving the step forward saves its
-    // marker edits as a rechunk (committed + readable) BEFORE the next step loads — matching
-    // Orature's undock save. It returns whether the layout was saved (or there was nothing to save);
-    // the step changes only when it was.
+    // The active Chunking VM registers an awaited save here so leaving the step persists its chunks
+    // (and they're committed + readable) BEFORE the next step loads — matching Orature's undock save.
+    // It returns whether the chunks were saved (or there was nothing to save); the step changes only
+    // when they were.
     private var chunkSaveHandler: (suspend () -> Boolean)? = null
     fun setChunkSaveHandler(handler: suspend () -> Boolean) { chunkSaveHandler = handler }
     fun clearChunkSaveHandler() { chunkSaveHandler = null }
@@ -488,6 +365,26 @@ class OratureTranslationViewModel(
         val s = _uiState.value
         if (s.pluginOpen) return
         if (step.ordinal > s.reachableStep.ordinal) return
+
+        // Committing chunk edits is DESTRUCTIVE (resetChapter deletes the chapter's takes before
+        // re-creating chunks), so navigating FORWARD out of Chunking with unsaved edits must be
+        // confirmed when the chapter already has chunks. Until the user confirms we neither save nor
+        // navigate — that's what lets them cancel, undo the chunk move, and keep their takes.
+        // chunkCount is only read when it can matter (a forward leave with unsaved edits), so the
+        // common path stays synchronous.
+        val mayNeedConfirm = chunkNavAction(s.selectedStep, step, s.canUndo, existingChunkCount = 1) ==
+            ChunkNavAction.CONFIRM_DATA_LOSS
+        if (mayNeedConfirm) {
+            launchLogged {
+                val action = chunkNavAction(s.selectedStep, step, s.canUndo, activeChapterChunkCount())
+                if (action == ChunkNavAction.CONFIRM_DATA_LOSS) {
+                    _uiState.value = _uiState.value.copy(pendingChunkNavStep = step)
+                } else {
+                    commitStepNavigation(step) // nothing recorded yet — nothing to lose
+                }
+            }
+            return
+        }
         commitStepNavigation(step)
     }
 
@@ -495,24 +392,60 @@ class OratureTranslationViewModel(
     private fun commitStepNavigation(step: ChunkingStep) {
         val s = _uiState.value
         // Save ONLY when navigating forward past Chunking (JVM `undock()`'s
-        // `selectedStep.ordinal > CHUNKING.ordinal`). Going backward (e.g. to Consume) must not
-        // rechunk. The handler itself no-ops when there are no edits.
-        val save = chunkSaveHandler
-        if (chunkNavAction(s.selectedStep, step) == ChunkNavAction.SAVE_THEN_NAVIGATE && save != null) {
+        // `selectedStep.ordinal > CHUNKING.ordinal`). Going backward (e.g. to Consume) must not run
+        // the destructive reset — previously any step change out of Chunking saved, silently
+        // destroying takes. The handler itself no-ops when there are no edits.
+        val saveFirst = chunkNavAction(
+            s.selectedStep, step, hasUnsavedChunkEdits = s.canUndo, existingChunkCount = 0
+        ) == ChunkNavAction.SAVE_THEN_NAVIGATE && chunkSaveHandler != null
+        if (saveFirst) {
             // Persist and WAIT before switching, so the next step reads committed chunk content
             // (JVM saves synchronously in undock before navigating).
             launchLogged {
-                // Save-first: stay on Chunking with the edits when it did not save.
-                val saved = runCatching { save() }
+                val saved = runCatching { chunkSaveHandler?.invoke() ?: true }
                     .onFailure { logFailure("saving chunks before leaving the step", it) }
                     .getOrDefault(false)
-                if (!saved) return@launchLogged
-                _uiState.value = _uiState.value.copy(selectedStep = step, activeChunkSort = null)
+                if (!saved) {
+                    // Save-first: stay on Chunking with the edits; the failure has been shown.
+                    _uiState.value = _uiState.value.copy(pendingChunkNavStep = null)
+                    return@launchLogged
+                }
+                _uiState.value = _uiState.value.copy(
+                    selectedStep = step,
+                    activeChunkSort = null,
+                    pendingChunkNavStep = null
+                )
                 if (step.ordinal >= ChunkingStep.BLIND_DRAFT.ordinal) loadChunks()
             }
         } else {
-            _uiState.value = s.copy(selectedStep = step, activeChunkSort = null)
+            _uiState.value = s.copy(
+                selectedStep = step,
+                activeChunkSort = null,
+                pendingChunkNavStep = null
+            )
             if (step.ordinal >= ChunkingStep.BLIND_DRAFT.ordinal) loadChunks()
+        }
+    }
+
+    /** The user accepted losing this chapter's recordings — commit the chunk edits and navigate. */
+    fun confirmPendingChunkNav() {
+        val step = _uiState.value.pendingChunkNavStep ?: return
+        commitStepNavigation(step)
+    }
+
+    /** Dismiss the warning and stay on Chunking with the edits still UNSAVED (so undo can restore
+     *  the previous chunk layout and the existing takes remain intact). */
+    fun cancelPendingChunkNav() {
+        _uiState.value = _uiState.value.copy(pendingChunkNavStep = null)
+    }
+
+    /** The active chapter's existing chunk count (JVM: `workbookDataStore.chapter.chunkCount`) —
+     *  non-zero means there are chunks whose takes a chunk-edit save would delete. */
+    private suspend fun activeChapterChunkCount(): Int {
+        val chapterSort = _uiState.value.activeChapterSort ?: return 0
+        val chapter = chapters.firstOrNull { it.sort == chapterSort } ?: return 0
+        return withContext(Dispatchers.IO) {
+            runCatching { chapter.chunkCount() }.getOrDefault(0)
         }
     }
 
@@ -625,15 +558,6 @@ class OratureTranslationViewModel(
     fun selectChapter(sort: Int) {
         if (_uiState.value.pluginOpen) return
         val chapter = chapters.firstOrNull { it.sort == sort } ?: return
-        // Settle the chapter on screen (its undo history ends, a rechunk sticks) before showing the
-        // next one, so no step acts on the new chapter while the old one is still unsettled.
-        launchLogged {
-            workbookDataStore.activeChapter.value?.takeIf { it != chapter }?.let { workbookDataStore.settle(it) }
-            showChapter(chapter, sort)
-        }
-    }
-
-    private fun showChapter(chapter: Chapter, sort: Int) {
         workbookDataStore.setActiveChapter(chapter, workbookDescriptorId)
         val current = _uiState.value
         _uiState.value = current.copy(
@@ -706,15 +630,6 @@ class OratureTranslationViewModel(
         }
 
     override fun onCleared() {
-        // Leaving the book settles its chapter. This ViewModel's scope is gone, so it runs in the
-        // app's scope, and only while that chapter is still the active one: another screen that
-        // made a different chapter active has settled this one already.
-        val sort = _uiState.value.activeChapterSort
-        chapters.firstOrNull { it.sort == sort }?.let { leaving ->
-            appScope.launchLoggedIn(owner = this) {
-                if (workbookDataStore.activeChapter.value == leaving) workbookDataStore.settle(leaving)
-            }
-        }
         // See OratureNarrationViewModel.onCleared — the home ring is stale until someone says the
         // book changed, and the translation steps (chunking, blind draft, peer edit, chapter
         // review) all move this book's progress.
@@ -734,10 +649,3 @@ internal fun textChunksOf(chapter: Chapter): kotlinx.coroutines.flow.Flow<List<C
     }
         .filter { it.loaded }
         .map { state -> state.chunks.filter { it.contentType == ContentType.TEXT } }
-
-/** Emits whenever the active chapter, or whether its history can undo or redo, changes. */
-@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-private fun undoRedoOf(active: StateFlow<Chapter?>): kotlinx.coroutines.flow.Flow<Unit> =
-    active.flatMapLatest { chapter ->
-        if (chapter == null) flowOf(Unit) else combine(chapter.canUndo, chapter.canRedo) { _, _ -> }
-    }

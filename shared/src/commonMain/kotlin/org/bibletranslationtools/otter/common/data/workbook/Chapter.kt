@@ -36,8 +36,7 @@ import org.bibletranslationtools.otter.common.domain.content.Recordable
  * A chapter: its own takes, and its chunks.
  *
  * The chunks load the first time they are asked for ([chunks], [loadedState]); a large book opens
- * without reading every chapter's rows. After that, [state] holds the chapter's active chunk layout
- * as one value: which draft is active and its chunks change together.
+ * without reading every chapter's rows. After that, [state] holds the chapter's chunks as one value.
  */
 class Chapter(
     val id: ChapterId,
@@ -102,65 +101,16 @@ class Chapter(
     /** How many text chunks (or verses) the active layout has. */
     suspend fun chunkCount(): Int = chunks().count { it.contentType == ContentType.TEXT }
 
-    /**
-     * Replaces the chapter's chunks with [rows], as a new layout, in one transaction. The previous
-     * layout and its takes are kept, inactive, so this can be undone with [switchDraft] until
-     * [settle] runs. Chunks of the previous layout are retired.
-     */
-    suspend fun rechunk(rows: List<Content>): SaveResult<RechunkReceipt> {
-        // Loaded first, outside the save: loading can itself save (a stale checking status), and the
-        // workbook's lock is not reentrant.
-        val previous = loadedState().activeDraft ?: DraftId(1)
-        return writer.save {
-            val next = store.rechunk(id, rows)
-            _state.value = layoutState(store.loadChunks(id))
-            RechunkReceipt(previous, next)
-        }
+    /** Deletes the chapter's chunks and their takes. */
+    suspend fun resetChunks(): SaveResult<Unit> = writer.save {
+        store.clearChunks(id)
+        _state.value = ChapterState(chunks = emptyList(), loaded = true)
     }
 
-    /** Makes [to] the active layout: undo and redo of a rechunk. The other layout's chunks are retired. */
-    suspend fun switchDraft(to: DraftId): SaveResult<Unit> {
-        loadedState()
-        return writer.save {
-            store.switchDraft(id, to)
-            _state.value = layoutState(store.loadChunks(id))
-        }
-    }
-
-    // The chapter's undo history: every saved change made to it through [execute], from any of its
-    // steps, so a rechunk stays undoable while the user moves between them. Its own lock: an action
-    // saves through the workbook's writer, whose lock is not reentrant.
-    private val historyLock = Mutex()
-    private val history = UndoableChangeHistory()
-    private val _canUndo = MutableStateFlow(false)
-    private val _canRedo = MutableStateFlow(false)
-    val canUndo: StateFlow<Boolean> = _canUndo.asStateFlow()
-    val canRedo: StateFlow<Boolean> = _canRedo.asStateFlow()
-
-    /** Runs [action] and, once it is saved, adds it to the chapter's undo history. */
-    suspend fun execute(action: UndoableChange): SaveResult<Unit> =
-        historyLock.withLock { history.execute(action).also { publishHistory() } }
-
-    suspend fun undo(): SaveResult<Unit> = historyLock.withLock { history.undo().also { publishHistory() } }
-
-    suspend fun redo(): SaveResult<Unit> = historyLock.withLock { history.redo().also { publishHistory() } }
-
-    /** The action the next [undo] would undo, if any. */
-    fun peekUndo(): UndoableChange? = history.peekUndo()
-
-    /**
-     * Ends the chapter's undo history and deletes every layout but the active one, with their takes:
-     * what makes a rechunk stick. Called when the user leaves the chapter, and at startup.
-     */
-    suspend fun settle(): SaveResult<Unit> = historyLock.withLock {
-        history.clear()
-        publishHistory()
-        writer.save { store.deleteInactiveDrafts(id) }
-    }
-
-    private fun publishHistory() {
-        _canUndo.value = history.canUndo()
-        _canRedo.value = history.canRedo()
+    /** Adds [rows] as the chapter's chunks, linked to their source rows. */
+    suspend fun addChunks(rows: List<Content>): SaveResult<Unit> = writer.save {
+        store.addChunks(id, rows)
+        _state.value = layoutState(store.loadChunks(id))
     }
 
     fun hasSelectedAudio() = audio.getSelectedTake() != null
@@ -169,7 +119,6 @@ class Chapter(
 
     private fun layoutState(layout: ChapterLayout): ChapterState =
         ChapterState(
-            activeDraft = layout.draft,
             chunks = layout.chunks.map { record ->
                 Chunk(
                     id = record.id,
@@ -181,8 +130,7 @@ class Chapter(
                     contentType = record.contentType,
                     textItem = record.textItem,
                     resources = chunkResources(record.id),
-                    isRetired = { _state.value.activeDraft != record.draft },
-                    audioFactory = { gate -> AssociatedAudio(record.id, record.audio, store, writer, gate) }
+                    audio = AssociatedAudio(record.id, record.audio, store, writer)
                 )
             },
             loaded = true
@@ -199,13 +147,12 @@ class Chapter(
     override fun toString(): String = "Chapter(sort=$sort, title=$title, label=$label)"
 }
 
-/** A chapter's active chunk layout: which draft is active and its chunks, as one value. */
+/** A chapter's chunks, as one value. */
 data class ChapterState(
-    val activeDraft: DraftId?,
     val chunks: List<Chunk>,
     val loaded: Boolean
 ) {
     companion object {
-        val NOT_LOADED = ChapterState(activeDraft = null, chunks = emptyList(), loaded = false)
+        val NOT_LOADED = ChapterState(chunks = emptyList(), loaded = false)
     }
 }
