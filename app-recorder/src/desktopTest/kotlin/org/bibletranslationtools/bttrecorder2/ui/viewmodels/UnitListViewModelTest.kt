@@ -25,6 +25,7 @@ import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.ChapterState
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
 import org.bibletranslationtools.otter.common.data.workbook.ChunkId
+import org.bibletranslationtools.otter.common.data.workbook.DraftId
 import org.bibletranslationtools.otter.common.data.workbook.Take
 import org.bibletranslationtools.otter.common.data.workbook.TakeId
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
@@ -155,7 +156,7 @@ class UnitListViewModelTest : KoinTest {
 
     /** A chapter's active layout holding [chunks]; setting its value changes it, as a rechunk would. */
     private fun layoutOf(chunks: List<Chunk>) =
-        MutableStateFlow(ChapterState(chunks, loaded = true))
+        MutableStateFlow(ChapterState(DraftId(1), chunks, loaded = true))
 
     /**
      * Wires navState → collections → workbook → target book chapters, the chain loadUnits walks.
@@ -295,7 +296,7 @@ class UnitListViewModelTest : KoinTest {
         advanceUntilIdle()
         viewModel.loadUnits()
         advanceUntilIdle()
-        layout.value = ChapterState(listOf(chunk(sort = 1)), loaded = true)
+        layout.value = ChapterState(DraftId(1), listOf(chunk(sort = 1)), loaded = true)
         advanceUntilIdle()
 
         assertEquals(1, viewModel.uiState.value.units.size)

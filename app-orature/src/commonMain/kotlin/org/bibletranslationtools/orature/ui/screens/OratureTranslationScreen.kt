@@ -133,6 +133,8 @@ fun OratureTranslationScreen(
     onGoToNarration: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    // Back on this page (e.g. from narration, which settled the chapter): show its chapter again.
+    LaunchedEffect(viewModel) { viewModel.onDock() }
 
     // Source-audio import (Phase 9 partial) — reachable from the SourceAudioMissing "Choose File".
     val importVm = viewModel { OratureImportViewModel() }
@@ -234,19 +236,19 @@ fun OratureTranslationScreen(
                 text = { Text(err.message) }
             )
         }
-        // Re-chunk data-loss warning (JVM: `ChunkingViewModel.requestToNavigate`'s ConfirmDialog):
-        // moving forward out of Chunking with unsaved chunk edits will delete this chapter's
-        // recordings. Cancelling keeps the edits unsaved so they can be undone and the takes kept.
-        if (uiState.pendingChunkNavStep != null) {
+        // Undoing a rechunk that recordings were made into since: the earlier layout becomes active
+        // again, and the recordings stay with the newer one, which is deleted when the user leaves
+        // the chapter unless they redo first. Cancelling keeps the rechunk.
+        if (uiState.undoRechunkRecordings != null) {
             AlertDialog(
-                onDismissRequest = viewModel::cancelPendingChunkNav,
+                onDismissRequest = viewModel::cancelUndoRechunk,
                 confirmButton = {
-                    TextButton(onClick = viewModel::confirmPendingChunkNav) {
+                    TextButton(onClick = viewModel::confirmUndoRechunk) {
                         Text(stringResource(Res.string.`continue`))
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = viewModel::cancelPendingChunkNav) {
+                    TextButton(onClick = viewModel::cancelUndoRechunk) {
                         Text(stringResource(Res.string.cancel))
                     }
                 },

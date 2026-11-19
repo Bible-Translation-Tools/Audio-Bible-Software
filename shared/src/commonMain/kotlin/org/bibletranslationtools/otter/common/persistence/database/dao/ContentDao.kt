@@ -33,7 +33,19 @@ import org.bibletranslationtools.otter.common.persistence.entities.ContentEntity
  * omitted; they are handled elsewhere.
  */
 interface ContentDao {
+    /** The chapter's rows; text rows only of its active chunk layout. */
     fun fetchByCollectionId(collectionId: Int): List<ContentEntity>
+
+    /** Every row of the collection, text rows of every chunk layout included. */
+    fun fetchAllDraftsByCollectionId(collectionId: Int): List<ContentEntity>
+
+    /** The chapter's active chunk layout (draft number), or null when it has only ever had one. */
+    fun activeDraft(chapterId: Int): Int?
+
+    fun setActiveDraft(chapterId: Int, draft: Int)
+
+    /** Chapters that record an active draft, so may have inactive layouts. */
+    fun chaptersWithDrafts(): List<Int>
     fun fetchByCollectionIdAndStart(
         collectionId: Int,
         start: Int,

@@ -45,6 +45,19 @@ internal class SqlDelightContentDao(
     override fun fetchByCollectionId(collectionId: Int): List<ContentEntity> =
         queries.fetchByCollectionId(collectionId).executeAsList().map { it.toEntity() }
 
+    override fun fetchAllDraftsByCollectionId(collectionId: Int): List<ContentEntity> =
+        queries.fetchAllDraftsByCollectionId(collectionId).executeAsList().map { it.toEntity() }
+
+    override fun activeDraft(chapterId: Int): Int? =
+        db.chapterDraftQueries.activeDraft(chapterId).executeAsOneOrNull()
+
+    override fun setActiveDraft(chapterId: Int, draft: Int) {
+        db.chapterDraftQueries.setActiveDraft(chapterId = chapterId, draft = draft)
+    }
+
+    override fun chaptersWithDrafts(): List<Int> =
+        db.chapterDraftQueries.chaptersWithDrafts().executeAsList()
+
     override fun fetchByCollectionIdAndStart(
         collectionId: Int,
         start: Int,

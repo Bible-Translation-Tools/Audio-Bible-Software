@@ -39,16 +39,16 @@ class WorkbookDefectsTest {
         env.close()
     }
 
-    /** Rechunks chapter 1 of [project] into two chunks, as saving chunk markers does. */
-    private suspend fun rechunk() {
+    /** Rechunks chapter 1 of [project] into two chunks and makes it stick, as leaving the chapter does. */
+    private suspend fun rechunkAndSettle() {
         val chapter = env.chapter(env.workbook(project), 1)
-        chapter.resetChunks().saved()
-        chapter.addChunks(
+        chapter.rechunk(
             listOf(
                 Content(sort = 1, labelKey = "chunk", start = 1, end = 10, text = null, format = null, type = ContentType.TEXT, draftNumber = 0),
                 Content(sort = 2, labelKey = "chunk", start = 11, end = 25, text = null, format = null, type = ContentType.TEXT, draftNumber = 0)
             )
         ).saved()
+        chapter.settle().saved()
     }
 
     @Test
@@ -108,7 +108,7 @@ class WorkbookDefectsTest {
         val pending = env.addTake(other, 1, 1, deleted = true)
         val pendingFile = env.takeFile(pending)
 
-        rechunk()
+        rechunkAndSettle()
 
         assertNotNull(env.takeOrNull(pending), "another project's undoable delete was purged")
         assertTrue(pendingFile.exists(), "another project's deleted take lost its audio")
@@ -119,7 +119,7 @@ class WorkbookDefectsTest {
         val takeId = env.addTake(project, 1, 1)
         val file = env.takeFile(takeId)
 
-        rechunk()
+        rechunkAndSettle()
 
         assertNull(env.takeOrNull(takeId))
         assertFalse(file.exists(), "the old take's audio was left on disk with no row")

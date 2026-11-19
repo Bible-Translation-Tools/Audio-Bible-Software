@@ -140,7 +140,9 @@ fun main() {
                     if (navigationLock.locked.value) {
                         navigationLock.notifyCloseBlocked()
                     } else {
-                        // Close the workbook so a change being saved finishes, then quit.
+                        // Leave the chapter in progress so its rechunk sticks, and close the workbook so
+                        // a change being saved finishes (a crash or a hung save is settled at the next
+                        // startup instead), then quit.
                         runBlocking { withTimeoutOrNull(CLOSE_LEAVE_TIMEOUT_MS) { workbookDataStore.close() } }
                         exitApplication()
                     }

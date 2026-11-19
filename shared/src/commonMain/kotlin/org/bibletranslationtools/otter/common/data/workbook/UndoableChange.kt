@@ -70,6 +70,9 @@ class UndoableChangeHistory {
         redoStack.clear()
     }
 
+    /** The change the next [undo] would undo, if any. */
+    fun peekUndo(): UndoableChange? = undoStack.peek()
+
     fun canUndo() = undoStack.isNotEmpty()
     fun canRedo() = redoStack.isNotEmpty()
 }

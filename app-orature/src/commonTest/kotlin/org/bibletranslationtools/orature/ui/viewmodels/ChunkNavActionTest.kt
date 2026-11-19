@@ -5,13 +5,11 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * Guards the chunk-navigation rules that protect recorded takes from being destroyed.
+ * Guards the chunk-navigation rules.
  *
- * Committing chunk edits runs `ResetChunks.resetChapter`, which DELETES the chapter's takes before
- * re-creating chunks. Orature therefore only ever commits when the user moves FORWARD out of
- * Chunking, and warns first when that commit would destroy existing recordings — so cancelling and
- * undoing the chunk change keeps the Blind Draft takes. The port previously committed on ANY step
- * change out of Chunking with no warning, silently and irrecoverably deleting takes.
+ * Committing chunk edits is one undoable rechunk in the chapter's undo history. Orature only ever
+ * commits when the user moves FORWARD out of Chunking. The port previously committed on ANY step
+ * change out of Chunking.
  */
 class ChunkNavActionTest {
 
@@ -24,49 +22,17 @@ class ChunkNavActionTest {
     )
 
     @Test
-    fun `forward out of chunking with unsaved edits over existing chunks must be confirmed`() {
-        // The reported data-loss case: chunks were moved and the chapter already has recordings.
+    fun `forward out of chunking saves the chunk edits first`() {
         laterSteps.forEach { target ->
             assertEquals(
-                ChunkNavAction.CONFIRM_DATA_LOSS,
+                ChunkNavAction.SAVE_THEN_NAVIGATE,
                 chunkNavAction(
                     current = ChunkingStep.CHUNKING,
-                    target = target,
-                    hasUnsavedChunkEdits = true,
-                    existingChunkCount = 4
+                    target = target
                 ),
-                "moving to $target should warn before destroying recordings"
+                "moving to $target should save the chunk edits first"
             )
         }
-    }
-
-    @Test
-    fun `first time chunking saves without warning when nothing is recorded yet`() {
-        // No chunks exist, so no takes can be lost — chunking for the first time must not nag.
-        assertEquals(
-            ChunkNavAction.SAVE_THEN_NAVIGATE,
-            chunkNavAction(
-                current = ChunkingStep.CHUNKING,
-                target = ChunkingStep.BLIND_DRAFT,
-                hasUnsavedChunkEdits = true,
-                existingChunkCount = 0
-            )
-        )
-    }
-
-    @Test
-    fun `forward out of chunking after undoing the edits does not warn`() {
-        // After undo there are no unsaved edits, so nothing destructive happens (the save handler
-        // itself no-ops) and the user must not be warned.
-        assertEquals(
-            ChunkNavAction.SAVE_THEN_NAVIGATE,
-            chunkNavAction(
-                current = ChunkingStep.CHUNKING,
-                target = ChunkingStep.BLIND_DRAFT,
-                hasUnsavedChunkEdits = false,
-                existingChunkCount = 4
-            )
-        )
     }
 
     @Test
@@ -77,9 +43,7 @@ class ChunkNavActionTest {
             ChunkNavAction.NAVIGATE,
             chunkNavAction(
                 current = ChunkingStep.CHUNKING,
-                target = ChunkingStep.CONSUME_AND_VERBALIZE,
-                hasUnsavedChunkEdits = true,
-                existingChunkCount = 4
+                target = ChunkingStep.CONSUME_AND_VERBALIZE
             )
         )
     }
@@ -90,9 +54,7 @@ class ChunkNavActionTest {
             ChunkNavAction.NAVIGATE,
             chunkNavAction(
                 current = ChunkingStep.CHUNKING,
-                target = ChunkingStep.CHUNKING,
-                hasUnsavedChunkEdits = true,
-                existingChunkCount = 4
+                target = ChunkingStep.CHUNKING
             )
         )
     }
@@ -104,18 +66,14 @@ class ChunkNavActionTest {
             ChunkNavAction.NAVIGATE,
             chunkNavAction(
                 current = ChunkingStep.FINAL_REVIEW,
-                target = ChunkingStep.BLIND_DRAFT,
-                hasUnsavedChunkEdits = true,
-                existingChunkCount = 4
+                target = ChunkingStep.BLIND_DRAFT
             )
         )
         assertEquals(
             ChunkNavAction.NAVIGATE,
             chunkNavAction(
                 current = ChunkingStep.CONSUME_AND_VERBALIZE,
-                target = ChunkingStep.CHUNKING,
-                hasUnsavedChunkEdits = true,
-                existingChunkCount = 4
+                target = ChunkingStep.CHUNKING
             )
         )
     }

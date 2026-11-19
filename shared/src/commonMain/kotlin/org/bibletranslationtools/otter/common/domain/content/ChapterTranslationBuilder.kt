@@ -83,20 +83,15 @@ class ChapterTranslationBuilder(
     ): Take {
         val namer = getFileNamer(workbook, chapter)
         return withContext(Dispatchers.IO) {
-            val chapterNumber = namer.formatChapterNumber()
-            val chapterAudioDir = workbook.projectFilesAccessor.audioDir
-                .resolve(chapterNumber)
-                .apply { mkdirs() }
-
-            val takeNumber = chapter.audio.getNewTakeNumber()
-            takeCreator.createNewTake(
-                takeNumber,
-                namer.generateName(takeNumber, AudioFileFormat.WAV),
-                chapterAudioDir,
-                createEmpty = false
-            ).also {
-                file.copyTo(it.file, overwrite = true)
-            }.let { it.copy(checking = TakeCheckingState(CheckingStatus.VERSE, computeFileChecksum(it.file))) }
+            val chapterAudioDir = workbook.projectFilesAccessor.audioDir.resolve(namer.formatChapterNumber())
+            // A file nothing else uses; the copy writes into the file this call owns.
+            val reserved = TakeFiles.reserve(chapterAudioDir, chapter.audio.getNewTakeNumber()) {
+                namer.generateName(it, AudioFileFormat.WAV)
+            }
+            file.copyTo(reserved.file, overwrite = true)
+            takeCreator
+                .createNewTake(reserved.number, reserved.file.name, chapterAudioDir, createEmpty = false)
+                .copy(checking = TakeCheckingState(CheckingStatus.VERSE, computeFileChecksum(reserved.file)))
         }
     }
 
