@@ -22,6 +22,7 @@ import org.bibletranslationtools.otter.common.data.workbook.ChapterId
 import org.bibletranslationtools.otter.common.data.workbook.ChapterLayout
 import org.bibletranslationtools.otter.common.data.workbook.ChunkId
 import org.bibletranslationtools.otter.common.data.workbook.ChunkRecord
+import org.bibletranslationtools.otter.common.data.workbook.DraftId
 import org.bibletranslationtools.otter.common.data.workbook.ElementId
 import org.bibletranslationtools.otter.common.data.workbook.TakeCheckingState
 import org.bibletranslationtools.otter.common.data.workbook.TakeId
@@ -129,12 +130,13 @@ object MockData {
         bridged = false,
         contentType = ContentType.TEXT,
         textItem = TextItem("Mock Text", MimeType.USFM!!),
+        draft = DraftId(1),
         audio = AudioState(takes, takes.firstOrNull()?.id)
     )
 
     private fun mockChapter(sort: Int, title: String, label: String, chunks: List<ChunkRecord>): Chapter {
         val id = lastId.incrementAndGet()
-        previewStore.layouts[ChapterId(id)] = ChapterLayout(chunks = chunks)
+        previewStore.layouts[ChapterId(id)] = ChapterLayout(draft = DraftId(1), chunks = chunks)
         return Chapter(
             id = ChapterId(id),
             sort = sort,
@@ -159,8 +161,10 @@ object MockData {
         override suspend fun markDeleted(take: TakeId, on: LocalDate, clearSelectionOf: ElementId?) = refuse()
         override suspend fun restore(take: TakeId) = refuse()
         override suspend fun setChecking(take: TakeId, checking: TakeCheckingState) = refuse()
-        override suspend fun clearChunks(chapter: ChapterId, type: ContentType) = refuse()
-        override suspend fun addChunks(chapter: ChapterId, rows: List<Content>) = refuse()
+        override suspend fun rechunk(chapter: ChapterId, rows: List<Content>): DraftId = refuse()
+        override suspend fun switchDraft(chapter: ChapterId, to: DraftId) = refuse()
+        override suspend fun deleteInactiveDrafts(chapter: ChapterId) = refuse()
+        override suspend fun chaptersWithDrafts(): List<ChapterId> = emptyList()
 
         private fun refuse(): Nothing = throw UnsupportedOperationException("Previews do not save.")
     }

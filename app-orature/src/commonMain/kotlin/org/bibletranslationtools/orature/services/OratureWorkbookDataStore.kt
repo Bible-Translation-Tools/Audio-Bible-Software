@@ -9,9 +9,11 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IWork
 import org.bibletranslationtools.otter.common.data.primitives.ProjectMode
 import org.bibletranslationtools.otter.common.data.workbook.Chapter
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
+import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.domain.project.InitializeProjectFiles
+import org.slf4j.LoggerFactory
 
 /**
  * Orature's central open-project state, shared across the mode-page components (header,
@@ -28,6 +30,8 @@ class OratureWorkbookDataStore(
     private val workbookRepository: IWorkbookRepository,
     private val initializeProjectFiles: InitializeProjectFiles
 ) {
+    private val logger = LoggerFactory.getLogger(OratureWorkbookDataStore::class.java)
+
     private val _activeWorkbook = MutableStateFlow<Workbook?>(null)
     val activeWorkbook: StateFlow<Workbook?> = _activeWorkbook.asStateFlow()
 
@@ -56,6 +60,10 @@ class OratureWorkbookDataStore(
      * Closes the previously-open workbook when switching projects,
      * matching the JVM app's cached `workbookRepo` lifecycle.
      *
+     * Every open first settles the active chapter ([Chapter.settle]), before the previous workbook
+     * closes: opening a project, switching to another, and opening narration on the book all end
+     * the chapter's undo history and make its rechunk stick.
+     *
      * The scaffolding stays wired to this call rather than being left to each screen: two screens
      * open projects today, and anything that reaches `ResourceContainer.load(projectDir)` depends
      * on it having run. A caller that forgot would not fail here — it would fail later, elsewhere,
@@ -67,6 +75,7 @@ class OratureWorkbookDataStore(
      *   project should not be presented as open.
      */
     suspend fun open(workbook: Workbook, mode: ProjectMode): InitializeProjectFiles.Result {
+        _activeChapter.value?.let { settle(it) }
         val previous = _activeWorkbook.value
         if (previous != null && previous !== workbook) {
             workbookRepository.closeWorkbook(previous)
@@ -79,10 +88,11 @@ class OratureWorkbookDataStore(
     }
 
     /**
-     * Closes the open project's workbook, which waits for a change being saved and refuses any
-     * after it. For closing the app.
+     * Closes the open project: settles the active chapter, then closes its workbook, which waits
+     * for a change being saved and refuses any after it. For closing the app.
      */
     suspend fun close() = withContext(NonCancellable) {
+        _activeChapter.value?.let { settle(it) }
         _activeWorkbook.value?.let { workbookRepository.closeWorkbook(it) }
         _activeWorkbook.value = null
         _activeChapter.value = null
@@ -103,6 +113,15 @@ class OratureWorkbookDataStore(
             _activeChunk.value = null
         }
         workbookRepository.closeWorkbook(live)
+    }
+
+    /**
+     * Ends [chapter]'s undo history and makes its rechunk stick ([Chapter.settle]). For leaving a
+     * chapter: before another one becomes active, and when its project closes.
+     */
+    suspend fun settle(chapter: Chapter) {
+        val result = chapter.settle()
+        if (result !is SaveResult.Saved) logger.error("Could not settle chapter ${chapter.sort}'s chunk layouts: $result")
     }
 
     /** Set the active chapter and remember it for [workbookDescriptorId] (JVM: `updateLastSelectedChapter`). */

@@ -20,11 +20,10 @@ import org.bibletranslationtools.orature.services.OratureSaveMessages
 import org.bibletranslationtools.orature.services.OratureWorkbookDataStore
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
 import org.bibletranslationtools.otter.common.audio.DEFAULT_SAMPLE_RATE
-import org.bibletranslationtools.otter.common.data.primitives.MimeType
 import org.bibletranslationtools.otter.common.data.workbook.Chunk
+import org.bibletranslationtools.otter.common.data.workbook.UndoableChange
 import org.bibletranslationtools.otter.common.data.workbook.SaveResult
 import org.bibletranslationtools.otter.common.data.workbook.Take
-import org.bibletranslationtools.otter.common.data.workbook.UndoableChangeHistory
 import org.bibletranslationtools.otter.common.device.AudioConfig
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnection
 import org.bibletranslationtools.otter.common.device.AudioPlayerConnectionFactory
@@ -33,6 +32,7 @@ import org.bibletranslationtools.otter.common.device.AudioRecorderConnectionFact
 import org.bibletranslationtools.otter.common.device.AudioSpec
 import org.bibletranslationtools.otter.common.device.IAudioPlayer
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
+import org.bibletranslationtools.otter.common.domain.content.TakeFiles
 import org.bibletranslationtools.otter.common.domain.content.WorkbookFileNamerBuilder
 import org.bibletranslationtools.otter.common.domain.translation.TranslationTakeDeleteAction
 import org.bibletranslationtools.otter.common.domain.translation.TranslationTakeRecordAction
@@ -42,7 +42,6 @@ import org.bibletranslationtools.otter.common.recorder.WavFileWriter
 import org.bibletranslationtools.orature.plugins.PluginCapability
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
-import java.time.LocalDate
 
 /** A single take shown in the Blind Draft take list (JVM: `TakeCardModel`/`ChunkTakeCard`). */
 data class OratureTakeCard(
@@ -116,10 +115,6 @@ class OratureBlindDraftViewModel(
     private var sourcePlayer: IAudioPlayer? = null
     private var takePlayer: IAudioPlayer? = null
     private var positionTickerJob: Job? = null
-
-    // Take select/delete/record are undoable (JVM: BlindDraftViewModel.actionHistory). The page header's
-    // undo/redo route here while Blind Draft is active (JVM: writes translationViewModel can-undo/redo).
-    private val actionHistory = UndoableChangeHistory()
 
     // External-editor plugin support (JVM: edit-take-in-plugin). Desktop-only.
     private val pluginStore: org.bibletranslationtools.orature.plugins.OraturePluginStore by inject()
@@ -196,25 +191,36 @@ class OratureBlindDraftViewModel(
     private val emptyWave = FloatArray(RECORD_WIDTH * 2)
 
     /**
+     * Runs [op] in the active chapter's undo history. Take select/delete/record are undoable (JVM:
+     * BlindDraftViewModel.actionHistory), in the chapter's one history: the page header's undo and
+     * redo drive it from any step.
+     */
+    private suspend fun execute(op: UndoableChange): SaveResult<Unit> =
+        workbookDataStore.activeChapter.value?.execute(op) ?: op.execute()
+
+    /**
      * Dock: the step's screen entered composition (the screen calls this from a DisposableEffect,
      * with [onUndock] on leaving). The step's ViewModel outlives the step, so it takes over the page
-     * header's undo and redo here rather than in init.
+     * header's undo and redo here rather than in init. An undo made on another step may have changed this chunk's takes
+     * meanwhile, so a stale list is reloaded.
      */
     fun onDock() {
-        docked = true
         // The page header undo/redo route here while this step is active.
-        translationVm.setUndoRedoHandlers(::undo, ::redo)
-        translationVm.updateChunkUndoRedo(canUndo = actionHistory.canUndo(), canRedo = actionHistory.canRedo())
+        translationVm.setUndoRedoHandlers(
+            beforeChapterUndo = { runCatching { takePlayer?.pause() } },
+            afterChapterUndo = { activeChunk?.let { onChunk(it) } }
+        )
+        val chunk = activeChunk ?: return
+        if (_uiState.value.isLoading || _uiState.value.recording) return
+        val saved = chunk.audio.getAllTakes().filter { !it.isDeleted() }.map { it.number }.toSet()
+        val shownSelected = _uiState.value.selectedTake?.number
+        if (saved != takesById.keys || shownSelected != chunk.audio.getSelectedTake()?.number) onChunk(chunk)
     }
 
     /** Undock: the step's screen left composition, so it no longer drives the page header. */
     fun onUndock() {
-        docked = false
         translationVm.clearUndoRedoHandlers()
     }
-
-    /** Whether the step's screen is in composition; only then does it drive the page header. */
-    private var docked = false
 
     init {
         // Follow the shared active-chunk selection (set by the translation VM's steps-drawer nav).
@@ -283,11 +289,7 @@ class OratureBlindDraftViewModel(
 
     private fun onChunk(chunk: Chunk?) {
         stopAll()
-        // Undo history is per-chunk (JVM: actionHistory.clear() on chunk change).
-        if (chunk?.sort != activeChunk?.sort) {
-            actionHistory.clear()
-            publishUndoRedo()
-        }
+        // The undo history is the chapter's, so it outlives a chunk change.
         activeChunk = chunk
         if (chunk == null) {
             _uiState.value = OratureBlindDraftUiState(hasChunk = false)
@@ -453,8 +455,8 @@ class OratureBlindDraftViewModel(
         val takeNumber = chunk.audio.getNewTakeNumber()
         val namer = WorkbookFileNamerBuilder.createFileNamer(wb, chapter, chunk, chunk, wb.sourceMetadataSlug)
         val dir = wb.projectFilesAccessor.audioDir.resolve(namer.formatChapterNumber()).apply { mkdirs() }
-        val name = namer.generateName(takeNumber, AudioFileFormat.WAV)
-        return Take(name, dir.resolve(name), takeNumber, MimeType.WAV, LocalDate.now())
+        val reserved = TakeFiles.reserve(dir, takeNumber) { namer.generateName(it, AudioFileFormat.WAV) }
+        return reserved.toTake()
     }
 
     /**
@@ -463,11 +465,10 @@ class OratureBlindDraftViewModel(
      */
     private suspend fun keepRecording(chunk: Chunk, take: Take) {
         val op = TranslationTakeRecordAction(chunk, take, chunk.audio.getSelectedTake())
-        val result = saveMessages.report(actionHistory.execute(op))
+        val result = saveMessages.report(execute(op))
         if (result !is SaveResult.Saved) {
             withContext(Dispatchers.IO) { runCatching { take.file.delete() } }
         }
-        publishUndoRedo()
     }
 
     /**
@@ -606,8 +607,7 @@ class OratureBlindDraftViewModel(
         val take = takesById[id]?.let { chunk.audio.take(it.id) } ?: return
         launchLogged {
             val op = TranslationTakeSelectAction(chunk, take, chunk.audio.getSelectedTake())
-            saveMessages.report(actionHistory.execute(op))
-            publishUndoRedo()
+            saveMessages.report(execute(op))
             onChunk(chunk) // reload to show the saved selection
             translationVm.onChunkTakesChanged()
         }
@@ -620,8 +620,7 @@ class OratureBlindDraftViewModel(
         runCatching { takePlayer?.pause() }
         launchLogged {
             val op = TranslationTakeDeleteAction(chunk, take, ::handlePostDeleteTake)
-            saveMessages.report(actionHistory.execute(op))
-            publishUndoRedo()
+            saveMessages.report(execute(op))
             onChunk(chunk)
             translationVm.onChunkTakesChanged()
         }
@@ -635,33 +634,6 @@ class OratureBlindDraftViewModel(
             .filter { !it.isDeleted() && it != deleted }
             .maxByOrNull { it.file.lastModified() }
             ?.let { saveMessages.report(chunk.audio.selectTake(it)) }
-    }
-
-    fun undo() {
-        if (!actionHistory.canUndo()) return
-        runCatching { takePlayer?.pause() }
-        launchLogged {
-            saveMessages.report(actionHistory.undo())
-            publishUndoRedo()
-            activeChunk?.let { onChunk(it) }
-            translationVm.onChunkTakesChanged()
-        }
-    }
-
-    fun redo() {
-        if (!actionHistory.canRedo()) return
-        runCatching { takePlayer?.pause() }
-        launchLogged {
-            saveMessages.report(actionHistory.redo())
-            publishUndoRedo()
-            activeChunk?.let { onChunk(it) }
-            translationVm.onChunkTakesChanged()
-        }
-    }
-
-    /** The page header's undo and redo follow this step's history as it now stands. */
-    private fun publishUndoRedo() {
-        if (docked) translationVm.updateChunkUndoRedo(canUndo = actionHistory.canUndo(), canRedo = actionHistory.canRedo())
     }
 
     private fun stopAll() {

@@ -71,6 +71,7 @@ class SqlDelightDatabaseMigrator(
             current = migrate15to16(driver, current)
             current = migrate16to17(driver, current)
             current = migrate17to18(driver, current)
+            current = migrate18to19(driver, current)
             exec(driver, "UPDATE installed_entity SET version = $current WHERE name = '$DATABASE_INSTALLABLE_NAME'")
         }
     }
@@ -541,6 +542,28 @@ class SqlDelightDatabaseMigrator(
             logger.info("Updated database from version 16 to 17")
             17
         } else current
+    }
+
+    /**
+     * 18 -> 19: `chapter_draft`, which records each chapter's active chunk layout so a rechunk can
+     * keep the old layout for undo. Existing chapters get no row: each has one layout, all current.
+     */
+    private fun migrate18to19(driver: SqlDriver, current: Int): Int {
+        return if (current < 19) {
+            exec(
+                driver,
+                """
+                CREATE TABLE IF NOT EXISTS chapter_draft (
+                    chapter_fk INTEGER PRIMARY KEY REFERENCES collection_entity(id) ON DELETE CASCADE,
+                    active_draft INTEGER NOT NULL
+                );
+                """.trimIndent()
+            )
+            logger.info("Updated database from version 18 to 19")
+            19
+        } else {
+            current
+        }
     }
 
     /**

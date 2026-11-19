@@ -45,6 +45,9 @@ enum class SaveFailure {
 
 /** Why the workbook refused a change without trying to save it. */
 enum class RejectReason {
+    /** The node belongs to a chunk layout that is no longer the chapter's active one. */
+    RETIRED,
+
     /** The workbook has been closed. */
     CLOSED,
 
