@@ -83,6 +83,8 @@ kotlin {
                 implementation(compose.desktop.currentOs)
                 implementation(compose.uiTest)
                 implementation(libs.kotlinx.coroutines.swing)
+                // Only to build the source-audio fixture (e2e/fixtures); app code stays off it.
+                implementation("org.wycliffeassociates:kotlin-resource-container:0.12.0")
             }
         }
 

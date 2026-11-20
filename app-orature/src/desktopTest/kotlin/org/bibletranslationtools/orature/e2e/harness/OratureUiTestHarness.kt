@@ -130,13 +130,19 @@ internal class FakeMicrophone : AudioSource {
     }
 }
 
-/** Speakers that accept audio and advance their position as if it had been played. */
+/**
+ * Speakers that accept audio and advance their position as if it had been played. Paced to real
+ * time like [FakeMicrophone]: unpaced, a whole chapter "plays" in a moment and the playhead jumps
+ * straight to the end, so nothing can be done part-way through playback (such as adding a chunk).
+ */
 internal class FakeSpeakers : AudioSink {
     override var framePosition: Long = 0
     override var isRunning = false
 
     override fun open(spec: AudioSpec) {}
     override fun write(data: ByteArray, offset: Int, size: Int): Int {
+        // 44.1 kHz, 16-bit mono = 88,200 bytes per second.
+        Thread.sleep((size * 1000L / 88_200).coerceAtLeast(1))
         framePosition += (size / 2).toLong()
         return size
     }

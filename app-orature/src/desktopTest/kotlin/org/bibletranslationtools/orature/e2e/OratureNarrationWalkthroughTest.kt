@@ -175,46 +175,6 @@ class OratureNarrationWalkthroughTest {
     /** The first verse's Record button, which is the only enabled one until it is recorded. */
     private val recordButton = hasText("Record") and hasClickAction() and isEnabled()
 
-    /**
-     * Steps 3 and 4 of the wizard depend on what is installed: a language with one version and
-     * one edition creates the project straight away, otherwise the wizard asks which version
-     * and edition to use. Takes the first offered each time.
-     */
-    private fun ComposeUiTest.finishWizard(guide: Walkthrough) {
-        val version = hasText("Pick a Version (4 of 4)")
-        val edition = hasText("Pick an Edition")
-        val created = listRow("Genesis")
-        repeat(3) {
-            waitUntil(timeoutMillis = 180_000) { isShowing(version) || isShowing(edition) || isShowing(created) }
-            when {
-                isShowing(version) -> {
-                    guide.snapshot("Pick which version of the text to read from")
-                    tap(firstWizardRow)
-                }
-                isShowing(edition) -> {
-                    guide.snapshot("Pick the edition (release) of that version")
-                    tap(firstWizardRow)
-                }
-                else -> return
-            }
-        }
-    }
-
-    /** A clickable row of a list (wizard tables, the book table) that shows [text]. */
-    private fun listRow(text: String) = hasText(text) and hasClickAction() and hasAnyAncestor(hasScrollAction())
-
-    /** A row of the wizard's version or edition table. Takes the first one offered. */
-    private val firstWizardRow = hasClickAction() and hasAnyAncestor(hasScrollAction())
-
-    /**
-     * Lets the fake microphone run in real time. The test clock does not advance on its own
-     * here, so this keeps drawing frames while the time passes.
-     */
-    private fun ComposeUiTest.keepRecordingFor(millis: Long) {
-        val until = System.currentTimeMillis() + millis
-        while (System.currentTimeMillis() < until) {
-            mainClock.advanceTimeByFrame()
-            Thread.sleep(16)
-        }
-    }
+    /** Lets the fake microphone run in real time (see [letTimePass]). */
+    private fun ComposeUiTest.keepRecordingFor(millis: Long) = letTimePass(millis)
 }
