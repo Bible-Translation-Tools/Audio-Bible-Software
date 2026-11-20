@@ -10,6 +10,9 @@ import java.nio.file.FileSystem
 import java.nio.file.FileSystems
 import java.nio.file.Files
 import kotlin.streams.asSequence
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.bibletranslationtools.otter.common.io.utils.copyDirectoryFilesTo
 
 class NioZipFileReader(
     zipFile: File
@@ -40,4 +43,12 @@ class NioZipFileReader(
         val destPath = destinationDirectory.toPath()
         return sourcePath.copyDirectoryTo(destPath, filter)
     }
+    override suspend fun copyDirectorySuspend(
+        source: String,
+        destinationDirectory: File,
+        filter: (String) -> Boolean
+    ): List<String> = withContext(Dispatchers.IO) {
+        fileSystem.getPath(source).copyDirectoryFilesTo(destinationDirectory.toPath(), filter)
+    }
+
 }

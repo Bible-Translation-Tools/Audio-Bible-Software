@@ -38,4 +38,11 @@ interface IProjectImporter {
         callback: ProjectImporterCallback? = null,
         options: ImportOptions? = null
     ): Single<ImportResult>
+
+    /** Suspending [import]. Replaces it once every importer is ported. */
+    suspend fun importSuspend(
+        file: File,
+        callback: ProjectImporterCallback? = null,
+        options: ImportOptions? = null
+    ): ImportResult
 }

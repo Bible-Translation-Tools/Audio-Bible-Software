@@ -19,8 +19,8 @@
 @file:Suppress("FunctionNaming")
 package org.bibletranslationtools.otter.common.initialization
 
-import io.reactivex.Completable
-import io.reactivex.ObservableEmitter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
 import org.bibletranslationtools.otter.common.api.persistence.config.Installable
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IInstalledEntityRepository
@@ -50,16 +50,16 @@ class InitializeProjects(
     private val log = LoggerFactory.getLogger(InitializeProjects::class.java)
     private lateinit var callback: ProjectImporterCallback
 
-    override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable {
-        return Completable.fromCallable {
-            var installedVersion = installedEntityRepo.getInstalledVersion(this)
+    override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) {
+        withContext(Dispatchers.IO) {
+            val installedVersion = installedEntityRepo.getInstalledVersion(this@InitializeProjects)
             if (installedVersion != version) {
                 log.info("Initializing $name version: $version...")
-                progressEmitter.onNext(ProgressStatus(titleKey = "initializingProjects"))
+                onProgress(ProgressStatus(titleKey = "initializingProjects"))
 
                 migrate()
 
-                installedEntityRepo.install(this)
+                installedEntityRepo.install(this@InitializeProjects)
                 log.info("$name version: $version installed!")
             } else {
                 log.info("$name up to date with version: $version")
@@ -67,7 +67,7 @@ class InitializeProjects(
 
             if (fetchProjects().isEmpty()) {
                 log.info("Importing projects...")
-                callback = setupImportCallback(progressEmitter)
+                callback = setupImportCallback(onProgress)
 
                 val dir = directoryProvider.getUserDataDirectory("/")
                 importProjects(dir)
@@ -75,12 +75,12 @@ class InitializeProjects(
         }
     }
 
-    private fun migrate() {
+    private suspend fun migrate() {
         migrateToVersion1()
         migrateSourcesToVersion2()
     }
 
-    private fun migrateToVersion1() {
+    private suspend fun migrateToVersion1() {
         migrateTakesToVersion1()
 
         val projects = fetchProjects()
@@ -116,8 +116,8 @@ class InitializeProjects(
         projectFilesAccessor.writeSelectedTakesFile(workbook, projectIsBook)
     }
 
-    private fun migrateSourcesToVersion2() {
-        resourceMetadataRepo.getAllSources().blockingGet()
+    private suspend fun migrateSourcesToVersion2() {
+        resourceMetadataRepo.getAllSourcesNoRx()
             .forEach { resourceMetadata ->
                 if (resourceMetadata.path.isFile) {
                     val sourceFile = resourceMetadata.path
@@ -132,11 +132,11 @@ class InitializeProjects(
                         when {
                             entries.size == 1 -> {
                                 // root is a directory, copy its content to avoid nested dirs
-                                reader.copyDirectory(entries.first(), targetDir)
+                                reader.copyDirectorySuspend(entries.first(), targetDir)
                             }
 
                             else -> {
-                                reader.copyDirectory("/", targetDir)
+                                reader.copyDirectorySuspend("/", targetDir)
                             }
                         }
                     }
@@ -145,13 +145,13 @@ class InitializeProjects(
                     resourceMetadata.path.delete()
 
                     val updatedRc = resourceMetadata.copy(path = targetDir)
-                    resourceMetadataRepo.update(updatedRc).blockingGet()
+                    resourceMetadataRepo.updateSuspend(updatedRc)
                 }
             }
     }
 
-    private fun migrateTakesToVersion1() {
-        takeRepo.getAll().blockingGet()
+    private suspend fun migrateTakesToVersion1() {
+        takeRepo.getAllSuspend()
             .forEach { take ->
                 val projectDir = take.path.parentFile.parentFile
 
@@ -169,14 +169,14 @@ class InitializeProjects(
                 take.path.renameTo(destFile)
 
                 val updatedTake = take.copy(path = destFile)
-                takeRepo.update(updatedTake).blockingGet()
+                takeRepo.updateSuspend(updatedTake)
 
                 // Delete empty dir
                 take.path.parentFile.delete()
             }
     }
 
-    private fun importProjects(dir: File) {
+    private suspend fun importProjects(dir: File) {
         if (dir.isFile) return
 
         dir.listFiles()?.forEach {
@@ -188,24 +188,17 @@ class InitializeProjects(
         }
     }
 
-    private fun importProject(project: File) {
-        rcImporterFactory.makeImporter()
-            .import(project, callback).toObservable()
-            .doOnError { e ->
-                log.error("Error importing ${project.name}.", e)
-            }
-            .blockingSubscribe {
-                log.info("${project.name} imported!")
-            }
+    private suspend fun importProject(project: File) {
+        // As in the Rx version, a project that fails to import does not stop the others.
+        runCatching { rcImporterFactory.makeImporter().importSuspend(project, callback) }
+            .onSuccess { log.info("${project.name} import result: $it") }
+            .onFailure { log.error("Error importing ${project.name}.", it) }
     }
 
-    private fun fetchProjects(): List<Workbook> {
-        return workbookRepository.getProjects()
-            .doOnError { e ->
-                log.error("Error in loading projects", e)
-            }
-            .blockingGet()
-    }
+    private suspend fun fetchProjects(): List<Workbook> =
+        runCatching { workbookRepository.getProjectsSuspend() }
+            .onFailure { log.error("Error in loading projects", it) }
+            .getOrThrow()
 
     private fun createTempFile(name: String, extension: String): File {
         val tempFile = File.createTempFile(name, ".$extension")

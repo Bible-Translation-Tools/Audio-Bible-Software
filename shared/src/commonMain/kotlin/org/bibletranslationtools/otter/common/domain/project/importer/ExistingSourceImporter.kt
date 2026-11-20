@@ -31,6 +31,7 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.OtterReso
 import org.slf4j.LoggerFactory
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 import java.io.File
+import kotlinx.coroutines.withContext
 
 /**
  * Handles an incoming source that is an edition already installed: same language, identifier and
@@ -72,6 +73,25 @@ class ExistingSourceImporter(
             .switchIfEmpty(Single.defer { passToNextImporter(file, callback, options) })
     }
 
+    override suspend fun importSuspend(
+        file: File,
+        callback: ProjectImporterCallback?,
+        options: ImportOptions?
+    ): ImportResult {
+        val installed = findSameEditionSuspend(file)
+            ?: return passToNextImporterSuspend(file, callback, options)
+
+        callback?.onNotifyProgress(localizeKey = "importing_source_audio", percent = 50.0)
+        logger.info("${file.name} is an installed edition (${installed.path}); merging its media")
+        val result = mergeIntoInstalledEditionSuspend(file, installed)
+        if (result == ImportResult.SUCCESS) {
+            callback?.onNotifySuccess(language = installed.language.name)
+        } else {
+            callback?.onError(file.name)
+        }
+        return result
+    }
+
     /**
      * The installed edition [file] is, if any. The file is only parsed when some edition of the
      * same source is installed; a file that can't be read is left to the next importer.
@@ -89,6 +109,23 @@ class ExistingSourceImporter(
         installedEditions.findSameEdition(languageSlug, dublinCore.identifier, dublinCore.creator, fingerprint)
     }
 
+    /**
+     * The installed edition [file] is, if any. The file is only parsed when some edition of the
+     * same source is installed; a file that can't be read is left to the next importer.
+     */
+    private suspend fun findSameEditionSuspend(file: File): ResourceMetadata? = withContext(Dispatchers.IO) {
+        val dublinCore = runCatching {
+            ResourceContainer.load(file, OtterResourceContainerConfig()).use { it.manifest.dublinCore }
+        }.getOrNull() ?: return@withContext null
+        val languageSlug = dublinCore.language.identifier
+        if (installedEditions.editionsOfNoRx(languageSlug, dublinCore.identifier).isEmpty()) return@withContext null
+
+        val fingerprint = runCatching { fingerprinter.fingerprintSuspend(file) }
+            .onFailure { logger.error("Could not fingerprint ${file.name}", it) }
+            .getOrNull() ?: return@withContext null
+        installedEditions.findSameEditionNoRx(languageSlug, dublinCore.identifier, dublinCore.creator, fingerprint)
+    }
+
     private fun mergeIntoInstalledEdition(file: File, installed: ResourceMetadata): Single<ImportResult> =
         Single
             .fromCallable {
@@ -102,4 +139,18 @@ class ExistingSourceImporter(
                 logger.error("Merging ${file.name} into ${installed.path} failed", it)
                 ImportResult.FAILED
             }
+    private suspend fun mergeIntoInstalledEditionSuspend(file: File, installed: ResourceMetadata): ImportResult =
+        try {
+            withContext(Dispatchers.IO) {
+                MediaMerge.merge(ResourceContainer.load(file), ResourceContainer.load(installed.path))
+                ResourceContainer.load(file).use { incoming ->
+                    resourceMetadataRepository.updateSuspend(installed, incoming)
+                }
+            }
+            ImportResult.SUCCESS
+        } catch (e: Exception) {
+            logger.error("Merging ${file.name} into ${installed.path} failed", e)
+            ImportResult.FAILED
+        }
+
 }

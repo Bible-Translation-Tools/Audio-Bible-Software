@@ -7,6 +7,8 @@ import java.io.File
 import java.io.InputStream
 import java.util.zip.ZipFile
 import java.util.zip.ZipEntry
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * An Android-compatible implementation of IFileReader that works with ZIP/JAR files.
@@ -107,6 +109,13 @@ class AndroidZipFileReader(
         return Observable.fromIterable(copied).cache()
     }
 
+    override suspend fun copyDirectorySuspend(
+        source: String,
+        destinationDirectory: File,
+        filter: (String) -> Boolean
+    ): List<String> =
+        withContext(Dispatchers.IO) { copyEntries(source, destinationDirectory, filter) }
+
     override fun close() {
         zipFile.close()
     }
@@ -142,4 +151,40 @@ class AndroidZipFileReader(
                 }
             }
             .joinToString("/")
+
+    /** Copies the entries under [source] that pass [filter]; returns the paths they were copied to. */
+    private fun copyEntries(
+        source: String,
+        destinationDirectory: File,
+        filter: (String) -> Boolean
+    ): List<String> {
+        val normalizedSource = normalizePath(source).let { if (it.endsWith("/")) it else "$it/" }
+        val copied = mutableListOf<String>()
+
+        for (entry in zipFile.entries()) {
+            // Only entries genuinely under `source`. Without this an unrelated entry keeps its
+            // full path through removePrefix and gets written into the destination anyway; it is
+            // harmless when source is "/" but wrong for the subdirectory copies that
+            // ProjectFilesAccessor does (RcConstants.TAKE_DIR and friends).
+            if (normalizedSource != "/" && !entry.name.startsWith(normalizedSource)) continue
+
+            val relativePath = entry.name.removePrefix(normalizedSource)
+            if (relativePath.isEmpty()) continue // the root folder itself
+            if (!filter(relativePath)) continue
+
+            val outFile = File(destinationDirectory, relativePath)
+            if (entry.isDirectory) {
+                outFile.mkdirs()
+            } else {
+                outFile.parentFile?.mkdirs()
+                zipFile.getInputStream(entry).use { input ->
+                    outFile.outputStream().use { output -> input.copyTo(output) }
+                }
+                copied.add(outFile.absolutePath)
+            }
+        }
+
+        return copied
+    }
+
 }

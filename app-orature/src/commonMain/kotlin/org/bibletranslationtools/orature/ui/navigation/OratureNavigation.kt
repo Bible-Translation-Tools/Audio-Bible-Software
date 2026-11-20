@@ -36,10 +36,8 @@ fun OratureNavigation(navController: NavHostController, startWithSplash: Boolean
     ) {
         composable<OratureSplashRoute> {
             val vm = viewModel { OratureSplashViewModel() }
-            // The ViewModel owns the init subscription so an activity recreation cannot dispose
-            // it mid-flight — disposing an in-flight RxJava chain interrupts its thread, and
-            // InitializeApp is built from blocking calls, so that surfaced as a fatal
-            // InterruptedException. startInit() is idempotent, so re-running this effect is safe.
+            // The ViewModel owns the init job so an activity recreation cannot cancel it
+            // mid-flight. startInit() is idempotent, so re-running this effect is safe.
             LaunchedEffect(Unit) { vm.startInit() }
             LaunchedEffect(vm.initComplete) {
                 if (vm.initComplete) {

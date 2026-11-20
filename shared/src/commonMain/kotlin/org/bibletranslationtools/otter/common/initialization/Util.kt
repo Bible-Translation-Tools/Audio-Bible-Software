@@ -18,22 +18,20 @@
  */
 package org.bibletranslationtools.otter.common.initialization
 
-import io.reactivex.ObservableEmitter
 import io.reactivex.Single
+import org.bibletranslationtools.otter.common.data.ProgressStatus
+import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 import org.bibletranslationtools.otter.common.domain.project.importer.ImportCallbackParameter
 import org.bibletranslationtools.otter.common.domain.project.importer.ImportOptions
 import org.bibletranslationtools.otter.common.domain.project.importer.ProjectImporterCallback
-import org.bibletranslationtools.otter.common.data.ProgressStatus
-import org.bibletranslationtools.otter.common.data.primitives.Collection
-import org.bibletranslationtools.otter.common.data.workbook.WorkbookDescriptor
 
 /**
  * Sets up the callback for pushing progress status to the UI
  *
- * @param progressStatusEmitter the interface to emit status info to the channel
+ * @param onProgress receives each status
  */
 internal fun setupImportCallback(
-    progressStatusEmitter: ObservableEmitter<ProgressStatus>
+    onProgress: (ProgressStatus) -> Unit
 ): ProjectImporterCallback {
     return object : ProjectImporterCallback {
         override fun onRequestUserInput(): Single<ImportOptions> {
@@ -54,7 +52,7 @@ internal fun setupImportCallback(
 
         override fun onNotifyProgress(localizeKey: String?, message: String?, percent: Double?) {
             localizeKey?.let {
-                progressStatusEmitter.onNext(
+                onProgress(
                     ProgressStatus(subTitleKey = localizeKey, subTitleMessage = message)
                 )
             }

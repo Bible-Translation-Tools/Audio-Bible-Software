@@ -96,6 +96,40 @@ class SourceStructurePlanner(
             .onFailure { logger.error("Could not read versification '$code'", it) }
             .getOrNull()
 
+    /** Suspending [plan]. */
+    suspend fun planSuspend(container: ResourceContainer, parsedTree: OtterTree<CollectionOrContent>): SourceStructurePlan {
+        val match = detectSuspend(container, parsedTree) ?: return SourceStructurePlan(parsedTree, null)
+
+        val templateBooks = readSuspend(TEMPLATE_BOOKS_VERSIFICATION)?.getBookSlugs().orEmpty()
+        val tree = fillStructureGaps(parsedTree, match.versification, templateBooks) { book ->
+            treeBuilder.bookTree(match.versification, container, book, match.code)
+        }
+        return SourceStructurePlan(tree, match)
+    }
+
+    /** Suspending [detect]. */
+    suspend fun detectSuspend(container: ResourceContainer, parsedTree: OtterTree<CollectionOrContent>): VersificationMatch? {
+        val declared = container.manifest.projects.firstOrNull()?.versification
+        if (declared.isNullOrBlank()) return null
+
+        val candidates = StandardVersifications.all.mapNotNull { code -> readSuspend(code)?.let { code to it } }
+        val match = VersificationDetector.detect(textStructureOf(parsedTree), candidates)
+        if (match == null) {
+            logger.warn("No standard versification could be read; importing the source text as parsed")
+        } else {
+            logger.info(
+                "Source text follows '${match.code}' (declared '$declared'); " +
+                    "${match.differingChapters.size} chapter(s) differ: ${match.differingChapters.take(20)}"
+            )
+        }
+        return match
+    }
+
+    private suspend fun readSuspend(code: String): Versification? =
+        runCatching { versificationRepository.getVersificationSuspend(code) }
+            .onFailure { logger.error("Could not read versification '$code'", it) }
+            .getOrNull()
+
     /**
      * [parsed] with the gaps [versification] declares filled in, as a new tree; [parsed] itself is
      * not changed. Books in [templateBooks] that the text doesn't contain are added from

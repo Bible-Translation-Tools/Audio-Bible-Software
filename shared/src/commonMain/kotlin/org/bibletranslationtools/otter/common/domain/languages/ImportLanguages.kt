@@ -37,18 +37,6 @@ class ImportLanguages(
 
     private val logger = LoggerFactory.getLogger(ImportLanguages::class.java)
 
-    fun import(inputStream: InputStream): Completable {
-        return Completable
-            .fromCallable {
-                val languages = mapLanguages(inputStream)
-                languageRepo.insertAll(languages).blockingGet()
-            }
-            .doOnError { e ->
-                logger.error("Error in ImportLanguages", e)
-            }
-            .subscribeOn(Schedulers.io())
-    }
-
     fun update(url: String): Completable {
         return languageDataSource.fetchLanguageNames(url)
             .flatMapCompletable {
@@ -60,24 +48,24 @@ class ImportLanguages(
             .subscribeOn(Schedulers.io())
     }
 
-    fun updateRegions(inputStream: InputStream): Completable {
-        return Completable
-            .fromCallable {
-                val languages = mapLanguages(inputStream)
-                languageRepo.updateRegions(languages).blockingGet()
-            }
-            .doOnError { e ->
-                logger.error("Error in updateRegions", e)
-            }
-            .subscribeOn(Schedulers.io())
-    }
-
     private fun mapLanguages(inputStream: InputStream): List<Language> {
         val languages = inputStream.bufferedReader().use {
             OTTER_JSON.decodeFromString(ListSerializer(Door43Language.serializer()), it.readText())
         }
         return languages.map { it.toLanguage() }
     }
+    suspend fun importSuspend(inputStream: InputStream) {
+        runCatching { languageRepo.insertAllSuspend(mapLanguages(inputStream)) }
+            .onFailure { logger.error("Error in ImportLanguages", it) }
+            .getOrThrow()
+    }
+
+    suspend fun updateRegionsSuspend(inputStream: InputStream) {
+        runCatching { languageRepo.updateRegionsSuspend(mapLanguages(inputStream)) }
+            .onFailure { logger.error("Error in updateRegions", it) }
+            .getOrThrow()
+    }
+
 }
 
 @Serializable

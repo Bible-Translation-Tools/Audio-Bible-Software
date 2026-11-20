@@ -4,10 +4,11 @@ import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.burrito.BurritoToResourceContainerConverter
-import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.slf4j.LoggerFactory
 import java.io.File
 import org.bibletranslationtools.otter.common.api.persistence.IDirectoryProvider
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class BurritoImporter(
     private val directoryProvider: IDirectoryProvider,
@@ -56,7 +57,37 @@ class BurritoImporter(
             .subscribeOn(Schedulers.io())
     }
 
+    override suspend fun importSuspend(
+        burrito: File,
+        callback: ProjectImporterCallback?,
+        options: ImportOptions?
+    ): ImportResult {
+        val convertedRc = withContext(Dispatchers.IO) { convert(burrito, callback) }
+            ?: return ImportResult.FAILED
+        return next?.importSuspend(convertedRc, callback, options) ?: ImportResult.FAILED
+    }
+
     fun setNext(next: RCImporter) {
         this.next = next
     }
+    /** The resource container [burrito] converts to, or null when it can't be converted. */
+    private fun convert(burrito: File, callback: ProjectImporterCallback?): File? {
+        callback?.onNotifyProgress(
+            localizeKey = "converting_file",
+            percent = 10.0
+        )
+        val tempRc = directoryProvider.createTempFile("${burrito.nameWithoutExtension}_converted_rc", ".zip")
+        val converted = converter.convert(burrito, tempRc)
+        if (!converted || !tempRc.exists()) {
+            val cause = converter.lastConversionError
+            if (cause != null) {
+                logger.error("Burrito conversion failed for {}", burrito.absolutePath, cause)
+            } else {
+                logger.error("Burrito conversion failed for {} with no exception detail", burrito.absolutePath)
+            }
+            return null
+        }
+        return tempRc
+    }
+
 }

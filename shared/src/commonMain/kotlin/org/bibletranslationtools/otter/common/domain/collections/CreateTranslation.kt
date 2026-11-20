@@ -37,4 +37,13 @@ class CreateTranslation(
         val translation = Translation(sourceLanguage, targetLanguage, LocalDateTime.now())
         return languageRepo.insertTranslation(translation)
     }
+    /** Suspending [create]. */
+    suspend fun createSuspend(
+        sourceLanguage: Language,
+        targetLanguage: Language
+    ): Int {
+        val translation = Translation(sourceLanguage, targetLanguage, LocalDateTime.now())
+        return languageRepo.insertTranslationSuspend(translation)
+    }
+
 }

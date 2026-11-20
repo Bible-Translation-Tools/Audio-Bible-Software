@@ -35,6 +35,8 @@ import org.bibletranslationtools.otter.common.persistence.repositories.mapping.M
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.TakeMapper
 import java.io.File
 import java.time.LocalDate
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class TakeRepository(
     private val database: DaoProvider,
@@ -160,31 +162,6 @@ class TakeRepository(
             .subscribeOn(Schedulers.io())
     }
 
-    override fun removeNonExistentTakes(): Completable {
-        return Completable
-            .fromAction {
-                database.transaction {
-                    val takes = takeDao.fetchAll()
-                    for (take in takes) {
-                        val takeFile = File(take.filepath)
-                        if (!takeFile.exists()) {
-                            // Take does not exist anymore
-                            // Reset the selected take if necessary to satisfy foreign key constraints
-                            val content = contentDao.fetchById(take.contentFk)
-                            if (content.selectedTakeFk == take.id) content.selectedTakeFk = null
-                            contentDao.update(content)
-                            // Remove the take from the database
-                            takeDao.delete(take)
-                        }
-                    }
-                }
-            }
-            .doOnError { e ->
-                logger.error("Error in removeNonExistentTakes", e)
-            }
-            .subscribeOn(Schedulers.io())
-    }
-
     override fun getSoftDeletedTakes(project: Collection): Single<List<Take>> {
         return Single
             .fromCallable {
@@ -239,21 +216,115 @@ class TakeRepository(
             }
     }
 
-    override suspend fun getAllSuspend(): List<Take> = getAll().await()
-    override suspend fun updateSuspend(obj: Take) = update(obj).await()
+    override suspend fun getAllSuspend(): List<Take> = withContext(Dispatchers.IO) {
+        runCatching {
+            takeDao
+                .fetchAll()
+                .map(::buildTake)
+        }
+            .onFailure { e ->
+                logger.error("Error in getAll", e)
+            }
+            .getOrThrow()
+    }
+    override suspend fun updateSuspend(obj: Take) {
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val existing = takeDao.fetchById(obj.id)
+                val entity = takeMapper.mapToEntity(obj, existing.contentFk)
+                takeDao.update(entity)
+
+                // Delete and replace markers
+                markerDao
+                    .fetchByTakeId(obj.id)
+                    .forEach {
+                        markerDao.delete(it)
+                    }
+
+                obj.markers.forEach {
+                    val markerEntity = markerMapper.mapToEntity(it, obj.id)
+                    markerEntity.id = 0
+                    markerDao.insert(markerEntity)
+                }
+            }
+                .onFailure { e ->
+                    logger.error("Error in update for take: $obj", e)
+                }
+                .getOrThrow()
+        }
+    }
     override suspend fun deleteSuspend(obj: Take) = delete(obj).await()
 
-    override suspend fun insertForContentSuspend(take: Take, content: Content): Int =
-        insertForContent(take, content).await()
+    override suspend fun insertForContentSuspend(take: Take, content: Content): Int = withContext(Dispatchers.IO) {
+        runCatching {
+            val takeId = takeDao.insert(takeMapper.mapToEntity(take, content.id))
+            // Insert the markers
+            take.markers.forEach {
+                val entity = markerMapper.mapToEntity(it, takeId)
+                entity.id = 0
+                markerDao.insert(entity)
+            }
+            takeId
+        }
+            .onFailure { e ->
+                logger.error("Error in insertForContent with take: $take and content $content", e)
+            }
+            .getOrThrow()
+    }
 
     override suspend fun getByContentSuspend(content: Content, includeDeleted: Boolean): List<Take> =
         getByContent(content, includeDeleted).await()
 
-    override suspend fun deleteForContentSuspend(content: Content) =
-        deleteForContent(content).await()
+    /** [getByContentSuspend] without RxJava underneath; startup uses this one. */
+    override suspend fun getByContentNoRx(content: Content, includeDeleted: Boolean): List<Take> = withContext(Dispatchers.IO) {
+        runCatching {
+            takeDao
+                .fetchByContentId(content.id, includeDeleted)
+                .map(::buildTake)
+        }
+            .onFailure { e ->
+                logger.error("Error in getByContent for content: $content, includeDeleted: $includeDeleted", e)
+            }
+            .getOrThrow()
+    }
 
-    override suspend fun removeNonExistentTakesSuspend() =
-        removeNonExistentTakes().await()
+    override suspend fun deleteForContentSuspend(content: Content) {
+        withContext(Dispatchers.IO) {
+            runCatching {
+                takeDao
+                    .fetchByContentId(content.id, true)
+                    .forEach {
+                        takeDao.delete(it)
+                    }
+            }
+                .onFailure { e ->
+                    logger.error("Error in deleteForContent: $content\n", e)
+                }
+                .getOrThrow()
+        }
+    }
+
+    override suspend fun removeNonExistentTakesSuspend() = withContext(Dispatchers.IO) {
+        runCatching {
+            database.transaction {
+                val takes = takeDao.fetchAll()
+                for (take in takes) {
+                    val takeFile = File(take.filepath)
+                    if (!takeFile.exists()) {
+                        // Take does not exist anymore
+                        // Reset the selected take if necessary to satisfy foreign key constraints
+                        val content = contentDao.fetchById(take.contentFk)
+                        if (content.selectedTakeFk == take.id) content.selectedTakeFk = null
+                        contentDao.update(content)
+                        // Remove the take from the database
+                        takeDao.delete(take)
+                    }
+                }
+            }
+        }
+            .onFailure { logger.error("Error in removeNonExistentTakes", it) }
+            .getOrThrow()
+    }
 
     override suspend fun markDeletedSuspend(take: Take) =
         markDeleted(take).await()
@@ -261,8 +332,21 @@ class TakeRepository(
     override suspend fun getSoftDeletedTakesSuspend(project: Collection): List<Take> =
         getSoftDeletedTakes(project).await()
 
-    override suspend fun deleteExpiredTakesSuspend(expiry: Int) =
-        deleteExpiredTakes(expiry).await()
+    override suspend fun deleteExpiredTakesSuspend(expiry: Int) = withContext(Dispatchers.IO) {
+        val takes = takeDao.fetchSoftDeletedTakes()
+        val expired = LocalDate.now().minusDays(expiry.toLong())
+        logger.info("Deleting soft deleted takes on or before: $expired")
+        takes.forEach { take ->
+            take.deletedTs?.let { timestamp ->
+                val parsed = LocalDate.parse(timestamp)
+                if (parsed.isBefore(expired) || parsed.isEqual(expired)) {
+                    logger.info("Deleting: ${take.filename}, soft delete date is: ${take.deletedTs}")
+                    File(take.filepath).delete()
+                    takeDao.delete(take)
+                }
+            }
+        }
+    }
 
     override suspend fun getByCollectionSuspend(chapterCollection: Collection, includeDeleted: Boolean): List<Take> =
         getByCollection(chapterCollection, includeDeleted).await()

@@ -29,4 +29,11 @@ class EditionFingerprinter(
         ResourceContainer.load(path, OtterResourceContainerConfig()).use { container ->
             fingerprint(container, IProjectReader.constructContainerTree(container, zipEntryTreeBuilder))
         }
+
+    /** Suspending [fingerprint] of the source stored at [path]. */
+    suspend fun fingerprintSuspend(path: File): EditionFingerprint =
+        ResourceContainer.load(path, OtterResourceContainerConfig()).use { container ->
+            val parsedTree = IProjectReader.constructContainerTree(container, zipEntryTreeBuilder)
+            fingerprint(container, parsedTree, structurePlanner.detectSuspend(container, parsedTree)?.code)
+        }
 }

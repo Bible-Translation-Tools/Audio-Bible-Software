@@ -38,6 +38,8 @@ import org.bibletranslationtools.otter.common.persistence.repositories.mapping.M
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.TakeMapper
 import java.lang.IllegalStateException
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.CollectionMapper
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 
 class ContentRepository(
     database: DaoProvider
@@ -289,20 +291,81 @@ class ContentRepository(
     }
 
     override suspend fun getAllSuspend(): List<Content> = getAll().await()
-    override suspend fun updateSuspend(obj: Content) = update(obj).await()
+    override suspend fun updateSuspend(obj: Content) {
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val existing = contentDao.fetchById(obj.id)
+                val entity = contentMapper.mapToEntity(obj)
+                // Make sure we don't overwrite the collection relationship
+                entity.collectionFk = existing.collectionFk
+                contentDao.update(entity)
+
+                updateConnection(obj, entity.collectionFk)
+            }
+                .onFailure { e ->
+                    logger.error("Error in update for content: $obj", e)
+                }
+                .getOrThrow()
+        }
+    }
     override suspend fun deleteSuspend(obj: Content) = delete(obj).await()
 
     override suspend fun insertForCollectionSuspend(contentList: List<Content>, collection: Collection): List<Content> =
-        insertForCollection(contentList, collection).await()
+        withContext(Dispatchers.IO) {
+            runCatching {
+                contentList.forEach { content ->
+                    val id = contentDao.insert(
+                        contentMapper
+                            .mapToEntity(content, collection.id)
+                            .apply { collectionFk = collection.id }
+                    )
+                    content.id = id
+                }
+                val contentsAfterInsertion = getByCollectionNoRx(collection)
+                activeConnections.getOrDefault(collection, null)
+                    ?.accept(contentsAfterInsertion)
+
+                contentsAfterInsertion
+            }
+                .onFailure { e ->
+                    logger.error("Error in insertForCollection for collection: $collection", e)
+                }
+                .getOrThrow()
+        }
 
     override suspend fun getByCollectionSuspend(collection: Collection): List<Content> =
         getByCollection(collection).await()
 
+    /** [getByCollectionSuspend] without RxJava underneath; startup uses this one. */
+    override suspend fun getByCollectionNoRx(collection: Collection): List<Content> = withContext(Dispatchers.IO) {
+        runCatching {
+            contentDao
+                .fetchByCollectionId(collection.id)
+                .map(::buildContent)
+                .filter { !it.bridged }
+        }
+            .onFailure { e ->
+                logger.error("Error in getByCollection for collection: $collection", e)
+            }
+            .getOrThrow()
+    }
+
     override fun getByCollectionFlow(collection: Collection): Flow<List<Content>> =
         getByCollectionWithPersistentConnection(collection).asFlow()
 
-    override suspend fun getCollectionMetaContentSuspend(collection: Collection): Content =
-        getCollectionMetaContent(collection).await()
+    override suspend fun getCollectionMetaContentSuspend(collection: Collection): Content = withContext(Dispatchers.IO) {
+        runCatching {
+            contentDao
+                .fetchByCollectionIdAndType(collection.id, ContentType.META)
+                .map(::buildContent)
+                .minByOrNull { it.start }
+                ?: throw IllegalStateException("Missing meta info for chapter.")
+        }
+            .onFailure { e ->
+                logger.error("Error in getByCollectionMetaContent for collection: $collection", e)
+            }
+            .getOrThrow()
+    }
 
     override suspend fun getSourcesSuspend(content: Content): List<Content> =
         getSources(content).await()
@@ -310,8 +373,21 @@ class ContentRepository(
     override suspend fun updateSourcesSuspend(content: Content, sourceContents: List<Content>) =
         updateSources(content, sourceContents).await()
 
-    override suspend fun deleteForCollectionSuspend(chapterCollection: Collection, typeFilter: ContentType?) =
-        deleteForCollection(chapterCollection, typeFilter).await()
+    override suspend fun deleteForCollectionSuspend(chapterCollection: Collection, typeFilter: ContentType?) {
+        withContext(Dispatchers.IO) {
+            val typeId = typeFilter?.let {
+                contentTypeDao.fetchId(typeFilter)
+            }
+
+            activeConnections.getOrDefault(chapterCollection, null)
+                ?.let { it.value?.forEach { chunk -> chunk.draftNumber = -1 } }
+
+            contentDao.deleteForCollection(
+                collectionMapper.mapToEntity(chapterCollection),
+                typeId
+            )
+        }
+    }
 
     override suspend fun linkDerivedToSourceSuspend(derivedContents: List<Content>, sourceContents: List<Content>) =
         linkDerivedToSource(derivedContents, sourceContents).await()

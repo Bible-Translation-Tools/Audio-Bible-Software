@@ -84,6 +84,31 @@ class CreateProject(
             }
     }
 
+    /** Suspending [create]. */
+    suspend fun createSuspend(
+        sourceProject: Collection,
+        targetLanguage: Language,
+        mode: ProjectMode? = null,
+        resourceId: String? = null,
+        deriveProjectFromVerses: Boolean = false
+    ): Collection {
+        // The source RC and its linked (help) RCs, limited to resourceId when one is given.
+        val sourceRc = sourceProject.resourceContainer
+            ?: throw NullPointerException("Source project has no metadata")
+        val matchingRcs = (listOf(sourceRc) + resourceMetadataRepo.getLinkedNoRx(sourceRc))
+            .filter { resourceId == null || resourceId == it.identifier }
+
+        val projectMode = when {
+            mode != null -> mode
+            sourceRc.language == targetLanguage -> ProjectMode.NARRATION
+            else -> ProjectMode.TRANSLATION
+        }
+
+        return collectionRepo.deriveProjectSuspend(
+            matchingRcs, sourceProject, targetLanguage, deriveProjectFromVerses, projectMode
+        )
+    }
+
     /**
      * Derives a project for every book of the source in [sourceLanguage] (of [resourceId], when
      * given) into [targetLanguage], from [edition] when given and otherwise from the newest edition.
@@ -128,6 +153,36 @@ class CreateProject(
             )
     }
 
+    /** Suspending [createAllBooks]. */
+    suspend fun createAllBooksSuspend(
+        sourceLanguage: Language,
+        targetLanguage: Language,
+        projectMode: ProjectMode,
+        resourceId: String? = null,
+        edition: ResourceMetadata? = null
+    ) {
+        val isVerseByVerse = projectMode != ProjectMode.TRANSLATION
+        val rootCollection = collectionRepo.getRootSourcesSuspend()
+            .filter { collection ->
+                collection.resourceContainer?.language == sourceLanguage &&
+                    (resourceId?.let { collection.resourceContainer?.identifier == resourceId } ?: true) &&
+                    (edition?.let { collection.resourceContainer?.id == it.id } ?: true)
+            }
+            // Several editions of a source may be installed; new projects use the newest.
+            .sortedWith(EditionOrder.newestFirstBy { it.resourceContainer })
+            .firstOrNull()
+            ?: throw NoSuchElementException("No source in ${sourceLanguage.slug} to create books from")
+        val translated = booksWithProjectsSuspend(rootCollection.resourceContainer!!, targetLanguage)
+        collectionRepo.getChildrenNoRx(rootCollection)
+            .filter { it.slug !in translated }
+            .forEach { book ->
+                collectionRepo.deriveProjectSuspend(
+                    listOf(book.resourceContainer!!), book, targetLanguage, isVerseByVerse, projectMode
+                )
+            }
+        translationCreation.createSuspend(sourceLanguage, targetLanguage)
+    }
+
     /** Slugs of the books with a project in [targetLanguage] from any installed edition of [source]'s source. */
     private fun booksWithProjects(source: ResourceMetadata, targetLanguage: Language): Set<String> {
         val derived = resourceMetadataRepo.getAllSources().blockingGet()
@@ -142,4 +197,19 @@ class CreateProject(
             .map { it.slug }
             .toSet()
     }
+    /** Slugs of the books with a project in [targetLanguage] from any installed edition of [source]'s source. */
+    private suspend fun booksWithProjectsSuspend(source: ResourceMetadata, targetLanguage: Language): Set<String> {
+        val derived = resourceMetadataRepo.getAllSourcesNoRx()
+            .filter { it.language.slug == source.language.slug && it.identifier == source.identifier }
+            .flatMap { resourceMetadataRepo.getAllDerivativesNoRx(it) }
+            .filter { it.language.slug == targetLanguage.slug }
+            .map { it.id }
+            .toSet()
+        if (derived.isEmpty()) return emptySet()
+        return collectionRepo.getDerivedProjectsSuspend()
+            .filter { it.resourceContainer?.id in derived }
+            .map { it.slug }
+            .toSet()
+    }
+
 }

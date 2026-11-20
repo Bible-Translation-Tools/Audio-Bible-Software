@@ -50,4 +50,7 @@ interface DaoProvider {
      * jOOQ's adapter, mocks, and every other implementer get this for free.
      */
     fun <T> withBulkLoad(block: () -> T): T = block()
+
+    /** Suspending [withBulkLoad], with the same default: a plain call. */
+    suspend fun <T> withBulkLoadSuspend(block: suspend () -> T): T = block()
 }

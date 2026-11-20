@@ -33,6 +33,8 @@ import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvid
 import org.bibletranslationtools.otter.common.persistence.repositories.LanguageRepository
 import java.io.File
 import org.bibletranslationtools.otter.common.OTTER_JSON
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class VersificationRepository(
     database: DaoProvider,
@@ -56,15 +58,18 @@ class VersificationRepository(
             .subscribeOn(Schedulers.io())
     }
 
-    override fun insertVersification(slug: String, path: File): Completable {
-        return Single
-            .fromCallable {
-                versificationDao.upsert(slug, path.name)
+    override suspend fun getVersificationSuspend(slug: String): Versification? =
+        withContext(Dispatchers.IO) {
+            directoryProvider.versificationDirectory.mkdirs()
+            versificationDao.fetchVersificationFile(slug)?.let { vrsFileName ->
+                val vrsFile = File(directoryProvider.versificationDirectory, vrsFileName)
+                OTTER_JSON.decodeFromString(
+                    deserializer = ParatextVersification.serializer(),
+                    string = vrsFile.readText()
+                )
             }
-            .ignoreElement()
-            .subscribeOn(Schedulers.io())
+        }
+    override suspend fun insertVersificationSuspend(slug: String, path: File) {
+        withContext(Dispatchers.IO) { versificationDao.upsert(slug, path.name) }
     }
-
-    override suspend fun getVersificationSuspend(slug: String): Versification? = getVersification(slug).awaitSingleOrNull()
-    override suspend fun insertVersificationSuspend(slug: String, path: File) = insertVersification(slug, path).await()
 }

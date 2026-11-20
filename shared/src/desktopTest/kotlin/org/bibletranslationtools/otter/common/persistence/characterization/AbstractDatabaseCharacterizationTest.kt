@@ -18,8 +18,6 @@
  */
 package org.bibletranslationtools.otter.common.persistence.characterization
 
-import io.reactivex.Completable
-import io.reactivex.ObservableEmitter
 import org.bibletranslationtools.otter.common.api.persistence.config.Installable
 import org.bibletranslationtools.otter.common.data.ProgressStatus
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
@@ -79,8 +77,7 @@ abstract class AbstractDatabaseCharacterizationTest {
     protected fun installable(name: String, version: Int) = object : Installable {
         override val name = name
         override val version = version
-        override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable =
-            Completable.complete()
+        override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) = Unit
     }
 
     protected fun language(

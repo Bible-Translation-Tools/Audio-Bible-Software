@@ -19,7 +19,6 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
-import kotlinx.coroutines.rx2.await
 import org.bibletranslationtools.bttrecorder2.ui.screens.BookListScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.ChapterListScreen
 import org.bibletranslationtools.bttrecorder2.ui.screens.MainMenuScreen
@@ -51,13 +50,17 @@ fun Navigation(
     ) {
         composable<SplashScreenRoute> {
             val vm = viewModel { SplashScreenViewModel() }
-            LaunchedEffect(Unit) {
-                // Keep navigate inside composition (not Handler.post). Posting navigate onto the
-                // main looper outside NavHost sync leaves entries in INITIALIZED and crashes on
-                // Activity destroy: "State must be at least CREATED to be moved to DESTROYED".
-                vm.initApp().await()
-                navController.navigate(MainMenuRoute) {
-                    popUpTo(SplashScreenRoute) { inclusive = true }
+            // The ViewModel owns the init job, so an activity recreation cannot cancel it
+            // mid-flight. startInit() is idempotent, so re-running this effect is safe.
+            LaunchedEffect(Unit) { vm.startInit() }
+            LaunchedEffect(vm.initComplete) {
+                if (vm.initComplete) {
+                    // Keep navigate inside composition (not Handler.post). Posting navigate onto the
+                    // main looper outside NavHost sync leaves entries in INITIALIZED and crashes on
+                    // Activity destroy: "State must be at least CREATED to be moved to DESTROYED".
+                    navController.navigate(MainMenuRoute) {
+                        popUpTo(SplashScreenRoute) { inclusive = true }
+                    }
                 }
             }
             SplashScreen()

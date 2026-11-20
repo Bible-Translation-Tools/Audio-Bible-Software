@@ -34,7 +34,6 @@ import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.domain.mapper.mapToMetadata
 import org.bibletranslationtools.otter.common.api.persistence.IResourceContainerDirectories
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
-import org.bibletranslationtools.otter.common.data.IAppInfo
 import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.bibletranslationtools.otter.common.persistence.entities.WorkbookDescriptorEntity
 import org.bibletranslationtools.otter.common.persistence.entities.CollectionEntity
@@ -51,6 +50,8 @@ import java.io.File
 import java.lang.Exception
 import java.time.LocalDate
 import java.time.LocalDateTime
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 
 class CollectionRepository(
     private val database: DaoProvider,
@@ -154,11 +155,57 @@ class CollectionRepository(
     override suspend fun getDerivedProjectSuspend(sourceProject: Collection): Collection? =
         getDerivedProject(sourceProject).awaitSingleOrNull()
 
-    override suspend fun getDerivedProjectsSuspend(): List<Collection> = getDerivedProjects().await()
-    override suspend fun getSourceProjectsSuspend(): List<Collection> = getSourceProjects().await()
-    override suspend fun getRootSourcesSuspend(): List<Collection> = getRootSources().await()
+    override suspend fun getDerivedProjectsSuspend(): List<Collection> = withContext(Dispatchers.IO) {
+        runCatching {
+            collectionDao
+                .fetchByLabel("project")
+                .filter { it.sourceFk != null }
+                .map(::buildCollection)
+        }
+            .onFailure { e ->
+                log.error("Error in getDerivedProjects", e)
+            }
+            .getOrThrow()
+    }
+    override suspend fun getSourceProjectsSuspend(): List<Collection> = withContext(Dispatchers.IO) {
+        runCatching {
+            collectionDao
+                .fetchByLabel("project")
+                .filter { it.sourceFk == null }
+                .map(::buildCollection)
+        }
+            .onFailure { e ->
+                log.error("Error in getSourceProjects", e)
+            }
+            .getOrThrow()
+    }
+    override suspend fun getRootSourcesSuspend(): List<Collection> = withContext(Dispatchers.IO) {
+        runCatching {
+            collectionDao
+                .fetchAll()
+                .filter { it.parentFk == null && it.sourceFk == null }
+                .map(::buildCollection)
+        }
+            .onFailure { e ->
+                log.error("Error in getRootSources", e)
+            }
+            .getOrThrow()
+    }
     override suspend fun getSourceSuspend(project: Collection): Collection? = getSource(project).awaitSingleOrNull()
     override suspend fun getChildrenSuspend(collection: Collection): List<Collection> = getChildren(collection).await()
+
+    /** [getChildrenSuspend] without RxJava underneath; startup uses this one. */
+    override suspend fun getChildrenNoRx(collection: Collection): List<Collection> = withContext(Dispatchers.IO) {
+        runCatching {
+            collectionDao
+                .fetchChildren(collectionMapper.mapToEntity(collection))
+                .map(::buildCollection)
+        }
+            .onFailure { e ->
+                log.error("Error in getChildren for collection: $collection", e)
+            }
+            .getOrThrow()
+    }
     override suspend fun getProjectBySlugAndMetadataSuspend(slug: String, metadata: ResourceMetadata): Collection =
         getProjectBySlugAndMetadata(slug, metadata).await()
 
@@ -174,7 +221,67 @@ class CollectionRepository(
         language: Language,
         verseByVerse: Boolean,
         mode: ProjectMode
-    ): Collection = deriveProject(sourceMetadatas, sourceCollection, language, verseByVerse, mode).await()
+    ): Collection = withContext(Dispatchers.IO) {
+        runCatching {
+            database.transactionResult {
+
+                val derivedMetadata = deriveAndLinkMetadata(sourceMetadatas, language)
+                val mainDerivedMetadata = derivedMetadata.first()
+
+                val sourceCollectionEntity = collectionDao.fetchById(sourceCollection.id)
+                // Try to find existent project
+                var projectEntity = findProjectCollection(sourceCollectionEntity, mainDerivedMetadata)
+                projectEntity?.let {
+                    it.modifiedTs = LocalDateTime.now().toString()
+                    collectionDao.update(it)
+                }
+
+                if (projectEntity == null) {
+                    // Insert the derived project
+                    projectEntity = deriveProjectCollection(sourceCollectionEntity, mainDerivedMetadata)
+
+                    // Copy the chapters
+                    copyChapters(sourceCollectionEntity.id, projectEntity.id, mainDerivedMetadata.id)
+
+                    val metadataSourceToDerivedMap = sourceMetadatas.zip(derivedMetadata).associate { it }
+                    copyResourceLinks(projectEntity, metadataSourceToDerivedMap)
+
+                    addToDerivedManifest(mainDerivedMetadata, projectEntity)
+                }
+
+                val workbookDescriptor = database.workbookDescriptorDao.fetch(
+                    sourceCollection.id,
+                    projectEntity.id,
+                    workbookTypeDao.fetchId(mode)
+                )
+                if (workbookDescriptor == null) {
+                    // copy the content under chapter-level
+                    if (verseByVerse) {
+                        copyContent(sourceCollectionEntity.id, mainDerivedMetadata.id)
+                        linkDerivativeContent(sourceCollectionEntity.id, projectEntity.id)
+                    } else {
+                        copyMetaContent(sourceCollectionEntity.id, mainDerivedMetadata.id)
+                    }
+                    insertWorkbookDescriptor(sourceCollection.id, projectEntity.id, mode)
+                }
+
+
+                return@transactionResult collectionMapper.mapFromEntity(
+                    projectEntity,
+                    metadataMapper.mapFromEntity(mainDerivedMetadata, language)
+                )
+            }
+        }
+            .onFailure { e ->
+                log.error("Error in deriveProject for source collection: $sourceCollection, language: $language")
+                log.error("With:")
+                sourceMetadatas.forEach {
+                    log.error("Metadata: $it")
+                }
+                log.error("End Metadata", e)
+            }
+            .getOrThrow()
+    }
 
     override suspend fun deriveProjectsSuspend(
         rootCollection: Collection,
@@ -189,8 +296,14 @@ class CollectionRepository(
     override suspend fun deleteResourcesSuspend(project: Collection, deleteAudio: Boolean) =
         deleteResources(project, deleteAudio).await()
 
-    override suspend fun collectionsWithoutTakesSuspend(project: Collection): List<Collection> =
-        collectionsWithoutTakes(project).await()
+    override suspend fun collectionsWithoutTakesSuspend(project: Collection): List<Collection> = withContext(Dispatchers.IO) {
+        collectionDao
+            .collectionsWithoutTakes(collectionMapper.mapToEntity(project))
+            .map {
+                val collection = collectionMapper.mapFromEntity(it, project.resourceContainer)
+                collection
+            }
+    }
 
     override fun getAll(): Single<List<Collection>> {
         return Single

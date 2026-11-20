@@ -19,6 +19,7 @@
 package org.bibletranslationtools.otter.common.persistence.characterization
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import kotlinx.coroutines.runBlocking
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.persistence.database.sqldelight.SqlDelightAppDatabase
 import org.bibletranslationtools.otter.common.persistence.entities.CollectionEntity
@@ -66,6 +67,17 @@ class SqlDelightBulkLoadTest {
         db.withBulkLoad { seedAnotherVerse(start = 2) } // should just run the block, no index/PRAGMA churn
 
         assertEquals(2, contentRowCount(), "the passthrough must still run its block")
+    }
+
+    /** The suspending twin, which startup uses, does what the blocking one does. */
+    @Test
+    fun `withBulkLoadSuspend seeds a fresh db the same way, then passes through`() = runBlocking {
+        db.withBulkLoadSuspend { seedOneVerse(start = 1) }
+        db.withBulkLoadSuspend { seedAnotherVerse(start = 2) }
+
+        assertEquals(2, contentRowCount(), "both blocks should have run")
+        assertEquals(true, indexExists("idx_content_entity_collection_start"), "content index must remain present")
+        assertEquals("wal", journalMode())
     }
 
     // ── seeding (a minimal language -> dublin_core -> collection -> content chain) ────────────────
