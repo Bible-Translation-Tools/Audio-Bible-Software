@@ -31,6 +31,7 @@ interface ITakeRepository : IRepository<Take> {
     fun deleteForContent(content: Content): Completable
     fun markDeleted(take: Take): Completable
     fun getSoftDeletedTakes(project: Collection): Single<List<Take>>
+    fun removeNonExistentTakes(): Completable
     fun deleteExpiredTakes(expiry: Int = 0): Completable
     fun getByCollection(chapterCollection: Collection, includeDeleted: Boolean = false): Single<List<Take>>
     fun getContentType(take: Take): Single<ContentType>

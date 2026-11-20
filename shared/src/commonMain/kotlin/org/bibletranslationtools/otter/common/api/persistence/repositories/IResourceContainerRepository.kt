@@ -27,6 +27,16 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportRes
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
 
 interface IResourceContainerRepository {
+    /**
+     * @param fingerprint stored with the new source row in the same transaction, when given.
+     */
+    fun importResourceContainer(
+        rc: ResourceContainer,
+        rcTree: OtterTree<CollectionOrContent>,
+        languageSlug: String,
+        fingerprint: EditionFingerprint? = null
+    ): Single<ImportResult>
+
     fun removeResourceContainer(
         resourceContainer: ResourceContainer
     ): Single<DeleteResult>

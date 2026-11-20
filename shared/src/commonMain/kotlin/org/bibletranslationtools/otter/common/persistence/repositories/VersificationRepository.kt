@@ -18,9 +18,11 @@
  */
 package org.bibletranslationtools.otter.common.persistence.repositories
 
+import io.reactivex.Completable
 import io.reactivex.Maybe
 import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.rx2.rxCompletable
 import kotlinx.coroutines.rx2.rxMaybe
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.OTTER_JSON
@@ -57,6 +59,9 @@ class VersificationRepository(
                 )
             }
         }
+    override fun insertVersification(slug: String, path: File): Completable =
+        rxCompletable { insertVersificationSuspend(slug, path) }
+
     override suspend fun insertVersificationSuspend(slug: String, path: File) {
         withContext(Dispatchers.IO) { versificationDao.upsert(slug, path.name) }
     }

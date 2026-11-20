@@ -9,6 +9,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.streams.asSequence
 import org.bibletranslationtools.otter.common.io.utils.copyDirectoryFilesTo
+import org.bibletranslationtools.otter.common.io.utils.copyDirectoryTo
+import io.reactivex.Observable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -22,6 +24,12 @@ class NioDirectoryFileReader(
     override fun stream(filepath: String): InputStream = Files.newInputStream(getAbsolutePath(filepath))
 
     override fun exists(filepath: String) = Files.exists(getAbsolutePath(filepath))
+
+    override fun copyDirectory(
+        source: String,
+        destinationDirectory: File,
+        filter: (String) -> Boolean
+    ): Observable<String> = getAbsolutePath(source).copyDirectoryTo(destinationDirectory.toPath(), filter)
 
     override suspend fun copyDirectorySuspend(
         source: String,

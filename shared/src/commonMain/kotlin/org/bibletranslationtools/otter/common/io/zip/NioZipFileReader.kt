@@ -1,9 +1,11 @@
 package org.bibletranslationtools.otter.common.io.zip
 
 import org.bibletranslationtools.otter.common.api.io.zip.IFileReader
+import io.reactivex.Observable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.io.utils.copyDirectoryFilesTo
+import org.bibletranslationtools.otter.common.io.utils.copyDirectoryTo
 import org.bibletranslationtools.otter.common.io.utils.jarUri
 import java.io.File
 import java.io.InputStream
@@ -31,6 +33,12 @@ class NioZipFileReader(
     override fun bufferedReader(filepath: String) = Files.newBufferedReader(fileSystem.getPath(filepath))!!
 
     override fun stream(filepath: String): InputStream = Files.newInputStream(fileSystem.getPath(filepath))
+
+    override fun copyDirectory(
+        source: String,
+        destinationDirectory: File,
+        filter: (String) -> Boolean
+    ): Observable<String> = fileSystem.getPath(source).copyDirectoryTo(destinationDirectory.toPath(), filter)
 
     override suspend fun copyDirectorySuspend(
         source: String,

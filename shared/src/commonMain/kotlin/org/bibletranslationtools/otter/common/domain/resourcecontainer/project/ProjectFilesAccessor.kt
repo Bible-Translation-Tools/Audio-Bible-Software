@@ -24,6 +24,7 @@ import io.reactivex.rxkotlin.cast
 import io.reactivex.rxkotlin.toMap
 import io.reactivex.rxkotlin.toObservable
 import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.rx2.rxObservable
 import org.bibletranslationtools.otter.common.api.io.zip.IFileReader
 import org.bibletranslationtools.otter.common.api.io.zip.IFileWriter
 import org.slf4j.LoggerFactory
@@ -56,7 +57,6 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.u
 import org.wycliffeassociates.usfmtools.USFMParser
 import org.wycliffeassociates.usfmtools.models.markers.CMarker
 import org.wycliffeassociates.usfmtools.models.markers.VMarker
-import java.util.concurrent.TimeUnit
 import org.bibletranslationtools.otter.common.OTTER_JSON
 import org.bibletranslationtools.otter.common.domain.project.TAKE_CHECKING
 import org.bibletranslationtools.otter.common.data.CHUNKIFICATION
@@ -435,6 +435,15 @@ class ProjectFilesAccessor(
      * folder is staged under its own subfolder of [destination], so no copy overwrites another and
      * both reach the importer. Deciding what a duplicate means is the importer's job.
      */
+    fun copyTakeFiles(
+        fileReader: IFileReader,
+        manifestProject: Project,
+        filter: (String) -> Boolean = { true },
+        destination: File
+    ): Observable<StagedTake> = rxObservable {
+        copyTakeFilesSuspend(fileReader, manifestProject, filter, destination).forEach { send(it) }
+    }
+
     suspend fun copyTakeFilesSuspend(
         fileReader: IFileReader,
         manifestProject: Project,
@@ -473,19 +482,26 @@ class ProjectFilesAccessor(
         }
     }
 
+    fun copyInProgressNarrationFiles(
+        fileReader: IFileReader,
+        manifestProject: Project
+    ): Observable<String> = rxObservable {
+        copyInProgressNarrationFilesSuspend(fileReader, manifestProject).forEach { send(it) }
+    }
+
+    /** Copies the in-progress narration files into the project; returns the paths they were copied to. */
     suspend fun copyInProgressNarrationFilesSuspend(
         fileReader: IFileReader,
         manifestProject: Project
-    ) {
+    ): List<String> =
         listOf(RcConstants.TAKE_DIR, manifestProject.path)
             .filter(fileReader::exists)
-            .forEach { audioDirInRc ->
+            .flatMap { audioDirInRc ->
                 val normalized = File(audioDirInRc).normalize().path
                 fileReader.copyDirectorySuspend(normalized, audioDir) {
                     isInProgressNarrationFile(it)
                 }
             }
-    }
 
     fun copyInProgressNarrationFiles(
         fileWriter: IFileWriter,

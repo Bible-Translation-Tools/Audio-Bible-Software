@@ -18,6 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.api.io.zip
 
+import io.reactivex.Observable
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStream
@@ -29,7 +30,13 @@ interface IFileReader : AutoCloseable {
 
     fun exists(filepath: String): Boolean
 
-    /** Copies the files under [source] that pass [filter]; returns the paths they were copied to. */
+    fun copyDirectory(
+        source: String,
+        destinationDirectory: File,
+        filter: (String) -> Boolean = { _ -> true }
+    ): Observable<String>
+
+    /** Suspending [copyDirectory]: copies the files and returns the paths they were copied to. */
     suspend fun copyDirectorySuspend(
         source: String,
         destinationDirectory: File,

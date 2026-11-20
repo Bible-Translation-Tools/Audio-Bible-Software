@@ -19,6 +19,7 @@
 package org.bibletranslationtools.otter.common.domain.project
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.rx2.rxSingle
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.InstalledSourceEditions
@@ -157,6 +158,9 @@ class ImportProjectUseCase(
      * Whether the source edition in [file] is already installed: the same edition, not just some
      * edition of the same source. The file is only parsed when some edition of it is installed.
      */
+    fun isAlreadyImported(file: File): Boolean = runBlocking { isAlreadyImportedSuspend(file) }
+
+    /** Suspending [isAlreadyImported]. */
     suspend fun isAlreadyImportedSuspend(file: File): Boolean = withContext(Dispatchers.IO) {
         val dublinCore = ResourceContainer.load(file, true).use { it.manifest.dublinCore }
         val languageSlug = dublinCore.language.identifier

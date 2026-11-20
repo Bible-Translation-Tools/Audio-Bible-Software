@@ -57,6 +57,12 @@ class LanguageRepository(
             .subscribeOn(Schedulers.io())
     }
 
+    override fun insertAll(languages: List<Language>): Single<List<Int>> =
+        rxSingle { insertAllSuspend(languages) }
+
+    override fun updateRegions(languages: List<Language>): Completable =
+        rxCompletable { updateRegionsSuspend(languages) }
+
     override fun upsertAll(languages: List<Language>): Completable {
         return Completable.fromCallable {
             languageDao.updateAll(languages.map(mapper::mapToEntity))

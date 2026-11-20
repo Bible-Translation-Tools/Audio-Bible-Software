@@ -61,6 +61,13 @@ class ResourceContainerRepository(
     private val resourceLinkDao = database.resourceLinkDao
     private val contentMapper = ContentMapper(contentTypeDao)
 
+    override fun importResourceContainer(
+        rc: ResourceContainer,
+        rcTree: OtterTree<CollectionOrContent>,
+        languageSlug: String,
+        fingerprint: EditionFingerprint?
+    ): Single<ImportResult> = rxSingle { importResourceContainerSuspend(rc, rcTree, languageSlug, fingerprint) }
+
     override suspend fun importResourceContainerSuspend(
         rc: ResourceContainer,
         rcTree: OtterTree<CollectionOrContent>,

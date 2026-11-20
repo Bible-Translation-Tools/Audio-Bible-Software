@@ -20,6 +20,7 @@ package org.bibletranslationtools.otter.common.domain.project.importer
 
 import io.reactivex.Single
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.rx2.rxSingle
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
@@ -44,11 +45,20 @@ abstract class RCImporter(
         options: ImportOptions?
     ): Single<ImportResult>
 
+    protected fun passToNextImporter(
+        file: File,
+        callback: ProjectImporterCallback?,
+        options: ImportOptions?
+    ): Single<ImportResult> = rxSingle { passToNextImporterSuspend(file, callback, options) }
+
     protected suspend fun passToNextImporterSuspend(
         file: File,
         callback: ProjectImporterCallback?,
         options: ImportOptions?
     ): ImportResult = next?.importSuspend(file, callback, options) ?: ImportResult.FAILED
+
+    protected fun importAsStream(filename: String, stream: InputStream): Single<ImportResult> =
+        rxSingle { importAsStreamSuspend(filename, stream) }
 
     /** Imports [stream] through this importer, from a temporary file that is deleted afterwards. */
     protected suspend fun importAsStreamSuspend(filename: String, stream: InputStream): ImportResult =

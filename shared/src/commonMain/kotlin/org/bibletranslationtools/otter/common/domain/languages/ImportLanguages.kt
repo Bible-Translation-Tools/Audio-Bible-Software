@@ -20,6 +20,7 @@ package org.bibletranslationtools.otter.common.domain.languages
 
 import io.reactivex.Completable
 import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.rx2.rxCompletable
 import org.bibletranslationtools.otter.common.api.persistence.ILanguageDataSource
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.primitives.Language
@@ -37,6 +38,8 @@ class ImportLanguages(
 
     private val logger = LoggerFactory.getLogger(ImportLanguages::class.java)
 
+    fun import(inputStream: InputStream): Completable = rxCompletable { importSuspend(inputStream) }
+
     suspend fun importSuspend(inputStream: InputStream) {
         runCatching { languageRepo.insertAllSuspend(mapLanguages(inputStream)) }
             .onFailure { logger.error("Error in ImportLanguages", it) }
@@ -52,6 +55,10 @@ class ImportLanguages(
                 logger.error("Error in update languages", e)
             }
             .subscribeOn(Schedulers.io())
+    }
+
+    fun updateRegions(inputStream: InputStream): Completable = rxCompletable {
+        updateRegionsSuspend(inputStream)
     }
 
     suspend fun updateRegionsSuspend(inputStream: InputStream) {

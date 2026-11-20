@@ -93,6 +93,9 @@ class TakeRepository(
 
     override fun update(obj: Take): Completable = rxCompletable { updateSuspend(obj) }
 
+    override fun removeNonExistentTakes(): Completable =
+        rxCompletable { removeNonExistentTakesSuspend() }
+
     override suspend fun removeNonExistentTakesSuspend() = withContext(Dispatchers.IO) {
         runCatching {
             database.transaction {
