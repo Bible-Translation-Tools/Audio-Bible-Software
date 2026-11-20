@@ -3,8 +3,8 @@ package org.bibletranslationtools.otter.common.initialization
 import io.reactivex.Completable
 import io.reactivex.ObservableEmitter
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.rx2.rxCompletable
+import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.io.IBundledContentSource
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.api.persistence.config.Initializable
@@ -42,23 +42,28 @@ class RefreshBundledSources(
 
     private val logger = LoggerFactory.getLogger(RefreshBundledSources::class.java)
 
-    override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable = rxCompletable(Dispatchers.IO) {
-        for (name in catalog.embeddedSourceChecksums.keys) {
-            if (stamps.isCurrent(name)) continue
-            val languageCode = catalog.sources.firstOrNull { it.name == name }?.languageCode ?: continue
-            val identifier = name.removePrefix("${languageCode}_")
-            if (installedEditions.editionsOf(languageCode, identifier).isEmpty()) continue
+    override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable =
+        rxCompletable { execSuspend(progressEmitter::onNext) }
 
-            runCatching { refresh(name) }
-                .onSuccess { result ->
-                    if (result == ImportResult.SUCCESS || result == ImportResult.ALREADY_EXISTS) {
-                        stamps.markImported(name)
-                        logger.info("Refreshed bundled source $name: $result")
-                    } else {
-                        logger.error("Refreshing bundled source $name failed: $result")
+    override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) {
+        withContext(Dispatchers.IO) {
+            for (name in catalog.embeddedSourceChecksums.keys) {
+                if (stamps.isCurrent(name)) continue
+                val languageCode = catalog.sources.firstOrNull { it.name == name }?.languageCode ?: continue
+                val identifier = name.removePrefix("${languageCode}_")
+                if (installedEditions.editionsOf(languageCode, identifier).isEmpty()) continue
+
+                runCatching { refresh(name) }
+                    .onSuccess { result ->
+                        if (result == ImportResult.SUCCESS || result == ImportResult.ALREADY_EXISTS) {
+                            stamps.markImported(name)
+                            logger.info("Refreshed bundled source $name: $result")
+                        } else {
+                            logger.error("Refreshing bundled source $name failed: $result")
+                        }
                     }
-                }
-                .onFailure { logger.error("Refreshing bundled source $name failed", it) }
+                    .onFailure { logger.error("Refreshing bundled source $name failed", it) }
+            }
         }
     }
 
@@ -66,7 +71,7 @@ class RefreshBundledSources(
         val zip = tempFiles.createTempFile(name, ".zip")
         return try {
             zip.writeBytes(bundledContent.read(SOURCE_PATH_TEMPLATE.format(name)))
-            importUseCase.import(zip, callback = null).await()
+            importUseCase.importSuspend(zip, callback = null)
         } finally {
             zip.delete()
         }
