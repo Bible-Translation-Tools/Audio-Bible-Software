@@ -34,6 +34,7 @@ class BundledSourceStamps(
             override val name = "BUNDLED_SOURCE:$name"
             override val version = checksum.take(7).toInt(16)
             override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable = Completable.complete()
+            override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) = Unit
         }
     }
 }

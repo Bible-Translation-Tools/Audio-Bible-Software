@@ -258,7 +258,8 @@ class IntegrationEnvironment private constructor(
     fun sourceEditions() = db.resourceMetadataDao.fetchAll().filter { it.derivedFromFk == null }.sortedBy { it.id }
 
     /** Whether the edition in [rc] is already installed, as the app asks before bundling one. */
-    fun isAlreadyImported(rc: File): Boolean = koin.get<ImportProjectUseCase>().isAlreadyImported(rc)
+    fun isAlreadyImported(rc: File): Boolean =
+        runBlocking { koin.get<ImportProjectUseCase>().isAlreadyImportedSuspend(rc) }
 
     /** Deletes the source edition stored at [path], as the app would. */
     fun deleteSource(path: String): DeleteResult =
