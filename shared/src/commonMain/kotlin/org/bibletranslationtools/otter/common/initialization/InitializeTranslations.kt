@@ -21,6 +21,9 @@ package org.bibletranslationtools.otter.common.initialization
 
 import io.reactivex.Completable
 import io.reactivex.ObservableEmitter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.rx2.rxCompletable
+import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.config.Installable
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IInstalledEntityRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ILanguageRepository
@@ -41,15 +44,18 @@ class InitializeTranslations(
 
     private val log = LoggerFactory.getLogger(InitializeTranslations::class.java)
 
-    override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable {
-        return Completable.fromCallable {
-            var installedVersion = installedEntityRepo.getInstalledVersion(this)
+    override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable =
+        rxCompletable { execSuspend(progressEmitter::onNext) }
+
+    override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) {
+        withContext(Dispatchers.IO) {
+            val installedVersion = installedEntityRepo.getInstalledVersion(this@InitializeTranslations)
             if (installedVersion != version) {
                 log.info("Initializing $name version: $version...")
 
                 migrate()
 
-                installedEntityRepo.install(this)
+                installedEntityRepo.install(this@InitializeTranslations)
                 log.info("$name version: $version installed!")
             } else {
                 log.info("$name up to date with version: $version")
@@ -57,35 +63,27 @@ class InitializeTranslations(
         }
     }
 
-    private fun migrate() {
+    private suspend fun migrate() {
         migrateToVersion1()
     }
 
-    private fun migrateToVersion1() {
+    private suspend fun migrateToVersion1() {
         val projects = fetchProjects()
-        projects.map(::insertTranslation)
+        projects.forEach { insertTranslation(it) }
     }
 
-    private fun fetchProjects(): List<Workbook> {
-        return workbookRepository.getProjects()
-            .doOnError { e ->
-                log.error("Error in loading projects", e)
-            }
-            .blockingGet()
-    }
+    private suspend fun fetchProjects(): List<Workbook> =
+        runCatching { workbookRepository.getProjectsSuspend() }
+            .onFailure { log.error("Error in loading projects", it) }
+            .getOrThrow()
 
-    private fun insertTranslation(workBook: Workbook) {
+    private suspend fun insertTranslation(workBook: Workbook) {
         val translation = Translation(
             workBook.source.language,
             workBook.target.language,
             LocalDateTime.now()
         )
-        languageRepository
-            .insertTranslation(translation)
-            .doOnError { e ->
-                log.error("Error in inserting translation", e)
-            }
-            .onErrorReturnItem(0)
-            .blockingGet()
+        runCatching { languageRepository.insertTranslationSuspend(translation) }
+            .onFailure { log.error("Error in inserting translation", it) }
     }
 }
