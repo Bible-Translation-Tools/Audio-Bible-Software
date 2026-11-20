@@ -1,3 +1,5 @@
+@file:OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
+
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -71,6 +73,16 @@ kotlin {
                 // Plugin definitions are YAML — see OraturePluginRegistrar. Declared explicitly
                 // rather than leaning on :shared's api(kaml), since this module uses it directly.
                 implementation(libs.kaml)
+            }
+        }
+
+        // Compose UI walkthroughs (e2e/): drive the real app headlessly and save a screenshot
+        // per step. Desktop-only for now; the journeys themselves use only common Compose test APIs.
+        val desktopTest by getting {
+            dependencies {
+                implementation(compose.desktop.currentOs)
+                implementation(compose.uiTest)
+                implementation(libs.kotlinx.coroutines.swing)
             }
         }
 
