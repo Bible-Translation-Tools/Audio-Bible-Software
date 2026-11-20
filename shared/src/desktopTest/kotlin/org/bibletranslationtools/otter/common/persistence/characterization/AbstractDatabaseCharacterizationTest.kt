@@ -81,6 +81,7 @@ abstract class AbstractDatabaseCharacterizationTest {
         override val version = version
         override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable =
             Completable.complete()
+        override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) = Unit
     }
 
     protected fun language(
