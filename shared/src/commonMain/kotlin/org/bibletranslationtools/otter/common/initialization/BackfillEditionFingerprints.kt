@@ -2,7 +2,9 @@ package org.bibletranslationtools.otter.common.initialization
 
 import io.reactivex.Completable
 import io.reactivex.ObservableEmitter
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.rx2.rxCompletable
+import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.config.Initializable
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IEditionFingerprintRepository
 import org.bibletranslationtools.otter.common.data.ProgressStatus
@@ -26,18 +28,23 @@ class BackfillEditionFingerprints(
 
     private val logger = LoggerFactory.getLogger(BackfillEditionFingerprints::class.java)
 
-    override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable = rxCompletable {
-        for (id in fingerprintRepository.sourcesWithoutFingerprint()) {
-            val source = daoProvider.resourceMetadataDao.fetchById(id) ?: continue
-            // Saving is inside too: two rows holding the same content (a source merged in place and
-            // imported again) share a fingerprint, which the edition index refuses for the second.
-            runCatching {
-                val fingerprint = fingerprinter.fingerprint(File(source.path))
-                fingerprintRepository.save(id, fingerprint)
-                fingerprint
+    override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable =
+        rxCompletable { execSuspend(progressEmitter::onNext) }
+
+    override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) {
+        withContext(Dispatchers.IO) {
+            for (id in fingerprintRepository.sourcesWithoutFingerprint()) {
+                val source = daoProvider.resourceMetadataDao.fetchById(id) ?: continue
+                // Saving is inside too: two rows holding the same content (a source merged in place and
+                // imported again) share a fingerprint, which the edition index refuses for the second.
+                runCatching {
+                    val fingerprint = fingerprinter.fingerprint(File(source.path))
+                    fingerprintRepository.save(id, fingerprint)
+                    fingerprint
+                }
+                    .onSuccess { logger.info("Fingerprinted source ${source.identifier} v${source.version} (${it.detectedVersification})") }
+                    .onFailure { logger.error("Could not fingerprint source ${source.identifier} at ${source.path}", it) }
             }
-                .onSuccess { logger.info("Fingerprinted source ${source.identifier} v${source.version} (${it.detectedVersification})") }
-                .onFailure { logger.error("Could not fingerprint source ${source.identifier} at ${source.path}", it) }
         }
     }
 }
