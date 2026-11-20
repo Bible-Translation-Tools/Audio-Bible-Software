@@ -20,7 +20,7 @@ package org.bibletranslationtools.otter.common.initialization
 
 import io.reactivex.Completable
 import io.reactivex.ObservableEmitter
-import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.rx2.rxCompletable
 import org.bibletranslationtools.otter.common.api.persistence.config.Initializable
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ITakeRepository
 import org.slf4j.LoggerFactory
@@ -32,17 +32,17 @@ class InitializeTakeRepository(
 
     private val log = LoggerFactory.getLogger(InitializeTakeRepository::class.java)
 
-    override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable {
+    override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable =
+        rxCompletable { execSuspend(progressEmitter::onNext) }
+
+    override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) {
         log.info("Initializing take repository...")
-        return takeRepository
-            .removeNonExistentTakes()
-            .andThen(takeRepository.deleteExpiredTakes())
-            .doOnError { e ->
-                log.error("Error initializing take repository", e)
-            }
-            .doOnComplete {
-                log.info("Take repository initialized!")
-            }
-            .subscribeOn(Schedulers.io())
+        runCatching {
+            takeRepository.removeNonExistentTakesSuspend()
+            takeRepository.deleteExpiredTakesSuspend()
+        }
+            .onFailure { log.error("Error initializing take repository", it) }
+            .getOrThrow()
+        log.info("Take repository initialized!")
     }
 }
