@@ -18,6 +18,8 @@
  */
 package org.bibletranslationtools.otter.common.persistence.repositories
 
+import kotlinx.coroutines.rx2.rxCompletable
+import kotlinx.coroutines.rx2.rxSingle
 import io.reactivex.Completable
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
@@ -124,18 +126,7 @@ class LanguageRepository(
             .subscribeOn(Schedulers.io())
     }
 
-    override fun getBySlug(slug: String): Single<Language> {
-        return Single
-            .fromCallable {
-                val language = languageDao.fetchBySlug(slug)
-                    ?: throw NullPointerException("Could not find language with slug $slug.")
-                mapper.mapFromEntity(language)
-            }
-            .doOnError { e ->
-                logger.error("Error in getBySlug for slug: $slug", e)
-            }
-            .subscribeOn(Schedulers.io())
-    }
+    override fun getBySlug(slug: String): Single<Language> = rxSingle { getBySlugSuspend(slug) }
 
     override fun update(obj: Language): Completable {
         return Completable
@@ -189,33 +180,11 @@ class LanguageRepository(
         }
     }
 
-    override fun insertTranslation(translation: Translation): Single<Int> {
-        return Single
-            .fromCallable {
-                val existing = translationDao.fetch(translation.source.id, translation.target.id)
-                if (existing != null) {
-                    existing.modifiedTs = translation.modifiedTs?.toString()
-                    translationDao.update(existing)
-                    existing.id
-                } else {
-                    translationDao.insert(translationMapper.mapToEntity(translation))
-                }
-            }
-            .doOnError { e ->
-                logger.error("Error in insert for translation: $translation", e)
-            }
-            .subscribeOn(Schedulers.io())
-    }
+    override fun insertTranslation(translation: Translation): Single<Int> =
+        rxSingle { insertTranslationSuspend(translation) }
 
-    override fun updateTranslation(translation: Translation): Completable {
-        return Completable.fromCallable {
-            translationDao.update(translationMapper.mapToEntity(translation))
-        }
-            .doOnError { e ->
-                logger.error("Error in update translation: $translation", e)
-            }
-            .subscribeOn(Schedulers.io())
-    }
+    override fun updateTranslation(translation: Translation): Completable =
+        rxCompletable { updateTranslationSuspend(translation) }
 
     override fun deleteTranslation(translation: Translation): Completable {
         return Completable
@@ -246,7 +215,17 @@ class LanguageRepository(
                 .onFailure { logger.error("Error in updateRegions", it) }
                 .getOrThrow()
         }
-    override suspend fun getBySlugSuspend(slug: String): Language = getBySlug(slug).await()
+    override suspend fun getBySlugSuspend(slug: String): Language = withContext(Dispatchers.IO) {
+        runCatching {
+            val language = languageDao.fetchBySlug(slug)
+                ?: throw NullPointerException("Could not find language with slug $slug.")
+            mapper.mapFromEntity(language)
+        }
+            .onFailure { e ->
+                logger.error("Error in getBySlug for slug: $slug", e)
+            }
+            .getOrThrow()
+    }
     override suspend fun getGatewaySuspend(): List<Language> = getGateway().await()
     override suspend fun getAvailableGatewaySourcesSuspend(): List<Language> = getAvailableGatewaySources().await()
     override suspend fun getTargetsSuspend(): List<Language> = getTargets().await()
@@ -255,8 +234,33 @@ class LanguageRepository(
         getTranslation(sourceLanguage, targetLanguage).await()
 
     override suspend fun getAllTranslationsSuspend(): List<Translation> = getAllTranslations().await()
-    override suspend fun insertTranslationSuspend(translation: Translation): Int = insertTranslation(translation).await()
-    override suspend fun updateTranslationSuspend(translation: Translation) = updateTranslation(translation).await()
+    override suspend fun insertTranslationSuspend(translation: Translation): Int = withContext(Dispatchers.IO) {
+        runCatching {
+            val existing = translationDao.fetch(translation.source.id, translation.target.id)
+            if (existing != null) {
+                existing.modifiedTs = translation.modifiedTs?.toString()
+                translationDao.update(existing)
+                existing.id
+            } else {
+                translationDao.insert(translationMapper.mapToEntity(translation))
+            }
+        }
+            .onFailure { e ->
+                logger.error("Error in insert for translation: $translation", e)
+            }
+            .getOrThrow()
+    }
+    override suspend fun updateTranslationSuspend(translation: Translation) {
+        withContext(Dispatchers.IO) {
+            runCatching {
+                translationDao.update(translationMapper.mapToEntity(translation))
+            }
+                .onFailure { e ->
+                    logger.error("Error in update translation: $translation", e)
+                }
+                .getOrThrow()
+        }
+    }
     override suspend fun deleteTranslationSuspend(translation: Translation) = deleteTranslation(translation).await()
 
     /**

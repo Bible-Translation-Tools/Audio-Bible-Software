@@ -1,7 +1,6 @@
 package org.bibletranslationtools.otter.common.io.zip
 
 import org.bibletranslationtools.otter.common.api.io.zip.IFileReader
-import io.reactivex.Observable
 import java.io.File
 import java.io.InputStream
 import java.nio.file.FileSystem
@@ -10,7 +9,6 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.streams.asSequence
 import org.bibletranslationtools.otter.common.io.utils.copyDirectoryFilesTo
-import org.bibletranslationtools.otter.common.io.utils.copyDirectoryTo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -24,16 +22,6 @@ class NioDirectoryFileReader(
     override fun stream(filepath: String): InputStream = Files.newInputStream(getAbsolutePath(filepath))
 
     override fun exists(filepath: String) = Files.exists(getAbsolutePath(filepath))
-
-    override fun copyDirectory(
-        source: String,
-        destinationDirectory: File,
-        filter: (String) -> Boolean
-    ): Observable<String> {
-        val sourcePath = getAbsolutePath(source)
-        val destPath = destinationDirectory.toPath()
-        return sourcePath.copyDirectoryTo(destPath, filter)
-    }
 
     override suspend fun copyDirectorySuspend(
         source: String,

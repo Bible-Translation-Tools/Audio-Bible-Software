@@ -1,5 +1,6 @@
 package org.bibletranslationtools.otter.common.io.zip
 
+import kotlinx.coroutines.test.runTest
 import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -188,7 +189,7 @@ class AndroidZipFileReaderTest {
     }
 
     @Test
-    fun `a dot-slash source copies the same entries as the bare path`() {
+    fun `a dot-slash source copies the same entries as the bare path`() = runTest {
         val zip = zipOf(
             "content/c01/chapter.wav" to "chapter audio"
         )
@@ -197,8 +198,8 @@ class AndroidZipFileReaderTest {
             val bare = File.createTempFile("bare", "").apply { delete(); mkdirs(); deleteOnExit() }
             val dotted = File.createTempFile("dotted", "").apply { delete(); mkdirs(); deleteOnExit() }
 
-            reader.copyDirectory("content", bare)
-            reader.copyDirectory("./content", dotted)
+            reader.copyDirectorySuspend("content", bare)
+            reader.copyDirectorySuspend("./content", dotted)
 
             assertEquals(
                 bare.walkTopDown().filter { it.isFile }.map { it.relativeTo(bare).path }.toList(),

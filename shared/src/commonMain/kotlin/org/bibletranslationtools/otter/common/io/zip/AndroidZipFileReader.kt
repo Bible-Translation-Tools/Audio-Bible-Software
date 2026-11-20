@@ -1,7 +1,6 @@
 package org.bibletranslationtools.otter.common.io.zip
 
 import org.bibletranslationtools.otter.common.api.io.zip.IFileReader
-import io.reactivex.Observable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
@@ -75,13 +74,6 @@ class AndroidZipFileReader(
      * Matching the Nio semantics fixes every one of those call sites at once, rather than leaving
      * the interface with two contradictory contracts.
      */
-    override fun copyDirectory(
-        source: String,
-        destinationDirectory: File,
-        filter: (String) -> Boolean
-    ): Observable<String> =
-        Observable.fromIterable(copyEntries(source, destinationDirectory, filter)).cache()
-
     override suspend fun copyDirectorySuspend(
         source: String,
         destinationDirectory: File,

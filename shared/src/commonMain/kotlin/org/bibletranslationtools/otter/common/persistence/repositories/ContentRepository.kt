@@ -18,6 +18,10 @@
  */
 package org.bibletranslationtools.otter.common.persistence.repositories
 
+import kotlinx.coroutines.rx2.rxCompletable
+import kotlinx.coroutines.rx2.rxSingle
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import com.jakewharton.rxrelay2.BehaviorRelay
 import io.reactivex.Completable
 import io.reactivex.Observable
@@ -55,19 +59,8 @@ class ContentRepository(
     private val takeMapper: TakeMapper = TakeMapper(database.checkingStatusDao)
     private val markerMapper: MarkerMapper = MarkerMapper()
 
-    override fun getByCollection(collection: Collection): Single<List<Content>> {
-        return Single
-            .fromCallable {
-                contentDao
-                    .fetchByCollectionId(collection.id)
-                    .map(this::buildContent)
-                    .filter { !it.bridged }
-            }
-            .doOnError { e ->
-                logger.error("Error in getByCollection for collection: $collection", e)
-            }
-            .subscribeOn(Schedulers.io())
-    }
+    override fun getByCollection(collection: Collection): Single<List<Content>> =
+        rxSingle { getByCollectionSuspend(collection) }
 
     override fun getByCollectionWithPersistentConnection(collection: Collection): Observable<List<Content>> {
         activeConnections.getOrDefault(collection, null)?.let { return it }
@@ -84,20 +77,8 @@ class ContentRepository(
         return connection
     }
 
-    override fun getCollectionMetaContent(collection: Collection): Single<Content> {
-        return Single
-            .fromCallable {
-                contentDao
-                    .fetchByCollectionIdAndType(collection.id, ContentType.META)
-                    .map(this::buildContent)
-                    .minByOrNull { it.start }
-                    ?: throw IllegalStateException("Missing meta info for chapter.")
-            }
-            .doOnError { e ->
-                logger.error("Error in getByCollectionMetaContent for collection: $collection", e)
-            }
-            .subscribeOn(Schedulers.io())
-    }
+    override fun getCollectionMetaContent(collection: Collection): Single<Content> =
+        rxSingle { getCollectionMetaContentSuspend(collection) }
 
     override fun getSources(content: Content): Single<List<Content>> {
         return Single
@@ -134,21 +115,8 @@ class ContentRepository(
     override fun deleteForCollection(
         chapterCollection: Collection,
         typeFilter: ContentType?
-    ): Completable {
-        val typeId = typeFilter?.let {
-            contentTypeDao.fetchId(typeFilter)
-        }
-
-        activeConnections.getOrDefault(chapterCollection, null)
-            ?.let { it.value?.forEach { chunk -> chunk.draftNumber = -1 } }
-
-        return Completable.fromCallable {
-            contentDao.deleteForCollection(
-                collectionMapper.mapToEntity(chapterCollection),
-                typeId
-            )
-        }
-    }
+    ): Completable =
+        rxCompletable { deleteForCollectionSuspend(chapterCollection, typeFilter) }
 
     override fun delete(obj: Content): Completable {
         return Completable
@@ -180,28 +148,8 @@ class ContentRepository(
             .subscribeOn(Schedulers.io())
     }
 
-    override fun insertForCollection(contentList: List<Content>, collection: Collection): Single<List<Content>> {
-        return Single
-            .fromCallable {
-                contentList.forEach { content ->
-                    val id = contentDao.insert(
-                        contentMapper
-                            .mapToEntity(content, collection.id)
-                            .apply { collectionFk = collection.id }
-                    )
-                    content.id = id
-                }
-                val contentsAfterInsertion = getByCollection(collection).blockingGet()
-                activeConnections.getOrDefault(collection, null)
-                    ?.accept(contentsAfterInsertion)
-
-                contentsAfterInsertion
-            }
-            .doOnError { e ->
-                logger.error("Error in insertForCollection for collection: $collection", e)
-            }
-            .subscribeOn(Schedulers.io())
-    }
+    override fun insertForCollection(contentList: List<Content>, collection: Collection): Single<List<Content>> =
+        rxSingle { insertForCollectionSuspend(contentList, collection) }
 
     /**
      * Bulk update. The entities are mapped without a `collectionFk`, which leaves
@@ -240,22 +188,7 @@ class ContentRepository(
             .subscribeOn(Schedulers.io())
     }
 
-    override fun update(obj: Content): Completable {
-        return Completable
-            .fromAction {
-                val existing = contentDao.fetchById(obj.id)
-                val entity = contentMapper.mapToEntity(obj)
-                // Make sure we don't overwrite the collection relationship
-                entity.collectionFk = existing.collectionFk
-                contentDao.update(entity)
-
-                updateConnection(obj, entity.collectionFk)
-            }
-            .doOnError { e ->
-                logger.error("Error in update for content: $obj", e)
-            }
-            .subscribeOn(Schedulers.io())
-    }
+    override fun update(obj: Content): Completable = rxCompletable { updateSuspend(obj) }
 
     /**
      * Updates the content stored inside the active connections.
@@ -289,20 +222,77 @@ class ContentRepository(
     }
 
     override suspend fun getAllSuspend(): List<Content> = getAll().await()
-    override suspend fun updateSuspend(obj: Content) = update(obj).await()
+    override suspend fun updateSuspend(obj: Content) {
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val existing = contentDao.fetchById(obj.id)
+                val entity = contentMapper.mapToEntity(obj)
+                // Make sure we don't overwrite the collection relationship
+                entity.collectionFk = existing.collectionFk
+                contentDao.update(entity)
+
+                updateConnection(obj, entity.collectionFk)
+            }
+                .onFailure { e ->
+                    logger.error("Error in update for content: $obj", e)
+                }
+                .getOrThrow()
+        }
+    }
     override suspend fun deleteSuspend(obj: Content) = delete(obj).await()
 
     override suspend fun insertForCollectionSuspend(contentList: List<Content>, collection: Collection): List<Content> =
-        insertForCollection(contentList, collection).await()
+        withContext(Dispatchers.IO) {
+            runCatching {
+                contentList.forEach { content ->
+                    val id = contentDao.insert(
+                        contentMapper
+                            .mapToEntity(content, collection.id)
+                            .apply { collectionFk = collection.id }
+                    )
+                    content.id = id
+                }
+                val contentsAfterInsertion = getByCollectionSuspend(collection)
+                activeConnections.getOrDefault(collection, null)
+                    ?.accept(contentsAfterInsertion)
 
-    override suspend fun getByCollectionSuspend(collection: Collection): List<Content> =
-        getByCollection(collection).await()
+                contentsAfterInsertion
+            }
+                .onFailure { e ->
+                    logger.error("Error in insertForCollection for collection: $collection", e)
+                }
+                .getOrThrow()
+        }
+
+    override suspend fun getByCollectionSuspend(collection: Collection): List<Content> = withContext(Dispatchers.IO) {
+        runCatching {
+            contentDao
+                .fetchByCollectionId(collection.id)
+                .map(::buildContent)
+                .filter { !it.bridged }
+        }
+            .onFailure { e ->
+                logger.error("Error in getByCollection for collection: $collection", e)
+            }
+            .getOrThrow()
+    }
 
     override fun getByCollectionFlow(collection: Collection): Flow<List<Content>> =
         getByCollectionWithPersistentConnection(collection).asFlow()
 
-    override suspend fun getCollectionMetaContentSuspend(collection: Collection): Content =
-        getCollectionMetaContent(collection).await()
+    override suspend fun getCollectionMetaContentSuspend(collection: Collection): Content = withContext(Dispatchers.IO) {
+        runCatching {
+            contentDao
+                .fetchByCollectionIdAndType(collection.id, ContentType.META)
+                .map(::buildContent)
+                .minByOrNull { it.start }
+                ?: throw IllegalStateException("Missing meta info for chapter.")
+        }
+            .onFailure { e ->
+                logger.error("Error in getByCollectionMetaContent for collection: $collection", e)
+            }
+            .getOrThrow()
+    }
 
     override suspend fun getSourcesSuspend(content: Content): List<Content> =
         getSources(content).await()
@@ -310,8 +300,21 @@ class ContentRepository(
     override suspend fun updateSourcesSuspend(content: Content, sourceContents: List<Content>) =
         updateSources(content, sourceContents).await()
 
-    override suspend fun deleteForCollectionSuspend(chapterCollection: Collection, typeFilter: ContentType?) =
-        deleteForCollection(chapterCollection, typeFilter).await()
+    override suspend fun deleteForCollectionSuspend(chapterCollection: Collection, typeFilter: ContentType?) {
+        withContext(Dispatchers.IO) {
+            val typeId = typeFilter?.let {
+                contentTypeDao.fetchId(typeFilter)
+            }
+
+            activeConnections.getOrDefault(chapterCollection, null)
+                ?.let { it.value?.forEach { chunk -> chunk.draftNumber = -1 } }
+
+            contentDao.deleteForCollection(
+                collectionMapper.mapToEntity(chapterCollection),
+                typeId
+            )
+        }
+    }
 
     override suspend fun linkDerivedToSourceSuspend(derivedContents: List<Content>, sourceContents: List<Content>) =
         linkDerivedToSource(derivedContents, sourceContents).await()

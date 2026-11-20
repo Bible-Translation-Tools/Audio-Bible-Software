@@ -123,19 +123,8 @@ class ResourceMetadataRepository(
             .filter { it.derivedFromFk == null }
             .map(this::buildMetadata)
 
-    override fun getAllDerivatives(metadata: ResourceMetadata): Single<List<ResourceMetadata>> {
-        return Single
-            .fromCallable {
-                resourceMetadataDao
-                    .fetchAll()
-                    .filter { it.derivedFromFk == metadata.id }
-                    .map(this::buildMetadata)
-            }
-            .doOnError { e ->
-                logger.error("Error in getAllDerivatives", e)
-            }
-            .subscribeOn(Schedulers.io())
-    }
+    override fun getAllDerivatives(metadata: ResourceMetadata): Single<List<ResourceMetadata>> =
+        rxSingle { getAllDerivativesSuspend(metadata) }
 
     override fun getSource(metadata: ResourceMetadata): Maybe<ResourceMetadata> {
         return Maybe
@@ -149,18 +138,8 @@ class ResourceMetadataRepository(
             .subscribeOn(Schedulers.io())
     }
 
-    override fun getLinked(metadata: ResourceMetadata): Single<List<ResourceMetadata>> {
-        return Single
-            .fromCallable {
-                resourceMetadataDao
-                    .fetchLinks(metadata.id)
-                    .map(this::buildMetadata)
-            }
-            .doOnError { e ->
-                logger.error("Error in getLinked for metadata: $metadata", e)
-            }
-            .subscribeOn(Schedulers.io())
-    }
+    override fun getLinked(metadata: ResourceMetadata): Single<List<ResourceMetadata>> =
+        rxSingle { getLinkedSuspend(metadata) }
 
     override fun updateSource(metadata: ResourceMetadata, source: ResourceMetadata?): Completable {
         return Completable
@@ -251,10 +230,31 @@ class ResourceMetadataRepository(
             .onFailure { logger.error("Error in getAllSources", it) }
             .getOrThrow()
     }
-    override suspend fun getAllDerivativesSuspend(metadata: ResourceMetadata): List<ResourceMetadata> = getAllDerivatives(metadata).await()
+    override suspend fun getAllDerivativesSuspend(metadata: ResourceMetadata): List<ResourceMetadata> = withContext(Dispatchers.IO) {
+        runCatching {
+            resourceMetadataDao
+                .fetchAll()
+                .filter { it.derivedFromFk == metadata.id }
+                .map(::buildMetadata)
+        }
+            .onFailure { e ->
+                logger.error("Error in getAllDerivatives", e)
+            }
+            .getOrThrow()
+    }
     override suspend fun addLinkSuspend(firstMetadata: ResourceMetadata, secondMetadata: ResourceMetadata) = addLink(firstMetadata, secondMetadata).await()
     override suspend fun removeLinkSuspend(firstMetadata: ResourceMetadata, secondMetadata: ResourceMetadata) = removeLink(firstMetadata, secondMetadata).await()
-    override suspend fun getLinkedSuspend(metadata: ResourceMetadata): List<ResourceMetadata> = getLinked(metadata).await()
+    override suspend fun getLinkedSuspend(metadata: ResourceMetadata): List<ResourceMetadata> = withContext(Dispatchers.IO) {
+        runCatching {
+            resourceMetadataDao
+                .fetchLinks(metadata.id)
+                .map(::buildMetadata)
+        }
+            .onFailure { e ->
+                logger.error("Error in getLinked for metadata: $metadata", e)
+            }
+            .getOrThrow()
+    }
 
     private fun buildMetadata(entity: ResourceMetadataEntity): ResourceMetadata {
         val languageEntity = languageDao.fetchById(entity.languageFk)
