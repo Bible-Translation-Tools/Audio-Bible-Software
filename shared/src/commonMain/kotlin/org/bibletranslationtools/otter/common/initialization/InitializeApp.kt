@@ -19,7 +19,9 @@
 package org.bibletranslationtools.otter.common.initialization
 
 import io.reactivex.Observable
-import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.rx2.rxObservable
+import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.slf4j.LoggerFactory
@@ -43,54 +45,51 @@ class InitializeApp(
 
     private val logger = LoggerFactory.getLogger(InitializeApp::class.java)
 
-    fun initApp(): Observable<ProgressStatus> {
-        val progressObservable = Observable
-            .create { progressStatusEmitter ->
-                val initializers = listOf(
-                    initializeVersification,
-                    initializeLanguages,
-                    initializeSources,
-                    initializeUlb,
-                    initializeTakeRepository,
-                    initializeProjects,
-                    initializeTranslations,
-                    backfillEditionFingerprints,
-                    reconcileEditionLabels,
-                    refreshBundledSources,
-                    auditSourceStructure
-                )
+    fun initApp(): Observable<ProgressStatus> = rxObservable { initAppSuspend { trySend(it) } }
 
-                var total = 0.0
-                val increment = (1.0).div(initializers.size)
-                val appStart = System.currentTimeMillis()
-                daoProvider.withBulkLoad {
-                    logger.info("INIT withBulkLoad started (${System.currentTimeMillis() - appStart} ms)")
-                    initializers.forEach {
-                        total += increment
-                        progressStatusEmitter.onNext(
-                            ProgressStatus(percent = total)
-                        )
-                        val stepStart = System.currentTimeMillis()
-                        it
-                            .exec(progressStatusEmitter)
-                            .doOnError { e ->
-                                logger.error("Error in Initialization", e)
-                            }
-                            .blockingAwait()
-                        logger.info("INIT ${it::class.simpleName} took ${System.currentTimeMillis() - stepStart} ms (total ${System.currentTimeMillis() - appStart} ms)")
-                    }
-                }
-                logger.info("INIT withBulkLoad complete (${System.currentTimeMillis() - appStart} ms total)")
-                progressStatusEmitter.onComplete()
-            }
-            .doOnError { e ->
-                logger.error("Error in initApp", e)
-            }
-            .doFinally {
+    /** Runs every startup step in order, reporting progress to [onProgress]. The first failure stops the rest. */
+    suspend fun initAppSuspend(onProgress: (ProgressStatus) -> Unit) {
+        withContext(Dispatchers.IO) {
+            try {
+                runCatching { runInitializers(onProgress) }
+                    .onFailure { logger.error("Error in initApp", it) }
+                    .getOrThrow()
+            } finally {
                 directoryProvider.cleanTempDirectory() // clears out temp files after migration & init
             }
-            .subscribeOn(Schedulers.io())
+        }
+    }
 
-        return progressObservable
+    private suspend fun runInitializers(onProgress: (ProgressStatus) -> Unit) {
+        val initializers = listOf(
+            initializeVersification,
+            initializeLanguages,
+            initializeSources,
+            initializeUlb,
+            initializeTakeRepository,
+            initializeProjects,
+            initializeTranslations,
+            backfillEditionFingerprints,
+            reconcileEditionLabels,
+            refreshBundledSources,
+            auditSourceStructure
+        )
+
+        var total = 0.0
+        val increment = (1.0).div(initializers.size)
+        val appStart = System.currentTimeMillis()
+        daoProvider.withBulkLoadSuspend {
+            logger.info("INIT withBulkLoad started (${System.currentTimeMillis() - appStart} ms)")
+            initializers.forEach {
+                total += increment
+                onProgress(ProgressStatus(percent = total))
+                val stepStart = System.currentTimeMillis()
+                runCatching { it.execSuspend(onProgress) }
+                    .onFailure { e -> logger.error("Error in Initialization", e) }
+                    .getOrThrow()
+                logger.info("INIT ${it::class.simpleName} took ${System.currentTimeMillis() - stepStart} ms (total ${System.currentTimeMillis() - appStart} ms)")
+            }
+        }
+        logger.info("INIT withBulkLoad complete (${System.currentTimeMillis() - appStart} ms total)")
     }
 }
