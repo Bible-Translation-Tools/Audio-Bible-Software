@@ -68,7 +68,7 @@ class InitializeUlb(
                             subTitleMessage = name
                         )
                     )
-                    val callback = setupImportCallback(progressEmitter)
+                    val callback = setupImportCallback(progressEmitter::onNext)
                     importer
                         .import(enUlbFile, callback)
                         .toObservable()

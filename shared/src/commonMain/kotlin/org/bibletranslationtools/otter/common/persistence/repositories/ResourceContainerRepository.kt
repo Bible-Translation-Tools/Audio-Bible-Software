@@ -22,10 +22,10 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionOr
 import org.bibletranslationtools.otter.common.persistence.entities.ResourceMetadataEntity
 import java.io.File
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionFingerprint
-import io.reactivex.Completable
 import io.reactivex.Single
-import io.reactivex.schedulers.Schedulers
-import kotlinx.coroutines.rx2.await
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.rx2.rxSingle
+import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.collections.OtterTree
 import org.bibletranslationtools.otter.common.collections.OtterTreeNode
@@ -61,50 +61,49 @@ class ResourceContainerRepository(
     private val resourceLinkDao = database.resourceLinkDao
     private val contentMapper = ContentMapper(contentTypeDao)
 
-    override fun importResourceContainer(
+    override suspend fun importResourceContainerSuspend(
         rc: ResourceContainer,
         rcTree: OtterTree<CollectionOrContent>,
         languageSlug: String,
         fingerprint: EditionFingerprint?
-    ): Single<ImportResult> {
+    ): ImportResult = withContext(Dispatchers.IO) {
         val dublinCore = rc.manifest.dublinCore
-        return Completable
-            .fromAction {
-                database.transaction {
-                    val languageEntity = languageDao.fetchBySlug(languageSlug)
-                        ?: throw NullPointerException("Could not find language with slug $languageSlug.")
-                    val language = LanguageMapper().mapFromEntity(languageEntity)
-                    val metadata = dublinCore.mapToMetadata(rc.file, language)
-                        .let {
-                            insertMetadataOrThrow(it, fingerprint)
-                        }
-                    fingerprint?.let { database.storeEditionFingerprint(metadata.id, it) }
+        try {
+            database.transaction {
+                val languageEntity = languageDao.fetchBySlug(languageSlug)
+                    ?: throw NullPointerException("Could not find language with slug $languageSlug.")
+                val language = LanguageMapper().mapFromEntity(languageEntity)
+                val metadata = dublinCore.mapToMetadata(rc.file, language)
+                    .let {
+                        insertMetadataOrThrow(it, fingerprint)
+                    }
+                fingerprint?.let { database.storeEditionFingerprint(metadata.id, it) }
 
-                    val relatedDublinCoreIds: List<Int> =
-                        linkRelatedResourceContainers(metadata, dublinCore.relation, dublinCore.creator)
+                val relatedDublinCoreIds: List<Int> =
+                    linkRelatedResourceContainers(metadata, dublinCore.relation, dublinCore.creator)
 
-                    if (ContainerType.of(rc.type()) == ContainerType.Help) {
-                        if (relatedDublinCoreIds.isEmpty()) {
-                            logger.error("Unmatched help for ${rc.manifest.dublinCore.identifier}")
-                            throw ImportException(ImportResult.UNMATCHED_HELP)
-                        }
-                        relatedDublinCoreIds.forEach { relatedId ->
-                            val ih = ImportHelper(metadata, relatedId)
-                            ih.import(rcTree)
-                        }
-                    } else {
-                        val ih = ImportHelper(metadata, null)
+                if (ContainerType.of(rc.type()) == ContainerType.Help) {
+                    if (relatedDublinCoreIds.isEmpty()) {
+                        logger.error("Unmatched help for ${rc.manifest.dublinCore.identifier}")
+                        throw ImportException(ImportResult.UNMATCHED_HELP)
+                    }
+                    relatedDublinCoreIds.forEach { relatedId ->
+                        val ih = ImportHelper(metadata, relatedId)
                         ih.import(rcTree)
                     }
+                } else {
+                    val ih = ImportHelper(metadata, null)
+                    ih.import(rcTree)
                 }
             }
-            .toSingleDefault(ImportResult.SUCCESS)
-            .onErrorReturn { e ->
-                logger.error("Error in importResourceContainer for rc: $rc, language: $languageSlug", e)
-                e.castOrFindImportException()?.result ?: ImportResult.LOAD_RC_ERROR
-            }
-            .doFinally { rc.close() }
-            .subscribeOn(Schedulers.io())
+            ImportResult.SUCCESS
+        } catch (e: Exception) {
+            // The import reports its outcome as a result; callers clean up on anything but SUCCESS.
+            logger.error("Error in importResourceContainer for rc: $rc, language: $languageSlug", e)
+            e.castOrFindImportException()?.result ?: ImportResult.LOAD_RC_ERROR
+        } finally {
+            rc.close()
+        }
     }
 
     /** The installed source (not a derived row) stored at [file], if any. */
@@ -178,67 +177,60 @@ class ResourceContainerRepository(
 
     override fun removeResourceContainer(
         resourceContainer: ResourceContainer
-    ): Single<DeleteResult> {
-        return Single.fromCallable {
-            var result = DeleteResult.SUCCESS
-
-            database.transaction {
-                val metadataEntity = sourceEntityAt(resourceContainer.file)
-
-                val derivedRcExists = resourceMetadataDao.fetchAll().any {
-                    it.derivedFromFk != null && it.derivedFromFk == metadataEntity?.id
-                }
-
-                when {
-                    metadataEntity == null -> {
-                        result = DeleteResult.NOT_FOUND
-                        return@transaction
-                    }
-
-                    derivedRcExists -> {
-                        result = DeleteResult.DEPENDENCY_EXISTS
-                        return@transaction
-                    }
-
-                    else -> metadataEntity!!
-                }
-
-                // delete entities with foreign keys refer to rc first
-                collectionDao.fetchAll()
-                    .filter { it.dublinCoreFk == metadataEntity.id }
-                    .forEach {
-                        collectionDao.delete(it)
-                    }
-
-                resourceMetadataDao.delete(metadataEntity)
-            }
-
-            result
-        }
-            .doOnError { e ->
-                logger.error("Error in removeResourceContainer.", e)
-            }
-            .doFinally { resourceContainer.close() }
-            .subscribeOn(Schedulers.io())
-    }
-
-    override suspend fun importResourceContainerSuspend(
-        rc: ResourceContainer,
-        rcTree: OtterTree<CollectionOrContent>,
-        languageSlug: String,
-        fingerprint: EditionFingerprint?
-    ): ImportResult = importResourceContainer(rc, rcTree, languageSlug, fingerprint).await()
+    ): Single<DeleteResult> = rxSingle { removeResourceContainerSuspend(resourceContainer) }
 
     override suspend fun removeResourceContainerSuspend(
         resourceContainer: ResourceContainer
-    ): DeleteResult = removeResourceContainer(resourceContainer).await()
-
-    private fun findRootCollectionsForRc(dublinCoreId: Int): List<Collection> {
-        return collectionRepository
-            .getRootSources()
-            .blockingGet()
-            .filter { it.resourceContainer?.id == dublinCoreId }
+    ): DeleteResult = withContext(Dispatchers.IO) {
+        resourceContainer.use { resourceContainer ->
+            runCatching { remove(resourceContainer) }
+                .onFailure { logger.error("Error in removeResourceContainer.", it) }
+                .getOrThrow()
+        }
     }
+
+    private fun remove(resourceContainer: ResourceContainer): DeleteResult {
+        var result = DeleteResult.SUCCESS
+
+        database.transaction {
+            val metadataEntity = sourceEntityAt(resourceContainer.file)
+
+            val derivedRcExists = resourceMetadataDao.fetchAll().any {
+                it.derivedFromFk != null && it.derivedFromFk == metadataEntity?.id
+            }
+
+            when {
+                metadataEntity == null -> {
+                    result = DeleteResult.NOT_FOUND
+                    return@transaction
+                }
+
+                derivedRcExists -> {
+                    result = DeleteResult.DEPENDENCY_EXISTS
+                    return@transaction
+                }
+
+                else -> metadataEntity
+            }
+
+            // delete entities with foreign keys refer to rc first
+            collectionDao.fetchAll()
+                .filter { it.dublinCoreFk == metadataEntity.id }
+                .forEach {
+                    collectionDao.delete(it)
+                }
+
+            resourceMetadataDao.delete(metadataEntity)
+        }
+
+        return result
+    }
+
+    /** Ids of the root source collections of the container with [dublinCoreId]. */
+    private fun rootCollectionIdsForRc(dublinCoreId: Int): List<Int> =
+        collectionDao.fetchAll()
+            .filter { it.parentFk == null && it.sourceFk == null && it.dublinCoreFk == dublinCoreId }
+            .map { it.id }
 
     inner class ImportHelper(
         private val metadata: ResourceMetadata,
@@ -248,8 +240,7 @@ class ResourceContainerRepository(
             importCollection(null, node)
 
             relatedBundleDublinCoreId
-                ?.let(::findRootCollectionsForRc)
-                ?.map { it.id }
+                ?.let(::rootCollectionIdsForRc)
                 ?.forEach(resourceRepository::calculateAndSetSubtreeHasResources)
         }
 

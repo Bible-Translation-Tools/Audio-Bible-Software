@@ -14,19 +14,25 @@ class EditionFingerprinter(
     private val structurePlanner: SourceStructurePlanner,
     private val zipEntryTreeBuilder: IZipEntryTreeBuilder
 ) {
-    /**
-     * The fingerprint of [parsedTree], the text of [container] as parsed, before any gap-filling.
-     * Pass [detectedVersification] when it is already known, to skip detecting it again.
-     */
-    fun fingerprint(
+    /** The fingerprint of [parsedTree], the text of [container] as parsed, before any gap-filling. */
+    suspend fun fingerprint(
         container: ResourceContainer,
+        parsedTree: OtterTree<CollectionOrContent>
+    ): EditionFingerprint =
+        fingerprint(
+            parsedTree = parsedTree,
+            detectedVersification = structurePlanner.detect(container, parsedTree)?.code
+        )
+
+    fun fingerprint(
         parsedTree: OtterTree<CollectionOrContent>,
-        detectedVersification: String? = structurePlanner.detect(container, parsedTree)?.code
+        detectedVersification: String?
     ): EditionFingerprint = EditionFingerprint.of(parsedTree, detectedVersification)
 
     /** The fingerprint of the source stored at [path], read from its files. */
-    fun fingerprint(path: File): EditionFingerprint =
+    suspend fun fingerprint(path: File): EditionFingerprint =
         ResourceContainer.load(path, OtterResourceContainerConfig()).use { container ->
-            fingerprint(container, IProjectReader.constructContainerTree(container, zipEntryTreeBuilder))
+            val tree = IProjectReader.constructContainerTree(container, zipEntryTreeBuilder)
+            fingerprint(container, tree)
         }
 }

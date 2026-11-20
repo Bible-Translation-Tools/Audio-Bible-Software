@@ -21,9 +21,12 @@ package org.bibletranslationtools.otter.common.domain.project.importer
 import java.util.UUID
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionOrder
 import io.reactivex.Maybe
-import io.reactivex.Observable
 import io.reactivex.Single
-import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.rx2.rxMaybe
+import kotlinx.coroutines.rx2.rxSingle
+import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.io.zip.IFileReader
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.audio.AudioFileFormat
@@ -47,7 +50,6 @@ import org.bibletranslationtools.otter.common.domain.collections.UpgradeBookEdit
 import org.bibletranslationtools.otter.common.domain.project.BackupEditionRecord
 import org.bibletranslationtools.otter.common.domain.project.BackupEditions
 import org.bibletranslationtools.otter.common.domain.project.BackupHeldChapter
-import kotlinx.coroutines.runBlocking
 import org.bibletranslationtools.otter.common.domain.content.ConcatenateAudio
 import org.bibletranslationtools.otter.common.domain.content.FileNamer
 import org.bibletranslationtools.otter.common.domain.content.FileNamer.Companion.takeFilenamePattern
@@ -123,10 +125,15 @@ class OngoingProjectImporter(
         file: File,
         callback: ProjectImporterCallback?,
         options: ImportOptions?
-    ): Single<ImportResult> {
-        val isOngoingProject = isResumableProject(file)
-        if (!isOngoingProject) {
-            return super.passToNextImporter(file, callback, options)
+    ): Single<ImportResult> = rxSingle { importSuspend(file, callback, options) }
+
+    override suspend fun importSuspend(
+        file: File,
+        callback: ProjectImporterCallback?,
+        options: ImportOptions?
+    ): ImportResult = withContext(Dispatchers.IO) {
+        if (!isResumableProject(file)) {
+            return@withContext passToNextImporterSuspend(file, callback, options)
         }
         projectName = ""
         takesInChapterFilter = null
@@ -141,24 +148,20 @@ class OngoingProjectImporter(
         takesPlacedThisImport.clear()
         contentCache.clear()
 
-        return Single
-            .fromCallable { projectExists(file) }
-            .doOnError {
-                logger.error("Error while checking whether project already exists.", it)
-            }
-            .flatMap { exists ->
-                // A book already here is merged, never replaced, so there is nothing to ask: every
-                // recording comes in as a new take (see insertTake), and the callback is told how
-                // many were added.
-                takesInChapterFilter = fetchTakesInRC(file)
+        val exists = runCatching { projectExists(file) }
+            .onFailure { logger.error("Error while checking whether project already exists.", it) }
+            .getOrThrow()
 
-                importResumableProject(file, callback).doOnSuccess { result ->
-                    if (result == ImportResult.SUCCESS) {
-                        callback?.onNotifyTakesImported(merged = exists, added = takesAdded, alreadyThere = takesFoundAlreadyThere.size)
-                    }
-                }
-            }
-            .subscribeOn(Schedulers.io())
+        // A book already here is merged, never replaced, so there is nothing to ask: every
+        // recording comes in as a new take (see insertTake), and the callback is told how
+        // many were added.
+        takesInChapterFilter = fetchTakesInRC(file)
+
+        val result = importResumableProject(file, callback)
+        if (result == ImportResult.SUCCESS) {
+            callback?.onNotifyTakesImported(merged = exists, added = takesAdded, alreadyThere = takesFoundAlreadyThere.size)
+        }
+        result
     }
 
     private fun isResumableProject(rcFile: File): Boolean {
@@ -174,7 +177,7 @@ class OngoingProjectImporter(
      * from the same source (language and identifier). The source edition may differ, since an
      * edition change doesn't make it a different project.
      */
-    private fun projectExists(file: File): Boolean {
+    private suspend fun projectExists(file: File): Boolean {
         ResourceContainer.load(file).use { rc ->
             rc.manifest.dublinCore.let {
                 val source = it.source.firstOrNull() ?: return false
@@ -186,7 +189,7 @@ class OngoingProjectImporter(
                     p.identifier
                 }
 
-                val projects = workbookRepository.getProjects().blockingGet()
+                val projects = workbookRepository.getProjectsSuspend()
                 return projects.firstOrNull { existingProject ->
                     sourceLanguageSlug == existingProject.source.language.slug &&
                         source.identifier == existingProject.source.resourceMetadata.identifier &&
@@ -224,85 +227,84 @@ class OngoingProjectImporter(
         }
     }
 
-    fun getSourceMetadata(resourceContainer: File): Maybe<ResourceMetadata> {
-        return Maybe.fromCallable {
-            val manifest: Manifest = ResourceContainer.load(resourceContainer).use { it.manifest }
-            val manifestSources = manifest.dublinCore.source.toSet()
-            val manifestProject = manifest.projects.single()
-            val sourceCollection = findSourceCollection(manifestSources, manifestProject)
-            sourceCollection.resourceContainer
+    fun getSourceMetadata(resourceContainer: File): Maybe<ResourceMetadata> =
+        rxMaybe { getSourceMetadataSuspend(resourceContainer) }
+
+    /** Suspending [getSourceMetadata]. */
+    suspend fun getSourceMetadataSuspend(resourceContainer: File): ResourceMetadata? {
+        val manifest: Manifest = withContext(Dispatchers.IO) {
+            ResourceContainer.load(resourceContainer).use { it.manifest }
         }
+        val manifestSources = manifest.dublinCore.source.toSet()
+        val manifestProject = manifest.projects.single()
+        return findSourceCollection(manifestSources, manifestProject).resourceContainer
     }
 
-    private fun importResumableProject(
+    private suspend fun importResumableProject(
         resourceContainer: File,
         callback: ProjectImporterCallback?
-    ): Single<ImportResult> {
-        return Single.fromCallable {
-            try {
-                val manifest: Manifest = ResourceContainer.load(resourceContainer).use { it.manifest }
-                val manifestSources = manifest.dublinCore.source.toSet()
-                val manifestProject = try {
-                    manifest.projects.single()
-                } catch (t: Throwable) {
-                    logger.error("In-progress import must have 1 project, but this has {}", manifest.projects.count())
-                    throw ImportException(ImportResult.INVALID_RC)
-                }
-
-                callback?.onNotifyProgress(
-                    localizeKey = "loadingSomething",
-                    message = "${manifest.dublinCore.language.identifier}_${manifestProject.identifier}",
-                    percent = 10.0
-                )
-                directoryProvider.newFileReader(resourceContainer).use { fileReader ->
-                    val editionRecord = backupEditions.read(fileReader)
-                        ?.takeIf { it.book == manifestProject.identifier }
-                    try {
-                        callback?.onNotifyProgress(localizeKey = "importingSource", percent = 25.0)
-                        // Import Sources even if existing source exists in order to potentially merge source audio.
-                        // Each is its own edition, beside any other edition of it already here.
-                        importSources(fileReader)
-                        importSources(fileReader, RcConstants.OWN_SOURCE_DIR)
-                    } catch (e: ImportException) {
-                        logger.error("Error importing source of resumable project", e)
-                    }
-                    // Merging into a project already here keeps it on its edition. Otherwise the
-                    // project attaches to the edition it was backed up from (S11-Q3).
-                    val sourceCollection = existingProjectSource
-                        ?: backedUpSourceCollection(editionRecord, manifestSources, manifestProject, fileReader)
-
-                    val metadata = languageRepository
-                        .getBySlug(manifest.dublinCore.language.identifier)
-                        .map { language ->
-                            manifest.dublinCore.mapToMetadata(resourceContainer, language)
-                        }
-                        .blockingGet()
-
-                    val derived = importResumableProject(
-                        fileReader, metadata, manifestProject, sourceCollection, callback,
-                        heldBack = editionRecord.takeIf { existingProjectSource == null }?.heldBack.orEmpty()
-                    )
-                    val workbookDescriptor = workbookDescriptorRepository.getAll().blockingGet().firstOrNull {
-                        it.targetCollection.id == derived.id && it.sourceCollection.id == sourceCollection.id
-                    }
-                    callback?.onNotifySuccess(
-                        manifest.dublinCore.language.title,
-                        manifestProject.title,
-                        workbookDescriptor
-                    )
-                }
-
-                ImportResult.SUCCESS
-            } catch (e: ImportException) {
-                e.result
-            } catch (e: Exception) {
-                logger.error("Failed to import in-progress project", e)
-                ImportResult.FAILED
+    ): ImportResult {
+        return try {
+            val manifest: Manifest = ResourceContainer.load(resourceContainer).use { it.manifest }
+            val manifestSources = manifest.dublinCore.source.toSet()
+            val manifestProject = try {
+                manifest.projects.single()
+            } catch (t: Throwable) {
+                logger.error("In-progress import must have 1 project, but this has {}", manifest.projects.count())
+                throw ImportException(ImportResult.INVALID_RC)
             }
+
+            callback?.onNotifyProgress(
+                localizeKey = "loadingSomething",
+                message = "${manifest.dublinCore.language.identifier}_${manifestProject.identifier}",
+                percent = 10.0
+            )
+            directoryProvider.newFileReader(resourceContainer).use { fileReader ->
+                val editionRecord = backupEditions.read(fileReader)
+                    ?.takeIf { it.book == manifestProject.identifier }
+                try {
+                    callback?.onNotifyProgress(localizeKey = "importingSource", percent = 25.0)
+                    // Import Sources even if existing source exists in order to potentially merge source audio.
+                    // Each is its own edition, beside any other edition of it already here.
+                    importSources(fileReader)
+                    importSources(fileReader, RcConstants.OWN_SOURCE_DIR)
+                } catch (e: ImportException) {
+                    logger.error("Error importing source of resumable project", e)
+                }
+                // Merging into a project already here keeps it on its edition. Otherwise the
+                // project attaches to the edition it was backed up from (S11-Q3).
+                val sourceCollection = existingProjectSource
+                    ?: backedUpSourceCollection(editionRecord, manifestSources, manifestProject, fileReader)
+
+                val metadata = manifest.dublinCore.mapToMetadata(
+                    resourceContainer,
+                    languageRepository.getBySlugSuspend(manifest.dublinCore.language.identifier)
+                )
+
+                val derived = importResumableProject(
+                    fileReader, metadata, manifestProject, sourceCollection, callback,
+                    heldBack = editionRecord.takeIf { existingProjectSource == null }?.heldBack.orEmpty()
+                )
+                val workbookDescriptor = workbookDescriptorRepository.getAllSuspend().firstOrNull {
+                    it.targetCollection.id == derived.id && it.sourceCollection.id == sourceCollection.id
+                }
+                callback?.onNotifySuccess(
+                    manifest.dublinCore.language.title,
+                    manifestProject.title,
+                    workbookDescriptor
+                )
+            }
+
+            ImportResult.SUCCESS
+        } catch (e: ImportException) {
+            e.result
+        } catch (e: Exception) {
+            logger.error("Failed to import in-progress project", e)
+            ImportResult.FAILED
         }
     }
 
-    private fun importResumableProject(
+    private suspend fun importResumableProject(
         fileReader: IFileReader,
         metadata: ResourceMetadata,
         manifestProject: Project,
@@ -363,16 +365,16 @@ class OngoingProjectImporter(
             projectFilesAccessor
         )
 
-        projectFilesAccessor.copyInProgressNarrationFiles(fileReader, manifestProject)
-            .doOnError { e ->
+        runCatching { projectFilesAccessor.copyInProgressNarrationFilesSuspend(fileReader, manifestProject) }
+            .onFailure { e ->
                 logger.error("Error in importInProgressFiles, project: $derivedProject, manifestProject: $manifestProject")
                 logger.error("metadata: $metadata, sourceMetadata: ${sourceCollection.resourceContainer}")
                 logger.error("sourceCollection: $sourceCollection", e)
             }
-            .blockingSubscribe()
+            .getOrThrow()
 
         translation.modifiedTs = LocalDateTime.now()
-        languageRepository.updateTranslation(translation).subscribe()
+        languageRepository.updateTranslationSuspend(translation)
         resetChaptersWithoutTakes(fileReader, derivedProject, projectMode)
 
         callback?.onNotifyProgress(localizeKey = "finishingUp", percent = 99.0)
@@ -428,7 +430,7 @@ class OngoingProjectImporter(
         }
     }
 
-    private fun importChunks(project: Collection, accessor: ProjectFilesAccessor, fileReader: IFileReader) {
+    private suspend fun importChunks(project: Collection, accessor: ProjectFilesAccessor, fileReader: IFileReader) {
         accessor.copyChunkFile(fileReader)
 
         val chunkFileExists = fileReader.exists(RcConstants.CHUNKS_FILE)
@@ -445,12 +447,12 @@ class OngoingProjectImporter(
             Chunkification()
         }
 
-        val chapters = collectionRepository.getChildren(project).blockingGet()
+        val chapters = collectionRepository.getChildrenSuspend(project)
         chapters.forEach { chapter ->
             if (chunks.containsKey(chapter.sort)) {
                 val contents = chunks[chapter.sort] ?: listOf()
-                contentRepository.deleteForCollection(chapter).blockingAwait()
-                contentRepository.insertForCollection(contents, chapter).blockingGet()
+                contentRepository.deleteForCollectionSuspend(chapter)
+                contentRepository.insertForCollectionSuspend(contents, chapter)
             }
         }
     }
@@ -459,12 +461,12 @@ class OngoingProjectImporter(
      * Populates all contents under the filtered chapters as verse-by-verse.
      * This method is used when importing projects from Orature 1
      */
-    private fun deriveChapterContentFromVerses(
+    private suspend fun deriveChapterContentFromVerses(
         project: Collection,
         projectAccessor: ProjectFilesAccessor
     ) {
         val filteredChapters = takesInChapterFilter?.values?.distinct()
-        collectionRepository.getChildren(project).blockingGet()
+        collectionRepository.getChildrenSuspend(project)
             .filter { filteredChapters == null || it.sort in filteredChapters }
             .forEach { chapter ->
                 val contents = projectAccessor.getChapterContent(project.slug, chapter.sort)
@@ -473,23 +475,15 @@ class OngoingProjectImporter(
                         content.draftNumber = 1
                         content
                     }
-                contentRepository.deleteForCollection(chapter, ContentType.TEXT)
-                    .andThen(
-                        contentRepository.getByCollection(chapter)
-                    )
-                    .flattenAsObservable { it }
-                    .flatMapCompletable { content ->
-                        takeRepository.deleteForContent(content)
-                    }
-                    .andThen(
-                        contentRepository.insertForCollection(contents, chapter) // derive contents
-                    )
-                    .ignoreElement()
-                    .blockingGet()
+                contentRepository.deleteForCollectionSuspend(chapter, ContentType.TEXT)
+                contentRepository.getByCollectionSuspend(chapter).forEach { content ->
+                    takeRepository.deleteForContentSuspend(content)
+                }
+                contentRepository.insertForCollectionSuspend(contents, chapter) // derive contents
             }
     }
 
-    private fun resetChaptersWithoutTakes(fileReader: IFileReader, derivedProject: Collection, mode: ProjectMode) {
+    private suspend fun resetChaptersWithoutTakes(fileReader: IFileReader, derivedProject: Collection, mode: ProjectMode) {
         if (mode != ProjectMode.TRANSLATION) {
             return
         }
@@ -509,10 +503,10 @@ class OngoingProjectImporter(
             }
         }
         val chaptersNotStarted = collectionRepository
-            .collectionsWithoutTakes(derivedProject).blockingGet()
+            .collectionsWithoutTakesSuspend(derivedProject)
             .filterNot { chapterStarted.contains(it.sort) }
 
-        chaptersNotStarted.forEach { contentRepository.deleteForCollection(it).blockingGet() }
+        chaptersNotStarted.forEach { contentRepository.deleteForCollectionSuspend(it) }
     }
 
     private fun importContributorInfo(
@@ -527,7 +521,7 @@ class OngoingProjectImporter(
         }
     }
 
-    private fun importTakes(
+    private suspend fun importTakes(
         fileReader: IFileReader,
         project: Collection,
         manifestProject: Project,
@@ -548,17 +542,23 @@ class OngoingProjectImporter(
         // in the project. It comes in as a new take, renumbered if its number is taken.
         val staging = File(directoryProvider.tempDirectory, "take-import-${UUID.randomUUID()}").apply { mkdirs() }
         try {
-            projectFilesAccessor.copyTakeFiles(fileReader, manifestProject, ::takeCopyFilter, destination = staging)
-                .doOnError { e ->
+            // A take that can't be placed fails the import, rather than dropping the remaining
+            // takes and still reporting SUCCESS.
+            runCatching {
+                projectFilesAccessor.copyTakeFilesSuspend(
+                    fileReader = fileReader,
+                    manifestProject = manifestProject,
+                    filter = ::takeCopyFilter,
+                    destination = staging
+                )
+            }
+                .onFailure { e ->
                     logger.error("Error in importTakes, project: $project, manifestProject: $manifestProject")
                     logger.error("metadata: $metadata, sourceMetadata: $sourceMetadata")
                     logger.error("sourceCollection: $sourceCollection", e)
                 }
-                // blockingForEach rethrows, so a take that can't be placed fails the import. A
-                // blockingSubscribe with no error handler sent the exception to the uncaught-
-                // exception log instead: the remaining takes were dropped and the import still
-                // reported SUCCESS.
-                .blockingForEach { staged ->
+                .getOrThrow()
+                .forEach { staged ->
                     insertTake(
                         staged.file,
                         staged.root,
@@ -630,7 +630,7 @@ class OngoingProjectImporter(
      * one's own backup, or a backup holding the same take in both of its take folders); the
      * existing take is selected instead if the import selects it.
      */
-    private fun insertTake(
+    private suspend fun insertTake(
         staged: File,
         stagedRoot: File,
         projectAudioDir: File,
@@ -659,7 +659,7 @@ class OngoingProjectImporter(
         val landing = projectAudioDir.resolve(importedPath)
         val isSelected = importedPath in selectedTakes ||
             landing.path in migratedSelectedTakes || landing.absolutePath in migratedSelectedTakes
-        val existing = takeRepository.getByContent(chunk, includeDeleted = true).blockingGet()
+        val existing = takeRepository.getByContentSuspend(chunk, includeDeleted = true)
 
         val checksum = computeFileChecksum(staged)
         existing.firstOrNull { it.path.exists() && computeFileChecksum(it.path) == checksum }?.let { same ->
@@ -669,7 +669,7 @@ class OngoingProjectImporter(
             if (same.id !in takesPlacedThisImport) takesFoundAlreadyThere += same.id
             if (isSelected && same.deleted == null) {
                 chunk.selectedTake = same
-                contentRepository.update(chunk).blockingAwait()
+                contentRepository.updateSuspend(chunk)
             }
             return
         }
@@ -704,14 +704,14 @@ class OngoingProjectImporter(
             checkingStatus?.checksum,
             listOf()
         )
-        val insertedId = takeRepository.insertForContent(take, chunk).blockingGet()
+        val insertedId = takeRepository.insertForContentSuspend(take, chunk)
         take.id = insertedId
         takesPlacedThisImport += insertedId
         takesAdded++
 
         if (isSelected) {
             chunk.selectedTake = take
-            contentRepository.update(chunk).blockingAwait()
+            contentRepository.updateSuspend(chunk)
 
             val isNarrationMigration = projectMode == ProjectMode.NARRATION && projectAppVersion == ProjectAppVersion.ONE
             // store verse take of incomplete chapter narration to compile later
@@ -746,34 +746,36 @@ class OngoingProjectImporter(
         return destination
     }
 
-    private fun createDerivedProjects(
+    private suspend fun createDerivedProjects(
         language: Language,
         sourceCollection: Collection,
         mode: ProjectMode,
         verseByVerse: Boolean
     ): Collection {
-        val project = createProjectUseCase.create(
-            sourceCollection,
-            language,
-            mode,
-            deriveProjectFromVerses = verseByVerse
-        ).doOnError {
-            logger.error("Error while deriving project(s) during import", it)
-        }.blockingGet()
+        val project = runCatching {
+            createProjectUseCase.createSuspend(
+                sourceCollection,
+                language,
+                mode,
+                deriveProjectFromVerses = verseByVerse
+            )
+        }
+            .onFailure { logger.error("Error while deriving project(s) during import", it) }
+            .getOrThrow()
 
         // populate all books when importing a project, from the edition the project is on
-        createProjectUseCase.createAllBooks(
+        createProjectUseCase.createAllBooksSuspend(
             sourceCollection.resourceContainer!!.language,
             language,
             mode,
             edition = sourceCollection.resourceContainer
-        ).blockingAwait()
+        )
 
         return project
     }
 
-    private fun findSourceCollection(manifestSources: Set<Source>, manifestProject: Project): Collection {
-        val allSourceProjects = collectionRepository.getSourceProjects().blockingGet()
+    private suspend fun findSourceCollection(manifestSources: Set<Source>, manifestProject: Project): Collection {
+        val allSourceProjects = collectionRepository.getSourceProjectsSuspend()
         val sourceCollection: Collection? = allSourceProjects
             .asSequence()
             .filter { sourceProject ->
@@ -807,27 +809,25 @@ class OngoingProjectImporter(
      * the edition embedded in it; and failing both, the installed edition with the version label its
      * manifest names, or the newest, which is logged (S11-Q4).
      */
-    private fun backedUpSourceCollection(
+    private suspend fun backedUpSourceCollection(
         record: BackupEditionRecord?,
         manifestSources: Set<Source>,
         manifestProject: Project,
         fileReader: IFileReader
     ): Collection {
-        val edition = runBlocking {
-            record?.let { backupEditions.findInstalled(it.edition) }
-                ?: embeddedEdition(fileReader, manifestSources)
-                ?: manifestSources.firstNotNullOfOrNull { source ->
-                    backupEditions.closestInstalled(source.language, source.identifier, source.version)?.also {
-                        logger.warn(
-                            "Restoring ${manifestProject.identifier}: the backup doesn't say which edition of " +
-                                "${source.language}_${source.identifier} it used (its manifest says version " +
-                                "${source.version}), so it is attached to v${it.version}, issued ${it.issued}"
-                        )
-                    }
+        val edition = record?.let { backupEditions.findInstalled(it.edition) }
+            ?: embeddedEdition(fileReader, manifestSources)
+            ?: manifestSources.firstNotNullOfOrNull { source ->
+                backupEditions.closestInstalled(source.language, source.identifier, source.version)?.also {
+                    logger.warn(
+                        "Restoring ${manifestProject.identifier}: the backup doesn't say which edition of " +
+                            "${source.language}_${source.identifier} it used (its manifest says version " +
+                            "${source.version}), so it is attached to v${it.version}, issued ${it.issued}"
+                    )
                 }
-        }
+            }
         val sourceCollection = edition?.let { found ->
-            collectionRepository.getSourceProjects().blockingGet()
+            collectionRepository.getSourceProjectsSuspend()
                 .firstOrNull { it.resourceContainer?.id == found.id && it.slug == manifestProject.identifier }
         }
         if (sourceCollection == null) {
@@ -868,31 +868,30 @@ class OngoingProjectImporter(
      * before their takes are imported onto them. A chapter whose edition can't be found keeps the
      * book's edition, and its takes are matched to that edition's verses by number.
      */
-    private fun restoreHeldChapters(project: Collection, heldBack: List<BackupHeldChapter>) {
+    private suspend fun restoreHeldChapters(project: Collection, heldBack: List<BackupHeldChapter>) {
         if (heldBack.isEmpty()) return
-        runBlocking {
-            val editions = heldBack.mapNotNull { held ->
-                backupEditions.findInstalled(held.edition)?.let { held.chapter to it }
-                    ?: null.also {
-                        logger.warn(
-                            "Restoring ${project.slug} chapter ${held.chapter}: its edition " +
-                                "${held.edition.language}_${held.edition.identifier} v${held.edition.version} " +
-                                "isn't installed, so it takes the book's edition"
-                        )
-                    }
-            }.toMap()
-            upgradeBookEdition.holdChapters(project.id, editions)
-        }
+        val editions = heldBack.mapNotNull { held ->
+            backupEditions.findInstalled(held.edition)?.let { held.chapter to it }
+                ?: null.also {
+                    logger.warn(
+                        "Restoring ${project.slug} chapter ${held.chapter}: its edition " +
+                            "${held.edition.language}_${held.edition.identifier} v${held.edition.version} " +
+                            "isn't installed, so it takes the book's edition"
+                    )
+                }
+        }.toMap()
+        upgradeBookEdition.holdChapters(project.id, editions)
     }
 
-    private fun importSources(fileReader: IFileReader, directory: String = RcConstants.SOURCE_DIR) {
+    private suspend fun importSources(fileReader: IFileReader, directory: String = RcConstants.SOURCE_DIR) {
         if (directory != RcConstants.SOURCE_DIR && !fileReader.exists(directory)) return
-        val sourceFiles: Sequence<String> = fileReader
+        val sourceFiles: List<String> = fileReader
             .list(directory)
             .filter {
                 val ext = it.substringAfterLast(".")
                 OratureFileFormat.isSupported(ext)
             }
+            .toList()
 
         val firstTry: Map<String, ImportResult> = sourceFiles
             .map { importSource(it, fileReader) }
@@ -906,70 +905,56 @@ class OngoingProjectImporter(
         }
     }
 
-    private fun importSource(fileInZip: String, fileReader: IFileReader): Pair<String, ImportResult> {
+    private suspend fun importSource(fileInZip: String, fileReader: IFileReader): Pair<String, ImportResult> {
         val name = File(fileInZip).nameWithoutExtension
-        val result = importAsStream(name, fileReader.stream(fileInZip))
-            .blockingGet()
+        val result = importAsStreamSuspend(name, fileReader.stream(fileInZip))
         logger.debug("Import source resource container {} result {}", name, result)
         return fileInZip to result
     }
 
-    private fun createTranslation(sourceLanguage: Language, targetLanguage: Language): Translation {
+    private suspend fun createTranslation(sourceLanguage: Language, targetLanguage: Language): Translation {
         val translation = Translation(sourceLanguage, targetLanguage, LocalDateTime.now())
-        val id = languageRepository
-            .insertTranslation(translation)
-            .doOnError { e ->
-                logger.error("Error in inserting translation", e)
-            }
-            .onErrorReturnItem(0)
-            .blockingGet()
-        translation.id = id
+        translation.id = runCatching { languageRepository.insertTranslationSuspend(translation) }
+            .onFailure { logger.error("Error in inserting translation", it) }
+            .getOrDefault(0)
         return translation
     }
 
-    private fun getContent(sig: ContentSignature, project: Collection, metadata: ResourceMetadata): Content? {
-        return contentCache.computeIfAbsent(sig) { (chapter, verse, sort, type) ->
-            val collection: Observable<Collection> = collectionRepository
-                .getChildren(project)
-                .flattenAsObservable { it }
-                .filter { chapterCollection ->
-                    chapterCollection.slug.endsWith("_$chapter")
-                }
+    private suspend fun getContent(sig: ContentSignature, project: Collection, metadata: ResourceMetadata): Content? {
+        contentCache[sig]?.let { return it }
+        return findContent(sig, project, metadata)?.also { contentCache[sig] = it }
+    }
 
-            val metaOrHelpStartVerse = when (type) {
-                ContentType.META -> 1
-                else -> 0
-            }
-
-            val isHelpVerse = metadata.type == ContainerType.Help && verse != null
-
-            val content: Maybe<Content> = collection
-                .flatMap {
-                    contentRepository.getByCollection(it).flattenAsObservable { it }
-                }
-                // If we have help resource chunks, filter to linked TEXT chunks
-                .filter { if (isHelpVerse) it.type == ContentType.TEXT else true }
-                // If we have help resource chunks, fetch resources by linked TEXT chunk
-                // and related resource container
-                .flatMap { if (isHelpVerse) resourceRepository.getResources(it, metadata) else Observable.just(it) }
-                // If type isn't specified in filename, match on TEXT.
-                .filter { content -> content.type == (type ?: ContentType.TEXT) }
-                // If verse number isn't specified in filename, assume chapter helps or meta.
-                .filter { content ->
-                    // start is not unique for chunks, as it refers to verse ranges
-                    val number = when (content.labelKey) {
-                        "chunk" -> content.sort
-                        else -> content.start
-                    }
-                    number == (verse ?: metaOrHelpStartVerse)
-                }
-                // If sort isn't specified in filename,
-                // DON'T filter on it, because we only need it for helps and meta.
-                .filter { content -> sort?.let { content.sort == sort } ?: true }
-                .firstElement()
-
-            content.blockingGet()
+    private suspend fun findContent(sig: ContentSignature, project: Collection, metadata: ResourceMetadata): Content? {
+        val (chapter, verse, sort, type) = sig
+        val metaOrHelpStartVerse = when (type) {
+            ContentType.META -> 1
+            else -> 0
         }
+        val isHelpVerse = metadata.type == ContainerType.Help && verse != null
+
+        return collectionRepository.getChildrenSuspend(project)
+            .filter { chapterCollection -> chapterCollection.slug.endsWith("_$chapter") }
+            .flatMap { contentRepository.getByCollectionSuspend(it) }
+            // If we have help resource chunks, filter to linked TEXT chunks
+            .filter { if (isHelpVerse) it.type == ContentType.TEXT else true }
+            // If we have help resource chunks, fetch resources by linked TEXT chunk
+            // and related resource container
+            .flatMap { if (isHelpVerse) resourceRepository.getResourcesFlow(it, metadata).toList() else listOf(it) }
+            // If type isn't specified in filename, match on TEXT.
+            .filter { content -> content.type == (type ?: ContentType.TEXT) }
+            // If verse number isn't specified in filename, assume chapter helps or meta.
+            .filter { content ->
+                // start is not unique for chunks, as it refers to verse ranges
+                val number = when (content.labelKey) {
+                    "chunk" -> content.sort
+                    else -> content.start
+                }
+                number == (verse ?: metaOrHelpStartVerse)
+            }
+            // If sort isn't specified in filename,
+            // DON'T filter on it, because we only need it for helps and meta.
+            .firstOrNull { content -> sort?.let { content.sort == sort } ?: true }
     }
 
     /**
@@ -977,22 +962,20 @@ class OngoingProjectImporter(
      * can restore the file as one chapter take. Only call this method if the chapter
      * has not completed/compiled before migrating to Orature 3.x.
      */
-    private fun compileIncompleteChapterNarration(
+    private suspend fun compileIncompleteChapterNarration(
         chapterNumber: Int,
         takeFiles: List<File>,
         project: Collection,
         metadata: ResourceMetadata
     ) {
-         val collections = collectionRepository
-            .getChildren(project)
-            .blockingGet()
+        val collections = collectionRepository.getChildrenSuspend(project)
 
         val chapterCollection = collections.find {
             collection -> collection.slug.endsWith("_$chapterNumber")
         } ?: return
 
-        val chapterContent = contentRepository.getCollectionMetaContent(chapterCollection).blockingGet()
-        val chunkCount = contentRepository.getByCollection(chapterCollection).blockingGet()
+        val chapterContent = contentRepository.getCollectionMetaContentSuspend(chapterCollection)
+        val chunkCount = contentRepository.getByCollectionSuspend(chapterCollection)
             .count { content -> content.type == ContentType.TEXT }
 
         val fileNamer = FileNamer(
@@ -1010,7 +993,7 @@ class OngoingProjectImporter(
         )
         val fileName = fileNamer.generateName(1, AudioFileFormat.WAV)
         val filesToCompile = takeFiles.sortedBy { parseNumbers(it.name)!!.contentSignature.verse } // sort by verse order
-        val compiled = concatAudioUseCase.execute(filesToCompile, includeMarkers = true).blockingGet()
+        val compiled = concatAudioUseCase.executeSuspend(filesToCompile, includeMarkers = true)
         val chapterFile = takeFiles.first().parentFile.resolve(fileName)
             .apply {
                 createNewFile()
@@ -1029,10 +1012,10 @@ class OngoingProjectImporter(
             checksum = null,
             listOf()
         )
-        val insertedId = takeRepository.insertForContent(chapterTake, chapterContent).blockingGet()
+        val insertedId = takeRepository.insertForContentSuspend(chapterTake, chapterContent)
         chapterTake.id = insertedId
         chapterContent.selectedTake = chapterTake
-        contentRepository.update(chapterContent).blockingAwait()
+        contentRepository.updateSuspend(chapterContent)
     }
 
     private fun parseNumbers(filename: String): TakeSignature? {

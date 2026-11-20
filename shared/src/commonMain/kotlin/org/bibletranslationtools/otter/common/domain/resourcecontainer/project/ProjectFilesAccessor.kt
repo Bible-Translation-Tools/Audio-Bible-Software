@@ -435,23 +435,22 @@ class ProjectFilesAccessor(
      * folder is staged under its own subfolder of [destination], so no copy overwrites another and
      * both reach the importer. Deciding what a duplicate means is the importer's job.
      */
-    fun copyTakeFiles(
+    suspend fun copyTakeFilesSuspend(
         fileReader: IFileReader,
         manifestProject: Project,
         filter: (String) -> Boolean = { true },
         destination: File
-    ): Observable<StagedTake> {
+    ): List<StagedTake> {
         val audioDirsInRc = listOf(RcConstants.TAKE_DIR, manifestProject.path)
             .filter(fileReader::exists)
             .map { File(it).normalize().path }
             .distinct()
-        return Observable.fromIterable(audioDirsInRc.withIndex())
-            .concatMap { (index, audioDirInRc) ->
-                val root = File(destination, index.toString())
-                fileReader.copyDirectory(audioDirInRc, root) {
-                    isAudioFile(it) && filter(it)
-                }.map { StagedTake(root, File(it)) }
-            }
+        return audioDirsInRc.withIndex().flatMap { (index, audioDirInRc) ->
+            val root = File(destination, index.toString())
+            fileReader.copyDirectorySuspend(audioDirInRc, root) {
+                isAudioFile(it) && filter(it)
+            }.map { StagedTake(root, File(it)) }
+        }
     }
 
     fun copyTakeFiles(
@@ -474,15 +473,15 @@ class ProjectFilesAccessor(
         }
     }
 
-    fun copyInProgressNarrationFiles(
+    suspend fun copyInProgressNarrationFilesSuspend(
         fileReader: IFileReader,
         manifestProject: Project
-    ): Observable<String> {
-        return Observable.just(RcConstants.TAKE_DIR, manifestProject.path)
+    ) {
+        listOf(RcConstants.TAKE_DIR, manifestProject.path)
             .filter(fileReader::exists)
-            .flatMap { audioDirInRc ->
+            .forEach { audioDirInRc ->
                 val normalized = File(audioDirInRc).normalize().path
-                fileReader.copyDirectory(normalized, audioDir) {
+                fileReader.copyDirectorySuspend(normalized, audioDir) {
                     isInProgressNarrationFile(it)
                 }
             }

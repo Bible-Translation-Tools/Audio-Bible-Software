@@ -235,12 +235,16 @@ class LanguageRepository(
     override suspend fun insertSuspend(language: Language): Int = insert(language).await()
     override suspend fun insertAllSuspend(languages: List<Language>): List<Int> =
         withContext(Dispatchers.IO) {
-            languageDao.insertAll(languages.map(mapper::mapToEntity))
+            runCatching { languageDao.insertAll(languages.map(mapper::mapToEntity)) }
+                .onFailure { logger.error("Error in insertAll", it) }
+                .getOrThrow()
         }
     override suspend fun upsertAllSuspend(languages: List<Language>) = upsertAll(languages).await()
     override suspend fun updateRegionsSuspend(languages: List<Language>) =
         withContext(Dispatchers.IO) {
-            languageDao.updateRegions(languages.map(mapper::mapToEntity))
+            runCatching { languageDao.updateRegions(languages.map(mapper::mapToEntity)) }
+                .onFailure { logger.error("Error in updateRegions", it) }
+                .getOrThrow()
         }
     override suspend fun getBySlugSuspend(slug: String): Language = getBySlug(slug).await()
     override suspend fun getGatewaySuspend(): List<Language> = getGateway().await()

@@ -19,6 +19,7 @@
 package org.bibletranslationtools.otter.common.domain.collections
 
 import io.reactivex.Single
+import kotlinx.coroutines.rx2.rxSingle
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ILanguageRepository
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.workbook.Translation
@@ -33,8 +34,14 @@ class CreateTranslation(
     fun create(
         sourceLanguage: Language,
         targetLanguage: Language
-    ): Single<Int> {
+    ): Single<Int> = rxSingle { createSuspend(sourceLanguage, targetLanguage) }
+
+    /** Suspending [create]. */
+    suspend fun createSuspend(
+        sourceLanguage: Language,
+        targetLanguage: Language
+    ): Int {
         val translation = Translation(sourceLanguage, targetLanguage, LocalDateTime.now())
-        return languageRepo.insertTranslation(translation)
+        return languageRepo.insertTranslationSuspend(translation)
     }
 }

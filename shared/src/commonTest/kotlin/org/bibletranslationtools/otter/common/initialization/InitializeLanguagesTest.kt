@@ -77,15 +77,15 @@ class InitializeLanguagesTest {
         verify(exactly = 0) { installed.install(any()) }
     }
 
-    /** As the Rx version behaved: a failed region update was never reported to the caller. */
+    /** The Rx version hid this failure and recorded the version anyway. */
     @Test
-    fun `a failed region update still records the version`() = runTest {
+    fun `a failed region update fails the step and records nothing`() = runTest {
         installedVersion(1)
         coEvery { languages.updateRegionsSuspend(any()) } throws IllegalStateException("update failed")
 
-        initializer.execSuspend {}
+        assertFailsWith<IllegalStateException> { initializer.execSuspend {} }
 
-        verify(exactly = 1) { installed.install(initializer) }
+        verify(exactly = 0) { installed.install(any()) }
     }
 
     @Test

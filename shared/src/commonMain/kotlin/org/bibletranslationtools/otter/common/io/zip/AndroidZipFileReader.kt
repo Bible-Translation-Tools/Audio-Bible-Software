@@ -2,6 +2,8 @@ package org.bibletranslationtools.otter.common.io.zip
 
 import org.bibletranslationtools.otter.common.api.io.zip.IFileReader
 import io.reactivex.Observable
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStream
@@ -77,7 +79,22 @@ class AndroidZipFileReader(
         source: String,
         destinationDirectory: File,
         filter: (String) -> Boolean
-    ): Observable<String> {
+    ): Observable<String> =
+        Observable.fromIterable(copyEntries(source, destinationDirectory, filter)).cache()
+
+    override suspend fun copyDirectorySuspend(
+        source: String,
+        destinationDirectory: File,
+        filter: (String) -> Boolean
+    ): List<String> =
+        withContext(Dispatchers.IO) { copyEntries(source, destinationDirectory, filter) }
+
+    /** Copies the entries under [source] that pass [filter]; returns the paths they were copied to. */
+    private fun copyEntries(
+        source: String,
+        destinationDirectory: File,
+        filter: (String) -> Boolean
+    ): List<String> {
         val normalizedSource = normalizePath(source).let { if (it.endsWith("/")) it else "$it/" }
         val copied = mutableListOf<String>()
 
@@ -104,7 +121,7 @@ class AndroidZipFileReader(
             }
         }
 
-        return Observable.fromIterable(copied).cache()
+        return copied
     }
 
     override fun close() {

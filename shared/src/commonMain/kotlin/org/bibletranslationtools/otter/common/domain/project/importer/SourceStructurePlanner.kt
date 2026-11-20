@@ -60,7 +60,7 @@ class SourceStructurePlanner(
 ) {
     private val logger = LoggerFactory.getLogger(SourceStructurePlanner::class.java)
 
-    fun plan(container: ResourceContainer, parsedTree: OtterTree<CollectionOrContent>): SourceStructurePlan {
+    suspend fun plan(container: ResourceContainer, parsedTree: OtterTree<CollectionOrContent>): SourceStructurePlan {
         val match = detect(container, parsedTree) ?: return SourceStructurePlan(parsedTree, null)
 
         val templateBooks = read(TEMPLATE_BOOKS_VERSIFICATION)?.getBookSlugs().orEmpty()
@@ -74,11 +74,13 @@ class SourceStructurePlanner(
      * The standard versification [parsedTree]'s text best fits, or null when [container] names no
      * versification (so isn't versified Bible text) or none could be read.
      */
-    fun detect(container: ResourceContainer, parsedTree: OtterTree<CollectionOrContent>): VersificationMatch? {
+    suspend fun detect(container: ResourceContainer, parsedTree: OtterTree<CollectionOrContent>): VersificationMatch? {
         val declared = container.manifest.projects.firstOrNull()?.versification
         if (declared.isNullOrBlank()) return null
 
-        val candidates = StandardVersifications.all.mapNotNull { code -> read(code)?.let { code to it } }
+        val candidates = StandardVersifications.all.mapNotNull { code ->
+            read(code)?.let { code to it }
+        }
         val match = VersificationDetector.detect(textStructureOf(parsedTree), candidates)
         if (match == null) {
             logger.warn("No standard versification could be read; importing the source text as parsed")
@@ -91,8 +93,8 @@ class SourceStructurePlanner(
         return match
     }
 
-    private fun read(code: String): Versification? =
-        runCatching { versificationRepository.getVersification(code).blockingGet() }
+    private suspend fun read(code: String): Versification? =
+        runCatching { versificationRepository.getVersificationSuspend(code) }
             .onFailure { logger.error("Could not read versification '$code'", it) }
             .getOrNull()
 

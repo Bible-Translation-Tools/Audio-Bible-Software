@@ -1,8 +1,6 @@
 package org.bibletranslationtools.otter.common.persistence.repositories
 
 import io.mockk.*
-import io.reactivex.Single
-import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.test.runTest
 import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
@@ -44,9 +42,6 @@ class ResourceContainerRepositoryTest {
 
     @BeforeTest
     fun setup() {
-        mockkStatic(Schedulers::class)
-        every { Schedulers.io() } returns Schedulers.trampoline()
-
         every { db.collectionDao } returns collectionDao
         every { db.contentDao } returns contentDao
         every { db.contentTypeDao } returns contentTypeDao
@@ -64,26 +59,18 @@ class ResourceContainerRepositoryTest {
         )
     }
 
+    /** A failure inside the transaction comes back as a result, and the container is closed. */
     @Test
-    fun testImportResourceContainerSuspend() = runTest {
+    fun `an import that fails in the transaction returns a result and closes the container`() = runTest {
         val rc = mockk<ResourceContainer>(relaxed = true)
         val rcTree = mockk<OtterTree<CollectionOrContent>>()
-        val languageSlug = "en"
-        
-        // Mocking complex import logic would be too much for a wrapper test
-        // Instead, we mock the RxJava method that the suspend version calls.
-        // Wait, the repository is what we are testing.
-        // We should mock its dependencies and let the method run.
-        
-        // However, importResourceContainer is very complex and relies on many static 
-        // extensions and external classes. 
-        // For the sake of "wrapper" verification, we can use a spy.
-        
-        val spy = spyk(repository)
-        every { spy.importResourceContainer(any(), any(), any()) } returns Single.just(ImportResult.SUCCESS)
-        
-        val result = spy.importResourceContainerSuspend(rc, rcTree, languageSlug)
-        assertEquals(ImportResult.SUCCESS, result)
+        every { db.transaction(any()) } answers { firstArg<() -> Unit>().invoke() }
+        every { languageDao.fetchBySlug("en") } returns null
+
+        val result = repository.importResourceContainerSuspend(rc, rcTree, "en")
+
+        assertEquals(ImportResult.LOAD_RC_ERROR, result)
+        verify(exactly = 1) { rc.close() }
     }
 
 }

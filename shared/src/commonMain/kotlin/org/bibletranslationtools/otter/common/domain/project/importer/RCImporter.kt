@@ -19,7 +19,8 @@
 package org.bibletranslationtools.otter.common.domain.project.importer
 
 import io.reactivex.Single
-import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
@@ -43,36 +44,28 @@ abstract class RCImporter(
         options: ImportOptions?
     ): Single<ImportResult>
 
-    protected fun passToNextImporter(
+    protected suspend fun passToNextImporterSuspend(
         file: File,
         callback: ProjectImporterCallback?,
         options: ImportOptions?
-    ): Single<ImportResult> {
-        return next?.import(file, callback, options)
-            ?: Single.just(ImportResult.FAILED)
-    }
+    ): ImportResult = next?.importSuspend(file, callback, options) ?: ImportResult.FAILED
 
-    protected fun importAsStream(filename: String, stream: InputStream): Single<ImportResult> {
-        val outFile = directoryProvider.createTempFile(filename, ".zip")
-
-        return Single
-            .fromCallable {
-                outFile.outputStream().use { ofs ->
-                    stream.copyTo(ofs)
+    /** Imports [stream] through this importer, from a temporary file that is deleted afterwards. */
+    protected suspend fun importAsStreamSuspend(filename: String, stream: InputStream): ImportResult =
+        withContext(Dispatchers.IO) {
+            val outFile = directoryProvider.createTempFile(filename, ".zip")
+            try {
+                runCatching {
+                    outFile.outputStream().use { stream.copyTo(it) }
+                    importSuspend(outFile)
                 }
-            }
-            .flatMap {
-                import(outFile)
-            }
-            .doOnError { e ->
-                logger.error("Error in import, filename: $filename", e)
-            }
-            .doFinally {
+                    .onFailure { logger.error("Error in import, filename: $filename", it) }
+                    .getOrThrow()
+            } finally {
                 stream.close()
                 outFile.delete()
             }
-            .subscribeOn(Schedulers.io())
-    }
+        }
 
     fun setNext(next: RCImporter) {
         this.next = next

@@ -21,8 +21,8 @@ package org.bibletranslationtools.otter.common.domain.collections
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionOrder
 import io.reactivex.Completable
 import io.reactivex.Single
-import io.reactivex.rxkotlin.flatMapIterable
-import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.rx2.rxCompletable
+import kotlinx.coroutines.rx2.rxSingle
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ICollectionRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
 import org.bibletranslationtools.otter.common.data.primitives.Collection
@@ -51,37 +51,32 @@ class CreateProject(
         mode: ProjectMode? = null,
         resourceId: String? = null,
         deriveProjectFromVerses: Boolean = false
-    ): Single<Collection> {
-        // Find the source RC and its linked (help) RCs
+    ): Single<Collection> =
+        rxSingle { createSuspend(sourceProject, targetLanguage, mode, resourceId, deriveProjectFromVerses) }
+
+    /** Suspending [create]. */
+    suspend fun createSuspend(
+        sourceProject: Collection,
+        targetLanguage: Language,
+        mode: ProjectMode? = null,
+        resourceId: String? = null,
+        deriveProjectFromVerses: Boolean = false
+    ): Collection {
+        // The source RC and its linked (help) RCs, limited to resourceId when one is given.
         val sourceRc = sourceProject.resourceContainer
             ?: throw NullPointerException("Source project has no metadata")
-        val sourceLinkedRcs = resourceMetadataRepo.getLinked(sourceRc)
-            .toObservable()
-            .flatMapIterable()
-        val sourceAndLinkedRcs = sourceLinkedRcs.startWith(sourceRc)
-
-        // If a resourceId filter is requested, apply it.
-        val matchingRcs = when (resourceId) {
-            null -> sourceAndLinkedRcs
-            else -> sourceAndLinkedRcs.filter { resourceId == it.identifier }
-        }
+        val matchingRcs = (listOf(sourceRc) + resourceMetadataRepo.getLinkedSuspend(sourceRc))
+            .filter { resourceId == null || resourceId == it.identifier }
 
         val projectMode = when {
             mode != null -> mode
-            sourceProject.resourceContainer?.language == targetLanguage -> {
-                ProjectMode.NARRATION
-            }
-            else -> {
-                ProjectMode.TRANSLATION
-            }
+            sourceRc.language == targetLanguage -> ProjectMode.NARRATION
+            else -> ProjectMode.TRANSLATION
         }
 
-        // Create derived projects for each of the sources
-        return matchingRcs
-            .toList()
-            .flatMap {
-                collectionRepo.deriveProject(it, sourceProject, targetLanguage, deriveProjectFromVerses, projectMode)
-            }
+        return collectionRepo.deriveProjectSuspend(
+            matchingRcs, sourceProject, targetLanguage, deriveProjectFromVerses, projectMode
+        )
     }
 
     /**
@@ -96,48 +91,49 @@ class CreateProject(
         projectMode: ProjectMode,
         resourceId: String? = null,
         edition: ResourceMetadata? = null
-    ): Completable {
+    ): Completable =
+        rxCompletable { createAllBooksSuspend(sourceLanguage, targetLanguage, projectMode, resourceId, edition) }
+
+    /** Suspending [createAllBooks]. */
+    suspend fun createAllBooksSuspend(
+        sourceLanguage: Language,
+        targetLanguage: Language,
+        projectMode: ProjectMode,
+        resourceId: String? = null,
+        edition: ResourceMetadata? = null
+    ) {
         val isVerseByVerse = projectMode != ProjectMode.TRANSLATION
-        // One action with plain blocking calls, not blocking calls inside an Rx chain's callbacks:
-        // `firstOrError` hands its IO worker back to the pool while its callback still runs on it,
-        // so a blocking call made there could be queued behind itself on that same thread.
-        return Completable
-            .fromAction {
-                val rootCollection = collectionRepo.getRootSources().blockingGet()
-                    .filter { collection ->
-                        collection.resourceContainer?.language == sourceLanguage &&
-                            (resourceId?.let { collection.resourceContainer?.identifier == resourceId } ?: true) &&
-                            (edition?.let { collection.resourceContainer?.id == it.id } ?: true)
-                    }
-                    // Several editions of a source may be installed; new projects use the newest.
-                    .sortedWith(EditionOrder.newestFirstBy { it.resourceContainer })
-                    .firstOrNull()
-                    ?: throw NoSuchElementException("No source in ${sourceLanguage.slug} to create books from")
-                val translated = booksWithProjects(rootCollection.resourceContainer!!, targetLanguage)
-                collectionRepo.getChildren(rootCollection).blockingGet()
-                    .filter { it.slug !in translated }
-                    .forEach { book ->
-                        collectionRepo.deriveProject(
-                            listOf(book.resourceContainer!!), book, targetLanguage, isVerseByVerse, projectMode
-                        ).blockingGet()
-                    }
+        val rootCollection = collectionRepo.getRootSourcesSuspend()
+            .filter { collection ->
+                collection.resourceContainer?.language == sourceLanguage &&
+                    (resourceId?.let { collection.resourceContainer?.identifier == resourceId } ?: true) &&
+                    (edition?.let { collection.resourceContainer?.id == it.id } ?: true)
             }
-            .subscribeOn(Schedulers.io())
-            .concatWith(
-                translationCreation.create(sourceLanguage, targetLanguage).ignoreElement()
-            )
+            // Several editions of a source may be installed; new projects use the newest.
+            .sortedWith(EditionOrder.newestFirstBy { it.resourceContainer })
+            .firstOrNull()
+            ?: throw NoSuchElementException("No source in ${sourceLanguage.slug} to create books from")
+        val translated = booksWithProjects(rootCollection.resourceContainer!!, targetLanguage)
+        collectionRepo.getChildrenSuspend(rootCollection)
+            .filter { it.slug !in translated }
+            .forEach { book ->
+                collectionRepo.deriveProjectSuspend(
+                    listOf(book.resourceContainer!!), book, targetLanguage, isVerseByVerse, projectMode
+                )
+            }
+        translationCreation.createSuspend(sourceLanguage, targetLanguage)
     }
 
     /** Slugs of the books with a project in [targetLanguage] from any installed edition of [source]'s source. */
-    private fun booksWithProjects(source: ResourceMetadata, targetLanguage: Language): Set<String> {
-        val derived = resourceMetadataRepo.getAllSources().blockingGet()
+    private suspend fun booksWithProjects(source: ResourceMetadata, targetLanguage: Language): Set<String> {
+        val derived = resourceMetadataRepo.getAllSourcesSuspend()
             .filter { it.language.slug == source.language.slug && it.identifier == source.identifier }
-            .flatMap { resourceMetadataRepo.getAllDerivatives(it).blockingGet() }
+            .flatMap { resourceMetadataRepo.getAllDerivativesSuspend(it) }
             .filter { it.language.slug == targetLanguage.slug }
             .map { it.id }
             .toSet()
         if (derived.isEmpty()) return emptySet()
-        return collectionRepo.getDerivedProjects().blockingGet()
+        return collectionRepo.getDerivedProjectsSuspend()
             .filter { it.resourceContainer?.id in derived }
             .map { it.slug }
             .toSet()

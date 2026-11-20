@@ -67,7 +67,7 @@ class InitializeProjects(
 
             if (fetchProjects().isEmpty()) {
                 log.info("Importing projects...")
-                callback = setupImportCallback(progressEmitter)
+                callback = setupImportCallback(progressEmitter::onNext)
 
                 val dir = directoryProvider.getUserDataDirectory("/")
                 importProjects(dir)

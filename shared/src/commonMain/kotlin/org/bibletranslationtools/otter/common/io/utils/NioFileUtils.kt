@@ -1,8 +1,6 @@
 package org.bibletranslationtools.otter.common.io.utils
 
 import io.reactivex.Observable
-import io.reactivex.rxkotlin.toObservable
-import org.bibletranslationtools.otter.common.utils.mapNotNull
 import java.io.File
 import java.net.URI
 import java.nio.file.Files
@@ -20,27 +18,24 @@ internal fun File.jarUri() = toURI().run { URI("jar:" + scheme, path, null) }
 internal fun Path.createParentDirectories() = parent?.let { Files.createDirectories(it) }
 
 /** Recursively copy a directory, possibly to another [java.nio.file.FileSystem], with per-file filter predicate. */
-internal fun Path.copyDirectoryTo(dest: Path, filter: (String) -> Boolean): Observable<String> {
+internal fun Path.copyDirectoryTo(dest: Path, filter: (String) -> Boolean): Observable<String> =
+    Observable.fromIterable(copyDirectoryFilesTo(dest, filter))
+
+/** As [copyDirectoryTo], without Rx: copies the files and returns the paths they were copied to. */
+internal fun Path.copyDirectoryFilesTo(dest: Path, filter: (String) -> Boolean): List<String> {
     val sourceRoot = toAbsolutePath()
-    val pairsOfFilesToCopy = Files.walk(sourceRoot)
-        .asSequence()
-        .toObservable()
-        .filter { Files.isRegularFile(it) }
-        .mapNotNull { fromFile ->
-            val relativePath = sourceRoot.relativize(fromFile).toString()
-            if (filter(relativePath)) {
-                val toFile = dest.resolve(relativePath)
-                fromFile to toFile
-            } else null
-        }
-        .cache()
-
-    pairsOfFilesToCopy.forEach { (fromFile, toFile) ->
-        toFile.createParentDirectories()
-        Files.copy(fromFile, toFile, StandardCopyOption.REPLACE_EXISTING)
+    return Files.walk(sourceRoot).use { paths ->
+        paths.asSequence()
+            .filter { Files.isRegularFile(it) }
+            .filter { filter(sourceRoot.relativize(it).toString()) }
+            .map { fromFile ->
+                val toFile = dest.resolve(sourceRoot.relativize(fromFile).toString())
+                toFile.createParentDirectories()
+                Files.copy(fromFile, toFile, StandardCopyOption.REPLACE_EXISTING)
+                toFile.toString()
+            }
+            .toList()
     }
-
-    return pairsOfFilesToCopy.map { (_, toFile) -> toFile.toString() }
 }
 
 /** Copy a File, possibly to another [java.nio.file.FileSystem] */

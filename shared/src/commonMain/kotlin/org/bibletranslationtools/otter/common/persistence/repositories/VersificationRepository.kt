@@ -21,7 +21,7 @@ package org.bibletranslationtools.otter.common.persistence.repositories
 import io.reactivex.Maybe
 import io.reactivex.schedulers.Schedulers
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.rx2.awaitSingleOrNull
+import kotlinx.coroutines.rx2.rxMaybe
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.OTTER_JSON
 import org.bibletranslationtools.otter.common.api.persistence.IAppDirectories
@@ -42,19 +42,21 @@ class VersificationRepository(
     private val versificationDao = database.versificationDao
 
     override fun getVersification(slug: String): Maybe<Versification> {
-        return Maybe
-            .fromCallable {
-                directoryProvider.versificationDirectory.mkdirs()
-                val vrsFileName = versificationDao.fetchVersificationFile(slug)
-                val vrsFile = File(directoryProvider.versificationDirectory, vrsFileName)
-                val versification = OTTER_JSON.decodeFromString(ParatextVersification.serializer(), vrsFile.readText())
-                if (versification is Versification) Maybe.just(versification as Versification) else Maybe.empty()
-            }
-            .flatMap { it }
+        return rxMaybe { getVersificationSuspend(slug) }
             .subscribeOn(Schedulers.io())
     }
 
-    override suspend fun getVersificationSuspend(slug: String): Versification? = getVersification(slug).awaitSingleOrNull()
+    override suspend fun getVersificationSuspend(slug: String): Versification? =
+        withContext(Dispatchers.IO) {
+            directoryProvider.versificationDirectory.mkdirs()
+            versificationDao.fetchVersificationFile(slug)?.let { vrsFileName ->
+                val vrsFile = File(directoryProvider.versificationDirectory, vrsFileName)
+                OTTER_JSON.decodeFromString(
+                    deserializer = ParatextVersification.serializer(),
+                    string = vrsFile.readText()
+                )
+            }
+        }
     override suspend fun insertVersificationSuspend(slug: String, path: File) {
         withContext(Dispatchers.IO) { versificationDao.upsert(slug, path.name) }
     }
