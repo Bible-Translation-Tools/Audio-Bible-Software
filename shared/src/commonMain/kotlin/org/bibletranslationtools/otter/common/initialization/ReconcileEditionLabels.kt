@@ -2,6 +2,9 @@ package org.bibletranslationtools.otter.common.initialization
 
 import io.reactivex.Completable
 import io.reactivex.ObservableEmitter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.rx2.rxCompletable
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.bibletranslationtools.otter.common.api.persistence.IAppDirectories
@@ -72,13 +75,16 @@ class ReconcileEditionLabels(
 
     private val logger = LoggerFactory.getLogger(ReconcileEditionLabels::class.java)
 
-    override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable {
-        return Completable.fromAction {
-            if (installedEntityRepo.getInstalledVersion(this) == version) return@fromAction
+    override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable =
+        rxCompletable { execSuspend(progressEmitter::onNext) }
+
+    override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) {
+        withContext(Dispatchers.IO) {
+            if (installedEntityRepo.getInstalledVersion(this@ReconcileEditionLabels) == version) return@withContext
             try {
                 val findings = reconcile()
                 writeReport(findings)
-                installedEntityRepo.install(this)
+                installedEntityRepo.install(this@ReconcileEditionLabels)
             } catch (e: Exception) {
                 logger.error("Reconciling source edition labels failed; it will run again next launch", e)
             }
