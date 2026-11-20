@@ -71,13 +71,4 @@ class InitializeAppTest {
         coVerify(exactly = 0) { ulb.execSuspend(any()) }
         verify(exactly = 1) { tempFiles.cleanTempDirectory() }
     }
-
-    @Test
-    fun `the Rx initApp emits the same progress and completes`() {
-        val progress = initApp.initApp().toList().blockingGet()
-
-        assertEquals(11, progress.size)
-        coVerify(exactly = 1) { audit.execSuspend(any()) }
-        verify(exactly = 1) { tempFiles.cleanTempDirectory() }
-    }
 }

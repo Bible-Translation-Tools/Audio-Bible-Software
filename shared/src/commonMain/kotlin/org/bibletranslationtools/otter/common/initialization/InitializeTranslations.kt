@@ -19,10 +19,7 @@
 @file:Suppress("FunctionNaming")
 package org.bibletranslationtools.otter.common.initialization
 
-import io.reactivex.Completable
-import io.reactivex.ObservableEmitter
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.rx2.rxCompletable
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.config.Installable
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IInstalledEntityRepository
@@ -43,9 +40,6 @@ class InitializeTranslations(
     override val version = 1
 
     private val log = LoggerFactory.getLogger(InitializeTranslations::class.java)
-
-    override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable =
-        rxCompletable { execSuspend(progressEmitter::onNext) }
 
     override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) {
         withContext(Dispatchers.IO) {

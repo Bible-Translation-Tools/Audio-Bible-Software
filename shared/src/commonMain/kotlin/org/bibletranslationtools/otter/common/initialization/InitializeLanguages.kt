@@ -18,10 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.initialization
 
-import io.reactivex.Completable
-import io.reactivex.ObservableEmitter
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.rx2.rxCompletable
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.io.IBundledContentSource
 import org.bibletranslationtools.otter.common.api.persistence.ILanguageDataSource
@@ -45,9 +42,6 @@ class InitializeLanguages(
     override val version = 2
 
     private val log = LoggerFactory.getLogger(InitializeLanguages::class.java)
-
-    override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable =
-        rxCompletable { execSuspend(progressEmitter::onNext) }
 
     override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) {
         withContext(Dispatchers.IO) {

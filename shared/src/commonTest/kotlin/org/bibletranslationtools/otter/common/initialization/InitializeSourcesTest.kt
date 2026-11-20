@@ -31,7 +31,7 @@ class InitializeSourcesTest {
         every { internalSourceRCDirectory } returns dir
     }
     private val metadataRepo = mockk<IResourceMetadataRepository> {
-        coEvery { getAllSourcesSuspend() } returns
+        coEvery { getAllSourcesNoRx() } returns
             listOf(mockk<ResourceMetadata> { every { path } returns installedSource })
     }
     private val installed = mockk<IInstalledEntityRepository>(relaxUnitFun = true) {
@@ -94,14 +94,6 @@ class InitializeSourcesTest {
         initializer.execSuspend {}
 
         coVerify(exactly = 1) { importer.importSuspend(other, any(), any()) }
-        verify(exactly = 1) { installed.install(initializer) }
-    }
-
-    @Test
-    fun `the Rx exec does the same work`() {
-        initializer.exec(mockk(relaxed = true)).blockingAwait()
-
-        coVerify(exactly = 1) { importer.importSuspend(newSource, any(), any()) }
         verify(exactly = 1) { installed.install(initializer) }
     }
 }

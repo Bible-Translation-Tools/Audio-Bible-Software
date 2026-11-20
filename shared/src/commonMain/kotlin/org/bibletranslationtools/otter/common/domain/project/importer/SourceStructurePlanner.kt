@@ -60,7 +60,7 @@ class SourceStructurePlanner(
 ) {
     private val logger = LoggerFactory.getLogger(SourceStructurePlanner::class.java)
 
-    suspend fun plan(container: ResourceContainer, parsedTree: OtterTree<CollectionOrContent>): SourceStructurePlan {
+    fun plan(container: ResourceContainer, parsedTree: OtterTree<CollectionOrContent>): SourceStructurePlan {
         val match = detect(container, parsedTree) ?: return SourceStructurePlan(parsedTree, null)
 
         val templateBooks = read(TEMPLATE_BOOKS_VERSIFICATION)?.getBookSlugs().orEmpty()
@@ -74,13 +74,11 @@ class SourceStructurePlanner(
      * The standard versification [parsedTree]'s text best fits, or null when [container] names no
      * versification (so isn't versified Bible text) or none could be read.
      */
-    suspend fun detect(container: ResourceContainer, parsedTree: OtterTree<CollectionOrContent>): VersificationMatch? {
+    fun detect(container: ResourceContainer, parsedTree: OtterTree<CollectionOrContent>): VersificationMatch? {
         val declared = container.manifest.projects.firstOrNull()?.versification
         if (declared.isNullOrBlank()) return null
 
-        val candidates = StandardVersifications.all.mapNotNull { code ->
-            read(code)?.let { code to it }
-        }
+        val candidates = StandardVersifications.all.mapNotNull { code -> read(code)?.let { code to it } }
         val match = VersificationDetector.detect(textStructureOf(parsedTree), candidates)
         if (match == null) {
             logger.warn("No standard versification could be read; importing the source text as parsed")
@@ -93,7 +91,41 @@ class SourceStructurePlanner(
         return match
     }
 
-    private suspend fun read(code: String): Versification? =
+    private fun read(code: String): Versification? =
+        runCatching { versificationRepository.getVersification(code).blockingGet() }
+            .onFailure { logger.error("Could not read versification '$code'", it) }
+            .getOrNull()
+
+    /** Suspending [plan]. */
+    suspend fun planSuspend(container: ResourceContainer, parsedTree: OtterTree<CollectionOrContent>): SourceStructurePlan {
+        val match = detectSuspend(container, parsedTree) ?: return SourceStructurePlan(parsedTree, null)
+
+        val templateBooks = readSuspend(TEMPLATE_BOOKS_VERSIFICATION)?.getBookSlugs().orEmpty()
+        val tree = fillStructureGaps(parsedTree, match.versification, templateBooks) { book ->
+            treeBuilder.bookTree(match.versification, container, book, match.code)
+        }
+        return SourceStructurePlan(tree, match)
+    }
+
+    /** Suspending [detect]. */
+    suspend fun detectSuspend(container: ResourceContainer, parsedTree: OtterTree<CollectionOrContent>): VersificationMatch? {
+        val declared = container.manifest.projects.firstOrNull()?.versification
+        if (declared.isNullOrBlank()) return null
+
+        val candidates = StandardVersifications.all.mapNotNull { code -> readSuspend(code)?.let { code to it } }
+        val match = VersificationDetector.detect(textStructureOf(parsedTree), candidates)
+        if (match == null) {
+            logger.warn("No standard versification could be read; importing the source text as parsed")
+        } else {
+            logger.info(
+                "Source text follows '${match.code}' (declared '$declared'); " +
+                    "${match.differingChapters.size} chapter(s) differ: ${match.differingChapters.take(20)}"
+            )
+        }
+        return match
+    }
+
+    private suspend fun readSuspend(code: String): Versification? =
         runCatching { versificationRepository.getVersificationSuspend(code) }
             .onFailure { logger.error("Could not read versification '$code'", it) }
             .getOrNull()

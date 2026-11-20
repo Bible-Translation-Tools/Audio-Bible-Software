@@ -18,9 +18,6 @@
  */
 package org.bibletranslationtools.otter.common.persistence.repositories
 
-import kotlinx.coroutines.rx2.rxSingle
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.Dispatchers
 import io.reactivex.Completable
 import io.reactivex.Maybe
 import io.reactivex.Single
@@ -53,6 +50,8 @@ import java.io.File
 import java.lang.Exception
 import java.time.LocalDate
 import java.time.LocalDateTime
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 
 class CollectionRepository(
     private val database: DaoProvider,
@@ -136,8 +135,16 @@ class CollectionRepository(
             .subscribeOn(Schedulers.io())
     }
 
-    override fun collectionsWithoutTakes(project: Collection): Single<List<Collection>> =
-        rxSingle { collectionsWithoutTakesSuspend(project) }
+    override fun collectionsWithoutTakes(project: Collection): Single<List<Collection>> {
+        return Single.fromCallable {
+            collectionDao
+                .collectionsWithoutTakes(collectionMapper.mapToEntity(project))
+                .map {
+                    val collection = collectionMapper.mapFromEntity(it, project.resourceContainer)
+                    collection
+                }
+        }
+    }
 
     override suspend fun getAllSuspend(): List<Collection> = getAll().await()
     override suspend fun updateSuspend(obj: Collection) = update(obj).await()
@@ -185,7 +192,10 @@ class CollectionRepository(
             .getOrThrow()
     }
     override suspend fun getSourceSuspend(project: Collection): Collection? = getSource(project).awaitSingleOrNull()
-    override suspend fun getChildrenSuspend(collection: Collection): List<Collection> = withContext(Dispatchers.IO) {
+    override suspend fun getChildrenSuspend(collection: Collection): List<Collection> = getChildren(collection).await()
+
+    /** [getChildrenSuspend] without RxJava underneath; startup uses this one. */
+    override suspend fun getChildrenNoRx(collection: Collection): List<Collection> = withContext(Dispatchers.IO) {
         runCatching {
             collectionDao
                 .fetchChildren(collectionMapper.mapToEntity(collection))
@@ -325,8 +335,19 @@ class CollectionRepository(
             .subscribeOn(Schedulers.io())
     }
 
-    override fun getDerivedProjects(): Single<List<Collection>> =
-        rxSingle { getDerivedProjectsSuspend() }
+    override fun getDerivedProjects(): Single<List<Collection>> {
+        return Single
+            .fromCallable {
+                collectionDao
+                    .fetchByLabel("project")
+                    .filter { it.sourceFk != null }
+                    .map(this::buildCollection)
+            }
+            .doOnError { e ->
+                log.error("Error in getDerivedProjects", e)
+            }
+            .subscribeOn(Schedulers.io())
+    }
 
     override fun getProject(id: Int): Maybe<Collection> {
         return Maybe
@@ -372,11 +393,33 @@ class CollectionRepository(
         }
     }
 
-    override fun getSourceProjects(): Single<List<Collection>> =
-        rxSingle { getSourceProjectsSuspend() }
+    override fun getSourceProjects(): Single<List<Collection>> {
+        return Single
+            .fromCallable {
+                collectionDao
+                    .fetchByLabel("project")
+                    .filter { it.sourceFk == null }
+                    .map(this::buildCollection)
+            }
+            .doOnError { e ->
+                log.error("Error in getSourceProjects", e)
+            }
+            .subscribeOn(Schedulers.io())
+    }
 
-    override fun getRootSources(): Single<List<Collection>> =
-        rxSingle { getRootSourcesSuspend() }
+    override fun getRootSources(): Single<List<Collection>> {
+        return Single
+            .fromCallable {
+                collectionDao
+                    .fetchAll()
+                    .filter { it.parentFk == null && it.sourceFk == null }
+                    .map(this::buildCollection)
+            }
+            .doOnError { e ->
+                log.error("Error in getRootSources", e)
+            }
+            .subscribeOn(Schedulers.io())
+    }
 
     override fun getSource(project: Collection): Maybe<Collection> {
         return Maybe
@@ -392,8 +435,18 @@ class CollectionRepository(
             .subscribeOn(Schedulers.io())
     }
 
-    override fun getChildren(collection: Collection): Single<List<Collection>> =
-        rxSingle { getChildrenSuspend(collection) }
+    override fun getChildren(collection: Collection): Single<List<Collection>> {
+        return Single
+            .fromCallable {
+                collectionDao
+                    .fetchChildren(collectionMapper.mapToEntity(collection))
+                    .map(this::buildCollection)
+            }
+            .doOnError { e ->
+                log.error("Error in getChildren for collection: $collection", e)
+            }
+            .subscribeOn(Schedulers.io())
+    }
 
     override fun getProjectBySlugAndMetadata(slug: String, metadata: ResourceMetadata): Single<Collection> {
         return Single
@@ -489,8 +542,67 @@ class CollectionRepository(
         language: Language,
         verseByVerse: Boolean,
         mode: ProjectMode
-    ): Single<Collection> = rxSingle {
-        deriveProjectSuspend(sourceMetadatas, sourceCollection, language, verseByVerse, mode)
+    ): Single<Collection> {
+        return Single
+            .fromCallable {
+                database.transactionResult {
+
+                    val derivedMetadata = deriveAndLinkMetadata(sourceMetadatas, language)
+                    val mainDerivedMetadata = derivedMetadata.first()
+
+                    val sourceCollectionEntity = collectionDao.fetchById(sourceCollection.id)
+                    // Try to find existent project
+                    var projectEntity = findProjectCollection(sourceCollectionEntity, mainDerivedMetadata)
+                    projectEntity?.let {
+                        it.modifiedTs = LocalDateTime.now().toString()
+                        collectionDao.update(it)
+                    }
+
+                    if (projectEntity == null) {
+                        // Insert the derived project
+                        projectEntity = deriveProjectCollection(sourceCollectionEntity, mainDerivedMetadata)
+
+                        // Copy the chapters
+                        copyChapters(sourceCollectionEntity.id, projectEntity.id, mainDerivedMetadata.id)
+
+                        val metadataSourceToDerivedMap = sourceMetadatas.zip(derivedMetadata).associate { it }
+                        copyResourceLinks(projectEntity, metadataSourceToDerivedMap)
+
+                        addToDerivedManifest(mainDerivedMetadata, projectEntity)
+                    }
+
+                    val workbookDescriptor = database.workbookDescriptorDao.fetch(
+                        sourceCollection.id,
+                        projectEntity.id,
+                        workbookTypeDao.fetchId(mode)
+                    )
+                    if (workbookDescriptor == null) {
+                        // copy the content under chapter-level
+                        if (verseByVerse) {
+                            copyContent(sourceCollectionEntity.id, mainDerivedMetadata.id)
+                            linkDerivativeContent(sourceCollectionEntity.id, projectEntity.id)
+                        } else {
+                            copyMetaContent(sourceCollectionEntity.id, mainDerivedMetadata.id)
+                        }
+                        insertWorkbookDescriptor(sourceCollection.id, projectEntity.id, mode)
+                    }
+
+
+                    return@transactionResult collectionMapper.mapFromEntity(
+                        projectEntity,
+                        metadataMapper.mapFromEntity(mainDerivedMetadata, language)
+                    )
+                }
+            }
+            .doOnError { e ->
+                log.error("Error in deriveProject for source collection: $sourceCollection, language: $language")
+                log.error("With:")
+                sourceMetadatas.forEach {
+                    log.error("Metadata: $it")
+                }
+                log.error("End Metadata", e)
+            }
+            .subscribeOn(Schedulers.io())
     }
 
     /** Adds project book [book] to derived container [derived]'s manifest, if it isn't listed yet. */

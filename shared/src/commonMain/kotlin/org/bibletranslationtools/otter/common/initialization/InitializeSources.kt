@@ -18,10 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.initialization
 
-import io.reactivex.Completable
-import io.reactivex.ObservableEmitter
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.rx2.rxCompletable
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.IResourceContainerDirectories
 import org.bibletranslationtools.otter.common.api.persistence.config.Installable
@@ -46,9 +43,6 @@ class InitializeSources(
 
     private val logger = LoggerFactory.getLogger(javaClass)
     private lateinit var callback: ProjectImporterCallback
-
-    override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable =
-        rxCompletable { execSuspend(progressEmitter::onNext) }
 
     override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) {
         withContext(Dispatchers.IO) {
@@ -97,7 +91,7 @@ class InitializeSources(
 
     private suspend fun fetchSourcePaths(): List<File> {
         return resourceMetadataRepo
-            .getAllSourcesSuspend()
+            .getAllSourcesNoRx()
             .map {
                 it.path
             }

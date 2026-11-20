@@ -32,7 +32,7 @@ class RefreshBundledSourcesTest {
         )
     }
     private val editions = mockk<InstalledSourceEditions> {
-        coEvery { editionsOf(any(), any()) } returns listOf(mockk())
+        coEvery { editionsOfNoRx(any(), any()) } returns listOf(mockk())
     }
     private val importer = mockk<ImportProjectUseCase> {
         coEvery { importSuspend(any(), any(), any()) } returns ImportResult.SUCCESS
@@ -77,7 +77,7 @@ class RefreshBundledSourcesTest {
 
     @Test
     fun `a source with no edition installed is skipped`() = runTest {
-        coEvery { editions.editionsOf("en", "ulb") } returns emptyList()
+        coEvery { editions.editionsOfNoRx("en", "ulb") } returns emptyList()
 
         initializer.execSuspend {}
 
@@ -96,13 +96,5 @@ class RefreshBundledSourcesTest {
 
         coVerify(exactly = 2) { importer.importSuspend(any(), any(), any()) }
         verify(exactly = 0) { stamps.markImported(any()) }
-    }
-
-    @Test
-    fun `the Rx exec does the same work`() {
-        initializer.exec(mockk()).blockingAwait()
-
-        verify(exactly = 1) { stamps.markImported("en_ulb") }
-        verify(exactly = 1) { stamps.markImported("es_ulb") }
     }
 }

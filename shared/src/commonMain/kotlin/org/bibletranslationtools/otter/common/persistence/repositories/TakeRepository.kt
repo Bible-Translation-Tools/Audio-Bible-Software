@@ -18,14 +18,10 @@
  */
 package org.bibletranslationtools.otter.common.persistence.repositories
 
-import kotlinx.coroutines.rx2.rxSingle
 import io.reactivex.Completable
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.rx2.await
-import kotlinx.coroutines.rx2.rxCompletable
-import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.primitives.Collection
 import org.bibletranslationtools.otter.common.data.primitives.Content
@@ -39,6 +35,8 @@ import org.bibletranslationtools.otter.common.persistence.repositories.mapping.M
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.TakeMapper
 import java.io.File
 import java.time.LocalDate
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class TakeRepository(
     private val database: DaoProvider,
@@ -66,8 +64,19 @@ class TakeRepository(
             .subscribeOn(Schedulers.io())
     }
 
-    override fun deleteForContent(content: Content): Completable = rxCompletable {
-        deleteForContentSuspend(content)
+    override fun deleteForContent(content: Content): Completable {
+        return Completable
+            .fromAction {
+                takeDao
+                    .fetchByContentId(content.id, true)
+                    .forEach {
+                        takeDao.delete(it)
+                    }
+            }
+            .doOnError { e ->
+                logger.error("Error in deleteForContent: $content\n", e)
+            }
+            .subscribeOn(Schedulers.io())
     }
 
     /** Set the deleted timestamp to now. */
@@ -83,39 +92,74 @@ class TakeRepository(
             .subscribeOn(Schedulers.io())
     }
 
-    override fun getAll(): Single<List<Take>> = rxSingle { getAllSuspend() }
+    override fun getAll(): Single<List<Take>> {
+        return Single
+            .fromCallable {
+                takeDao
+                    .fetchAll()
+                    .map(this::buildTake)
+            }
+            .doOnError { e ->
+                logger.error("Error in getAll", e)
+            }
+            .subscribeOn(Schedulers.io())
+    }
 
-    override fun getByContent(content: Content, includeDeleted: Boolean): Single<List<Take>> =
-        rxSingle { getByContentSuspend(content, includeDeleted) }
+    override fun getByContent(content: Content, includeDeleted: Boolean): Single<List<Take>> {
+        return Single
+            .fromCallable {
+                takeDao
+                    .fetchByContentId(content.id, includeDeleted)
+                    .map(this::buildTake)
+            }
+            .doOnError { e ->
+                logger.error("Error in getByContent for content: $content, includeDeleted: $includeDeleted", e)
+            }
+            .subscribeOn(Schedulers.io())
+    }
 
-    override fun insertForContent(take: Take, content: Content): Single<Int> =
-        rxSingle { insertForContentSuspend(take, content) }
+    override fun insertForContent(take: Take, content: Content): Single<Int> {
+        return Single
+            .fromCallable {
+                val takeId = takeDao.insert(takeMapper.mapToEntity(take, content.id))
+                // Insert the markers
+                take.markers.forEach {
+                    val entity = markerMapper.mapToEntity(it, takeId)
+                    entity.id = 0
+                    markerDao.insert(entity)
+                }
+                takeId
+            }
+            .doOnError { e ->
+                logger.error("Error in insertForContent with take: $take and content $content", e)
+            }
+            .subscribeOn(Schedulers.io())
+    }
 
-    override fun update(obj: Take): Completable = rxCompletable { updateSuspend(obj) }
+    override fun update(obj: Take): Completable {
+        return Completable
+            .fromAction {
+                val existing = takeDao.fetchById(obj.id)
+                val entity = takeMapper.mapToEntity(obj, existing.contentFk)
+                takeDao.update(entity)
 
-    override fun removeNonExistentTakes(): Completable =
-        rxCompletable { removeNonExistentTakesSuspend() }
-
-    override suspend fun removeNonExistentTakesSuspend() = withContext(Dispatchers.IO) {
-        runCatching {
-            database.transaction {
-                val takes = takeDao.fetchAll()
-                for (take in takes) {
-                    val takeFile = File(take.filepath)
-                    if (!takeFile.exists()) {
-                        // Take does not exist anymore
-                        // Reset the selected take if necessary to satisfy foreign key constraints
-                        val content = contentDao.fetchById(take.contentFk)
-                        if (content.selectedTakeFk == take.id) content.selectedTakeFk = null
-                        contentDao.update(content)
-                        // Remove the take from the database
-                        takeDao.delete(take)
+                // Delete and replace markers
+                markerDao
+                    .fetchByTakeId(obj.id)
+                    .forEach {
+                        markerDao.delete(it)
                     }
+
+                obj.markers.forEach {
+                    val markerEntity = markerMapper.mapToEntity(it, obj.id)
+                    markerEntity.id = 0
+                    markerDao.insert(markerEntity)
                 }
             }
-        }
-            .onFailure { logger.error("Error in removeNonExistentTakes", it) }
-            .getOrThrow()
+            .doOnError { e ->
+                logger.error("Error in update for take: $obj", e)
+            }
+            .subscribeOn(Schedulers.io())
     }
 
     override fun getSoftDeletedTakes(project: Collection): Single<List<Take>> {
@@ -130,23 +174,24 @@ class TakeRepository(
             .subscribeOn(Schedulers.io())
     }
 
-    override fun deleteExpiredTakes(expiry: Int): Completable =
-        rxCompletable { deleteExpiredTakesSuspend(expiry) }
-
-    override suspend fun deleteExpiredTakesSuspend(expiry: Int) = withContext(Dispatchers.IO) {
-        val takes = takeDao.fetchSoftDeletedTakes()
-        val expired = LocalDate.now().minusDays(expiry.toLong())
-        logger.info("Deleting soft deleted takes on or before: $expired")
-        takes.forEach { take ->
-            take.deletedTs?.let { timestamp ->
-                val parsed = LocalDate.parse(timestamp)
-                if (parsed.isBefore(expired) || parsed.isEqual(expired)) {
-                    logger.info("Deleting: ${take.filename}, soft delete date is: ${take.deletedTs}")
-                    File(take.filepath).delete()
-                    takeDao.delete(take)
+    override fun deleteExpiredTakes(expiry: Int): Completable {
+        return Completable
+            .fromAction {
+                val takes = takeDao.fetchSoftDeletedTakes()
+                val expired = LocalDate.now().minusDays(expiry.toLong())
+                logger.info("Deleting soft deleted takes on or before: $expired")
+                takes.forEach { take ->
+                    take.deletedTs?.let { timestamp ->
+                        val parsed = LocalDate.parse(timestamp)
+                        if (parsed.isBefore(expired) || parsed.isEqual(expired)) {
+                            logger.info("Deleting: ${take.filename}, soft delete date is: ${take.deletedTs}")
+                            File(take.filepath).delete()
+                            takeDao.delete(take)
+                        }
+                    }
                 }
             }
-        }
+            .subscribeOn(Schedulers.io())
     }
 
     override fun getByCollection(chapterCollection: Collection, includeDeleted: Boolean): Single<List<Take>> {
@@ -227,7 +272,11 @@ class TakeRepository(
             .getOrThrow()
     }
 
-    override suspend fun getByContentSuspend(content: Content, includeDeleted: Boolean): List<Take> = withContext(Dispatchers.IO) {
+    override suspend fun getByContentSuspend(content: Content, includeDeleted: Boolean): List<Take> =
+        getByContent(content, includeDeleted).await()
+
+    /** [getByContentSuspend] without RxJava underneath; startup uses this one. */
+    override suspend fun getByContentNoRx(content: Content, includeDeleted: Boolean): List<Take> = withContext(Dispatchers.IO) {
         runCatching {
             takeDao
                 .fetchByContentId(content.id, includeDeleted)
@@ -255,12 +304,49 @@ class TakeRepository(
         }
     }
 
+    override suspend fun removeNonExistentTakesSuspend() = withContext(Dispatchers.IO) {
+        runCatching {
+            database.transaction {
+                val takes = takeDao.fetchAll()
+                for (take in takes) {
+                    val takeFile = File(take.filepath)
+                    if (!takeFile.exists()) {
+                        // Take does not exist anymore
+                        // Reset the selected take if necessary to satisfy foreign key constraints
+                        val content = contentDao.fetchById(take.contentFk)
+                        if (content.selectedTakeFk == take.id) content.selectedTakeFk = null
+                        contentDao.update(content)
+                        // Remove the take from the database
+                        takeDao.delete(take)
+                    }
+                }
+            }
+        }
+            .onFailure { logger.error("Error in removeNonExistentTakes", it) }
+            .getOrThrow()
+    }
+
     override suspend fun markDeletedSuspend(take: Take) =
         markDeleted(take).await()
 
     override suspend fun getSoftDeletedTakesSuspend(project: Collection): List<Take> =
         getSoftDeletedTakes(project).await()
 
+    override suspend fun deleteExpiredTakesSuspend(expiry: Int) = withContext(Dispatchers.IO) {
+        val takes = takeDao.fetchSoftDeletedTakes()
+        val expired = LocalDate.now().minusDays(expiry.toLong())
+        logger.info("Deleting soft deleted takes on or before: $expired")
+        takes.forEach { take ->
+            take.deletedTs?.let { timestamp ->
+                val parsed = LocalDate.parse(timestamp)
+                if (parsed.isBefore(expired) || parsed.isEqual(expired)) {
+                    logger.info("Deleting: ${take.filename}, soft delete date is: ${take.deletedTs}")
+                    File(take.filepath).delete()
+                    takeDao.delete(take)
+                }
+            }
+        }
+    }
 
     override suspend fun getByCollectionSuspend(chapterCollection: Collection, includeDeleted: Boolean): List<Take> =
         getByCollection(chapterCollection, includeDeleted).await()

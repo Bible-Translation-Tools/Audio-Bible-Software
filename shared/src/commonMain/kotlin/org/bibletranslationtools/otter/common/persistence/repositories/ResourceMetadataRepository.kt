@@ -22,12 +22,8 @@ import io.reactivex.Completable
 import io.reactivex.Maybe
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.rx2.await
 import kotlinx.coroutines.rx2.awaitSingleOrNull
-import kotlinx.coroutines.rx2.rxCompletable
-import kotlinx.coroutines.rx2.rxSingle
-import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.domain.mapper.mapToMetadata
@@ -37,6 +33,8 @@ import org.bibletranslationtools.otter.common.persistence.entities.ResourceMetad
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.LanguageMapper
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.ResourceMetadataMapper
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class ResourceMetadataRepository(
     database: DaoProvider,
@@ -115,16 +113,33 @@ class ResourceMetadataRepository(
             .subscribeOn(Schedulers.io())
     }
 
-    override fun getAllSources(): Single<List<ResourceMetadata>> = rxSingle { getAllSourcesSuspend() }
+    override fun getAllSources(): Single<List<ResourceMetadata>> {
+        return Single
+            .fromCallable {
+                resourceMetadataDao
+                    .fetchAll()
+                    .filter { it.derivedFromFk == null }
+                    .map(this::buildMetadata)
+            }
+            .doOnError { e ->
+                logger.error("Error in getAllSources", e)
+            }
+            .subscribeOn(Schedulers.io())
+    }
 
-    private fun allSources(): List<ResourceMetadata> =
-        resourceMetadataDao
-            .fetchAll()
-            .filter { it.derivedFromFk == null }
-            .map(this::buildMetadata)
-
-    override fun getAllDerivatives(metadata: ResourceMetadata): Single<List<ResourceMetadata>> =
-        rxSingle { getAllDerivativesSuspend(metadata) }
+    override fun getAllDerivatives(metadata: ResourceMetadata): Single<List<ResourceMetadata>> {
+        return Single
+            .fromCallable {
+                resourceMetadataDao
+                    .fetchAll()
+                    .filter { it.derivedFromFk == metadata.id }
+                    .map(this::buildMetadata)
+            }
+            .doOnError { e ->
+                logger.error("Error in getAllDerivatives", e)
+            }
+            .subscribeOn(Schedulers.io())
+    }
 
     override fun getSource(metadata: ResourceMetadata): Maybe<ResourceMetadata> {
         return Maybe
@@ -138,8 +153,18 @@ class ResourceMetadataRepository(
             .subscribeOn(Schedulers.io())
     }
 
-    override fun getLinked(metadata: ResourceMetadata): Single<List<ResourceMetadata>> =
-        rxSingle { getLinkedSuspend(metadata) }
+    override fun getLinked(metadata: ResourceMetadata): Single<List<ResourceMetadata>> {
+        return Single
+            .fromCallable {
+                resourceMetadataDao
+                    .fetchLinks(metadata.id)
+                    .map(this::buildMetadata)
+            }
+            .doOnError { e ->
+                logger.error("Error in getLinked for metadata: $metadata", e)
+            }
+            .subscribeOn(Schedulers.io())
+    }
 
     override fun updateSource(metadata: ResourceMetadata, source: ResourceMetadata?): Completable {
         return Completable
@@ -153,27 +178,31 @@ class ResourceMetadataRepository(
             .subscribeOn(Schedulers.io())
     }
 
-    override fun update(obj: ResourceMetadata): Completable = rxCompletable { updateSuspend(obj) }
-
-    private fun updateRow(obj: ResourceMetadata) {
-        val existing = resourceMetadataDao.fetchById(obj.id)
-            ?: throw NullPointerException("Resource metadata id ${obj.id} not found.")
-        val updated = metadataMapper.mapToEntity(obj, existing.derivedFromFk)
-        resourceMetadataDao.update(updated)
+    override fun update(obj: ResourceMetadata): Completable {
+        return Completable
+            .fromAction {
+                val existing = resourceMetadataDao.fetchById(obj.id)
+                    ?: throw NullPointerException("Resource metadata id ${obj.id} not found.")
+                val updated = metadataMapper.mapToEntity(obj, existing.derivedFromFk)
+                resourceMetadataDao.update(updated)
+            }
+            .doOnError { e ->
+                logger.error("Error in update for metadata: $obj", e)
+            }
+            .subscribeOn(Schedulers.io())
     }
 
-    override fun update(metadata: ResourceMetadata, rc: ResourceContainer): Completable =
-        rxCompletable { updateSuspend(metadata, rc) }
-
-    /** [metadata] with its fields taken from [rc]'s manifest; id and path stay as they are. */
-    private fun updatedFrom(metadata: ResourceMetadata, rc: ResourceContainer): ResourceMetadata {
-        val language = LanguageMapper()
-            .mapFromEntity(languageDao.fetchBySlug(rc.manifest.dublinCore.language.identifier)!!)
-        val mappedMetadata = rc.manifest.dublinCore.mapToMetadata(rc.file, language)
-        return mappedMetadata.copy(
-            id = metadata.id,
-            path = metadata.path // Don't update the path, the RC could be a different file from the internal RC
-        )
+    override fun update(metadata: ResourceMetadata, rc: ResourceContainer): Completable {
+        return Completable.fromAction {
+            val language = LanguageMapper()
+                .mapFromEntity(languageDao.fetchBySlug(rc.manifest.dublinCore.language.identifier)!!)
+            val mappedMetadata = rc.manifest.dublinCore.mapToMetadata(rc.file, language)
+            val updatedMetadata = mappedMetadata.copy(
+                id = metadata.id,
+                path = metadata.path // Don't update the path, the RC could be a different file from the internal RC
+            )
+            update(updatedMetadata).blockingGet()
+        }
     }
 
     override fun addLink(firstMetadata: ResourceMetadata, secondMetadata: ResourceMetadata): Completable {
@@ -215,22 +244,28 @@ class ResourceMetadataRepository(
             .onFailure { logger.error("Error in update for metadata: $obj", it) }
             .getOrThrow()
     }
+    override suspend fun updateSuspend(metadata: ResourceMetadata, rc: ResourceContainer) =
+        updateSuspend(withContext(Dispatchers.IO) { updatedFrom(metadata, rc) })
     override suspend fun deleteSuspend(obj: ResourceMetadata) = delete(obj).await()
 
     override suspend fun existsSuspend(metadata: ResourceMetadata): Boolean = exists(metadata).await()
     override suspend fun existsSuspend(predicate: (ResourceMetadata) -> Boolean): Boolean = exists(predicate).await()
     override suspend fun getSuspend(metadata: ResourceMetadata): ResourceMetadata = get(metadata).await()
     override suspend fun insertSuspend(metadata: ResourceMetadata): Int = insert(metadata).await()
-    override suspend fun updateSuspend(metadata: ResourceMetadata, rc: ResourceContainer) =
-        updateSuspend(withContext(Dispatchers.IO) { updatedFrom(metadata, rc) })
     override suspend fun updateSourceSuspend(metadata: ResourceMetadata, source: ResourceMetadata?) = updateSource(metadata, source).await()
     override suspend fun getSourceSuspend(metadata: ResourceMetadata): ResourceMetadata? = getSource(metadata).awaitSingleOrNull()
-    override suspend fun getAllSourcesSuspend(): List<ResourceMetadata> = withContext(Dispatchers.IO) {
+    override suspend fun getAllSourcesSuspend(): List<ResourceMetadata> = getAllSources().await()
+
+    /** [getAllSourcesSuspend] without RxJava underneath; startup uses this one. */
+    override suspend fun getAllSourcesNoRx(): List<ResourceMetadata> = withContext(Dispatchers.IO) {
         runCatching { allSources() }
             .onFailure { logger.error("Error in getAllSources", it) }
             .getOrThrow()
     }
-    override suspend fun getAllDerivativesSuspend(metadata: ResourceMetadata): List<ResourceMetadata> = withContext(Dispatchers.IO) {
+    override suspend fun getAllDerivativesSuspend(metadata: ResourceMetadata): List<ResourceMetadata> = getAllDerivatives(metadata).await()
+
+    /** [getAllDerivativesSuspend] without RxJava underneath; startup uses this one. */
+    override suspend fun getAllDerivativesNoRx(metadata: ResourceMetadata): List<ResourceMetadata> = withContext(Dispatchers.IO) {
         runCatching {
             resourceMetadataDao
                 .fetchAll()
@@ -244,7 +279,10 @@ class ResourceMetadataRepository(
     }
     override suspend fun addLinkSuspend(firstMetadata: ResourceMetadata, secondMetadata: ResourceMetadata) = addLink(firstMetadata, secondMetadata).await()
     override suspend fun removeLinkSuspend(firstMetadata: ResourceMetadata, secondMetadata: ResourceMetadata) = removeLink(firstMetadata, secondMetadata).await()
-    override suspend fun getLinkedSuspend(metadata: ResourceMetadata): List<ResourceMetadata> = withContext(Dispatchers.IO) {
+    override suspend fun getLinkedSuspend(metadata: ResourceMetadata): List<ResourceMetadata> = getLinked(metadata).await()
+
+    /** [getLinkedSuspend] without RxJava underneath; startup uses this one. */
+    override suspend fun getLinkedNoRx(metadata: ResourceMetadata): List<ResourceMetadata> = withContext(Dispatchers.IO) {
         runCatching {
             resourceMetadataDao
                 .fetchLinks(metadata.id)
@@ -263,4 +301,28 @@ class ResourceMetadataRepository(
             .mapFromEntity(languageEntity)
         return metadataMapper.mapFromEntity(entity, language)
     }
+    private fun allSources(): List<ResourceMetadata> =
+        resourceMetadataDao
+            .fetchAll()
+            .filter { it.derivedFromFk == null }
+            .map(this::buildMetadata)
+
+    private fun updateRow(obj: ResourceMetadata) {
+        val existing = resourceMetadataDao.fetchById(obj.id)
+            ?: throw NullPointerException("Resource metadata id ${obj.id} not found.")
+        val updated = metadataMapper.mapToEntity(obj, existing.derivedFromFk)
+        resourceMetadataDao.update(updated)
+    }
+
+    /** [metadata] with its fields taken from [rc]'s manifest; id and path stay as they are. */
+    private fun updatedFrom(metadata: ResourceMetadata, rc: ResourceContainer): ResourceMetadata {
+        val language = LanguageMapper()
+            .mapFromEntity(languageDao.fetchBySlug(rc.manifest.dublinCore.language.identifier)!!)
+        val mappedMetadata = rc.manifest.dublinCore.mapToMetadata(rc.file, language)
+        return mappedMetadata.copy(
+            id = metadata.id,
+            path = metadata.path // Don't update the path, the RC could be a different file from the internal RC
+        )
+    }
+
 }

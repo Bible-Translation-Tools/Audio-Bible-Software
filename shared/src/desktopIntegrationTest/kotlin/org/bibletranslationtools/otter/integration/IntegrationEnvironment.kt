@@ -33,8 +33,6 @@ import org.bibletranslationtools.otter.common.domain.collections.DeleteProject
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.domain.languages.ImportLanguages
 import org.bibletranslationtools.otter.common.domain.project.importer.RCImporterFactory
-import io.reactivex.Observable
-import org.bibletranslationtools.otter.common.data.ProgressStatus
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
 import org.bibletranslationtools.otter.common.initialization.AuditSourceStructure
 import org.bibletranslationtools.otter.common.initialization.RefreshBundledSources
@@ -243,10 +241,7 @@ class IntegrationEnvironment private constructor(
 
     /** Runs the startup fingerprint backfill. */
     fun backfillFingerprints() {
-        Observable.create<ProgressStatus> { emitter ->
-            koin.get<BackfillEditionFingerprints>().exec(emitter).blockingAwait()
-            emitter.onComplete()
-        }.blockingSubscribe()
+        runBlocking { koin.get<BackfillEditionFingerprints>().execSuspend {} }
     }
 
     private fun installedSource() = db.resourceMetadataDao.fetchAll().single { it.derivedFromFk == null }
@@ -267,10 +262,7 @@ class IntegrationEnvironment private constructor(
 
     /** Runs the startup step that re-imports bundled sources whose zip changed. */
     fun refreshBundledSources() {
-        Observable.create<ProgressStatus> { emitter ->
-            koin.get<RefreshBundledSources>().exec(emitter).blockingAwait()
-            emitter.onComplete()
-        }.blockingSubscribe()
+        runBlocking { koin.get<RefreshBundledSources>().execSuspend {} }
     }
 
     /** Whether bundled source [name]'s current zip is recorded as imported. */
@@ -756,10 +748,7 @@ class IntegrationEnvironment private constructor(
          * The app does this via `InitializeApp`, which runs this initializer first.
          */
         private fun IntegrationEnvironment.initializeVersification() {
-            Observable.create<ProgressStatus> { emitter ->
-                koin.get<InitializeVersification>().exec(emitter).blockingAwait()
-                emitter.onComplete()
-            }.blockingSubscribe()
+            runBlocking { koin.get<InitializeVersification>().execSuspend {} }
         }
 
         /**

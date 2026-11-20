@@ -19,15 +19,15 @@
 package org.bibletranslationtools.otter.common.domain.project.importer
 
 import io.reactivex.Single
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.rx2.rxSingle
-import kotlinx.coroutines.withContext
+import io.reactivex.schedulers.Schedulers
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
 import java.io.File
 import java.io.InputStream
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * An importer for Resource Container project format.
@@ -49,7 +49,10 @@ abstract class RCImporter(
         file: File,
         callback: ProjectImporterCallback?,
         options: ImportOptions?
-    ): Single<ImportResult> = rxSingle { passToNextImporterSuspend(file, callback, options) }
+    ): Single<ImportResult> {
+        return next?.import(file, callback, options)
+            ?: Single.just(ImportResult.FAILED)
+    }
 
     protected suspend fun passToNextImporterSuspend(
         file: File,
@@ -57,8 +60,27 @@ abstract class RCImporter(
         options: ImportOptions?
     ): ImportResult = next?.importSuspend(file, callback, options) ?: ImportResult.FAILED
 
-    protected fun importAsStream(filename: String, stream: InputStream): Single<ImportResult> =
-        rxSingle { importAsStreamSuspend(filename, stream) }
+    protected fun importAsStream(filename: String, stream: InputStream): Single<ImportResult> {
+        val outFile = directoryProvider.createTempFile(filename, ".zip")
+
+        return Single
+            .fromCallable {
+                outFile.outputStream().use { ofs ->
+                    stream.copyTo(ofs)
+                }
+            }
+            .flatMap {
+                import(outFile)
+            }
+            .doOnError { e ->
+                logger.error("Error in import, filename: $filename", e)
+            }
+            .doFinally {
+                stream.close()
+                outFile.delete()
+            }
+            .subscribeOn(Schedulers.io())
+    }
 
     /** Imports [stream] through this importer, from a temporary file that is deleted afterwards. */
     protected suspend fun importAsStreamSuspend(filename: String, stream: InputStream): ImportResult =

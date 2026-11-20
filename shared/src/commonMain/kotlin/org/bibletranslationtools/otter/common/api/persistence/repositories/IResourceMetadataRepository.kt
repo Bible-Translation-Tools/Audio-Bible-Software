@@ -47,8 +47,11 @@ interface IResourceMetadataRepository : IRepository<ResourceMetadata> {
     suspend fun updateSourceSuspend(metadata: ResourceMetadata, source: ResourceMetadata?)
     suspend fun getSourceSuspend(metadata: ResourceMetadata): ResourceMetadata?
     suspend fun getAllSourcesSuspend(): List<ResourceMetadata>
+    suspend fun getAllSourcesNoRx(): List<ResourceMetadata>
     suspend fun getAllDerivativesSuspend(metadata: ResourceMetadata): List<ResourceMetadata>
+    suspend fun getAllDerivativesNoRx(metadata: ResourceMetadata): List<ResourceMetadata>
     suspend fun addLinkSuspend(firstMetadata: ResourceMetadata, secondMetadata: ResourceMetadata)
     suspend fun removeLinkSuspend(firstMetadata: ResourceMetadata, secondMetadata: ResourceMetadata)
     suspend fun getLinkedSuspend(metadata: ResourceMetadata): List<ResourceMetadata>
+    suspend fun getLinkedNoRx(metadata: ResourceMetadata): List<ResourceMetadata>
 }

@@ -1,9 +1,6 @@
 package org.bibletranslationtools.otter.common.initialization
 
-import io.reactivex.Completable
-import io.reactivex.ObservableEmitter
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.rx2.rxCompletable
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.config.Initializable
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IEditionFingerprintRepository
@@ -28,9 +25,6 @@ class BackfillEditionFingerprints(
 
     private val logger = LoggerFactory.getLogger(BackfillEditionFingerprints::class.java)
 
-    override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable =
-        rxCompletable { execSuspend(progressEmitter::onNext) }
-
     override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) {
         withContext(Dispatchers.IO) {
             for (id in fingerprintRepository.sourcesWithoutFingerprint()) {
@@ -38,7 +32,7 @@ class BackfillEditionFingerprints(
                 // Saving is inside too: two rows holding the same content (a source merged in place and
                 // imported again) share a fingerprint, which the edition index refuses for the second.
                 runCatching {
-                    val fingerprint = fingerprinter.fingerprint(File(source.path))
+                    val fingerprint = fingerprinter.fingerprintSuspend(File(source.path))
                     fingerprintRepository.save(id, fingerprint)
                     fingerprint
                 }

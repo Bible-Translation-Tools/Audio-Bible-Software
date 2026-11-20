@@ -87,14 +87,4 @@ class InitializeLanguagesTest {
 
         verify(exactly = 0) { installed.install(any()) }
     }
-
-    @Test
-    fun `the Rx exec does the same work`() {
-        installedVersion(null)
-
-        initializer.exec(mockk()).blockingAwait()
-
-        coVerify(exactly = 1) { languages.insertAllSuspend(any()) }
-        verify(exactly = 1) { installed.install(initializer) }
-    }
 }

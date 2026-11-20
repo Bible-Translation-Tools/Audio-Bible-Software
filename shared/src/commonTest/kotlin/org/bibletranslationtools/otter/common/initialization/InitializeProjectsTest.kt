@@ -29,7 +29,7 @@ class InitializeProjectsTest {
     private val userData: File = Files.createTempDirectory("projects").toFile()
 
     private val metadataRepo = mockk<IResourceMetadataRepository> {
-        coEvery { getAllSourcesSuspend() } returns emptyList()
+        coEvery { getAllSourcesNoRx() } returns emptyList()
     }
     private val takeRepo = mockk<ITakeRepository>(relaxUnitFun = true) {
         coEvery { getAllSuspend() } returns emptyList()
@@ -109,16 +109,5 @@ class InitializeProjectsTest {
         assertFailsWith<IllegalStateException> { initializer.execSuspend {} }
 
         verify(exactly = 0) { installed.install(any()) }
-    }
-
-    @Test
-    fun `the Rx exec does the same work`() {
-        installedVersion(null)
-        val project = projectFolder("en_ulb_gen")
-
-        initializer.exec(mockk(relaxed = true)).blockingAwait()
-
-        verify(exactly = 1) { installed.install(initializer) }
-        coVerify(exactly = 1) { importer.importSuspend(project, any(), any()) }
     }
 }

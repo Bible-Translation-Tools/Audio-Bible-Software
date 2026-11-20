@@ -24,7 +24,6 @@ import io.reactivex.rxkotlin.cast
 import io.reactivex.rxkotlin.toMap
 import io.reactivex.rxkotlin.toObservable
 import io.reactivex.schedulers.Schedulers
-import kotlinx.coroutines.rx2.rxObservable
 import org.bibletranslationtools.otter.common.api.io.zip.IFileReader
 import org.bibletranslationtools.otter.common.api.io.zip.IFileWriter
 import org.slf4j.LoggerFactory
@@ -57,6 +56,7 @@ import org.bibletranslationtools.otter.common.domain.resourcecontainer.project.u
 import org.wycliffeassociates.usfmtools.USFMParser
 import org.wycliffeassociates.usfmtools.models.markers.CMarker
 import org.wycliffeassociates.usfmtools.models.markers.VMarker
+import java.util.concurrent.TimeUnit
 import org.bibletranslationtools.otter.common.OTTER_JSON
 import org.bibletranslationtools.otter.common.domain.project.TAKE_CHECKING
 import org.bibletranslationtools.otter.common.data.CHUNKIFICATION
@@ -440,26 +440,18 @@ class ProjectFilesAccessor(
         manifestProject: Project,
         filter: (String) -> Boolean = { true },
         destination: File
-    ): Observable<StagedTake> = rxObservable {
-        copyTakeFilesSuspend(fileReader, manifestProject, filter, destination).forEach { send(it) }
-    }
-
-    suspend fun copyTakeFilesSuspend(
-        fileReader: IFileReader,
-        manifestProject: Project,
-        filter: (String) -> Boolean = { true },
-        destination: File
-    ): List<StagedTake> {
+    ): Observable<StagedTake> {
         val audioDirsInRc = listOf(RcConstants.TAKE_DIR, manifestProject.path)
             .filter(fileReader::exists)
             .map { File(it).normalize().path }
             .distinct()
-        return audioDirsInRc.withIndex().flatMap { (index, audioDirInRc) ->
-            val root = File(destination, index.toString())
-            fileReader.copyDirectorySuspend(audioDirInRc, root) {
-                isAudioFile(it) && filter(it)
-            }.map { StagedTake(root, File(it)) }
-        }
+        return Observable.fromIterable(audioDirsInRc.withIndex())
+            .concatMap { (index, audioDirInRc) ->
+                val root = File(destination, index.toString())
+                fileReader.copyDirectory(audioDirInRc, root) {
+                    isAudioFile(it) && filter(it)
+                }.map { StagedTake(root, File(it)) }
+            }
     }
 
     fun copyTakeFiles(
@@ -482,11 +474,45 @@ class ProjectFilesAccessor(
         }
     }
 
+    suspend fun copyTakeFilesSuspend(
+        fileReader: IFileReader,
+        manifestProject: Project,
+        filter: (String) -> Boolean = { true },
+        destination: File
+    ): List<StagedTake> {
+        val audioDirsInRc = listOf(RcConstants.TAKE_DIR, manifestProject.path)
+            .filter(fileReader::exists)
+            .map { File(it).normalize().path }
+            .distinct()
+        return audioDirsInRc.withIndex().flatMap { (index, audioDirInRc) ->
+            val root = File(destination, index.toString())
+            fileReader.copyDirectorySuspend(audioDirInRc, root) {
+                isAudioFile(it) && filter(it)
+            }.map { StagedTake(root, File(it)) }
+        }
+    }
+
     fun copyInProgressNarrationFiles(
         fileReader: IFileReader,
         manifestProject: Project
-    ): Observable<String> = rxObservable {
-        copyInProgressNarrationFilesSuspend(fileReader, manifestProject).forEach { send(it) }
+    ): Observable<String> {
+        return Observable.just(RcConstants.TAKE_DIR, manifestProject.path)
+            .filter(fileReader::exists)
+            .flatMap { audioDirInRc ->
+                val normalized = File(audioDirInRc).normalize().path
+                fileReader.copyDirectory(normalized, audioDir) {
+                    isInProgressNarrationFile(it)
+                }
+            }
+    }
+
+    fun copyInProgressNarrationFiles(
+        fileWriter: IFileWriter,
+        filter: (String) -> Boolean = { true }
+    ) {
+        fileWriter.copyDirectory(audioDir, RcConstants.TAKE_DIR) {
+            filter(it)
+        }
     }
 
     /** Copies the in-progress narration files into the project; returns the paths they were copied to. */
@@ -502,15 +528,6 @@ class ProjectFilesAccessor(
                     isInProgressNarrationFile(it)
                 }
             }
-
-    fun copyInProgressNarrationFiles(
-        fileWriter: IFileWriter,
-        filter: (String) -> Boolean = { true }
-    ) {
-        fileWriter.copyDirectory(audioDir, RcConstants.TAKE_DIR) {
-            filter(it)
-        }
-    }
 
     fun getContributorInfo(): List<Contributor> {
         return ResourceContainer.load(projectDir).use { rc ->

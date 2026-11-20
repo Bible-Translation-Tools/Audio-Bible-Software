@@ -26,8 +26,8 @@ class BackfillEditionFingerprintsTest {
         coEvery { sourcesWithoutFingerprint() } returns listOf(1, 2)
     }
     private val fingerprinter = mockk<EditionFingerprinter> {
-        coEvery { fingerprint(File("/sources/en_ulb")) } returns first
-        coEvery { fingerprint(File("/sources/es_ulb")) } returns second
+        coEvery { fingerprintSuspend(File("/sources/en_ulb")) } returns first
+        coEvery { fingerprintSuspend(File("/sources/es_ulb")) } returns second
     }
     private val initializer = BackfillEditionFingerprints(daoProvider, fingerprints, fingerprinter)
 
@@ -51,13 +51,13 @@ class BackfillEditionFingerprintsTest {
 
         initializer.execSuspend {}
 
-        coVerify(exactly = 0) { fingerprinter.fingerprint(any<File>()) }
+        coVerify(exactly = 0) { fingerprinter.fingerprintSuspend(any<File>()) }
     }
 
     /** A source that can't be read is tried again next launch; it never fails initialization. */
     @Test
     fun `a source that cannot be fingerprinted is skipped and the rest go on`() = runTest {
-        coEvery { fingerprinter.fingerprint(File("/sources/en_ulb")) } throws IllegalStateException("unreadable")
+        coEvery { fingerprinter.fingerprintSuspend(File("/sources/en_ulb")) } throws IllegalStateException("unreadable")
 
         initializer.execSuspend {}
 
@@ -72,14 +72,6 @@ class BackfillEditionFingerprintsTest {
         initializer.execSuspend {}
 
         coVerify(exactly = 0) { fingerprints.save(1, any()) }
-        coVerify(exactly = 1) { fingerprints.save(2, second) }
-    }
-
-    @Test
-    fun `the Rx exec does the same work`() {
-        initializer.exec(mockk()).blockingAwait()
-
-        coVerify(exactly = 1) { fingerprints.save(1, first) }
         coVerify(exactly = 1) { fingerprints.save(2, second) }
     }
 }

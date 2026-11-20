@@ -18,9 +18,7 @@
  */
 package org.bibletranslationtools.otter.common.initialization
 
-import io.reactivex.Observable
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.rx2.rxObservable
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
@@ -44,8 +42,6 @@ class InitializeApp(
 ) {
 
     private val logger = LoggerFactory.getLogger(InitializeApp::class.java)
-
-    fun initApp(): Observable<ProgressStatus> = rxObservable { initAppSuspend { trySend(it) } }
 
     /** Runs every startup step in order, reporting progress to [onProgress]. The first failure stops the rest. */
     suspend fun initAppSuspend(onProgress: (ProgressStatus) -> Unit) {

@@ -20,7 +20,6 @@ package org.bibletranslationtools.otter.common.domain.languages
 
 import io.reactivex.Completable
 import io.reactivex.schedulers.Schedulers
-import kotlinx.coroutines.rx2.rxCompletable
 import org.bibletranslationtools.otter.common.api.persistence.ILanguageDataSource
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.primitives.Language
@@ -38,14 +37,6 @@ class ImportLanguages(
 
     private val logger = LoggerFactory.getLogger(ImportLanguages::class.java)
 
-    fun import(inputStream: InputStream): Completable = rxCompletable { importSuspend(inputStream) }
-
-    suspend fun importSuspend(inputStream: InputStream) {
-        runCatching { languageRepo.insertAllSuspend(mapLanguages(inputStream)) }
-            .onFailure { logger.error("Error in ImportLanguages", it) }
-            .getOrThrow()
-    }
-
     fun update(url: String): Completable {
         return languageDataSource.fetchLanguageNames(url)
             .flatMapCompletable {
@@ -57,8 +48,16 @@ class ImportLanguages(
             .subscribeOn(Schedulers.io())
     }
 
-    fun updateRegions(inputStream: InputStream): Completable = rxCompletable {
-        updateRegionsSuspend(inputStream)
+    private fun mapLanguages(inputStream: InputStream): List<Language> {
+        val languages = inputStream.bufferedReader().use {
+            OTTER_JSON.decodeFromString(ListSerializer(Door43Language.serializer()), it.readText())
+        }
+        return languages.map { it.toLanguage() }
+    }
+    suspend fun importSuspend(inputStream: InputStream) {
+        runCatching { languageRepo.insertAllSuspend(mapLanguages(inputStream)) }
+            .onFailure { logger.error("Error in ImportLanguages", it) }
+            .getOrThrow()
     }
 
     suspend fun updateRegionsSuspend(inputStream: InputStream) {
@@ -67,12 +66,6 @@ class ImportLanguages(
             .getOrThrow()
     }
 
-    private fun mapLanguages(inputStream: InputStream): List<Language> {
-        val languages = inputStream.bufferedReader().use {
-            OTTER_JSON.decodeFromString(ListSerializer(Door43Language.serializer()), it.readText())
-        }
-        return languages.map { it.toLanguage() }
-    }
 }
 
 @Serializable

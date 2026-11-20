@@ -66,15 +66,4 @@ class InitializeVersificationTest {
         assertEquals(setOf("eng.json"), dir.list()!!.toSet())
         coVerify(exactly = 1) { repository.insertVersificationSuspend(any(), any()) }
     }
-
-    @Test
-    fun `the Rx exec does the same work`() {
-        val progress = Observable.create<ProgressStatus> { emitter ->
-            initializer(allBundled).exec(emitter).blockingAwait()
-            emitter.onComplete()
-        }.toList().blockingGet()
-
-        assertEquals(listOf(title), progress)
-        coVerify(exactly = 5) { repository.insertVersificationSuspend(any(), any()) }
-    }
 }

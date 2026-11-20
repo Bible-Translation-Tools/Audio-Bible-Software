@@ -110,12 +110,4 @@ class InitializeUlbTest {
         verify(exactly = 0) { installed.install(any()) }
         verify(exactly = 0) { stamps.markImported(any()) }
     }
-
-    @Test
-    fun `the Rx exec does the same work`() {
-        initializer.exec(mockk(relaxed = true)).blockingAwait()
-
-        coVerify(exactly = 1) { importer.importSuspend(tempFile, any(), any()) }
-        verify(exactly = 1) { installed.install(initializer) }
-    }
 }

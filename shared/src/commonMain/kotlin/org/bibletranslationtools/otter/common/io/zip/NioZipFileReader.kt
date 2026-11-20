@@ -2,9 +2,6 @@ package org.bibletranslationtools.otter.common.io.zip
 
 import org.bibletranslationtools.otter.common.api.io.zip.IFileReader
 import io.reactivex.Observable
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import org.bibletranslationtools.otter.common.io.utils.copyDirectoryFilesTo
 import org.bibletranslationtools.otter.common.io.utils.copyDirectoryTo
 import org.bibletranslationtools.otter.common.io.utils.jarUri
 import java.io.File
@@ -13,6 +10,9 @@ import java.nio.file.FileSystem
 import java.nio.file.FileSystems
 import java.nio.file.Files
 import kotlin.streams.asSequence
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.bibletranslationtools.otter.common.io.utils.copyDirectoryFilesTo
 
 class NioZipFileReader(
     zipFile: File
@@ -38,8 +38,11 @@ class NioZipFileReader(
         source: String,
         destinationDirectory: File,
         filter: (String) -> Boolean
-    ): Observable<String> = fileSystem.getPath(source).copyDirectoryTo(destinationDirectory.toPath(), filter)
-
+    ): Observable<String> {
+        val sourcePath = fileSystem.getPath(source)
+        val destPath = destinationDirectory.toPath()
+        return sourcePath.copyDirectoryTo(destPath, filter)
+    }
     override suspend fun copyDirectorySuspend(
         source: String,
         destinationDirectory: File,
@@ -47,4 +50,5 @@ class NioZipFileReader(
     ): List<String> = withContext(Dispatchers.IO) {
         fileSystem.getPath(source).copyDirectoryFilesTo(destinationDirectory.toPath(), filter)
     }
+
 }

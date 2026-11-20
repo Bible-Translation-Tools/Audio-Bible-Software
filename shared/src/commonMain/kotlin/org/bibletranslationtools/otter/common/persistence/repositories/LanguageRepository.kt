@@ -18,14 +18,10 @@
  */
 package org.bibletranslationtools.otter.common.persistence.repositories
 
-import kotlinx.coroutines.rx2.rxCompletable
-import kotlinx.coroutines.rx2.rxSingle
 import io.reactivex.Completable
 import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.rx2.await
-import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.data.workbook.Translation
@@ -34,6 +30,8 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.ILang
 import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.LanguageMapper
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.TranslationMapper
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class LanguageRepository(
     database: DaoProvider,
@@ -56,12 +54,6 @@ class LanguageRepository(
             }
             .subscribeOn(Schedulers.io())
     }
-
-    override fun insertAll(languages: List<Language>): Single<List<Int>> =
-        rxSingle { insertAllSuspend(languages) }
-
-    override fun updateRegions(languages: List<Language>): Completable =
-        rxCompletable { updateRegionsSuspend(languages) }
 
     override fun upsertAll(languages: List<Language>): Completable {
         return Completable.fromCallable {
@@ -132,7 +124,18 @@ class LanguageRepository(
             .subscribeOn(Schedulers.io())
     }
 
-    override fun getBySlug(slug: String): Single<Language> = rxSingle { getBySlugSuspend(slug) }
+    override fun getBySlug(slug: String): Single<Language> {
+        return Single
+            .fromCallable {
+                val language = languageDao.fetchBySlug(slug)
+                    ?: throw NullPointerException("Could not find language with slug $slug.")
+                mapper.mapFromEntity(language)
+            }
+            .doOnError { e ->
+                logger.error("Error in getBySlug for slug: $slug", e)
+            }
+            .subscribeOn(Schedulers.io())
+    }
 
     override fun update(obj: Language): Completable {
         return Completable
@@ -186,11 +189,33 @@ class LanguageRepository(
         }
     }
 
-    override fun insertTranslation(translation: Translation): Single<Int> =
-        rxSingle { insertTranslationSuspend(translation) }
+    override fun insertTranslation(translation: Translation): Single<Int> {
+        return Single
+            .fromCallable {
+                val existing = translationDao.fetch(translation.source.id, translation.target.id)
+                if (existing != null) {
+                    existing.modifiedTs = translation.modifiedTs?.toString()
+                    translationDao.update(existing)
+                    existing.id
+                } else {
+                    translationDao.insert(translationMapper.mapToEntity(translation))
+                }
+            }
+            .doOnError { e ->
+                logger.error("Error in insert for translation: $translation", e)
+            }
+            .subscribeOn(Schedulers.io())
+    }
 
-    override fun updateTranslation(translation: Translation): Completable =
-        rxCompletable { updateTranslationSuspend(translation) }
+    override fun updateTranslation(translation: Translation): Completable {
+        return Completable.fromCallable {
+            translationDao.update(translationMapper.mapToEntity(translation))
+        }
+            .doOnError { e ->
+                logger.error("Error in update translation: $translation", e)
+            }
+            .subscribeOn(Schedulers.io())
+    }
 
     override fun deleteTranslation(translation: Translation): Completable {
         return Completable

@@ -1,9 +1,8 @@
 package org.bibletranslationtools.otter.common.domain.project.importer
 
-import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
-import kotlinx.coroutines.test.runTest
+import io.reactivex.Maybe
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
 import org.bibletranslationtools.otter.common.collections.OtterTree
 import org.bibletranslationtools.otter.common.collections.OtterTreeNode
@@ -213,7 +212,7 @@ class SourceStructurePlannerTest {
     }
 
     @Test
-    fun `a container that names no versification is imported as parsed`() = runTest {
+    fun `a container that names no versification is imported as parsed`() {
         val parsed = root(book("gen", chapter("gen", 1, verse(1), verse(3))))
 
         val plan = planner.plan(container(versification = ""), parsed)
@@ -223,10 +222,10 @@ class SourceStructurePlannerTest {
     }
 
     @Test
-    fun `the closest standard versification is used, not the declared one`() = runTest {
-        coEvery { repository.getVersificationSuspend(any()) } returns null
-        coEvery { repository.getVersificationSuspend("eng") } returns FakeVersification(mapOf("gen" to listOf(5)))
-        coEvery { repository.getVersificationSuspend("rsc") } returns FakeVersification(mapOf("gen" to listOf(3)))
+    fun `the closest standard versification is used, not the declared one`() {
+        every { repository.getVersification(any()) } returns Maybe.empty()
+        every { repository.getVersification("eng") } returns Maybe.just(FakeVersification(mapOf("gen" to listOf(5))))
+        every { repository.getVersification("rsc") } returns Maybe.just(FakeVersification(mapOf("gen" to listOf(3))))
         val parsed = root(book("gen", chapter("gen", 1, verse(1), verse(3))))
 
         val plan = planner.plan(container(versification = "ufw"), parsed)

@@ -14,25 +14,26 @@ class EditionFingerprinter(
     private val structurePlanner: SourceStructurePlanner,
     private val zipEntryTreeBuilder: IZipEntryTreeBuilder
 ) {
-    /** The fingerprint of [parsedTree], the text of [container] as parsed, before any gap-filling. */
-    suspend fun fingerprint(
-        container: ResourceContainer,
-        parsedTree: OtterTree<CollectionOrContent>
-    ): EditionFingerprint =
-        fingerprint(
-            parsedTree = parsedTree,
-            detectedVersification = structurePlanner.detect(container, parsedTree)?.code
-        )
-
+    /**
+     * The fingerprint of [parsedTree], the text of [container] as parsed, before any gap-filling.
+     * Pass [detectedVersification] when it is already known, to skip detecting it again.
+     */
     fun fingerprint(
+        container: ResourceContainer,
         parsedTree: OtterTree<CollectionOrContent>,
-        detectedVersification: String?
+        detectedVersification: String? = structurePlanner.detect(container, parsedTree)?.code
     ): EditionFingerprint = EditionFingerprint.of(parsedTree, detectedVersification)
 
     /** The fingerprint of the source stored at [path], read from its files. */
-    suspend fun fingerprint(path: File): EditionFingerprint =
+    fun fingerprint(path: File): EditionFingerprint =
         ResourceContainer.load(path, OtterResourceContainerConfig()).use { container ->
-            val tree = IProjectReader.constructContainerTree(container, zipEntryTreeBuilder)
-            fingerprint(container, tree)
+            fingerprint(container, IProjectReader.constructContainerTree(container, zipEntryTreeBuilder))
+        }
+
+    /** Suspending [fingerprint] of the source stored at [path]. */
+    suspend fun fingerprintSuspend(path: File): EditionFingerprint =
+        ResourceContainer.load(path, OtterResourceContainerConfig()).use { container ->
+            val parsedTree = IProjectReader.constructContainerTree(container, zipEntryTreeBuilder)
+            fingerprint(container, parsedTree, structurePlanner.detectSuspend(container, parsedTree)?.code)
         }
 }

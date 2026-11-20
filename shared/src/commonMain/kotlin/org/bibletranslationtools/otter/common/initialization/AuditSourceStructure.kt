@@ -1,9 +1,6 @@
 package org.bibletranslationtools.otter.common.initialization
 
-import io.reactivex.Completable
-import io.reactivex.ObservableEmitter
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.rx2.rxCompletable
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -50,9 +47,6 @@ class AuditSourceStructure(
     override val version = 2
 
     private val logger = LoggerFactory.getLogger(AuditSourceStructure::class.java)
-
-    override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable =
-        rxCompletable { execSuspend(progressEmitter::onNext) }
 
     override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) {
         withContext(Dispatchers.IO) {

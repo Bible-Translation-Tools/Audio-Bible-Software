@@ -66,12 +66,4 @@ class AuditSourceStructureTest {
         assertFalse(report.exists())
         verify(exactly = 0) { installed.install(any()) }
     }
-
-    @Test
-    fun `the Rx exec does the same work`() {
-        initializer.exec(mockk()).blockingAwait()
-
-        assertTrue(report.exists())
-        verify(exactly = 1) { installed.install(initializer) }
-    }
 }

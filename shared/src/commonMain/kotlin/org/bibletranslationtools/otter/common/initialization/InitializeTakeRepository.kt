@@ -18,9 +18,6 @@
  */
 package org.bibletranslationtools.otter.common.initialization
 
-import io.reactivex.Completable
-import io.reactivex.ObservableEmitter
-import kotlinx.coroutines.rx2.rxCompletable
 import org.bibletranslationtools.otter.common.api.persistence.config.Initializable
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ITakeRepository
 import org.slf4j.LoggerFactory
@@ -31,9 +28,6 @@ class InitializeTakeRepository(
 ) : Initializable {
 
     private val log = LoggerFactory.getLogger(InitializeTakeRepository::class.java)
-
-    override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable =
-        rxCompletable { execSuspend(progressEmitter::onNext) }
 
     override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) {
         log.info("Initializing take repository...")

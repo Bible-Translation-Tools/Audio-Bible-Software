@@ -32,12 +32,4 @@ class InitializeTakeRepositoryTest {
 
         coVerify(exactly = 0) { takes.deleteExpiredTakesSuspend(any()) }
     }
-
-    @Test
-    fun `the Rx exec does the same work`() {
-        initializer.exec(mockk()).blockingAwait()
-
-        coVerify(exactly = 1) { takes.removeNonExistentTakesSuspend() }
-        coVerify(exactly = 1) { takes.deleteExpiredTakesSuspend() }
-    }
 }

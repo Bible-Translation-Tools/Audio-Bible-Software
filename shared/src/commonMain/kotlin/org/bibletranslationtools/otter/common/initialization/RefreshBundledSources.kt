@@ -1,9 +1,6 @@
 package org.bibletranslationtools.otter.common.initialization
 
-import io.reactivex.Completable
-import io.reactivex.ObservableEmitter
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.rx2.rxCompletable
 import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.io.IBundledContentSource
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
@@ -42,16 +39,13 @@ class RefreshBundledSources(
 
     private val logger = LoggerFactory.getLogger(RefreshBundledSources::class.java)
 
-    override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable =
-        rxCompletable { execSuspend(progressEmitter::onNext) }
-
     override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) {
         withContext(Dispatchers.IO) {
             for (name in catalog.embeddedSourceChecksums.keys) {
                 if (stamps.isCurrent(name)) continue
                 val languageCode = catalog.sources.firstOrNull { it.name == name }?.languageCode ?: continue
                 val identifier = name.removePrefix("${languageCode}_")
-                if (installedEditions.editionsOf(languageCode, identifier).isEmpty()) continue
+                if (installedEditions.editionsOfNoRx(languageCode, identifier).isEmpty()) continue
 
                 runCatching { refresh(name) }
                     .onSuccess { result ->
