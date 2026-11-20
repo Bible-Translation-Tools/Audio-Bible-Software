@@ -1277,29 +1277,6 @@ class OngoingProjectImporter(
         return sourceCollection
     }
 
-    private suspend fun findSourceCollectionSuspend(manifestSources: Set<Source>, manifestProject: Project): Collection {
-        val allSourceProjects = collectionRepository.getSourceProjectsSuspend()
-        val sourceCollection: Collection? = allSourceProjects
-            .asSequence()
-            .filter { sourceProject ->
-                sourceProject.resourceContainer
-                    ?.run { Source(identifier, language.slug, version) }
-                    ?.let { it in manifestSources }
-                    ?: false
-            }
-            .filter {
-                it.slug == manifestProject.identifier
-            }
-            .sortedWith(EditionOrder.newestFirstBy { it.resourceContainer })
-            .firstOrNull()
-
-        if (sourceCollection == null) {
-            logger.error("Failed to find source that matches requested import.")
-            throw ImportException(ImportResult.FAILED)
-        }
-        return sourceCollection
-    }
-
     private fun hasInProgressMarker(resourceContainer: File): Boolean {
         return directoryProvider.newFileReader(resourceContainer).use {
             it.exists(RcConstants.SELECTED_TAKES_FILE)

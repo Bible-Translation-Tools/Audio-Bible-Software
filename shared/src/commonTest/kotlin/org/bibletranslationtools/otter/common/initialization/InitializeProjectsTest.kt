@@ -12,17 +12,26 @@ import org.bibletranslationtools.otter.common.api.persistence.repositories.IReso
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ITakeRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookRepository
 import org.bibletranslationtools.otter.common.data.primitives.CheckingStatus
+import org.bibletranslationtools.otter.common.data.primitives.ContainerType
+import org.bibletranslationtools.otter.common.data.primitives.Language
+import org.bibletranslationtools.otter.common.data.primitives.ResourceMetadata
 import org.bibletranslationtools.otter.common.data.primitives.Take
 import org.bibletranslationtools.otter.common.data.workbook.Workbook
 import org.bibletranslationtools.otter.common.domain.project.importer.RCImporter
 import org.bibletranslationtools.otter.common.domain.project.importer.RCImporterFactory
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
+import org.bibletranslationtools.otter.common.io.zip.NioZipFileReader
 import java.io.File
 import java.nio.file.Files
 import java.time.LocalDate
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class InitializeProjectsTest {
 
@@ -110,4 +119,36 @@ class InitializeProjectsTest {
 
         verify(exactly = 0) { installed.install(any()) }
     }
+
+    /** Version 2 keeps sources unpacked: the zip is replaced by a folder and the stored path follows. */
+    @Test
+    fun `a source stored as a zip is unpacked beside it, the zip removed and its path updated`() = runTest {
+        installedVersion(null)
+        val sources = File(userData, "sources").apply { mkdirs() }
+        val zip = File(sources, "en_ulb.zip")
+        ZipOutputStream(zip.outputStream()).use { out ->
+            out.putNextEntry(ZipEntry("en_ulb/manifest.yaml")); out.write("manifest".toByteArray()); out.closeEntry()
+            out.putNextEntry(ZipEntry("en_ulb/content/gen.usfm")); out.write("text".toByteArray()); out.closeEntry()
+        }
+        val source = ResourceMetadata(
+            conformsTo = "rc0.2", creator = "Door43", description = "", format = "text/usfm", identifier = "ulb",
+            issued = LocalDate.now(), language = Language("en", "English", "English", "ltr", true, "Europe"),
+            modified = LocalDate.now(), publisher = "", subject = "", type = ContainerType.Book, title = "ULB",
+            version = "1", license = "", path = zip
+        )
+        coEvery { metadataRepo.getAllSourcesNoRx() } returns listOf(source)
+        coEvery { metadataRepo.updateSuspend(any<ResourceMetadata>()) } returns Unit
+        every { directories.newFileReader(any()) } answers { NioZipFileReader(firstArg()) }
+        val unpacked = File(sources, "en_ulb-source")
+
+        initializer.execSuspend {}
+
+        assertEquals("manifest", File(unpacked, "manifest.yaml").readText())
+        assertEquals("text", File(unpacked, "content/gen.usfm").readText())
+        assertFalse(zip.exists(), "the zip is removed once it is unpacked")
+        coVerify(exactly = 1) { metadataRepo.updateSuspend(match<ResourceMetadata> { it.path == unpacked && it.identifier == "ulb" }) }
+        verify(exactly = 1) { installed.install(initializer) }
+        assertTrue(unpacked.isDirectory)
+    }
+
 }
