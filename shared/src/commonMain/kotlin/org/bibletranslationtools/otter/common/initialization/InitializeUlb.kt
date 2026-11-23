@@ -64,7 +64,7 @@ class InitializeUlb(
         }
 
         val enUlbFile = prepareImportFile()
-        if (importer.isAlreadyImportedSuspend(enUlbFile)) {
+        if (importer.isAlreadyImported(enUlbFile)) {
             bundledStamps.markImported(EN_ULB_FILENAME)
             log.info("$EN_ULB_FILENAME already exists, skipped.")
             return

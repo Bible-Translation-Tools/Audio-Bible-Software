@@ -73,7 +73,7 @@ class InitializeLanguages(
     private suspend fun migrateTo1() {
         runCatching {
             val stream = bundledContent.read(LANGNAMES_PATH).inputStream()
-            ImportLanguages(languageRepo, languageDataSource).importSuspend(stream)
+            ImportLanguages(languageRepo, languageDataSource).import(stream)
         }
             .onFailure { log.error("Error importing languages.", it) }
             .getOrThrow()
@@ -83,7 +83,7 @@ class InitializeLanguages(
         runCatching {
             val stream = bundledContent.read(LANGNAMES_PATH).inputStream()
             ImportLanguages(languageRepo, languageDataSource)
-                .updateRegionsSuspend(stream)
+                .updateRegions(stream)
         }
             .onFailure { log.error("Error updating regions.", it) }
             .getOrThrow()

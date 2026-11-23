@@ -20,7 +20,7 @@ class InitializeLanguagesTest {
 
     private val installed = mockk<IInstalledEntityRepository>(relaxUnitFun = true)
     private val languages = mockk<ILanguageRepository>(relaxUnitFun = true) {
-        coEvery { insertAllSuspend(any()) } returns listOf(1)
+        coEvery { insertAll(any()) } returns listOf(1)
     }
 
     // Only the suspending read is stubbed, so a blocking read would fail the test.
@@ -40,8 +40,8 @@ class InitializeLanguagesTest {
         initializer.exec {}
 
         coVerifyOrder {
-            languages.insertAllSuspend(match { it.single().slug == "en" })
-            languages.updateRegionsSuspend(match { it.single().region == "Europe" })
+            languages.insertAll(match { it.single().slug == "en" })
+            languages.updateRegions(match { it.single().region == "Europe" })
         }
         verify(exactly = 1) { installed.install(initializer) }
     }
@@ -52,8 +52,8 @@ class InitializeLanguagesTest {
 
         initializer.exec {}
 
-        coVerify(exactly = 0) { languages.insertAllSuspend(any()) }
-        coVerify(exactly = 1) { languages.updateRegionsSuspend(any()) }
+        coVerify(exactly = 0) { languages.insertAll(any()) }
+        coVerify(exactly = 1) { languages.updateRegions(any()) }
         verify(exactly = 1) { installed.install(initializer) }
     }
 
@@ -70,7 +70,7 @@ class InitializeLanguagesTest {
     @Test
     fun `a failed import fails the step and records nothing`() = runTest {
         installedVersion(null)
-        coEvery { languages.insertAllSuspend(any()) } throws IllegalStateException("insert failed")
+        coEvery { languages.insertAll(any()) } throws IllegalStateException("insert failed")
 
         assertFailsWith<IllegalStateException> { initializer.exec {} }
 
@@ -81,7 +81,7 @@ class InitializeLanguagesTest {
     @Test
     fun `a failed region update fails the step and records nothing`() = runTest {
         installedVersion(1)
-        coEvery { languages.updateRegionsSuspend(any()) } throws IllegalStateException("update failed")
+        coEvery { languages.updateRegions(any()) } throws IllegalStateException("update failed")
 
         assertFailsWith<IllegalStateException> { initializer.exec {} }
 

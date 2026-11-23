@@ -50,7 +50,7 @@ class InitializeVersification(
             directoryProvider.versificationDirectory.listFiles()?.forEach { file ->
                 if (file.extension == "json") {
                     logger.info("Inserting versification: ${file.name}")
-                    versificationRepository.insertVersificationSuspend(
+                    versificationRepository.insertVersification(
                         slug = file.nameWithoutExtension,
                         path = file
                     )

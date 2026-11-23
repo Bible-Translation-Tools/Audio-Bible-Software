@@ -19,7 +19,6 @@
 package org.bibletranslationtools.otter.common.domain.project
 
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.InstalledSourceEditions
 import org.bibletranslationtools.otter.common.domain.project.importer.EditionFingerprinter
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
@@ -215,7 +214,7 @@ class ImportProjectUseCase(
      * Whether the source edition in [file] is already installed: the same edition, not just some
      * edition of the same source. The file is only parsed when some edition of it is installed.
      */
-    suspend fun isAlreadyImportedSuspend(file: File): Boolean = withContext(Dispatchers.IO) {
+    suspend fun isAlreadyImported(file: File): Boolean = withContext(Dispatchers.IO) {
         val dublinCore = ResourceContainer.load(file, true).use { it.manifest.dublinCore }
         val languageSlug = dublinCore.language.identifier
         if (installedEditions.editionsOfNoRx(languageSlug, dublinCore.identifier).isEmpty()) return@withContext false

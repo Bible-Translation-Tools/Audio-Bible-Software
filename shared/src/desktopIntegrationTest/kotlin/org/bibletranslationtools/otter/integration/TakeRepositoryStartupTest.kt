@@ -50,7 +50,7 @@ class TakeRepositoryStartupTest {
         val (kept, gone) = ids
         fileOf(environment.take(gone).filepath).delete()
 
-        runBlocking { environment.takes.removeNonExistentTakesSuspend() }
+        runBlocking { environment.takes.removeNonExistentTakes() }
 
         assertEquals(listOf(40), environment.versesWithTakes(project, 19))
         assertNull(environment.selectedTakeOn(project, 19, 41), "the verse no longer selects the removed take")

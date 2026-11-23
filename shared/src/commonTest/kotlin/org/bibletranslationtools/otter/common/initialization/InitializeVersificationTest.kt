@@ -53,7 +53,7 @@ class InitializeVersificationTest {
         val slugs = listOf("ulb", "ufw") + StandardVersifications.all
         assertEquals(slugs.map { "$it.json" }.toSet(), dir.list()!!.toSet())
         assertEquals("{\"code\":\"ulb\"}", File(dir, "ufw.json").readText())
-        slugs.forEach { coVerify(exactly = 1) { repository.insertVersificationSuspend(it, File(dir, "$it.json")) } }
+        slugs.forEach { coVerify(exactly = 1) { repository.insertVersification(it, File(dir, "$it.json")) } }
     }
 
     @Test
@@ -63,6 +63,6 @@ class InitializeVersificationTest {
         initializer(engOnly).exec {}
 
         assertEquals(setOf("eng.json"), dir.list()!!.toSet())
-        coVerify(exactly = 1) { repository.insertVersificationSuspend(any(), any()) }
+        coVerify(exactly = 1) { repository.insertVersification(any(), any()) }
     }
 }

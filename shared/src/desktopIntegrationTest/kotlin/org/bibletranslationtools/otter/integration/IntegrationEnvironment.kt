@@ -254,7 +254,7 @@ class IntegrationEnvironment private constructor(
 
     /** Whether the edition in [rc] is already installed, as the app asks before bundling one. */
     fun isAlreadyImported(rc: File): Boolean =
-        runBlocking { koin.get<ImportProjectUseCase>().isAlreadyImportedSuspend(rc) }
+        runBlocking { koin.get<ImportProjectUseCase>().isAlreadyImported(rc) }
 
     /** Deletes the source edition stored at [path], as the app would. */
     fun deleteSource(path: String): DeleteResult =
@@ -757,7 +757,7 @@ class IntegrationEnvironment private constructor(
          */
         private fun IntegrationEnvironment.importLanguages() {
             langNamesFile().inputStream().use { stream ->
-                runBlocking { koin.get<ImportLanguages>().importSuspend(stream) }
+                runBlocking { koin.get<ImportLanguages>().import(stream) }
             }
         }
 

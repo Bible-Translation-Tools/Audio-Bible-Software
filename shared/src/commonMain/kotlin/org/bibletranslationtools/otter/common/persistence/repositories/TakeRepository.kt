@@ -304,7 +304,7 @@ class TakeRepository(
         }
     }
 
-    override suspend fun removeNonExistentTakesSuspend() = withContext(Dispatchers.IO) {
+    override suspend fun removeNonExistentTakes() = withContext(Dispatchers.IO) {
         runCatching {
             database.transaction {
                 val takes = takeDao.fetchAll()

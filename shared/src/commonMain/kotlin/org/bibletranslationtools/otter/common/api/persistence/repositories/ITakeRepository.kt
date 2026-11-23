@@ -39,7 +39,7 @@ interface ITakeRepository : IRepository<Take> {
     suspend fun getByContentSuspend(content: Content, includeDeleted: Boolean = false): List<Take>
     suspend fun getByContentNoRx(content: Content, includeDeleted: Boolean = false): List<Take>
     suspend fun deleteForContentSuspend(content: Content)
-    suspend fun removeNonExistentTakesSuspend()
+    suspend fun removeNonExistentTakes()
     suspend fun markDeletedSuspend(take: Take)
     suspend fun getSoftDeletedTakesSuspend(project: Collection): List<Take>
     suspend fun deleteExpiredTakesSuspend(expiry: Int = 0)

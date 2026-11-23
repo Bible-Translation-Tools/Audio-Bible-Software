@@ -32,7 +32,7 @@ class InitializeTakeRepository(
     override suspend fun exec(onProgress: (ProgressStatus) -> Unit) {
         log.info("Initializing take repository...")
         runCatching {
-            takeRepository.removeNonExistentTakesSuspend()
+            takeRepository.removeNonExistentTakes()
             takeRepository.deleteExpiredTakesSuspend()
         }
             .onFailure { log.error("Error initializing take repository", it) }

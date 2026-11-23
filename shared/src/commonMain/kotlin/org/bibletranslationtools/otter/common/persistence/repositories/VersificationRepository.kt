@@ -18,19 +18,14 @@
  */
 package org.bibletranslationtools.otter.common.persistence.repositories
 
-import io.reactivex.Completable
 import io.reactivex.Maybe
-import io.reactivex.Single
 import io.reactivex.schedulers.Schedulers
-import kotlinx.coroutines.rx2.await
-import kotlinx.coroutines.rx2.awaitSingleOrNull
 import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.domain.versification.ParatextVersification
 import org.bibletranslationtools.otter.common.domain.versification.Versification
 import org.bibletranslationtools.otter.common.api.persistence.IAppDirectories
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
 import org.bibletranslationtools.otter.common.persistence.database.dao.DaoProvider
-import org.bibletranslationtools.otter.common.persistence.repositories.LanguageRepository
 import java.io.File
 import org.bibletranslationtools.otter.common.OTTER_JSON
 import kotlinx.coroutines.Dispatchers
@@ -69,7 +64,7 @@ class VersificationRepository(
                 )
             }
         }
-    override suspend fun insertVersificationSuspend(slug: String, path: File) {
+    override suspend fun insertVersification(slug: String, path: File) {
         withContext(Dispatchers.IO) { versificationDao.upsert(slug, path.name) }
     }
 }

@@ -33,7 +33,7 @@ class InitializeUlbTest {
         every { getInstalledVersion(any()) } returns null
     }
     private val importer = mockk<ImportProjectUseCase> {
-        coEvery { isAlreadyImportedSuspend(any()) } returns false
+        coEvery { isAlreadyImported(any()) } returns false
         coEvery { importSuspend(any(), any(), any()) } returns ImportResult.SUCCESS
     }
 
@@ -90,7 +90,7 @@ class InitializeUlbTest {
     /** As the Rx version behaved: the stamp is marked, the step's own version is not. */
     @Test
     fun `a source that is already installed is not imported again`() = runTest {
-        coEvery { importer.isAlreadyImportedSuspend(any()) } returns true
+        coEvery { importer.isAlreadyImported(any()) } returns true
 
         initializer.exec {}
 

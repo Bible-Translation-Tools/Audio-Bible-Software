@@ -19,14 +19,14 @@ class InitializeTakeRepositoryTest {
         initializer.exec {}
 
         coVerifyOrder {
-            takes.removeNonExistentTakesSuspend()
+            takes.removeNonExistentTakes()
             takes.deleteExpiredTakesSuspend()
         }
     }
 
     @Test
     fun `a failure in the first step fails the initializer and skips the second`() = runTest {
-        coEvery { takes.removeNonExistentTakesSuspend() } throws IllegalStateException("database is locked")
+        coEvery { takes.removeNonExistentTakes() } throws IllegalStateException("database is locked")
 
         assertFailsWith<IllegalStateException> { initializer.exec {} }
 

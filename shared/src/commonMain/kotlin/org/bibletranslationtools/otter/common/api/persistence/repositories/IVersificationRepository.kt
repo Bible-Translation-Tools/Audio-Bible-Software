@@ -26,5 +26,5 @@ interface IVersificationRepository {
     fun getVersification(slug: String): Maybe<Versification>
 
     suspend fun getVersificationSuspend(slug: String): Versification?
-    suspend fun insertVersificationSuspend(slug: String, path: File)
+    suspend fun insertVersification(slug: String, path: File)
 }

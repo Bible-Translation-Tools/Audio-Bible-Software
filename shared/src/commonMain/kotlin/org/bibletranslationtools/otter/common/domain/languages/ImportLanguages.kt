@@ -54,14 +54,14 @@ class ImportLanguages(
         }
         return languages.map { it.toLanguage() }
     }
-    suspend fun importSuspend(inputStream: InputStream) {
-        runCatching { languageRepo.insertAllSuspend(mapLanguages(inputStream)) }
+    suspend fun import(inputStream: InputStream) {
+        runCatching { languageRepo.insertAll(mapLanguages(inputStream)) }
             .onFailure { logger.error("Error in ImportLanguages", it) }
             .getOrThrow()
     }
 
-    suspend fun updateRegionsSuspend(inputStream: InputStream) {
-        runCatching { languageRepo.updateRegionsSuspend(mapLanguages(inputStream)) }
+    suspend fun updateRegions(inputStream: InputStream) {
+        runCatching { languageRepo.updateRegions(mapLanguages(inputStream)) }
             .onFailure { logger.error("Error in updateRegions", it) }
             .getOrThrow()
     }
