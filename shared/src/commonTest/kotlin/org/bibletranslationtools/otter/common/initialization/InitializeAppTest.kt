@@ -29,7 +29,7 @@ class InitializeAppTest {
 
     private val tempFiles = mockk<ITempFileProvider>(relaxUnitFun = true)
     private val daoProvider = mockk<DaoProvider> {
-        coEvery { withBulkLoadSuspend(any<suspend () -> Unit>()) } coAnswers { firstArg<suspend () -> Unit>().invoke() }
+        coEvery { withBulkLoad(any<suspend () -> Unit>()) } coAnswers { firstArg<suspend () -> Unit>().invoke() }
     }
 
     private val initApp = InitializeApp(
@@ -41,20 +41,20 @@ class InitializeAppTest {
     fun `runs every step in order, reports progress and cleans the temp directory`() = runTest {
         val progress = mutableListOf<ProgressStatus>()
 
-        initApp.initAppSuspend { progress += it }
+        initApp.initApp { progress += it }
 
         coVerifyOrder {
-            versification.execSuspend(any())
-            languages.execSuspend(any())
-            sources.execSuspend(any())
-            ulb.execSuspend(any())
-            takes.execSuspend(any())
-            projects.execSuspend(any())
-            translations.execSuspend(any())
-            fingerprints.execSuspend(any())
-            labels.execSuspend(any())
-            bundled.execSuspend(any())
-            audit.execSuspend(any())
+            versification.exec(any())
+            languages.exec(any())
+            sources.exec(any())
+            ulb.exec(any())
+            takes.exec(any())
+            projects.exec(any())
+            translations.exec(any())
+            fingerprints.exec(any())
+            labels.exec(any())
+            bundled.exec(any())
+            audit.exec(any())
         }
         assertEquals(11, progress.size)
         assertEquals(1.0, progress.last().percent!!, 0.0001)
@@ -63,12 +63,12 @@ class InitializeAppTest {
 
     @Test
     fun `the first failing step stops the rest, and the temp directory is still cleaned`() = runTest {
-        coEvery { sources.execSuspend(any()) } throws IllegalStateException("database is locked")
+        coEvery { sources.exec(any()) } throws IllegalStateException("database is locked")
 
-        assertFailsWith<IllegalStateException> { initApp.initAppSuspend {} }
+        assertFailsWith<IllegalStateException> { initApp.initApp {} }
 
-        coVerify(exactly = 1) { languages.execSuspend(any()) }
-        coVerify(exactly = 0) { ulb.execSuspend(any()) }
+        coVerify(exactly = 1) { languages.exec(any()) }
+        coVerify(exactly = 0) { ulb.exec(any()) }
         verify(exactly = 1) { tempFiles.cleanTempDirectory() }
     }
 }

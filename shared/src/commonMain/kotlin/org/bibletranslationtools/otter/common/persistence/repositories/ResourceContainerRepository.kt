@@ -236,10 +236,7 @@ class ResourceContainerRepository(
                 val languageEntity = languageDao.fetchBySlug(languageSlug)
                     ?: throw NullPointerException("Could not find language with slug $languageSlug.")
                 val language = LanguageMapper().mapFromEntity(languageEntity)
-                val metadata = dublinCore.mapToMetadata(rc.file, language)
-                    .let {
-                        insertMetadataOrThrow(it, fingerprint)
-                    }
+                val metadata = insertMetadataOrThrow(dublinCore.mapToMetadata(rc.file, language), fingerprint)
                 fingerprint?.let { database.storeEditionFingerprint(metadata.id, it) }
 
                 val relatedDublinCoreIds: List<Int> =
@@ -271,13 +268,7 @@ class ResourceContainerRepository(
 
     override suspend fun removeResourceContainerSuspend(
         resourceContainer: ResourceContainer
-    ): DeleteResult = withContext(Dispatchers.IO) {
-        resourceContainer.use { resourceContainer ->
-            runCatching { remove(resourceContainer) }
-                .onFailure { logger.error("Error in removeResourceContainer.", it) }
-                .getOrThrow()
-        }
-    }
+    ): DeleteResult = removeResourceContainer(resourceContainer).await()
 
     private fun findRootCollectionsForRc(dublinCoreId: Int): List<Collection> {
         return collectionRepository
@@ -386,43 +377,6 @@ class ResourceContainerRepository(
             )
         }
     }
-    private fun remove(resourceContainer: ResourceContainer): DeleteResult {
-        var result = DeleteResult.SUCCESS
-
-        database.transaction {
-            val metadataEntity = sourceEntityAt(resourceContainer.file)
-
-            val derivedRcExists = resourceMetadataDao.fetchAll().any {
-                it.derivedFromFk != null && it.derivedFromFk == metadataEntity?.id
-            }
-
-            when {
-                metadataEntity == null -> {
-                    result = DeleteResult.NOT_FOUND
-                    return@transaction
-                }
-
-                derivedRcExists -> {
-                    result = DeleteResult.DEPENDENCY_EXISTS
-                    return@transaction
-                }
-
-                else -> metadataEntity
-            }
-
-            // delete entities with foreign keys refer to rc first
-            collectionDao.fetchAll()
-                .filter { it.dublinCoreFk == metadataEntity.id }
-                .forEach {
-                    collectionDao.delete(it)
-                }
-
-            resourceMetadataDao.delete(metadataEntity)
-        }
-
-        return result
-    }
-
     /** Ids of the root source collections of the container with [dublinCoreId]. */
     private fun rootCollectionIdsForRc(dublinCoreId: Int): List<Int> =
         collectionDao.fetchAll()

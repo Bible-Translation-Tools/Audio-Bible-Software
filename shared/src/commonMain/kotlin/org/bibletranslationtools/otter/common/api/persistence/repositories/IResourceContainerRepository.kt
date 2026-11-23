@@ -41,9 +41,6 @@ interface IResourceContainerRepository {
         resourceContainer: ResourceContainer
     ): Single<DeleteResult>
 
-    /**
-     * @param fingerprint stored with the new source row in the same transaction, when given.
-     */
     suspend fun importResourceContainerSuspend(
         rc: ResourceContainer,
         rcTree: OtterTree<CollectionOrContent>,

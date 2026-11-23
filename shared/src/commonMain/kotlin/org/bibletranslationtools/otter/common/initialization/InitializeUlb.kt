@@ -48,7 +48,7 @@ class InitializeUlb(
 
     private val log = LoggerFactory.getLogger(InitializeUlb::class.java)
 
-    override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) {
+    override suspend fun exec(onProgress: (ProgressStatus) -> Unit) {
         withContext(Dispatchers.IO) {
             runCatching { initialize(onProgress) }
                 .onFailure { log.error("Error in initializeUlb", it) }

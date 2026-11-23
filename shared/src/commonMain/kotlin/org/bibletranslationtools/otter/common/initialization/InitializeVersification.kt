@@ -41,7 +41,7 @@ class InitializeVersification(
 
     private val logger = LoggerFactory.getLogger(this::class.java)
 
-    override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) {
+    override suspend fun exec(onProgress: (ProgressStatus) -> Unit) {
         withContext(Dispatchers.IO) {
             onProgress(ProgressStatus(titleKey = "initializingVersification"))
             copyUlbVersification()

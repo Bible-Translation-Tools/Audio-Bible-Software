@@ -77,7 +77,7 @@ abstract class AbstractDatabaseCharacterizationTest {
     protected fun installable(name: String, version: Int) = object : Installable {
         override val name = name
         override val version = version
-        override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) = Unit
+        override suspend fun exec(onProgress: (ProgressStatus) -> Unit) = Unit
     }
 
     protected fun language(

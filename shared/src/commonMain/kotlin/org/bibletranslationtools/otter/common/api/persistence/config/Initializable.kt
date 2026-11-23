@@ -27,5 +27,5 @@ interface Initializable {
     /**
      * Executes the initializable task
      * */
-    suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit)
+    suspend fun exec(onProgress: (ProgressStatus) -> Unit)
 }

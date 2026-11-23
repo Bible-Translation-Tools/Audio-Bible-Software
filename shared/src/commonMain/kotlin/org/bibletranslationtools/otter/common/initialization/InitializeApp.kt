@@ -44,7 +44,7 @@ class InitializeApp(
     private val logger = LoggerFactory.getLogger(InitializeApp::class.java)
 
     /** Runs every startup step in order, reporting progress to [onProgress]. The first failure stops the rest. */
-    suspend fun initAppSuspend(onProgress: (ProgressStatus) -> Unit) {
+    suspend fun initApp(onProgress: (ProgressStatus) -> Unit) {
         withContext(Dispatchers.IO) {
             try {
                 runCatching { runInitializers(onProgress) }
@@ -74,13 +74,13 @@ class InitializeApp(
         var total = 0.0
         val increment = (1.0).div(initializers.size)
         val appStart = System.currentTimeMillis()
-        daoProvider.withBulkLoadSuspend {
+        daoProvider.withBulkLoad {
             logger.info("INIT withBulkLoad started (${System.currentTimeMillis() - appStart} ms)")
             initializers.forEach {
                 total += increment
                 onProgress(ProgressStatus(percent = total))
                 val stepStart = System.currentTimeMillis()
-                runCatching { it.execSuspend(onProgress) }
+                runCatching { it.exec(onProgress) }
                     .onFailure { e -> logger.error("Error in Initialization", e) }
                     .getOrThrow()
                 logger.info("INIT ${it::class.simpleName} took ${System.currentTimeMillis() - stepStart} ms (total ${System.currentTimeMillis() - appStart} ms)")

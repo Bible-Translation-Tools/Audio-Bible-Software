@@ -37,7 +37,7 @@ class InitializeLanguagesTest {
     fun `a fresh install imports the languages, then their regions, and records the version`() = runTest {
         installedVersion(null)
 
-        initializer.execSuspend {}
+        initializer.exec {}
 
         coVerifyOrder {
             languages.insertAllSuspend(match { it.single().slug == "en" })
@@ -50,7 +50,7 @@ class InitializeLanguagesTest {
     fun `version 1 only gets its regions updated`() = runTest {
         installedVersion(1)
 
-        initializer.execSuspend {}
+        initializer.exec {}
 
         coVerify(exactly = 0) { languages.insertAllSuspend(any()) }
         coVerify(exactly = 1) { languages.updateRegionsSuspend(any()) }
@@ -61,7 +61,7 @@ class InitializeLanguagesTest {
     fun `the current version does nothing`() = runTest {
         installedVersion(initializer.version)
 
-        initializer.execSuspend {}
+        initializer.exec {}
 
         coVerify(exactly = 0) { bundled.read(any()) }
         verify(exactly = 0) { installed.install(any()) }
@@ -72,7 +72,7 @@ class InitializeLanguagesTest {
         installedVersion(null)
         coEvery { languages.insertAllSuspend(any()) } throws IllegalStateException("insert failed")
 
-        assertFailsWith<IllegalStateException> { initializer.execSuspend {} }
+        assertFailsWith<IllegalStateException> { initializer.exec {} }
 
         verify(exactly = 0) { installed.install(any()) }
     }
@@ -83,7 +83,7 @@ class InitializeLanguagesTest {
         installedVersion(1)
         coEvery { languages.updateRegionsSuspend(any()) } throws IllegalStateException("update failed")
 
-        assertFailsWith<IllegalStateException> { initializer.execSuspend {} }
+        assertFailsWith<IllegalStateException> { initializer.exec {} }
 
         verify(exactly = 0) { installed.install(any()) }
     }

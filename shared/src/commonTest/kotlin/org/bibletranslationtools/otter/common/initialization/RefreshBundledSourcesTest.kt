@@ -57,7 +57,7 @@ class RefreshBundledSourcesTest {
 
     @Test
     fun `a changed bundle of an installed source is imported, recorded and its temp file removed`() = runTest {
-        initializer.execSuspend {}
+        initializer.exec {}
 
         coVerify(exactly = 2) { importer.importSuspend(any(), null, any()) }
         verify(exactly = 1) { stamps.markImported("en_ulb") }
@@ -69,7 +69,7 @@ class RefreshBundledSourcesTest {
     fun `an unchanged bundle is skipped`() = runTest {
         every { stamps.isCurrent("en_ulb") } returns true
 
-        initializer.execSuspend {}
+        initializer.exec {}
 
         coVerify(exactly = 1) { importer.importSuspend(any(), any(), any()) }
         verify(exactly = 0) { stamps.markImported("en_ulb") }
@@ -79,7 +79,7 @@ class RefreshBundledSourcesTest {
     fun `a source with no edition installed is skipped`() = runTest {
         coEvery { editions.editionsOfNoRx("en", "ulb") } returns emptyList()
 
-        initializer.execSuspend {}
+        initializer.exec {}
 
         coVerify(exactly = 1) { importer.importSuspend(any(), any(), any()) }
         verify(exactly = 0) { stamps.markImported("en_ulb") }
@@ -92,7 +92,7 @@ class RefreshBundledSourcesTest {
         coEvery { importer.importSuspend(any(), any(), any()) } returns ImportResult.IMPORT_ERROR andThenThrows
             IllegalStateException("disk full")
 
-        initializer.execSuspend {}
+        initializer.exec {}
 
         coVerify(exactly = 2) { importer.importSuspend(any(), any(), any()) }
         verify(exactly = 0) { stamps.markImported(any()) }

@@ -25,7 +25,7 @@ class BackfillEditionFingerprints(
 
     private val logger = LoggerFactory.getLogger(BackfillEditionFingerprints::class.java)
 
-    override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) {
+    override suspend fun exec(onProgress: (ProgressStatus) -> Unit) {
         withContext(Dispatchers.IO) {
             for (id in fingerprintRepository.sourcesWithoutFingerprint()) {
                 val source = daoProvider.resourceMetadataDao.fetchById(id) ?: continue

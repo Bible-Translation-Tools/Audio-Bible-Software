@@ -4,7 +4,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import org.bibletranslationtools.otter.common.data.ProgressStatus
 import org.bibletranslationtools.otter.common.initialization.InitializeApp
 import org.koin.core.component.KoinComponent
@@ -38,8 +40,12 @@ class SplashScreenViewModel: ViewModel(), KoinComponent {
     fun startInit() {
         if (initJob != null) return
         initJob = launchLogged {
-            runCatching { initApp.initAppSuspend(::onProgress) }
-                .onFailure { logFailure("initializing the app", it) }
+            runCatching { initApp.initApp(::onProgress) }.onFailure {
+                if (it is CancellationException) {
+                    ensureActive()
+                }
+                logFailure("initializing the app", it)
+            }
             // As in Orature: a failed init step is logged and the user still reaches the main
             // menu, rather than sitting on the splash forever.
             initComplete = true

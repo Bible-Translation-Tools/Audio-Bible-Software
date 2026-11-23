@@ -72,7 +72,7 @@ class ReconcileEditionLabels(
 
     private val logger = LoggerFactory.getLogger(ReconcileEditionLabels::class.java)
 
-    override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) {
+    override suspend fun exec(onProgress: (ProgressStatus) -> Unit) {
         withContext(Dispatchers.IO) {
             if (installedEntityRepo.getInstalledVersion(this@ReconcileEditionLabels) == version) return@withContext
             try {

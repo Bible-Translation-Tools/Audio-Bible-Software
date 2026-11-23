@@ -44,7 +44,7 @@ class InitializeSources(
     private val logger = LoggerFactory.getLogger(javaClass)
     private lateinit var callback: ProjectImporterCallback
 
-    override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) {
+    override suspend fun exec(onProgress: (ProgressStatus) -> Unit) {
         withContext(Dispatchers.IO) {
             val installedVersion = installedEntityRepo.getInstalledVersion(this@InitializeSources)
             if (installedVersion != version) {

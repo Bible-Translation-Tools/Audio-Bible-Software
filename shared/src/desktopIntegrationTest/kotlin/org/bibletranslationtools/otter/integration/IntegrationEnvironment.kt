@@ -241,7 +241,7 @@ class IntegrationEnvironment private constructor(
 
     /** Runs the startup fingerprint backfill. */
     fun backfillFingerprints() {
-        runBlocking { koin.get<BackfillEditionFingerprints>().execSuspend {} }
+        runBlocking { koin.get<BackfillEditionFingerprints>().exec {} }
     }
 
     private fun installedSource() = db.resourceMetadataDao.fetchAll().single { it.derivedFromFk == null }
@@ -262,7 +262,7 @@ class IntegrationEnvironment private constructor(
 
     /** Runs the startup step that re-imports bundled sources whose zip changed. */
     fun refreshBundledSources() {
-        runBlocking { koin.get<RefreshBundledSources>().execSuspend {} }
+        runBlocking { koin.get<RefreshBundledSources>().exec {} }
     }
 
     /** Whether bundled source [name]'s current zip is recorded as imported. */
@@ -748,7 +748,7 @@ class IntegrationEnvironment private constructor(
          * The app does this via `InitializeApp`, which runs this initializer first.
          */
         private fun IntegrationEnvironment.initializeVersification() {
-            runBlocking { koin.get<InitializeVersification>().execSuspend {} }
+            runBlocking { koin.get<InitializeVersification>().exec {} }
         }
 
         /**

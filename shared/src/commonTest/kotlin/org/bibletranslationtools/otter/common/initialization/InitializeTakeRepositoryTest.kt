@@ -16,7 +16,7 @@ class InitializeTakeRepositoryTest {
 
     @Test
     fun `removes takes whose files are gone, then the expired ones`() = runTest {
-        initializer.execSuspend {}
+        initializer.exec {}
 
         coVerifyOrder {
             takes.removeNonExistentTakesSuspend()
@@ -28,7 +28,7 @@ class InitializeTakeRepositoryTest {
     fun `a failure in the first step fails the initializer and skips the second`() = runTest {
         coEvery { takes.removeNonExistentTakesSuspend() } throws IllegalStateException("database is locked")
 
-        assertFailsWith<IllegalStateException> { initializer.execSuspend {} }
+        assertFailsWith<IllegalStateException> { initializer.exec {} }
 
         coVerify(exactly = 0) { takes.deleteExpiredTakesSuspend(any()) }
     }

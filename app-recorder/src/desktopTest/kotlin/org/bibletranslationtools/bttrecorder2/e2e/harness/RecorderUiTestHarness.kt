@@ -85,7 +85,7 @@ object RecorderUiTestHarness {
 
         // Splash will also call this; priming here makes wizard/record flows ready faster when
         // tests skip waiting on the splash progress UI.
-        kotlinx.coroutines.runBlocking { koin.get<InitializeApp>().initAppSuspend {} }
+        kotlinx.coroutines.runBlocking { koin.get<InitializeApp>().initApp {} }
 
         return root
     }

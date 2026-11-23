@@ -39,7 +39,7 @@ class RefreshBundledSources(
 
     private val logger = LoggerFactory.getLogger(RefreshBundledSources::class.java)
 
-    override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) {
+    override suspend fun exec(onProgress: (ProgressStatus) -> Unit) {
         withContext(Dispatchers.IO) {
             for (name in catalog.embeddedSourceChecksums.keys) {
                 if (stamps.isCurrent(name)) continue

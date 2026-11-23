@@ -38,7 +38,7 @@ class InitializeTranslationsTest {
 
     @Test
     fun `a fresh install records a translation for every project and then the version`() = runTest {
-        initializer.execSuspend {}
+        initializer.exec {}
 
         coVerify(exactly = 1) { languages.insertTranslationSuspend(match { it.source == english && it.target == french }) }
         coVerify(exactly = 1) { languages.insertTranslationSuspend(match { it.source == english && it.target == spanish }) }
@@ -49,7 +49,7 @@ class InitializeTranslationsTest {
     fun `the current version does nothing`() = runTest {
         every { installed.getInstalledVersion(any()) } returns initializer.version
 
-        initializer.execSuspend {}
+        initializer.exec {}
 
         coVerify(exactly = 0) { workbooks.getProjectsSuspend() }
         verify(exactly = 0) { installed.install(any()) }
@@ -62,7 +62,7 @@ class InitializeTranslationsTest {
             languages.insertTranslationSuspend(match { it.target == french })
         } throws IllegalStateException("database is locked")
 
-        initializer.execSuspend {}
+        initializer.exec {}
 
         coVerify(exactly = 1) { languages.insertTranslationSuspend(match { it.target == spanish }) }
         verify(exactly = 1) { installed.install(initializer) }
@@ -72,7 +72,7 @@ class InitializeTranslationsTest {
     fun `projects that cannot be loaded fail the step and record nothing`() = runTest {
         coEvery { workbooks.getProjectsSuspend() } throws IllegalStateException("database is locked")
 
-        assertFailsWith<IllegalStateException> { initializer.execSuspend {} }
+        assertFailsWith<IllegalStateException> { initializer.exec {} }
 
         verify(exactly = 0) { installed.install(any()) }
     }

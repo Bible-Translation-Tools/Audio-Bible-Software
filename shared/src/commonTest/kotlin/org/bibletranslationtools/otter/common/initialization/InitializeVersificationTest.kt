@@ -3,7 +3,6 @@ package org.bibletranslationtools.otter.common.initialization
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
-import io.reactivex.Observable
 import kotlinx.coroutines.test.runTest
 import org.bibletranslationtools.otter.common.api.io.IBundledContentSource
 import org.bibletranslationtools.otter.common.api.persistence.IAppDirectories
@@ -48,7 +47,7 @@ class InitializeVersificationTest {
     fun `copies every bundled versification and registers each file`() = runTest {
         val progress = mutableListOf<ProgressStatus>()
 
-        initializer(allBundled).execSuspend { progress += it }
+        initializer(allBundled).exec { progress += it }
 
         assertEquals(listOf(title), progress)
         val slugs = listOf("ulb", "ufw") + StandardVersifications.all
@@ -61,7 +60,7 @@ class InitializeVersificationTest {
     fun `a bundled file that cannot be read is skipped`() = runTest {
         val engOnly = allBundled.filterKeys { it == StandardVersifications.resourcePath(StandardVersifications.ENG) }
 
-        initializer(engOnly).execSuspend {}
+        initializer(engOnly).exec {}
 
         assertEquals(setOf("eng.json"), dir.list()!!.toSet())
         coVerify(exactly = 1) { repository.insertVersificationSuspend(any(), any()) }

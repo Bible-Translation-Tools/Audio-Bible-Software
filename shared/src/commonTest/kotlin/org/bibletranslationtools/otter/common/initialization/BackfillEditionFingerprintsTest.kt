@@ -39,7 +39,7 @@ class BackfillEditionFingerprintsTest {
 
     @Test
     fun `every source without a fingerprint gets one`() = runTest {
-        initializer.execSuspend {}
+        initializer.exec {}
 
         coVerify(exactly = 1) { fingerprints.save(1, first) }
         coVerify(exactly = 1) { fingerprints.save(2, second) }
@@ -49,7 +49,7 @@ class BackfillEditionFingerprintsTest {
     fun `with nothing to fingerprint nothing is read`() = runTest {
         coEvery { fingerprints.sourcesWithoutFingerprint() } returns emptyList()
 
-        initializer.execSuspend {}
+        initializer.exec {}
 
         coVerify(exactly = 0) { fingerprinter.fingerprintSuspend(any<File>()) }
     }
@@ -59,7 +59,7 @@ class BackfillEditionFingerprintsTest {
     fun `a source that cannot be fingerprinted is skipped and the rest go on`() = runTest {
         coEvery { fingerprinter.fingerprintSuspend(File("/sources/en_ulb")) } throws IllegalStateException("unreadable")
 
-        initializer.execSuspend {}
+        initializer.exec {}
 
         coVerify(exactly = 0) { fingerprints.save(1, any()) }
         coVerify(exactly = 1) { fingerprints.save(2, second) }
@@ -69,7 +69,7 @@ class BackfillEditionFingerprintsTest {
     fun `a source whose row is gone is skipped`() = runTest {
         every { daoProvider.resourceMetadataDao.fetchById(1) } returns null
 
-        initializer.execSuspend {}
+        initializer.exec {}
 
         coVerify(exactly = 0) { fingerprints.save(1, any()) }
         coVerify(exactly = 1) { fingerprints.save(2, second) }

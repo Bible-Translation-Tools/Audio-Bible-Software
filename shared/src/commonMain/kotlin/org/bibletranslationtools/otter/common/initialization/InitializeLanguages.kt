@@ -43,7 +43,7 @@ class InitializeLanguages(
 
     private val log = LoggerFactory.getLogger(InitializeLanguages::class.java)
 
-    override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) {
+    override suspend fun exec(onProgress: (ProgressStatus) -> Unit) {
         withContext(Dispatchers.IO) {
             val installedVersion = installedEntityRepo.getInstalledVersion(this@InitializeLanguages)
             if (installedVersion != version) {

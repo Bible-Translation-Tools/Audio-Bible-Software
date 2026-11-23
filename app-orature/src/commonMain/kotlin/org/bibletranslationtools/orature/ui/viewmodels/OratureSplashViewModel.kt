@@ -4,7 +4,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import org.bibletranslationtools.otter.common.data.ProgressStatus
 import org.bibletranslationtools.otter.common.initialization.InitializeApp
 import org.bibletranslationtools.shared.logging.logFailure
@@ -45,8 +47,12 @@ class OratureSplashViewModel : ViewModel(), KoinComponent {
     fun startInit() {
         if (initJob != null) return
         initJob = launchLogged {
-            runCatching { initApp.initAppSuspend(::onProgress) }
-                .onFailure { logFailure(this@OratureSplashViewModel, "initializing the app", it) }
+            runCatching { initApp.initApp(::onProgress) }.onFailure {
+                if (it is CancellationException) {
+                    ensureActive()
+                }
+                logFailure(this@OratureSplashViewModel, "initializing the app", it)
+            }
             // Let the user reach Home rather than sitting on the splash forever; a failed
             // seed step is recoverable in a way a dead screen is not.
             initComplete = true

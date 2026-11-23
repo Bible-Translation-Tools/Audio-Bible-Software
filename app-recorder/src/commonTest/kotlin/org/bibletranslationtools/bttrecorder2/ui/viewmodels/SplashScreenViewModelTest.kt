@@ -42,7 +42,7 @@ class SplashScreenViewModelTest {
 
     @Test
     fun `init progress is formatted and the splash is left when it finishes`() = runTest(testDispatcher) {
-        coEvery { initApp.initAppSuspend(any()) } coAnswers {
+        coEvery { initApp.initApp(any()) } coAnswers {
             val onProgress = firstArg<(ProgressStatus) -> Unit>()
             onProgress(ProgressStatus(titleKey = "Initializing %s", titleMessage = "sources", percent = 0.5))
             onProgress(ProgressStatus(subTitleKey = "Loading %s", subTitleMessage = "en_ulb"))
@@ -62,7 +62,7 @@ class SplashScreenViewModelTest {
     /** Before, a failed init escaped the splash's LaunchedEffect and nothing handled it. */
     @Test
     fun `a failed init still lets the user reach the main menu`() = runTest(testDispatcher) {
-        coEvery { initApp.initAppSuspend(any()) } throws IllegalStateException("database is locked")
+        coEvery { initApp.initApp(any()) } throws IllegalStateException("database is locked")
         val viewModel = SplashScreenViewModel()
 
         viewModel.startInit()
@@ -73,13 +73,13 @@ class SplashScreenViewModelTest {
 
     @Test
     fun `starting twice runs init once`() = runTest(testDispatcher) {
-        coEvery { initApp.initAppSuspend(any()) } returns Unit
+        coEvery { initApp.initApp(any()) } returns Unit
         val viewModel = SplashScreenViewModel()
 
         viewModel.startInit()
         viewModel.startInit()
         advanceUntilIdle()
 
-        coVerify(exactly = 1) { initApp.initAppSuspend(any()) }
+        coVerify(exactly = 1) { initApp.initApp(any()) }
     }
 }

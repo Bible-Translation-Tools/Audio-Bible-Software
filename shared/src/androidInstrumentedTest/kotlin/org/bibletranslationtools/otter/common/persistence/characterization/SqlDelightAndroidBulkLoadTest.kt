@@ -25,6 +25,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
+import kotlinx.coroutines.runBlocking
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.persistence.database.sqldelight.SqlDelightAppDatabase
 import org.bibletranslationtools.otter.common.persistence.entities.CollectionEntity
@@ -73,7 +74,7 @@ class SqlDelightAndroidBulkLoadTest {
         db = SqlDelightAppDatabase.createFresh(driver)
 
         // This is where the pre-fix crash happened (PRAGMA journal_mode=WAL via execute()).
-        db.withBulkLoad { seedOneVerse() }
+        runBlocking { db.withBulkLoad { seedOneVerse() } }
 
         assertEquals("seeded content should be present", 1, db.contentDao.fetchAll().size)
         assertTrue("content index must remain present", indexExists("idx_content_entity_collection_start"))

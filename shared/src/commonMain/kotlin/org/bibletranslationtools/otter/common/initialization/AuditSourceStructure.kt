@@ -48,7 +48,7 @@ class AuditSourceStructure(
 
     private val logger = LoggerFactory.getLogger(AuditSourceStructure::class.java)
 
-    override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) {
+    override suspend fun exec(onProgress: (ProgressStatus) -> Unit) {
         withContext(Dispatchers.IO) {
             if (installedEntityRepo.getInstalledVersion(this@AuditSourceStructure) == version) return@withContext
             try {

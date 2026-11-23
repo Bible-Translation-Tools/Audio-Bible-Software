@@ -50,7 +50,7 @@ class SqlDelightBulkLoadTest {
     }
 
     @Test
-    fun `withBulkLoad seeds a fresh db, keeps the content index, and leaves it WAL with FKs intact`() {
+    fun `withBulkLoad seeds a fresh db, keeps the content index, and leaves it WAL with FKs intact`() = runBlocking {
         db.withBulkLoad { seedOneVerse(start = 1) }
 
         // The block ran and its data survived (the finally's foreign_key_check did not throw).
@@ -62,22 +62,11 @@ class SqlDelightBulkLoadTest {
     }
 
     @Test
-    fun `withBulkLoad is a plain passthrough once content already exists`() {
+    fun `withBulkLoad is a plain passthrough once content already exists`() = runBlocking {
         db.withBulkLoad { seedOneVerse(start = 1) }   // fills content, so the gate closes
         db.withBulkLoad { seedAnotherVerse(start = 2) } // should just run the block, no index/PRAGMA churn
 
         assertEquals(2, contentRowCount(), "the passthrough must still run its block")
-    }
-
-    /** The suspending twin, which startup uses, does what the blocking one does. */
-    @Test
-    fun `withBulkLoadSuspend seeds a fresh db the same way, then passes through`() = runBlocking {
-        db.withBulkLoadSuspend { seedOneVerse(start = 1) }
-        db.withBulkLoadSuspend { seedAnotherVerse(start = 2) }
-
-        assertEquals(2, contentRowCount(), "both blocks should have run")
-        assertEquals(true, indexExists("idx_content_entity_collection_start"), "content index must remain present")
-        assertEquals("wal", journalMode())
     }
 
     // ── seeding (a minimal language -> dublin_core -> collection -> content chain) ────────────────

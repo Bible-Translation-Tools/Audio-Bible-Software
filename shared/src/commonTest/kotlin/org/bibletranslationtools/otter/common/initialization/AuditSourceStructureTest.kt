@@ -40,7 +40,7 @@ class AuditSourceStructureTest {
 
     @Test
     fun `the first run writes the report and records the version`() = runTest {
-        initializer.execSuspend {}
+        initializer.exec {}
 
         assertTrue(report.readText().contains("\"sources\": []"))
         verify(exactly = 1) { installed.install(initializer) }
@@ -50,7 +50,7 @@ class AuditSourceStructureTest {
     fun `the current version does nothing`() = runTest {
         every { installed.getInstalledVersion(any()) } returns initializer.version
 
-        initializer.execSuspend {}
+        initializer.exec {}
 
         verify(exactly = 0) { daoProvider.resourceMetadataDao }
         assertFalse(report.exists())
@@ -61,7 +61,7 @@ class AuditSourceStructureTest {
     fun `a failure is not thrown and the version is not recorded`() = runTest {
         every { daoProvider.resourceMetadataDao.fetchAll() } throws IllegalStateException("database is locked")
 
-        initializer.execSuspend {}
+        initializer.exec {}
 
         assertFalse(report.exists())
         verify(exactly = 0) { installed.install(any()) }

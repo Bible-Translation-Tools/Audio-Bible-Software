@@ -61,7 +61,7 @@ class InitializeSourcesTest {
         }
         val progress = mutableListOf<ProgressStatus>()
 
-        initializer.execSuspend { progress += it }
+        initializer.exec { progress += it }
 
         coVerify(exactly = 1) { importer.importSuspend(any(), any(), any()) }
         coVerify(exactly = 1) { importer.importSuspend(newSource, any(), any()) }
@@ -79,7 +79,7 @@ class InitializeSourcesTest {
     fun `the current version does nothing`() = runTest {
         every { installed.getInstalledVersion(any()) } returns initializer.version
 
-        initializer.execSuspend {}
+        initializer.exec {}
 
         coVerify(exactly = 0) { importer.importSuspend(any(), any(), any()) }
         verify(exactly = 0) { installed.install(any()) }
@@ -91,7 +91,7 @@ class InitializeSourcesTest {
         val other = File(dir, "fr_ulb.orature").apply { writeText("other") }
         coEvery { importer.importSuspend(newSource, any(), any()) } throws IllegalStateException("corrupt")
 
-        initializer.execSuspend {}
+        initializer.exec {}
 
         coVerify(exactly = 1) { importer.importSuspend(other, any(), any()) }
         verify(exactly = 1) { installed.install(initializer) }

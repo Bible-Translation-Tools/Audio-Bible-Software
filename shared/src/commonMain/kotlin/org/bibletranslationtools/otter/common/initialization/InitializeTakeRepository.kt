@@ -29,7 +29,7 @@ class InitializeTakeRepository(
 
     private val log = LoggerFactory.getLogger(InitializeTakeRepository::class.java)
 
-    override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) {
+    override suspend fun exec(onProgress: (ProgressStatus) -> Unit) {
         log.info("Initializing take repository...")
         runCatching {
             takeRepository.removeNonExistentTakesSuspend()

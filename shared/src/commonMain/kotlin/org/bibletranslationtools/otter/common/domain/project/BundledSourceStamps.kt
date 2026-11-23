@@ -31,7 +31,7 @@ class BundledSourceStamps(
         return object : Installable {
             override val name = "BUNDLED_SOURCE:$name"
             override val version = checksum.take(7).toInt(16)
-            override suspend fun execSuspend(onProgress: (ProgressStatus) -> Unit) = Unit
+            override suspend fun exec(onProgress: (ProgressStatus) -> Unit) = Unit
         }
     }
 }

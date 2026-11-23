@@ -83,7 +83,7 @@ class InitializeProjectsTest {
         coEvery { workbooks.getProjectsSuspend() } returns listOf(mockk<Workbook>())
         projectFolder("en_ulb_gen")
 
-        initializer.execSuspend {}
+        initializer.exec {}
 
         coVerify(exactly = 0) { importer.importSuspend(any(), any(), any()) }
         verify(exactly = 0) { installed.install(any()) }
@@ -97,7 +97,7 @@ class InitializeProjectsTest {
         val other = projectFolder("en_ulb_exo")
         coEvery { importer.importSuspend(failing, any(), any()) } throws IllegalStateException("corrupt")
 
-        initializer.execSuspend {}
+        initializer.exec {}
 
         coVerify(exactly = 1) { importer.importSuspend(failing, any(), any()) }
         coVerify(exactly = 1) { importer.importSuspend(other, any(), any()) }
@@ -115,7 +115,7 @@ class InitializeProjectsTest {
         coEvery { takeRepo.getAllSuspend() } returns listOf(take)
         coEvery { takeRepo.updateSuspend(any()) } throws IllegalStateException("database is locked")
 
-        assertFailsWith<IllegalStateException> { initializer.execSuspend {} }
+        assertFailsWith<IllegalStateException> { initializer.exec {} }
 
         verify(exactly = 0) { installed.install(any()) }
     }
@@ -141,7 +141,7 @@ class InitializeProjectsTest {
         every { directories.newFileReader(any()) } answers { NioZipFileReader(firstArg()) }
         val unpacked = File(sources, "en_ulb-source")
 
-        initializer.execSuspend {}
+        initializer.exec {}
 
         assertEquals("manifest", File(unpacked, "manifest.yaml").readText())
         assertEquals("text", File(unpacked, "content/gen.usfm").readText())

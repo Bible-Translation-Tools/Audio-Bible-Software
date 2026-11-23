@@ -77,29 +77,9 @@ class SqlDelightAppDatabase(
      * on every later startup `content_entity` already has rows and [block] just runs plainly,
      * without rebuilding the index or flipping PRAGMAs on every launch.
      */
-    override fun <T> withBulkLoad(block: () -> T): T {
-        if (!contentTableEmpty()) return block()
-
-        beginBulkLoad()
-        try {
-            return block()
-        } finally {
-            endBulkLoad()
-        }
-    }
-
-    override suspend fun <T> withBulkLoadSuspend(block: suspend () -> T): T = withContext(Dispatchers.IO) {
+    override suspend fun <T> withBulkLoad(block: suspend () -> T): T = withContext(Dispatchers.IO) {
         if (!contentTableEmpty()) return@withContext block()
 
-        beginBulkLoad()
-        try {
-            block()
-        } finally {
-            endBulkLoad()
-        }
-    }
-
-    private fun beginBulkLoad() {
         // PRAGMAs must be set OUTSIDE a transaction (the seeders open their own).
         // Crash-safe but fast: WAL (persists; a better steady-state journal anyway) + synchronous=NORMAL
         // stay durable across a power loss/kill mid-seed — unlike synchronous=OFF, which could leave the
@@ -119,11 +99,12 @@ class SqlDelightAppDatabase(
         driver.executeQuery(null, "PRAGMA journal_mode=WAL;", { cursor -> cursor.next(); QueryResult.Value(Unit) }, 0)
         driver.execute(null, "PRAGMA synchronous=NORMAL;", 0)
         driver.execute(null, "PRAGMA foreign_keys=OFF;", 0)
-    }
-
-    private fun endBulkLoad() {
-        driver.execute(null, "PRAGMA foreign_keys=ON;", 0)
-        checkForeignKeys()
+        try {
+            block()
+        } finally {
+            driver.execute(null, "PRAGMA foreign_keys=ON;", 0)
+            checkForeignKeys()
+        }
     }
 
     private fun contentTableEmpty(): Boolean {

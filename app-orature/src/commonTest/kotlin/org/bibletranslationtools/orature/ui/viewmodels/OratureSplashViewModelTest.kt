@@ -42,7 +42,7 @@ class OratureSplashViewModelTest {
 
     @Test
     fun `init progress is shown and the splash is left when it finishes`() = runTest(testDispatcher) {
-        coEvery { initApp.initAppSuspend(any()) } coAnswers {
+        coEvery { initApp.initApp(any()) } coAnswers {
             val onProgress = firstArg<(ProgressStatus) -> Unit>()
             onProgress(ProgressStatus(titleKey = "initializingSources", percent = 0.5))
             onProgress(ProgressStatus(subTitleKey = "loadingSomething"))
@@ -62,7 +62,7 @@ class OratureSplashViewModelTest {
     /** A failed seed step is recoverable in a way a dead splash screen is not. */
     @Test
     fun `a failed init still lets the user reach Home`() = runTest(testDispatcher) {
-        coEvery { initApp.initAppSuspend(any()) } throws IllegalStateException("database is locked")
+        coEvery { initApp.initApp(any()) } throws IllegalStateException("database is locked")
         val viewModel = OratureSplashViewModel()
 
         viewModel.startInit()
@@ -73,13 +73,13 @@ class OratureSplashViewModelTest {
 
     @Test
     fun `starting twice runs init once`() = runTest(testDispatcher) {
-        coEvery { initApp.initAppSuspend(any()) } returns Unit
+        coEvery { initApp.initApp(any()) } returns Unit
         val viewModel = OratureSplashViewModel()
 
         viewModel.startInit()
         viewModel.startInit()
         advanceUntilIdle()
 
-        coVerify(exactly = 1) { initApp.initAppSuspend(any()) }
+        coVerify(exactly = 1) { initApp.initApp(any()) }
     }
 }

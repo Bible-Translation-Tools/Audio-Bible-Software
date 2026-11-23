@@ -57,7 +57,7 @@ class InitializeUlbTest {
         }
         val progress = mutableListOf<ProgressStatus>()
 
-        initializer.execSuspend { progress += it }
+        initializer.exec { progress += it }
 
         assertEquals("bundled", tempFile.readText())
         coVerify(exactly = 1) { importer.importSuspend(tempFile, any(), any()) }
@@ -80,7 +80,7 @@ class InitializeUlbTest {
     fun `the current version does nothing`() = runTest {
         every { installed.getInstalledVersion(any()) } returns initializer.version
 
-        initializer.execSuspend {}
+        initializer.exec {}
 
         coVerify(exactly = 0) { bundled.read(any()) }
         coVerify(exactly = 0) { importer.importSuspend(any(), any(), any()) }
@@ -92,7 +92,7 @@ class InitializeUlbTest {
     fun `a source that is already installed is not imported again`() = runTest {
         coEvery { importer.isAlreadyImportedSuspend(any()) } returns true
 
-        initializer.execSuspend {}
+        initializer.exec {}
 
         coVerify(exactly = 0) { importer.importSuspend(any(), any(), any()) }
         verify(exactly = 1) { stamps.markImported(EN_ULB_FILENAME) }
@@ -104,7 +104,7 @@ class InitializeUlbTest {
     fun `a failed import fails the step and records nothing`() = runTest {
         coEvery { importer.importSuspend(any(), any(), any()) } returns ImportResult.IMPORT_ERROR
 
-        val error = assertFailsWith<ImportException> { initializer.execSuspend {} }
+        val error = assertFailsWith<ImportException> { initializer.exec {} }
 
         assertEquals(ImportResult.IMPORT_ERROR, error.result)
         verify(exactly = 0) { installed.install(any()) }
