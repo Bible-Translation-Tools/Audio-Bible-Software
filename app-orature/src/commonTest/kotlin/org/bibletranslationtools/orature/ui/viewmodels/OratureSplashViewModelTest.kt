@@ -1,10 +1,14 @@
 package org.bibletranslationtools.orature.ui.viewmodels
 
+import androidx.lifecycle.viewModelScope
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -81,5 +85,31 @@ class OratureSplashViewModelTest {
         advanceUntilIdle()
 
         coVerify(exactly = 1) { initApp.initApp(any()) }
+    }
+
+    /** The ViewModel is gone: init was not finished, so it is not reported as finished or failed. */
+    @Test
+    fun `init cancelled with the ViewModel does not complete`() = runTest(testDispatcher) {
+        coEvery { initApp.initApp(any()) } coAnswers { awaitCancellation() }
+        val viewModel = OratureSplashViewModel()
+        viewModel.startInit()
+        advanceUntilIdle()
+
+        viewModel.viewModelScope.cancel()
+        advanceUntilIdle()
+
+        assertFalse(viewModel.initComplete)
+    }
+
+    /** Something inside init was cancelled, not the ViewModel: handled as any other failed init. */
+    @Test
+    fun `a cancellation from inside init still lets the user reach Home`() = runTest(testDispatcher) {
+        coEvery { initApp.initApp(any()) } throws CancellationException("timed out")
+        val viewModel = OratureSplashViewModel()
+
+        viewModel.startInit()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.initComplete)
     }
 }

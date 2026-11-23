@@ -41,9 +41,7 @@ class SplashScreenViewModel: ViewModel(), KoinComponent {
         if (initJob != null) return
         initJob = launchLogged {
             runCatching { initApp.initApp(::onProgress) }.onFailure {
-                if (it is CancellationException) {
-                    ensureActive()
-                }
+                if (it is CancellationException) ensureActive()
                 logFailure("initializing the app", it)
             }
             // As in Orature: a failed init step is logged and the user still reaches the main

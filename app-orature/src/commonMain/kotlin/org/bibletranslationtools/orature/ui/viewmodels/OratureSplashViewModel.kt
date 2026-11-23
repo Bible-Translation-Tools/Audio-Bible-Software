@@ -48,9 +48,7 @@ class OratureSplashViewModel : ViewModel(), KoinComponent {
         if (initJob != null) return
         initJob = launchLogged {
             runCatching { initApp.initApp(::onProgress) }.onFailure {
-                if (it is CancellationException) {
-                    ensureActive()
-                }
+                if (it is CancellationException) ensureActive()
                 logFailure(this@OratureSplashViewModel, "initializing the app", it)
             }
             // Let the user reach Home rather than sitting on the splash forever; a failed
