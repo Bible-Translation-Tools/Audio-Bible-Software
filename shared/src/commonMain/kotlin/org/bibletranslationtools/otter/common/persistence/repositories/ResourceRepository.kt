@@ -23,7 +23,9 @@ import io.reactivex.Observable
 import io.reactivex.Single
 import io.reactivex.rxkotlin.toObservable
 import io.reactivex.schedulers.Schedulers
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.rx2.asFlow
 import kotlinx.coroutines.rx2.await
 import org.slf4j.LoggerFactory
@@ -178,6 +180,15 @@ class ResourceRepository(private val database: DaoProvider) : IResourceRepositor
 
     override fun getResourcesFlow(content: Content, resourceMetadata: ResourceMetadata): Flow<Content> =
         getResources(content, resourceMetadata).asFlow()
+
+    override suspend fun getResourcesSuspend(content: Content, resourceMetadata: ResourceMetadata): List<Content> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                contentDao.resourcesForContent(content.id, resourceMetadata.id).map { buildResource(it) }
+            }
+                .onFailure { e -> logger.error("Error in getResources", e) }
+                .getOrThrow()
+        }
 
     override suspend fun linkToContentSuspend(resource: Content, content: Content, dublinCoreFk: Int) =
         linkToContent(resource, content, dublinCoreFk).await()

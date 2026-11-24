@@ -19,7 +19,6 @@
 package org.bibletranslationtools.otter.common.domain.project
 
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.InstalledSourceEditions
 import org.bibletranslationtools.otter.common.domain.project.importer.EditionFingerprinter
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
@@ -49,6 +48,7 @@ import org.bibletranslationtools.otter.common.api.persistence.IFileIOFactory
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import java.io.File
 import java.lang.IllegalArgumentException
+import kotlinx.coroutines.withContext
 
 // Packaged resource paths, resolved through IBundledContentSource. They are relative to the
 // resources root with no leading prefix; how that root is packaged (today: Compose
@@ -115,6 +115,39 @@ class ImportProjectUseCase(
         return import(file, null, null)
     }
 
+    /** Suspending [import]. It never throws: a failure comes back as an [ImportResult]. */
+    suspend fun importSuspend(
+        file: File,
+        callback: ProjectImporterCallback?,
+        options: ImportOptions? = null
+    ): ImportResult =
+        runCatching {
+            val importer = withContext(Dispatchers.IO) {
+                val format = try {
+                    ProjectFormatIdentifier.getProjectFormat(file)
+                } catch (e: IllegalArgumentException) {
+                    logger.info("No project-format identifier matched $file; treating as unsupported.", e)
+                    throw ImportException(ImportResult.UNSUPPORTED_CONTENT)
+                }
+                getImporter(format)
+            }
+            importer.importSuspend(file, callback, options)
+        }.getOrElse { error ->
+            // An importer (or the format/importer selection above) can carry a specific
+            // ImportResult via ImportException — surface that rather than a blanket FAILED.
+            val carried = error.castOrFindImportException()?.result
+            if (carried != null) {
+                logger.warn("Could not import project file: $file (result=$carried)", error)
+                carried
+            } else {
+                logger.error(
+                    "Failed to import project file: $file. See exception detail below.",
+                    error
+                )
+                ImportResult.FAILED
+            }
+        }
+
     fun sideloadSource(language: Language): Completable {
         return Single
             .fromCallable {
@@ -148,18 +181,6 @@ class ImportProjectUseCase(
             .apply { writeBytes(bytes) }
     }
 
-    /**
-     * Whether the source edition in [file] is already installed: the same edition, not just some
-     * edition of the same source. The file is only parsed when some edition of it is installed.
-     */
-    fun isAlreadyImported(file: File): Boolean = runBlocking(Dispatchers.IO) {
-        val dublinCore = ResourceContainer.load(file, true).use { it.manifest.dublinCore }
-        val languageSlug = dublinCore.language.identifier
-        if (installedEditions.editionsOf(languageSlug, dublinCore.identifier).isEmpty()) return@runBlocking false
-        val fingerprint = fingerprinter.fingerprint(file)
-        installedEditions.findSameEdition(languageSlug, dublinCore.identifier, dublinCore.creator, fingerprint) != null
-    }
-
     fun isSourceAudioProject(file: File): Boolean {
         return fileIO.newFileReader(file).use {
             !it.exists(RcConstants.SELECTED_TAKES_FILE) && it.exists(RcConstants.SOURCE_MEDIA_DIR)
@@ -189,6 +210,18 @@ class ImportProjectUseCase(
         }
         return factory.makeImporter()
     }
+    /**
+     * Whether the source edition in [file] is already installed: the same edition, not just some
+     * edition of the same source. The file is only parsed when some edition of it is installed.
+     */
+    suspend fun isAlreadyImported(file: File): Boolean = withContext(Dispatchers.IO) {
+        val dublinCore = ResourceContainer.load(file, true).use { it.manifest.dublinCore }
+        val languageSlug = dublinCore.language.identifier
+        if (installedEditions.editionsOfNoRx(languageSlug, dublinCore.identifier).isEmpty()) return@withContext false
+        val fingerprint = fingerprinter.fingerprintSuspend(file)
+        installedEditions.findSameEditionNoRx(languageSlug, dublinCore.identifier, dublinCore.creator, fingerprint) != null
+    }
+
 }
 
 @Serializable

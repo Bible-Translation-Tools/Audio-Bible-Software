@@ -19,8 +19,8 @@
 package org.bibletranslationtools.otter.common.initialization
 
 import org.bibletranslationtools.otter.common.domain.project.BundledSourceStamps
-import io.reactivex.Completable
-import io.reactivex.ObservableEmitter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.io.IBundledContentSource
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.api.persistence.config.Installable
@@ -48,54 +48,53 @@ class InitializeUlb(
 
     private val log = LoggerFactory.getLogger(InitializeUlb::class.java)
 
-    override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable {
-        return Completable
-            .fromCallable {
-                val installedVersion = installedEntityRepo.getInstalledVersion(this)
-                if (installedVersion != version) {
-                    val enUlbFile = prepareImportFile()
-                    if (importer.isAlreadyImported(enUlbFile)) {
-                        bundledStamps.markImported(EN_ULB_FILENAME)
-                        log.info("$EN_ULB_FILENAME already exists, skipped.")
-                        return@fromCallable Completable.complete()
-                    }
-
-                    log.info("Initializing $name version: $version...")
-                    progressEmitter.onNext(
-                        ProgressStatus(
-                            titleKey = "initializingSources",
-                            subTitleKey = "loadingSomething",
-                            subTitleMessage = name
-                        )
-                    )
-                    val callback = setupImportCallback(progressEmitter)
-                    importer
-                        .import(enUlbFile, callback)
-                        .toObservable()
-                        .doOnError { e ->
-                            log.error("Error importing $EN_ULB_FILENAME.", e)
-                        }
-                        .blockingSubscribe { result ->
-                            if (result == ImportResult.SUCCESS) {
-                                installedEntityRepo.install(this)
-                                bundledStamps.markImported(EN_ULB_FILENAME)
-                                log.info("$name version: $version installed!")
-                            } else {
-                                log.error(result.toString())
-                                throw ImportException(result)
-                            }
-                        }
-                } else {
-                    log.info("$name up to date with version: $version")
-                }
-            }
-            .doOnError { e ->
-                log.error("Error in initializeUlb", e)
-            }
+    override suspend fun exec(onProgress: (ProgressStatus) -> Unit) {
+        withContext(Dispatchers.IO) {
+            runCatching { initialize(onProgress) }
+                .onFailure { log.error("Error in initializeUlb", it) }
+                .getOrThrow()
+        }
     }
 
-    private fun prepareImportFile(): File {
-        val enUlbResource = bundledContent.readBlocking(EN_ULB_PATH).inputStream()
+    private suspend fun initialize(onProgress: (ProgressStatus) -> Unit) {
+        val installedVersion = installedEntityRepo.getInstalledVersion(this)
+        if (installedVersion == version) {
+            log.info("$name up to date with version: $version")
+            return
+        }
+
+        val enUlbFile = prepareImportFile()
+        if (importer.isAlreadyImported(enUlbFile)) {
+            bundledStamps.markImported(EN_ULB_FILENAME)
+            log.info("$EN_ULB_FILENAME already exists, skipped.")
+            return
+        }
+
+        log.info("Initializing $name version: $version...")
+        onProgress(
+            ProgressStatus(
+                titleKey = "initializingSources",
+                subTitleKey = "loadingSomething",
+                subTitleMessage = name
+            )
+        )
+        val callback = setupImportCallback(onProgress)
+        val result = runCatching { importer.importSuspend(enUlbFile, callback) }
+            .onFailure { log.error("Error importing $EN_ULB_FILENAME.", it) }
+            .getOrThrow()
+
+        if (result == ImportResult.SUCCESS) {
+            installedEntityRepo.install(this)
+            bundledStamps.markImported(EN_ULB_FILENAME)
+            log.info("$name version: $version installed!")
+        } else {
+            log.error(result.toString())
+            throw ImportException(result)
+        }
+    }
+
+    private suspend fun prepareImportFile(): File {
+        val enUlbResource = bundledContent.read(EN_ULB_PATH).inputStream()
         val tempFile = directoryProvider.createTempFile("en_ulb-default", ".zip")
             .also(File::deleteOnExit)
 

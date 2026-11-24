@@ -36,5 +36,12 @@ interface IFileReader : AutoCloseable {
         filter: (String) -> Boolean = { _ -> true }
     ): Observable<String>
 
+    /** Suspending [copyDirectory]: copies the files and returns the paths they were copied to. */
+    suspend fun copyDirectorySuspend(
+        source: String,
+        destinationDirectory: File,
+        filter: (String) -> Boolean = { _ -> true }
+    ): List<String>
+
     fun list(directory: String): Sequence<String>
 }

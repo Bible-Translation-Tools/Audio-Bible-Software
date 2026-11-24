@@ -157,7 +157,7 @@ fun main() {
 @Composable
 private fun OratureSplashWindow(onFinished: () -> Unit) {
     val vm = remember { OratureSplashViewModel() }
-    // The ViewModel owns the subscription now — see OratureSplashViewModel. Desktop has no
+    // The ViewModel owns the init job — see OratureSplashViewModel. Desktop has no
     // configuration-change recreation, but keeping both platforms on one path means the splash
     // behaves the same and there is only one place where init can be cancelled.
     LaunchedEffect(Unit) { vm.startInit() }

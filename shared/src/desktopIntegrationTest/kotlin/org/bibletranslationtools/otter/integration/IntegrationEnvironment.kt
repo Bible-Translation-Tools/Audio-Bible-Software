@@ -33,8 +33,6 @@ import org.bibletranslationtools.otter.common.domain.collections.DeleteProject
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IWorkbookDescriptorRepository
 import org.bibletranslationtools.otter.common.domain.languages.ImportLanguages
 import org.bibletranslationtools.otter.common.domain.project.importer.RCImporterFactory
-import io.reactivex.Observable
-import org.bibletranslationtools.otter.common.data.ProgressStatus
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.ImportResult
 import org.bibletranslationtools.otter.common.initialization.AuditSourceStructure
 import org.bibletranslationtools.otter.common.initialization.RefreshBundledSources
@@ -243,10 +241,7 @@ class IntegrationEnvironment private constructor(
 
     /** Runs the startup fingerprint backfill. */
     fun backfillFingerprints() {
-        Observable.create<ProgressStatus> { emitter ->
-            koin.get<BackfillEditionFingerprints>().exec(emitter).blockingAwait()
-            emitter.onComplete()
-        }.blockingSubscribe()
+        runBlocking { koin.get<BackfillEditionFingerprints>().exec {} }
     }
 
     private fun installedSource() = db.resourceMetadataDao.fetchAll().single { it.derivedFromFk == null }
@@ -258,7 +253,8 @@ class IntegrationEnvironment private constructor(
     fun sourceEditions() = db.resourceMetadataDao.fetchAll().filter { it.derivedFromFk == null }.sortedBy { it.id }
 
     /** Whether the edition in [rc] is already installed, as the app asks before bundling one. */
-    fun isAlreadyImported(rc: File): Boolean = koin.get<ImportProjectUseCase>().isAlreadyImported(rc)
+    fun isAlreadyImported(rc: File): Boolean =
+        runBlocking { koin.get<ImportProjectUseCase>().isAlreadyImported(rc) }
 
     /** Deletes the source edition stored at [path], as the app would. */
     fun deleteSource(path: String): DeleteResult =
@@ -266,10 +262,7 @@ class IntegrationEnvironment private constructor(
 
     /** Runs the startup step that re-imports bundled sources whose zip changed. */
     fun refreshBundledSources() {
-        Observable.create<ProgressStatus> { emitter ->
-            koin.get<RefreshBundledSources>().exec(emitter).blockingAwait()
-            emitter.onComplete()
-        }.blockingSubscribe()
+        runBlocking { koin.get<RefreshBundledSources>().exec {} }
     }
 
     /** Whether bundled source [name]'s current zip is recorded as imported. */
@@ -755,10 +748,7 @@ class IntegrationEnvironment private constructor(
          * The app does this via `InitializeApp`, which runs this initializer first.
          */
         private fun IntegrationEnvironment.initializeVersification() {
-            Observable.create<ProgressStatus> { emitter ->
-                koin.get<InitializeVersification>().exec(emitter).blockingAwait()
-                emitter.onComplete()
-            }.blockingSubscribe()
+            runBlocking { koin.get<InitializeVersification>().exec {} }
         }
 
         /**
@@ -767,7 +757,7 @@ class IntegrationEnvironment private constructor(
          */
         private fun IntegrationEnvironment.importLanguages() {
             langNamesFile().inputStream().use { stream ->
-                koin.get<ImportLanguages>().import(stream).blockingAwait()
+                runBlocking { koin.get<ImportLanguages>().import(stream) }
             }
         }
 

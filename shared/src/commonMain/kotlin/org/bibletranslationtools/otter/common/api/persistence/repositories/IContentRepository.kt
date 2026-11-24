@@ -52,6 +52,7 @@ interface IContentRepository : IRepository<Content> {
 
     suspend fun insertForCollectionSuspend(contentList: List<Content>, collection: Collection): List<Content>
     suspend fun getByCollectionSuspend(collection: Collection): List<Content>
+    suspend fun getByCollectionNoRx(collection: Collection): List<Content>
     fun getByCollectionFlow(collection: Collection): Flow<List<Content>>
     suspend fun getCollectionMetaContentSuspend(collection: Collection): Content
     suspend fun getSourcesSuspend(content: Content): List<Content>

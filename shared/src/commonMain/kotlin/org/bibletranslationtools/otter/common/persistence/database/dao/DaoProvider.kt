@@ -49,5 +49,5 @@ interface DaoProvider {
      * otherwise. Default-passthrough so only the SQLDelight backend needs to optimize anything —
      * jOOQ's adapter, mocks, and every other implementer get this for free.
      */
-    fun <T> withBulkLoad(block: () -> T): T = block()
+    suspend fun <T> withBulkLoad(block: suspend () -> T): T = block()
 }

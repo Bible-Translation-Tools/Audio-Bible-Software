@@ -20,10 +20,11 @@ package org.bibletranslationtools.otter.common.domain.content
 
 import io.reactivex.Single
 import org.bibletranslationtools.otter.common.domain.audio.OratureAudioFile
-import org.bibletranslationtools.otter.common.data.audio.OratureCueType
 import org.bibletranslationtools.otter.common.data.audio.VerseMarker
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class ConcatenateAudio(private val directoryProvider: ITempFileProvider) {
 
@@ -59,6 +60,12 @@ class ConcatenateAudio(private val directoryProvider: ITempFileProvider) {
         }
     }
 
+    /** Suspending [execute]. */
+    suspend fun executeSuspend(
+        files: List<File>,
+        includeMarkers: Boolean = true
+    ): File = withContext(Dispatchers.IO) { concatenate(files, includeMarkers) }
+
     private fun generateMarkers(inputFiles: List<File>, outputAudio: OratureAudioFile) {
         var markerLocation = 0
 
@@ -70,4 +77,31 @@ class ConcatenateAudio(private val directoryProvider: ITempFileProvider) {
         }
         outputAudio.update()
     }
+    private fun concatenate(files: List<File>, includeMarkers: Boolean): File {
+        val inputFile = OratureAudioFile(files.first())
+        val tempFile = directoryProvider.createTempFile("output", ".wav")
+        val outputFile = OratureAudioFile(
+            tempFile,
+            inputFile.channels,
+            inputFile.sampleRate,
+            inputFile.bitsPerSample
+        )
+        outputFile.writer(append = true).use { os ->
+            files.forEach { file ->
+                val oratureAudioFile = OratureAudioFile(file)
+                val buffer = ByteArray(10240)
+                oratureAudioFile.reader().use { reader ->
+                    reader.open()
+                    while (reader.hasRemaining()) {
+                        val written = reader.getPcmBuffer(buffer)
+                        os.write(buffer, 0, written)
+                    }
+                }
+            }
+        }
+        if (includeMarkers) generateMarkers(files, outputFile)
+
+        return outputFile.file
+    }
+
 }

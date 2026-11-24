@@ -159,4 +159,30 @@ class BackupEditions(
 
     /** Some manifests quote the version, e.g. `'12'` with the quotes. */
     private fun String.unquoted() = trim().trim('"', '\'')
+
+    // Copies of the three lookups above for startup, which must not go through RxJava.
+
+    suspend fun findInstalledNoRx(edition: BackupEdition): ResourceMetadata? {
+        val structure = edition.structureFingerprint ?: return null
+        val text = edition.textFingerprint ?: return null
+        return installedEditions.editionsOfNoRx(edition.language, edition.identifier)
+            .filter { it.creator == edition.creator }
+            .firstOrNull { installed ->
+                fingerprintRepository.get(installed.id)
+                    ?.let { it.structureFingerprint == structure && it.textFingerprint == text } == true
+            }
+    }
+
+    suspend fun findInstalledNoRx(languageSlug: String, identifier: String, fingerprint: EditionFingerprint): ResourceMetadata? =
+        installedEditions.editionsOfNoRx(languageSlug, identifier).firstOrNull { installed ->
+            fingerprintRepository.get(installed.id)?.let {
+                it.structureFingerprint == fingerprint.structureFingerprint && it.textFingerprint == fingerprint.textFingerprint
+            } == true
+        }
+
+    suspend fun closestInstalledNoRx(languageSlug: String, identifier: String, version: String): ResourceMetadata? {
+        val editions = installedEditions.editionsOfNoRx(languageSlug, identifier)
+        return editions.firstOrNull { it.version.unquoted() == version.unquoted() }
+            ?: editions.sortedWith(EditionOrder.newestFirst).firstOrNull()
+    }
 }

@@ -25,9 +25,7 @@ import org.bibletranslationtools.otter.common.data.workbook.Translation
 
 interface ILanguageRepository : IRepository<Language> {
     fun insert(language: Language): Single<Int>
-    fun insertAll(languages: List<Language>): Single<List<Int>>
     fun upsertAll(languages: List<Language>): Completable
-    fun updateRegions(languages: List<Language>): Completable
     fun getBySlug(slug: String): Single<Language>
     fun getGateway(): Single<List<Language>>
     fun getAvailableGatewaySources(): Single<List<Language>>
@@ -39,9 +37,9 @@ interface ILanguageRepository : IRepository<Language> {
     fun deleteTranslation(translation: Translation): Completable
 
     suspend fun insertSuspend(language: Language): Int
-    suspend fun insertAllSuspend(languages: List<Language>): List<Int>
+    suspend fun insertAll(languages: List<Language>): List<Int>
     suspend fun upsertAllSuspend(languages: List<Language>)
-    suspend fun updateRegionsSuspend(languages: List<Language>)
+    suspend fun updateRegions(languages: List<Language>)
     suspend fun getBySlugSuspend(slug: String): Language
     suspend fun getGatewaySuspend(): List<Language>
     suspend fun getAvailableGatewaySourcesSuspend(): List<Language>

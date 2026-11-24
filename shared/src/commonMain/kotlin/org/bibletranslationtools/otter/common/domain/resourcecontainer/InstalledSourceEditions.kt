@@ -39,4 +39,37 @@ class InstalledSourceEditions(
             )
         }
     }
+
+    // Copies of the two functions above for startup, which must not go through RxJava.
+
+    /** Every installed edition of the source [identifier] in [languageSlug], newest first. */
+    suspend fun editionsOfNoRx(languageSlug: String, identifier: String): List<ResourceMetadata> =
+        metadataRepository.getAllSourcesNoRx()
+            .filter { it.language.slug == languageSlug && it.identifier == identifier }
+            .sortedWith(EditionOrder.newestFirst)
+
+    /**
+     * The installed edition that is the same edition as one with this identity and [fingerprint]
+     * (see [isSameEdition]), or null if there is none.
+     */
+    suspend fun findSameEditionNoRx(
+        languageSlug: String,
+        identifier: String,
+        creator: String,
+        fingerprint: EditionFingerprint
+    ): ResourceMetadata? {
+        val incoming = EditionIdentityKey(
+            languageSlug, identifier, creator, fingerprint.structureFingerprint, fingerprint.textFingerprint
+        )
+        return editionsOfNoRx(languageSlug, identifier).firstOrNull { edition ->
+            val stored = fingerprintRepository.get(edition.id) ?: return@firstOrNull false
+            isSameEdition(
+                incoming,
+                EditionIdentityKey(
+                    edition.language.slug, edition.identifier, edition.creator,
+                    stored.structureFingerprint, stored.textFingerprint
+                )
+            )
+        }
+    }
 }

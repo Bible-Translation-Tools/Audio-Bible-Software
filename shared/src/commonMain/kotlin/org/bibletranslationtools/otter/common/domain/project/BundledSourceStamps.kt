@@ -1,7 +1,5 @@
 package org.bibletranslationtools.otter.common.domain.project
 
-import io.reactivex.Completable
-import io.reactivex.ObservableEmitter
 import org.bibletranslationtools.otter.common.api.persistence.config.Installable
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IInstalledEntityRepository
 import org.bibletranslationtools.otter.common.data.ProgressStatus
@@ -33,7 +31,7 @@ class BundledSourceStamps(
         return object : Installable {
             override val name = "BUNDLED_SOURCE:$name"
             override val version = checksum.take(7).toInt(16)
-            override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable = Completable.complete()
+            override suspend fun exec(onProgress: (ProgressStatus) -> Unit) = Unit
         }
     }
 }

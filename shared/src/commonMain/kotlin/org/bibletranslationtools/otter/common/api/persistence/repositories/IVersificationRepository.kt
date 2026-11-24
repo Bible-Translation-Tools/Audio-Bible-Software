@@ -18,15 +18,13 @@
  */
 package org.bibletranslationtools.otter.common.api.persistence.repositories
 
-import io.reactivex.Completable
 import io.reactivex.Maybe
 import org.bibletranslationtools.otter.common.domain.versification.Versification
 import java.io.File
 
 interface IVersificationRepository {
     fun getVersification(slug: String): Maybe<Versification>
-    fun insertVersification(slug: String, path: File): Completable
 
     suspend fun getVersificationSuspend(slug: String): Versification?
-    suspend fun insertVersificationSuspend(slug: String, path: File)
+    suspend fun insertVersification(slug: String, path: File)
 }

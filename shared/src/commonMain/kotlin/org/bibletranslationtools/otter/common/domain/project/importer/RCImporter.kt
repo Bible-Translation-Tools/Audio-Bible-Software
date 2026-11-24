@@ -26,6 +26,8 @@ import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
 import java.io.File
 import java.io.InputStream
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * An importer for Resource Container project format.
@@ -52,6 +54,12 @@ abstract class RCImporter(
             ?: Single.just(ImportResult.FAILED)
     }
 
+    protected suspend fun passToNextImporterSuspend(
+        file: File,
+        callback: ProjectImporterCallback?,
+        options: ImportOptions?
+    ): ImportResult = next?.importSuspend(file, callback, options) ?: ImportResult.FAILED
+
     protected fun importAsStream(filename: String, stream: InputStream): Single<ImportResult> {
         val outFile = directoryProvider.createTempFile(filename, ".zip")
 
@@ -73,6 +81,23 @@ abstract class RCImporter(
             }
             .subscribeOn(Schedulers.io())
     }
+
+    /** Imports [stream] through this importer, from a temporary file that is deleted afterwards. */
+    protected suspend fun importAsStreamSuspend(filename: String, stream: InputStream): ImportResult =
+        withContext(Dispatchers.IO) {
+            val outFile = directoryProvider.createTempFile(filename, ".zip")
+            try {
+                runCatching {
+                    outFile.outputStream().use { stream.copyTo(it) }
+                    importSuspend(outFile)
+                }
+                    .onFailure { logger.error("Error in import, filename: $filename", it) }
+                    .getOrThrow()
+            } finally {
+                stream.close()
+                outFile.delete()
+            }
+        }
 
     fun setNext(next: RCImporter) {
         this.next = next

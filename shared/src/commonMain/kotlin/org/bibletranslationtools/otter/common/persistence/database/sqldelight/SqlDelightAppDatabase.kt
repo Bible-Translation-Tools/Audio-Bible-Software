@@ -20,6 +20,8 @@ package org.bibletranslationtools.otter.common.persistence.database.sqldelight
 
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.ITempFileProvider
 import org.bibletranslationtools.otter.common.persistence.database.dao.CheckingStatusDao
 import org.bibletranslationtools.otter.common.persistence.database.dao.CollectionDao
@@ -75,8 +77,8 @@ class SqlDelightAppDatabase(
      * on every later startup `content_entity` already has rows and [block] just runs plainly,
      * without rebuilding the index or flipping PRAGMAs on every launch.
      */
-    override fun <T> withBulkLoad(block: () -> T): T {
-        if (!contentTableEmpty()) return block()
+    override suspend fun <T> withBulkLoad(block: suspend () -> T): T = withContext(Dispatchers.IO) {
+        if (!contentTableEmpty()) return@withContext block()
 
         // PRAGMAs must be set OUTSIDE a transaction (the seeders open their own).
         // Crash-safe but fast: WAL (persists; a better steady-state journal anyway) + synchronous=NORMAL
@@ -98,7 +100,7 @@ class SqlDelightAppDatabase(
         driver.execute(null, "PRAGMA synchronous=NORMAL;", 0)
         driver.execute(null, "PRAGMA foreign_keys=OFF;", 0)
         try {
-            return block()
+            block()
         } finally {
             driver.execute(null, "PRAGMA foreign_keys=ON;", 0)
             checkForeignKeys()

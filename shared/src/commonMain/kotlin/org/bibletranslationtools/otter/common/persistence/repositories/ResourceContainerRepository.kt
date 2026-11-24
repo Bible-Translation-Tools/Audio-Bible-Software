@@ -43,6 +43,8 @@ import org.bibletranslationtools.otter.common.persistence.repositories.mapping.C
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.LanguageMapper
 import org.bibletranslationtools.otter.common.persistence.repositories.mapping.ResourceMetadataMapper
 import org.wycliffeassociates.resourcecontainer.ResourceContainer
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class ResourceContainerRepository(
     private val database: DaoProvider,
@@ -227,7 +229,42 @@ class ResourceContainerRepository(
         rcTree: OtterTree<CollectionOrContent>,
         languageSlug: String,
         fingerprint: EditionFingerprint?
-    ): ImportResult = importResourceContainer(rc, rcTree, languageSlug, fingerprint).await()
+    ): ImportResult = withContext(Dispatchers.IO) {
+        val dublinCore = rc.manifest.dublinCore
+        try {
+            database.transaction {
+                val languageEntity = languageDao.fetchBySlug(languageSlug)
+                    ?: throw NullPointerException("Could not find language with slug $languageSlug.")
+                val language = LanguageMapper().mapFromEntity(languageEntity)
+                val metadata = insertMetadataOrThrow(dublinCore.mapToMetadata(rc.file, language), fingerprint)
+                fingerprint?.let { database.storeEditionFingerprint(metadata.id, it) }
+
+                val relatedDublinCoreIds: List<Int> =
+                    linkRelatedResourceContainers(metadata, dublinCore.relation, dublinCore.creator)
+
+                if (ContainerType.of(rc.type()) == ContainerType.Help) {
+                    if (relatedDublinCoreIds.isEmpty()) {
+                        logger.error("Unmatched help for ${rc.manifest.dublinCore.identifier}")
+                        throw ImportException(ImportResult.UNMATCHED_HELP)
+                    }
+                    relatedDublinCoreIds.forEach { relatedId ->
+                        val ih = ImportHelper(metadata, relatedId)
+                        ih.importWithoutRx(rcTree)
+                    }
+                } else {
+                    val ih = ImportHelper(metadata, null)
+                    ih.importWithoutRx(rcTree)
+                }
+            }
+            ImportResult.SUCCESS
+        } catch (e: Exception) {
+            // The import reports its outcome as a result; callers clean up on anything but SUCCESS.
+            logger.error("Error in importResourceContainer for rc: $rc, language: $languageSlug", e)
+            e.castOrFindImportException()?.result ?: ImportResult.LOAD_RC_ERROR
+        } finally {
+            rc.close()
+        }
+    }
 
     override suspend fun removeResourceContainerSuspend(
         resourceContainer: ResourceContainer
@@ -250,6 +287,15 @@ class ResourceContainerRepository(
             relatedBundleDublinCoreId
                 ?.let(::findRootCollectionsForRc)
                 ?.map { it.id }
+                ?.forEach(resourceRepository::calculateAndSetSubtreeHasResources)
+        }
+
+        /** [import] for the suspend path: the related root collections are read from the DAO, not through Rx. */
+        fun importWithoutRx(node: OtterTreeNode<CollectionOrContent>) {
+            importCollection(null, node)
+
+            relatedBundleDublinCoreId
+                ?.let(::rootCollectionIdsForRc)
                 ?.forEach(resourceRepository::calculateAndSetSubtreeHasResources)
         }
 
@@ -331,4 +377,10 @@ class ResourceContainerRepository(
             )
         }
     }
+    /** Ids of the root source collections of the container with [dublinCoreId]. */
+    private fun rootCollectionIdsForRc(dublinCoreId: Int): List<Int> =
+        collectionDao.fetchAll()
+            .filter { it.parentFk == null && it.sourceFk == null && it.dublinCoreFk == dublinCoreId }
+            .map { it.id }
+
 }

@@ -1,7 +1,7 @@
 package org.bibletranslationtools.otter.common.initialization
 
-import io.reactivex.Completable
-import io.reactivex.ObservableEmitter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.bibletranslationtools.otter.common.api.persistence.IAppDirectories
@@ -48,13 +48,13 @@ class AuditSourceStructure(
 
     private val logger = LoggerFactory.getLogger(AuditSourceStructure::class.java)
 
-    override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable {
-        return Completable.fromAction {
-            if (installedEntityRepo.getInstalledVersion(this) == version) return@fromAction
+    override suspend fun exec(onProgress: (ProgressStatus) -> Unit) {
+        withContext(Dispatchers.IO) {
+            if (installedEntityRepo.getInstalledVersion(this@AuditSourceStructure) == version) return@withContext
             try {
                 val audited = auditById()
                 writeReport(audited.values.toList(), auditProjects(audited))
-                installedEntityRepo.install(this)
+                installedEntityRepo.install(this@AuditSourceStructure)
             } catch (e: Exception) {
                 logger.error("Source structure audit failed; it will run again next launch", e)
             }

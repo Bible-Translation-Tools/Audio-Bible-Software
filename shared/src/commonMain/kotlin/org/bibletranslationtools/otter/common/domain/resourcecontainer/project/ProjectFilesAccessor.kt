@@ -474,6 +474,24 @@ class ProjectFilesAccessor(
         }
     }
 
+    suspend fun copyTakeFilesSuspend(
+        fileReader: IFileReader,
+        manifestProject: Project,
+        filter: (String) -> Boolean = { true },
+        destination: File
+    ): List<StagedTake> {
+        val audioDirsInRc = listOf(RcConstants.TAKE_DIR, manifestProject.path)
+            .filter(fileReader::exists)
+            .map { File(it).normalize().path }
+            .distinct()
+        return audioDirsInRc.withIndex().flatMap { (index, audioDirInRc) ->
+            val root = File(destination, index.toString())
+            fileReader.copyDirectorySuspend(audioDirInRc, root) {
+                isAudioFile(it) && filter(it)
+            }.map { StagedTake(root, File(it)) }
+        }
+    }
+
     fun copyInProgressNarrationFiles(
         fileReader: IFileReader,
         manifestProject: Project
@@ -496,6 +514,20 @@ class ProjectFilesAccessor(
             filter(it)
         }
     }
+
+    /** Copies the in-progress narration files into the project; returns the paths they were copied to. */
+    suspend fun copyInProgressNarrationFilesSuspend(
+        fileReader: IFileReader,
+        manifestProject: Project
+    ): List<String> =
+        listOf(RcConstants.TAKE_DIR, manifestProject.path)
+            .filter(fileReader::exists)
+            .flatMap { audioDirInRc ->
+                val normalized = File(audioDirInRc).normalize().path
+                fileReader.copyDirectorySuspend(normalized, audioDir) {
+                    isInProgressNarrationFile(it)
+                }
+            }
 
     fun getContributorInfo(): List<Contributor> {
         return ResourceContainer.load(projectDir).use { rc ->

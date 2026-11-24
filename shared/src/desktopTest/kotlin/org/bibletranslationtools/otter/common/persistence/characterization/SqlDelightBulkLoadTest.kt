@@ -19,6 +19,7 @@
 package org.bibletranslationtools.otter.common.persistence.characterization
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import kotlinx.coroutines.runBlocking
 import org.bibletranslationtools.otter.common.data.primitives.ContentType
 import org.bibletranslationtools.otter.common.persistence.database.sqldelight.SqlDelightAppDatabase
 import org.bibletranslationtools.otter.common.persistence.entities.CollectionEntity
@@ -49,7 +50,7 @@ class SqlDelightBulkLoadTest {
     }
 
     @Test
-    fun `withBulkLoad seeds a fresh db, keeps the content index, and leaves it WAL with FKs intact`() {
+    fun `withBulkLoad seeds a fresh db, keeps the content index, and leaves it WAL with FKs intact`() = runBlocking {
         db.withBulkLoad { seedOneVerse(start = 1) }
 
         // The block ran and its data survived (the finally's foreign_key_check did not throw).
@@ -61,7 +62,7 @@ class SqlDelightBulkLoadTest {
     }
 
     @Test
-    fun `withBulkLoad is a plain passthrough once content already exists`() {
+    fun `withBulkLoad is a plain passthrough once content already exists`() = runBlocking {
         db.withBulkLoad { seedOneVerse(start = 1) }   // fills content, so the gate closes
         db.withBulkLoad { seedAnotherVerse(start = 2) } // should just run the block, no index/PRAGMA churn
 

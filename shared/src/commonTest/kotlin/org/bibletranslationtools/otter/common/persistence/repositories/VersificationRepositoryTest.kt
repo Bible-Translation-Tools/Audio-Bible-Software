@@ -9,7 +9,6 @@ import org.bibletranslationtools.otter.common.persistence.database.dao.Versifica
 import java.io.File
 import kotlin.test.BeforeTest
 import kotlin.test.Test
-import kotlin.test.assertEquals
 
 class VersificationRepositoryTest {
 
@@ -36,7 +35,7 @@ class VersificationRepositoryTest {
         
         every { versificationDao.upsert(slug, any<String>()) } just Runs
         
-        repository.insertVersificationSuspend(slug, path)
+        repository.insertVersification(slug, path)
         verify { versificationDao.upsert(slug, any<String>()) }
     }
 }

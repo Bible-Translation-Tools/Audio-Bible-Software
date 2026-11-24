@@ -39,6 +39,7 @@ interface IResourceRepository : IRepository<Content> {
 
     fun getResourcesFlow(collection: Collection, resourceMetadata: ResourceMetadata): Flow<Content>
     fun getResourcesFlow(content: Content, resourceMetadata: ResourceMetadata): Flow<Content>
+    suspend fun getResourcesSuspend(content: Content, resourceMetadata: ResourceMetadata): List<Content>
     suspend fun linkToContentSuspend(resource: Content, content: Content, dublinCoreFk: Int)
     suspend fun linkToCollectionSuspend(resource: Content, collection: Collection, dublinCoreFk: Int)
 }

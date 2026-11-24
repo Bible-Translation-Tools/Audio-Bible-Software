@@ -10,6 +10,9 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.streams.asSequence
 import org.bibletranslationtools.otter.common.io.utils.copyDirectoryTo
+import org.bibletranslationtools.otter.common.io.utils.copyDirectoryFilesTo
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class NioDirectoryFileReader(
     private val dir: File
@@ -30,6 +33,14 @@ class NioDirectoryFileReader(
         val sourcePath = getAbsolutePath(source)
         val destPath = destinationDirectory.toPath()
         return sourcePath.copyDirectoryTo(destPath, filter)
+    }
+
+    override suspend fun copyDirectorySuspend(
+        source: String,
+        destinationDirectory: File,
+        filter: (String) -> Boolean
+    ): List<String> = withContext(Dispatchers.IO) {
+        getAbsolutePath(source).copyDirectoryFilesTo(destinationDirectory.toPath(), filter)
     }
 
     override fun list(directory: String): Sequence<String> {

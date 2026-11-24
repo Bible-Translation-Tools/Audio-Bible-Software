@@ -1,5 +1,7 @@
 package org.bibletranslationtools.otter.common.domain.project.importer
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.collections.OtterTree
 import org.bibletranslationtools.otter.common.data.primitives.CollectionOrContent
 import org.bibletranslationtools.otter.common.domain.resourcecontainer.EditionFingerprint
@@ -29,4 +31,12 @@ class EditionFingerprinter(
         ResourceContainer.load(path, OtterResourceContainerConfig()).use { container ->
             fingerprint(container, IProjectReader.constructContainerTree(container, zipEntryTreeBuilder))
         }
+
+    /** Suspending [fingerprint] of the source stored at [path]. */
+    suspend fun fingerprintSuspend(path: File): EditionFingerprint = withContext(Dispatchers.IO) {
+        ResourceContainer.load(path, OtterResourceContainerConfig()).use { container ->
+            val parsedTree = IProjectReader.constructContainerTree(container, zipEntryTreeBuilder)
+            fingerprint(container, parsedTree, structurePlanner.detectSuspend(container, parsedTree)?.code)
+        }
+    }
 }

@@ -84,6 +84,7 @@ interface ICollectionRepository : IRepository<Collection> {
     suspend fun getRootSourcesSuspend(): List<Collection>
     suspend fun getSourceSuspend(project: Collection): Collection?
     suspend fun getChildrenSuspend(collection: Collection): List<Collection>
+    suspend fun getChildrenNoRx(collection: Collection): List<Collection>
     suspend fun getProjectBySlugAndMetadataSuspend(slug: String, metadata: ResourceMetadata): Collection
     suspend fun updateSourceSuspend(collection: Collection, newSource: Collection)
     suspend fun updateParentSuspend(collection: Collection, newParent: Collection)

@@ -18,17 +18,17 @@
  */
 package org.bibletranslationtools.otter.common.initialization
 
-import io.reactivex.Completable
-import io.reactivex.ObservableEmitter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.IResourceContainerDirectories
 import org.bibletranslationtools.otter.common.api.persistence.config.Installable
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IInstalledEntityRepository
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IResourceMetadataRepository
-import org.slf4j.LoggerFactory
 import org.bibletranslationtools.otter.common.data.OratureFileFormat
+import org.bibletranslationtools.otter.common.data.ProgressStatus
 import org.bibletranslationtools.otter.common.domain.project.importer.ProjectImporterCallback
 import org.bibletranslationtools.otter.common.domain.project.importer.RCImporterFactory
-import org.bibletranslationtools.otter.common.data.ProgressStatus
+import org.slf4j.LoggerFactory
 import java.io.File
 
 class InitializeSources(
@@ -44,36 +44,35 @@ class InitializeSources(
     private val logger = LoggerFactory.getLogger(javaClass)
     private lateinit var callback: ProjectImporterCallback
 
-    override fun exec(progressEmitter: ObservableEmitter<ProgressStatus>): Completable {
-        return Completable
-            .fromAction {
-                val installedVersion = installedEntityRepo.getInstalledVersion(this)
-                if (installedVersion != version) {
-                    logger.info("Initializing sources...")
-                    progressEmitter.onNext(
-                        ProgressStatus(titleKey = "initializingSources")
-                    )
-                    callback = setupImportCallback(progressEmitter)
+    override suspend fun exec(onProgress: (ProgressStatus) -> Unit) {
+        withContext(Dispatchers.IO) {
+            val installedVersion = installedEntityRepo.getInstalledVersion(this@InitializeSources)
+            if (installedVersion != version) {
+                logger.info("Initializing sources...")
+                onProgress(
+                    ProgressStatus(titleKey = "initializingSources")
+                )
+                callback = setupImportCallback(onProgress)
 
-                    migrate()
+                migrate()
 
-                    installedEntityRepo.install(this)
-                    logger.info("$name version: $version installed!")
-                } else {
-                    logger.info("$name up to date with version: $version")
-                }
+                installedEntityRepo.install(this@InitializeSources)
+                logger.info("$name version: $version installed!")
+            } else {
+                logger.info("$name up to date with version: $version")
             }
+        }
     }
 
-    private fun migrate() {
+    private suspend fun migrate() {
         migrateToVersion1()
     }
 
-    private fun migrateToVersion1() {
+    private suspend fun migrateToVersion1() {
         importSources(directoryProvider.internalSourceRCDirectory)
     }
 
-    private fun importSources(dir: File) {
+    private suspend fun importSources(dir: File) {
         if (dir.isFile || !dir.exists()) {
             return
         }
@@ -90,22 +89,17 @@ class InitializeSources(
         }
     }
 
-    private fun fetchSourcePaths(): List<File> {
+    private suspend fun fetchSourcePaths(): List<File> {
         return resourceMetadataRepo
-            .getAllSources()
-            .blockingGet()
+            .getAllSourcesNoRx()
             .map {
                 it.path
             }
     }
 
-    private fun importFile(file: File) {
-        rcImporterFactory.makeImporter().import(file, callback).toObservable()
-            .doOnError { e ->
-                logger.error("Error importing $file.", e)
-            }
-            .blockingSubscribe {
-                logger.info("${file.name} imported!")
-            }
+    private suspend fun importFile(file: File) {
+        runCatching { rcImporterFactory.makeImporter().importSuspend(file, callback) }
+            .onSuccess { logger.info("${file.name} import result: $it") }
+            .onFailure { logger.error("Error importing $file.", it) }
     }
 }
