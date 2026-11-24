@@ -1,3 +1,5 @@
+@file:OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
+
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -71,6 +73,18 @@ kotlin {
                 // Plugin definitions are YAML — see OraturePluginRegistrar. Declared explicitly
                 // rather than leaning on :shared's api(kaml), since this module uses it directly.
                 implementation(libs.kaml)
+            }
+        }
+
+        // Compose UI walkthroughs (e2e/): drive the real app headlessly and save a screenshot
+        // per step. Desktop-only for now; the journeys themselves use only common Compose test APIs.
+        val desktopTest by getting {
+            dependencies {
+                implementation(compose.desktop.currentOs)
+                implementation(compose.uiTest)
+                implementation(libs.kotlinx.coroutines.swing)
+                // Only to build the source-audio fixture (e2e/fixtures); app code stays off it.
+                implementation("org.wycliffeassociates:kotlin-resource-container:0.12.0")
             }
         }
 
@@ -259,6 +273,51 @@ compose.desktop {
             }
         }
     }
+}
+
+// Verification kit (src/desktopTest/.../verify; how to use it: docs/verification/README.md).
+// Ready-made app states, the real window on a copy of one, and a JSON dump of what was saved.
+// All of it lives in desktopTest, so none of it ships in the app.
+val desktopTestCompilation = kotlin.targets.getByName("desktop").compilations.getByName("test")
+val verifyClasspath = files(
+    desktopTestCompilation.output.allOutputs,
+    desktopTestCompilation.runtimeDependencyFiles
+)
+
+tasks.register<Test>("seedVerifyStates") {
+    description = "Builds the verification states in build/verify-states (-PverifyState=<name> for one)."
+    group = "verification"
+    val desktopTest = tasks.named<Test>("desktopTest")
+    testClassesDirs = files(desktopTest.map { it.testClassesDirs })
+    classpath = files(desktopTest.map { it.classpath })
+    filter.includeTestsMatching("*SeedVerifyStatesTest*")
+    environment("SEED_VERIFY_STATES", (project.findProperty("verifyState") as String?) ?: "all")
+    outputs.upToDateWhen { false }
+    testLogging { showStandardStreams = true }
+}
+
+tasks.register<JavaExec>("runVerifyApp") {
+    description = "Opens Orature on a copy of a verification state (-PverifyState=<name>, or -PdataDir=<dir>)."
+    group = "verification"
+    dependsOn("desktopTestClasses")
+    classpath = verifyClasspath
+    mainClass.set("org.bibletranslationtools.orature.verify.VerifyApp")
+    args((project.findProperty("dataDir") ?: project.findProperty("verifyState") ?: "fresh").toString())
+    workingDir = projectDir
+}
+
+tasks.register<JavaExec>("dumpState") {
+    description = "Prints what Orature saved in a data directory as JSON (-PdataDir=<dir> [-Pbook=gen] [-Pchapter=1])."
+    group = "verification"
+    dependsOn("desktopTestClasses")
+    classpath = verifyClasspath
+    mainClass.set("org.bibletranslationtools.orature.verify.StateDump")
+    args(
+        (project.findProperty("dataDir") ?: error("-PdataDir=<Orature data directory> is required")).toString(),
+        (project.findProperty("book") ?: "").toString(),
+        (project.findProperty("chapter") ?: "").toString()
+    )
+    workingDir = projectDir
 }
 
 tasks.withType<JavaExec>().configureEach {
