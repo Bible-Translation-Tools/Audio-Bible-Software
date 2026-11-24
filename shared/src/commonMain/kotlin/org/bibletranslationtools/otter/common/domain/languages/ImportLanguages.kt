@@ -26,6 +26,8 @@ import org.bibletranslationtools.otter.common.data.primitives.Language
 import org.bibletranslationtools.otter.common.api.persistence.repositories.ILanguageRepository
 import java.io.InputStream
 import org.bibletranslationtools.otter.common.OTTER_JSON
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.Serializable
 
@@ -55,15 +57,19 @@ class ImportLanguages(
         return languages.map { it.toLanguage() }
     }
     suspend fun import(inputStream: InputStream) {
-        runCatching { languageRepo.insertAll(mapLanguages(inputStream)) }
-            .onFailure { logger.error("Error in ImportLanguages", it) }
-            .getOrThrow()
+        withContext(Dispatchers.IO) {
+            runCatching { languageRepo.insertAll(mapLanguages(inputStream)) }
+                .onFailure { logger.error("Error in ImportLanguages", it) }
+                .getOrThrow()
+        }
     }
 
     suspend fun updateRegions(inputStream: InputStream) {
-        runCatching { languageRepo.updateRegions(mapLanguages(inputStream)) }
-            .onFailure { logger.error("Error in updateRegions", it) }
-            .getOrThrow()
+        withContext(Dispatchers.IO) {
+            runCatching { languageRepo.updateRegions(mapLanguages(inputStream)) }
+                .onFailure { logger.error("Error in updateRegions", it) }
+                .getOrThrow()
+        }
     }
 
 }

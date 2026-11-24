@@ -1,5 +1,7 @@
 package org.bibletranslationtools.otter.common.domain.project.importer
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.bibletranslationtools.otter.common.api.persistence.repositories.IVersificationRepository
 import org.bibletranslationtools.otter.common.collections.OtterTree
 import org.bibletranslationtools.otter.common.collections.OtterTreeNode
@@ -97,14 +99,17 @@ class SourceStructurePlanner(
             .getOrNull()
 
     /** Suspending [plan]. */
-    suspend fun planSuspend(container: ResourceContainer, parsedTree: OtterTree<CollectionOrContent>): SourceStructurePlan {
-        val match = detectSuspend(container, parsedTree) ?: return SourceStructurePlan(parsedTree, null)
+    suspend fun planSuspend(
+        container: ResourceContainer,
+        parsedTree: OtterTree<CollectionOrContent>
+    ): SourceStructurePlan = withContext(Dispatchers.IO) {
+        val match = detectSuspend(container, parsedTree) ?: return@withContext SourceStructurePlan(parsedTree, null)
 
         val templateBooks = readSuspend(TEMPLATE_BOOKS_VERSIFICATION)?.getBookSlugs().orEmpty()
         val tree = fillStructureGaps(parsedTree, match.versification, templateBooks) { book ->
             treeBuilder.bookTree(match.versification, container, book, match.code)
         }
-        return SourceStructurePlan(tree, match)
+        SourceStructurePlan(tree, match)
     }
 
     /** Suspending [detect]. */

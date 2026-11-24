@@ -245,7 +245,7 @@ class ResourceMetadataRepository(
             .getOrThrow()
     }
     override suspend fun updateSuspend(metadata: ResourceMetadata, rc: ResourceContainer) =
-        updateSuspend(withContext(Dispatchers.IO) { updatedFrom(metadata, rc) })
+        withContext(Dispatchers.IO) { updateSuspend(updatedFrom(metadata, rc)) }
     override suspend fun deleteSuspend(obj: ResourceMetadata) = delete(obj).await()
 
     override suspend fun existsSuspend(metadata: ResourceMetadata): Boolean = exists(metadata).await()
