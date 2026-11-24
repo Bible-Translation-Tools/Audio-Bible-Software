@@ -34,8 +34,14 @@ import org.koin.dsl.module
 object OratureUiTestHarness {
 
     private var rootDir: File? = null
+    private var keepData = false
 
-    fun start(): File {
+    /**
+     * Boots the app's Koin graph. With [dataDir], app data lives there and is kept after [stop]
+     * (verification states and the verify app use this); otherwise in a fresh temp directory that
+     * [stop] deletes.
+     */
+    fun start(dataDir: File? = null): File {
         // Software rendering so headless CI machines can draw (and screenshot) the UI.
         System.setProperty("skiko.renderApi", "SOFTWARE")
         System.setProperty("java.awt.headless", "false")
@@ -44,11 +50,12 @@ object OratureUiTestHarness {
         // thread" when they don't.
         disableLifecycleMainThreadCheck()
         stop()
-        val root = File(System.getProperty("java.io.tmpdir"), "orature-e2e-${UUID.randomUUID()}")
+        val root = dataDir ?: File(System.getProperty("java.io.tmpdir"), "orature-e2e-${UUID.randomUUID()}")
         root.mkdirs()
         rootDir = root
+        keepData = dataDir != null
 
-        val source = FakeMicrophone()
+        val source = FakeMicrophone(pitchFile = root.resolve(FakeMicrophone.PITCH_FILE))
         val sink = FakeSpeakers()
         val selector = FakeAudioDeviceSelector()
 
@@ -95,7 +102,7 @@ object OratureUiTestHarness {
 
     fun stop() {
         runCatching { stopKoin() }
-        rootDir?.deleteRecursively()
+        if (!keepData) rootDir?.deleteRecursively()
         rootDir = null
     }
 
@@ -110,11 +117,23 @@ object OratureUiTestHarness {
 }
 
 /**
- * A microphone that "hears" a quiet tone. Paced to real time: an unpaced fake fills the
- * recorder's buffer as fast as the CPU allows, which writes gigabytes in seconds.
+ * A microphone that hears a known tone, so a recording can be checked without listening: the
+ * state dump (verify/StateDump.kt) measures each recorded line's pitch.
+ *
+ * The tone is [DEFAULT_HZ] unless [pitchFile] holds another number of hertz, re-read a few
+ * times a second. Writing, say, `392` to it before re-recording a verse is "recording in a
+ * different voice": afterwards that verse measures 392 Hz and the rest still 330. (Orature opens
+ * the microphone once per screen and reads it continuously, so the tone cannot change per take
+ * by itself.)
+ *
+ * Paced to real time: an unpaced fake fills the recorder's buffer as fast as the CPU allows,
+ * which writes gigabytes in seconds.
  */
-internal class FakeMicrophone : AudioSource {
+internal class FakeMicrophone(private val pitchFile: File? = null) : AudioSource {
     private var started = false
+    private var frame = 0L
+    private var hz = DEFAULT_HZ
+    private var checkedAt = 0L
 
     override fun open(spec: AudioSpec) {}
     override fun start() { started = true }
@@ -125,8 +144,29 @@ internal class FakeMicrophone : AudioSource {
         if (!started) return 0
         // 44.1 kHz, 16-bit mono = 88,200 bytes per second.
         Thread.sleep((size * 1000L / 88_200).coerceAtLeast(1))
-        for (i in 0 until size) data[offset + i] = ((i % 64) - 32).toByte()
+        updatePitch()
+        var i = 0
+        while (i + 1 < size) {
+            val sample = (kotlin.math.sin(2 * kotlin.math.PI * hz * frame / 44_100) * 0.3 * Short.MAX_VALUE).toInt()
+            data[offset + i] = (sample and 0xff).toByte()
+            data[offset + i + 1] = (sample shr 8 and 0xff).toByte()
+            frame++
+            i += 2
+        }
         return size
+    }
+
+    private fun updatePitch() {
+        val now = System.currentTimeMillis()
+        if (pitchFile == null || now - checkedAt < 200) return
+        checkedAt = now
+        hz = pitchFile.takeIf { it.exists() }?.readText()?.trim()?.toDoubleOrNull() ?: DEFAULT_HZ
+    }
+
+    companion object {
+        const val DEFAULT_HZ = 330.0
+        /** The file in a data directory that sets the tone: see [FakeMicrophone]. */
+        const val PITCH_FILE = "verify-mic-hz"
     }
 }
 

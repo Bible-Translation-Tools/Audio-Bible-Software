@@ -17,6 +17,9 @@ import androidx.compose.ui.test.onChildren
 import androidx.compose.ui.semantics.SemanticsActions
 import org.bibletranslationtools.orature.e2e.fixtures.SourceAudioFixtures
 import org.bibletranslationtools.orature.e2e.harness.OratureUiTestHarness
+import org.bibletranslationtools.orature.verify.StateDump
+import org.bibletranslationtools.orature.verify.savedChunks
+import java.io.File
 import org.bibletranslationtools.orature.ui.OratureApp
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -33,9 +36,11 @@ import kotlin.test.Test
 @OptIn(ExperimentalTestApi::class)
 class OratureChunkingWalkthroughTest {
 
+    private lateinit var dataDir: File
+
     @BeforeTest
     fun setUp() {
-        OratureUiTestHarness.start()
+        dataDir = OratureUiTestHarness.start()
         SourceAudioFixtures.import(SourceAudioFixtures.englishGenesis1)
     }
 
@@ -128,6 +133,12 @@ class OratureChunkingWalkthroughTest {
         guide.snapshot("Next is Blind Draft, but it stays locked: the new chunks are not saved until you move forward past Chunking (a bug)")
         check(!isShowing(hasText("Blind Draft and Self Edit") and hasClickAction())) {
             "Blind Draft is reachable now; extend this journey into drafting"
+        }
+        // The same bug in the saved files: three chunks are on screen, none are saved.
+        val dump = StateDump.dump(dataDir, "gen")
+        File("build/walkthroughs/chunking-journey/state.json").writeText(StateDump.toText(dump))
+        check(dump.savedChunks() == null) {
+            "Chunks are saved now (${dump.savedChunks()}); the chunking bug may be fixed: extend this journey into drafting"
         }
     }
 

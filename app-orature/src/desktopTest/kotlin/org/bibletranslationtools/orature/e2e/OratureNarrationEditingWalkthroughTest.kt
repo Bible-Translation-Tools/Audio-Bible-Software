@@ -17,7 +17,12 @@ import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
+import org.bibletranslationtools.orature.e2e.harness.FakeMicrophone
 import org.bibletranslationtools.orature.e2e.harness.OratureUiTestHarness
+import org.bibletranslationtools.orature.verify.StateDump
+import org.bibletranslationtools.orature.verify.narrationLine
+import org.bibletranslationtools.orature.verify.number
+import java.io.File
 import org.bibletranslationtools.orature.ui.OratureApp
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -32,10 +37,21 @@ import kotlin.test.Test
 @OptIn(ExperimentalTestApi::class)
 class OratureNarrationEditingWalkthroughTest {
 
+    private lateinit var dataDir: File
+
     @BeforeTest
     fun setUp() {
-        OratureUiTestHarness.start()
+        dataDir = OratureUiTestHarness.start()
     }
+
+    /** What Orature has saved for narration line [line] of Genesis 1 (see verify/StateDump). */
+    private fun saved(line: String) = StateDump.dump(dataDir, "gen", 1).narrationLine(line)
+
+    private fun pitchOf(line: String) = saved(line)?.number("pitchHz")
+    private fun startOf(verse: String) = saved("v$verse")?.number("startSeconds")
+
+    /** Within 10 Hz: a new take starts with a few milliseconds of the tone from before the switch. */
+    private infix fun Double?.near(hz: Double) = this != null && kotlin.math.abs(this - hz) <= 10
 
     @AfterTest
     fun tearDown() {
@@ -58,6 +74,8 @@ class OratureNarrationEditingWalkthroughTest {
 
     private suspend fun journey(test: ComposeUiTest, guide: Walkthrough) = with(test) {
         narrateGenesisOne()
+        // The verify microphone's tone is 330 Hz unless told otherwise, so every line measures 330.
+        check(pitchOf("v2") near 330.0) { "Narration not saved as expected: ${saved("v2")}" }
         guide.snapshot("Genesis 1 is narrated. Every line has a recording, and each has a Re-Record button")
 
         // ── Re-record verse 2 ───────────────────────────────────────────────────────────
@@ -65,6 +83,8 @@ class OratureNarrationEditingWalkthroughTest {
         // The lines are a lazy list (rows exist only on screen): book title, chapter, verse 1, verse 2.
         onNode(hasScrollToIndexAction()).performScrollToIndex(3)
         letTimePass(500)
+        // "Read it again" in a different voice, so the new take can be told apart in the saved audio.
+        dataDir.resolve(FakeMicrophone.PITCH_FILE).writeText("392")
         guide.step("Press Re-Record beside verse 2 and read it again. Only this verse is replaced") {
             tap(buttonBeside(verse2, "Re-Record"))
             waitFor(saveButton)
@@ -76,11 +96,20 @@ class OratureNarrationEditingWalkthroughTest {
             waitUntil(timeoutMillis = 60_000) { !isShowing(saveButton) }
             waitFor(hasText("Re-Record") and hasClickAction() and isEnabled(), timeoutMillis = 60_000)
         }
+        dataDir.resolve(FakeMicrophone.PITCH_FILE).delete()
+        // Checked in the saved files, not on screen: verse 2 now has the new take (392 Hz),
+        // and its neighbours still have the first (330 Hz).
+        runCatching { waitUntil(timeoutMillis = 30_000) { pitchOf("v2") near 392.0 } }
+        check(pitchOf("v2") near 392.0) { "Verse 2 was not replaced by the new take: v1=${saved("v1")} v2=${saved("v2")} v3=${saved("v3")}" }
+        check(pitchOf("v1") near 330.0 && pitchOf("v3") near 330.0) {
+            "Re-recording verse 2 changed other verses: v1=${saved("v1")} v3=${saved("v3")}"
+        }
 
         // ── Move a marker ───────────────────────────────────────────────────────────────
         val undo = hasContentDescription("Undo") and hasClickAction()
         val label = waitForMarker()
         val before = markerX(label)
+        val savedStart = startOf(label)
         guide.snapshot("The waveform at the top has a marker where each verse starts (here, verse $label)")
 
         guide.step("Drag the verse $label marker to where the verse really starts. The recording itself is not changed") {
@@ -88,47 +117,17 @@ class OratureNarrationEditingWalkthroughTest {
             dragMarker(label, byPx = 45f)
             waitUntil(timeoutMillis = 10_000) { markerX(label) > before + 10 }
         }
+        // Saved straight away: the verse now starts later in the recording.
+        waitUntil(timeoutMillis = 10_000) { (startOf(label) ?: 0.0) > savedStart!! + 0.1 }
 
         guide.step("Press Undo (top bar) to put the marker back. Redo does it again") {
             tap(undo and isEnabled())
             waitUntil(timeoutMillis = 10_000) { kotlin.math.abs(markerX(label) - before) < 4 }
         }
+        waitUntil(timeoutMillis = 10_000) { startOf(label) == savedStart }
+        File("build/walkthroughs/narration-editing/state.json")
+            .writeText(StateDump.toText(StateDump.dump(dataDir, "gen", 1)))
     }
-
-    // ── Setup: narrate Genesis 1 without screenshots ────────────────────────────────────
-
-    private fun ComposeUiTest.narrateGenesisOne() {
-        waitFor(hasContentDescription("New Project"), timeoutMillis = 180_000)
-        tap(hasContentDescription("New Project"))
-        tap(hasText("Narration") and hasClickAction())
-        waitFor(hasText("Pick a Source Language (2 of 4)"))
-        onNode(hasSetTextAction()).performTextInput("English")
-        tap(listRow("English"))
-        waitUntil(timeoutMillis = 180_000) {
-            isShowing(listRow("Genesis")) || isShowing(hasText("Pick a Version (4 of 4)")) || isShowing(hasText("Pick an Edition"))
-        }
-        repeat(2) { if (!isShowing(listRow("Genesis"))) { tap(firstWizardRow); letTimePass(500) } }
-        waitFor(listRow("Genesis"), timeoutMillis = 180_000)
-
-        tap(listRow("Genesis"))
-        val record = hasText("Record") and hasClickAction() and isEnabled()
-        waitFor(record, timeoutMillis = 120_000)
-        tap(record)
-        val next = hasText("Next") and hasClickAction()
-        waitFor(next)
-        // Next after each line until the last line's button says Save. Let a frame draw before
-        // checking, or the check sees the screen from before the last tap.
-        for (line in 1..60) {
-            letTimePass(1_000) // about a second per line, so the markers are far enough apart to grab
-            if (isShowing(saveButton)) break
-            tap(next)
-        }
-        tap(saveButton)
-        waitUntil(timeoutMillis = 60_000) { !isShowing(saveButton) && !isShowing(next) }
-        waitFor(hasText("Re-Record") and hasClickAction(), timeoutMillis = 60_000)
-    }
-
-    private val saveButton = hasText("Save") and hasClickAction()
 
     // ── Finding things by where they are on screen ──────────────────────────────────────
 
