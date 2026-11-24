@@ -32,11 +32,21 @@ a screenshot. Everything here lives in test code (`app-orature/src/desktopTest/.
 5. Dump again and compare with what the spec says should change, and what must not.
 6. Report: the steps you did, the two dumps (or the relevant lines), and pass/fail per expectation.
 
-On Android: install a debug build (`./gradlew :app-orature:assembleDebug`), import
-`test-fixtures/source-audio/en_ulb_gen_c1.orature` (push it with `adb push` to
-`/sdcard/Download/`, then Import in the app), do the steps, then pull and dump. The emulator's
-microphone records silence unless host audio is enabled, so on Android check lengths and
-`rms`, not pitch.
+On Android: install a debug build (`./gradlew :app-orature:assembleDebug`), allow the
+microphone when asked, do the steps, then pull and dump. Narration needs no fixture: the
+English ULB text ships with the app. The emulator's microphone records silence unless host
+audio is enabled, so on Android check that lines are placed and their lengths, not pitch or
+`rms` (both are empty/0).
+
+Checked on a Pixel Tablet emulator (API 33), 2026-11-24: narrating Genesis 1 and pulling the
+data gave 33 placed lines (book, chapter, v1 to v31) and 61.7 s of audio, read by the same
+dump as desktop. Known Android gaps found then:
+- **Import does nothing.** Tapping Import on Home opens no dialog, so the Genesis 1 source
+  audio fixture can't be loaded yet, and oral translation can't be checked on Android.
+- The splash screen shows raw string keys (`initializingSources`, `loadingSomething`).
+- When driving with taps: the narration list keeps the current line at the top until the
+  end of the chapter, then stops scrolling, so the Next button moves down for the last lines.
+  Take a screenshot before each tap near the end.
 
 ## Specs
 
